@@ -5,7 +5,7 @@ function redis() {
   const value = process.env.REDIS_URL;
   if (!value) throw new Error("REDIS_URL is required");
   const url = new URL(value);
-  return { host: url.hostname, port: Number(url.port || 6379), username: url.username || undefined, password: url.password || undefined, tls: url.protocol === "rediss:" ? {} : undefined };
+  return { host: url.hostname, port: Number(url.port || 6379), username: url.username || undefined, password: url.password || undefined, tls: url.protocol === "rediss:" ? { servername: url.hostname } : undefined, maxRetriesPerRequest: null };
 }
 
 export function whatsappQueue() { return new Queue(QUEUES.sync, { connection: redis(), defaultJobOptions: DEFAULT_JOB_OPTIONS }); }

@@ -6,7 +6,7 @@ import { BaileysWhatsAppProvider } from "@/worker/baileys-provider";
 
 if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required");
 const redisUrl = new URL(process.env.REDIS_URL);
-const connection = { host: redisUrl.hostname, port: Number(redisUrl.port || 6379), username: redisUrl.username || undefined, password: redisUrl.password || undefined, tls: redisUrl.protocol === "rediss:" ? {} : undefined };
+const connection = { host: redisUrl.hostname, port: Number(redisUrl.port || 6379), username: redisUrl.username || undefined, password: redisUrl.password || undefined, tls: redisUrl.protocol === "rediss:" ? { servername: redisUrl.hostname } : undefined, maxRetriesPerRequest: null };
 const provider = new BaileysWhatsAppProvider();
 
 new Worker(QUEUES.sync, async (job) => {
@@ -37,5 +37,13 @@ new Worker(QUEUES.message, async (job) => {
   limiter: { max: Number(process.env.WHATSAPP_MAX_MESSAGES_PER_MINUTE || 12), duration: 60000 },
   settings: { backoffStrategy: () => Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000) + Math.floor(Math.random() * Number(process.env.WHATSAPP_MAX_DELAY_MS || 6000)) },
 });
+
+const recoverableAccounts = await prisma.whatsAppAccount.findMany({
+  where: { archivedAt: null, status: { in: ["PENDING_QR", "CONNECTING", "DISCONNECTED"] } },
+  select: { id: true },
+});
+for (const account of recoverableAccounts) {
+  void provider.createSession(account.id).catch((error) => console.error("WhatsApp session recovery failed", account.id, error));
+}
 
 console.log("Logivya WhatsApp worker is ready");

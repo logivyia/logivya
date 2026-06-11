@@ -12,14 +12,14 @@ export type QueueJob<TPayload> = {
   createdAt: string;
 };
 export const QUEUES = {
-  campaign: "logivya:campaign",
-  message: "logivya:message",
-  sync: "logivya:sync",
-  notification: "logivya:notification",
-  billing: "logivya:billing",
-  analytics: "logivya:analytics",
-  webhook: "logivya:webhook",
-  deadLetter: "logivya:dead-letter",
+  campaign: "logivya-campaign",
+  message: "logivya-message",
+  sync: "logivya-sync",
+  notification: "logivya-notification",
+  billing: "logivya-billing",
+  analytics: "logivya-analytics",
+  webhook: "logivya-webhook",
+  deadLetter: "logivya-dead-letter",
 } as const;
 export const DEFAULT_JOB_OPTIONS = {
   attempts: 5,
