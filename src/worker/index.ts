@@ -3,11 +3,22 @@ import { Worker } from "bullmq";
 import { prisma } from "@/server/db";
 import { QUEUES } from "@/server/queues/contracts";
 import { BaileysWhatsAppProvider } from "@/worker/baileys-provider";
+import { recurringDelay, type RecurringRule } from "@/server/queues/recurring";
+import { campaignQueue, messageQueue } from "@/server/queues/client";
 
 if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required");
 const redisUrl = new URL(process.env.REDIS_URL);
 const connection = { host: redisUrl.hostname, port: Number(redisUrl.port || 6379), username: redisUrl.username || undefined, password: redisUrl.password || undefined, tls: redisUrl.protocol === "rediss:" ? { servername: redisUrl.hostname } : undefined, maxRetriesPerRequest: null };
 const provider = new BaileysWhatsAppProvider();
+
+new Worker(QUEUES.campaign,async(job)=>{
+  const{templateCampaignId,companyId}=job.data as{templateCampaignId:string;companyId:string};
+  const template=await prisma.messageCampaign.findFirst({where:{id:templateCampaignId,companyId,deletedAt:null,scheduleType:"RECURRING"},include:{recipients:true}});
+  if(!template||["CANCELED","DELETED"].includes(template.status))return;
+  const occurrence=await prisma.messageCampaign.create({data:{companyId,createdById:template.createdById,title:template.title,content:template.content,contentJson:template.contentJson??undefined,type:template.type,status:"QUEUED",scheduleType:"RECURRING",recurringRule:template.recurringRule??undefined,totalRecipients:template.recipients.length,recipients:{create:template.recipients.map(recipient=>({accountId:recipient.accountId,groupId:recipient.groupId,contactId:recipient.contactId,recipientName:recipient.recipientName,recipientExternalId:recipient.recipientExternalId}))}},include:{recipients:true}});
+  const queue=messageQueue();for(const[index,recipient]of occurrence.recipients.entries())await queue.add("send-recipient",{companyId,campaignId:occurrence.id,recipientId:recipient.id},{jobId:`recipient-${recipient.id}`,delay:index*Number(process.env.WHATSAPP_MIN_DELAY_MS||3000)});
+  await campaignQueue().add("recurring-run",{companyId,templateCampaignId},{jobId:`recurring-${templateCampaignId}-${Date.now()}`,delay:recurringDelay(template.recurringRule as RecurringRule)});
+},{connection,concurrency:2});
 
 new Worker(QUEUES.sync, async (job) => {
   const { action, accountId } = job.data as { action: "connect" | "sync" | "disconnect" | "reconnect"; accountId: string };

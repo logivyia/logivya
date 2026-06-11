@@ -1,2 +1,2 @@
-import { UsersSettingsPage } from "@/components/settings-pages";
-export default function Page(){return <UsersSettingsPage/>}
+import { UsersManagementPage } from "@/components/users-management-page";
+export default function Page(){return <UsersManagementPage/>}

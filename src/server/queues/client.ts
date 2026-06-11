@@ -10,3 +10,4 @@ function redis() {
 
 export function whatsappQueue() { return new Queue(QUEUES.sync, { connection: redis(), defaultJobOptions: DEFAULT_JOB_OPTIONS }); }
 export function messageQueue() { return new Queue(QUEUES.message, { connection: redis(), defaultJobOptions: DEFAULT_JOB_OPTIONS }); }
+export function campaignQueue() { return new Queue(QUEUES.campaign, { connection: redis(), defaultJobOptions: DEFAULT_JOB_OPTIONS }); }

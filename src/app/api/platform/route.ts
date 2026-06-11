@@ -7,7 +7,7 @@ export async function GET() {
     const { company, user } = await requireApiSession();
     const [accounts, groups, categories, campaigns, subscription] = await Promise.all([
       prisma.whatsAppAccount.findMany({
-        where: { companyId: company.id, archivedAt: null },
+        where: { companyId: company.id },
         include: { _count: { select: { groups: true, contacts: true } }, sessions: { orderBy: { updatedAt: "desc" }, take: 1 } },
         orderBy: { createdAt: "desc" }, take: 100,
       }),

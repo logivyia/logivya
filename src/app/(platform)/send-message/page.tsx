@@ -1,2 +1,2 @@
-import { SendMessagePage } from "@/components/feature-pages";
-export default function Page(){ return <SendMessagePage />; }
+import { CampaignComposerPage } from "@/components/campaign-composer-page";
+export default function Page(){ return <CampaignComposerPage />; }

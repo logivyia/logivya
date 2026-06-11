@@ -3,21 +3,27 @@ import { z } from "zod";
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
 import { whatsappQueue } from "@/server/queues/client";
+import { requirePermission } from "@/server/auth/permissions";
+import { writeAuditLog } from "@/server/security/audit";
 
 const schema = z.object({ action: z.enum(["sync", "disconnect", "reconnect", "archive"]) });
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { company } = await requireApiSession();
+    const { company, membership, user } = await requireApiSession();
     const { id } = await params;
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
     const account = await prisma.whatsAppAccount.findFirst({ where: { id, companyId: company.id } });
     if (!account) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
+    const permission = parsed.data.action === "archive" ? "archive_accounts" : parsed.data.action === "disconnect" ? "disconnect_accounts" : "manage_accounts";
+    requirePermission(membership.role, permission);
     if (parsed.data.action === "archive") {
       await prisma.whatsAppAccount.update({ where: { id }, data: { archivedAt: new Date(), status: "ARCHIVED" } });
+      await prisma.notification.create({ data: { companyId: company.id, userId: user.id, type: "ACCOUNT_ARCHIVED", title: "WhatsApp hesabı arşivlendi", message: `${account.label} arşivlendi.` } });
     } else {
-      await whatsappQueue().add(parsed.data.action, { action: parsed.data.action, accountId: id });
+      await whatsappQueue().add(parsed.data.action, { action: parsed.data.action, accountId: id }, { jobId: `${parsed.data.action}-${id}-${Date.now()}` });
     }
+    await writeAuditLog(request, { companyId: company.id, userId: user.id, action: `whatsapp.account.${parsed.data.action}`, entityType: "WhatsAppAccount", entityId: id, before: { status: account.status }, after: { requestedAction: parsed.data.action } });
     return NextResponse.json({ ok: true });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "errors.generic" }, { status: 503 }); }
 }

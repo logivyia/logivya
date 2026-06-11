@@ -3,9 +3,10 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
-import { messageQueue } from "@/server/queues/client";
+import { campaignQueue, messageQueue } from "@/server/queues/client";
 import { requirePermission } from "@/server/auth/permissions";
 import { writeAuditLog } from "@/server/security/audit";
+import { recurringDelay, type RecurringRule } from "@/server/queues/recurring";
 
 const schema = z.object({
   title: z.string().min(1).max(120),
@@ -14,7 +15,7 @@ const schema = z.object({
   categoryIds: z.array(z.string()).default([]),
   scheduleType: z.enum(["SEND_NOW", "SCHEDULED", "RECURRING"]).default("SEND_NOW"),
   scheduledAt: z.coerce.date().optional(),
-  recurringRule: z.record(z.string(), z.unknown()).optional(),
+  recurringRule: z.object({frequency:z.enum(["DAILY","WEEKLY","MONTHLY"]),interval:z.number().int().min(1).max(365).default(1)}).optional(),
 }).superRefine((value,ctx)=>{if(!value.groupIds.length&&!value.categoryIds.length)ctx.addIssue({code:"custom",message:"validation.required",path:["groupIds"]});if(value.scheduleType==="SCHEDULED"&&!value.scheduledAt)ctx.addIssue({code:"custom",message:"validation.required",path:["scheduledAt"]});if(value.scheduleType==="RECURRING"&&!value.recurringRule)ctx.addIssue({code:"custom",message:"validation.required",path:["recurringRule"]})});
 export async function POST(request: Request) {
   try {
@@ -40,10 +41,14 @@ export async function POST(request: Request) {
       },
       include: { recipients: true },
     });
-    const queue = messageQueue();
-    const baseDelay=parsed.data.scheduleType==="SCHEDULED"&&parsed.data.scheduledAt?Math.max(0,parsed.data.scheduledAt.getTime()-Date.now()):0;
-    for (const [index, recipient] of campaign.recipients.entries()) {
-      await queue.add("send-recipient", { companyId: company.id, campaignId: campaign.id, recipientId: recipient.id }, { jobId:`recipient-${recipient.id}`, delay:baseDelay+index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000) });
+    if(parsed.data.scheduleType==="RECURRING"){
+      await campaignQueue().add("recurring-run",{companyId:company.id,templateCampaignId:campaign.id},{jobId:`recurring-${campaign.id}-${Date.now()}`,delay:recurringDelay(parsed.data.recurringRule as RecurringRule)});
+    }else{
+      const queue = messageQueue();
+      const baseDelay=parsed.data.scheduleType==="SCHEDULED"&&parsed.data.scheduledAt?Math.max(0,parsed.data.scheduledAt.getTime()-Date.now()):0;
+      for (const [index, recipient] of campaign.recipients.entries()) {
+        await queue.add("send-recipient", { companyId: company.id, campaignId: campaign.id, recipientId: recipient.id }, { jobId:`recipient-${recipient.id}`, delay:baseDelay+index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000) });
+      }
     }
     await writeAuditLog(request,{companyId:company.id,userId:user.id,action:"campaign.created",entityType:"MessageCampaign",entityId:campaign.id,after:{scheduleType:campaign.scheduleType,totalRecipients:campaign.totalRecipients}});
     return NextResponse.json({ campaign }, { status: 201 });

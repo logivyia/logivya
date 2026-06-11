@@ -9,6 +9,11 @@ const sockets = new Map<string, WASocket>();
 const sessionRoot = process.env.WHATSAPP_SESSION_DIR || path.join(process.cwd(), "sessions");
 
 export class BaileysWhatsAppProvider implements WhatsAppProvider {
+  async requestPairingCode(accountId: string, phoneNumber: string): Promise<string> {
+    void accountId;
+    void phoneNumber;
+    throw new Error("PAIRING_CODE_UNSUPPORTED");
+  }
   async createSession(accountId: string): Promise<SessionResult> {
     await mkdir(sessionRoot, { recursive: true });
     const directory = path.join(sessionRoot, accountId);

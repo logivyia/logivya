@@ -5,6 +5,7 @@ export type SendGroupMessageInput = { accountId: string; groupExternalId: string
 export type SendResult = { externalMessageId: string };
 export interface WhatsAppProvider {
   createSession(accountId: string): Promise<SessionResult>;
+  requestPairingCode(accountId: string, phoneNumber: string): Promise<string>;
   getQr(accountId: string): Promise<string | null>;
   disconnect(accountId: string): Promise<void>;
   reconnect(accountId: string): Promise<void>;
