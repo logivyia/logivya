@@ -1,2 +1,2 @@
-import { SettingsPage } from "@/components/feature-pages";
-export default function Page(){ return <SettingsPage />; }
+import { redirect } from "next/navigation";
+export default function Page(){redirect("/settings/company")}

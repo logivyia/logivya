@@ -5,9 +5,9 @@ const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required");
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 const plans = [
-  { name: "Trial", slug: "trial", monthlyPrice: 0, yearlyPrice: 0, maxWhatsappAccounts: 1, maxGroups: 50, maxMessagesPerDay: 250, maxMessagesPerMonth: 1000 },
-  { name: "Starter", slug: "starter", monthlyPrice: 39, yearlyPrice: 390, maxWhatsappAccounts: 2, maxGroups: 250, maxMessagesPerDay: 1000, maxMessagesPerMonth: 15000 },
-  { name: "Professional", slug: "professional", monthlyPrice: 89, yearlyPrice: 890, maxWhatsappAccounts: 3, maxGroups: 1000, maxMessagesPerDay: 5000, maxMessagesPerMonth: 75000, hasScheduledMessages: true, hasRecurringMessages: true, hasNoBranding: true },
+  { name: "Deneme", slug: "trial", monthlyPrice: 0, yearlyPrice: 0, maxWhatsappAccounts: 1, maxGroups: 50, maxMessagesPerDay: 250, maxMessagesPerMonth: 1000 },
+  { name: "Başlangıç", slug: "starter", monthlyPrice: 350, yearlyPrice: 3600, maxWhatsappAccounts: 2, maxGroups: 250, maxMessagesPerDay: 1000, maxMessagesPerMonth: 15000, hasScheduledMessages: true, hasRecurringMessages: true },
+  { name: "Profesyonel", slug: "professional", monthlyPrice: 600, yearlyPrice: 6000, maxWhatsappAccounts: 4, maxGroups: 1000, maxMessagesPerDay: 5000, maxMessagesPerMonth: 75000, hasScheduledMessages: true, hasRecurringMessages: true, hasNoBranding: true },
   { name: "Enterprise", slug: "enterprise", monthlyPrice: 0, yearlyPrice: 0, maxWhatsappAccounts: 100, maxGroups: 100000, maxMessagesPerDay: 100000, maxMessagesPerMonth: 1000000, hasScheduledMessages: true, hasRecurringMessages: true, hasNoBranding: true, hasCrm: true, hasApi: true },
 ];
 const rolePermissions: Record<CompanyRole, string[]> = {

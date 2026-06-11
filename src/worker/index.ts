@@ -20,8 +20,10 @@ new Worker(QUEUES.sync, async (job) => {
 new Worker(QUEUES.message, async (job) => {
   const { recipientId } = job.data as { recipientId: string };
   const recipient = await prisma.messageRecipient.findUnique({ where: { id: recipientId }, include: { campaign: true, group: true } });
-  if (!recipient?.group || recipient.campaign.status === "CANCELED" || recipient.campaign.status === "CANCELING") return;
-  await prisma.messageRecipient.update({ where: { id: recipient.id }, data: { status: "SENDING" } });
+  if (!recipient?.group || recipient.status === "SENT" || ["CANCELED", "CANCELING", "DELETED"].includes(recipient.campaign.status)) return;
+  const claimed = await prisma.messageRecipient.updateMany({ where: { id: recipient.id, status: { in: ["PENDING", "FAILED"] } }, data: { status: "SENDING" } });
+  if (!claimed.count) return;
+  await prisma.messageCampaign.updateMany({ where: { id: recipient.campaignId, status: "QUEUED" }, data: { status: "SENDING" } });
   try {
     await provider.sendGroupMessage({ accountId: recipient.accountId, groupExternalId: recipient.group.externalGroupId, content: recipient.campaign.content });
     await prisma.messageRecipient.update({ where: { id: recipient.id }, data: { status: "SENT", sentAt: new Date() } });
@@ -30,6 +32,14 @@ new Worker(QUEUES.message, async (job) => {
     await prisma.messageRecipient.update({ where: { id: recipient.id }, data: { status: "FAILED", failedAt: new Date(), errorMessage: error instanceof Error ? error.message : "Send failed" } });
     await prisma.messageCampaign.update({ where: { id: recipient.campaignId }, data: { failedCount: { increment: 1 } } });
     throw error;
+  } finally {
+    const counts = await prisma.messageRecipient.groupBy({ by: ["status"], where: { campaignId: recipient.campaignId }, _count: { _all: true } });
+    const count = (status: string) => counts.find((item) => item.status === status)?._count._all ?? 0;
+    const pending = count("PENDING") + count("SENDING");
+    if (!pending) {
+      const sent = count("SENT"), failed = count("FAILED");
+      await prisma.messageCampaign.update({ where: { id: recipient.campaignId }, data: { status: failed ? sent ? "PARTIALLY_COMPLETED" : "FAILED" : "COMPLETED" } });
+    }
   }
 }, {
   connection,

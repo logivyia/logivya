@@ -20,9 +20,9 @@ export async function POST(request: Request) {
     const company = await tx.company.create({ data: { name: input.companyName, ownerId: user.id, email: user.email, phone: user.phone } });
     await tx.companyUser.create({ data: { companyId: company.id, userId: user.id, role: "OWNER" } });
     const now = new Date();
-    await tx.subscription.create({
-      data: { companyId: company.id, planId: trial.id, status: "TRIALING", trialStartsAt: now, trialEndsAt: new Date(now.getTime() + 14 * 86400000) },
-    });
+    await tx.subscription.create({ data: { companyId: company.id, planId: trial.id, status: "TRIALING", trialStartsAt: now, trialEndsAt: new Date(now.getTime() + 3 * 86400000) } });
+    await tx.companyBillingProfile.create({ data: { companyId: company.id, billingType: "COMPANY", companyName: company.name, country: "TR", city: "-", addressLine1: "-", billingEmail: user.email } });
+    await tx.auditLog.create({ data: { companyId: company.id, userId: user.id, action: "workspace.registered", entityType: "Company", entityId: company.id, ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(), userAgent: request.headers.get("user-agent") } });
     return { user, company };
   });
   await createSession(result.user.id, result.company.id, request);
