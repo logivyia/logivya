@@ -1,0 +1,1 @@
+import { NextResponse } from "next/server";import { receivePaymentWebhook } from "@/server/billing/webhook-handler";export async function POST(request:Request){const result=await receivePaymentWebhook("STRIPE",request);return NextResponse.json(result.body,{status:result.status})}

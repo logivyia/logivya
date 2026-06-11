@@ -7,6 +7,7 @@ import { campaignQueue, messageQueue } from "@/server/queues/client";
 import { requirePermission } from "@/server/auth/permissions";
 import { writeAuditLog } from "@/server/security/audit";
 import { recurringDelay, type RecurringRule } from "@/server/queues/recurring";
+import { subscriptionAccess } from "@/server/billing/subscription-access";
 
 const schema = z.object({
   title: z.string().min(1).max(120),
@@ -24,10 +25,10 @@ export async function POST(request: Request) {
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
     if (parsed.data.scheduleType!=="SEND_NOW") requirePermission(membership.role,"schedule_messages");
-    const subscription=await prisma.subscription.findFirst({where:{companyId:company.id,status:{in:["ACTIVE","TRIALING"]}},include:{plan:true},orderBy:{createdAt:"desc"}});
-    if(!subscription||subscription.trialEndsAt&&subscription.trialEndsAt<=new Date())return NextResponse.json({error:"subscription.inactive"},{status:403});
-    if(parsed.data.scheduleType==="SCHEDULED"&&!subscription.plan.hasScheduledMessages)return NextResponse.json({error:"subscription.featureUnavailable"},{status:403});
-    if(parsed.data.scheduleType==="RECURRING"&&!subscription.plan.hasRecurringMessages)return NextResponse.json({error:"subscription.featureUnavailable"},{status:403});
+    const access=await subscriptionAccess.canSendMessage(company.id);
+    if(!access.allowed){await writeAuditLog(request,{companyId:company.id,userId:user.id,action:"subscription.access_blocked",entityType:"MessageCampaign",after:{reason:access.reason}});return NextResponse.json({error:access.reason},{status:403})}
+    if(parsed.data.scheduleType==="SCHEDULED"&&!await subscriptionAccess.canUseScheduledMessages(company.id))return NextResponse.json({error:"subscription.featureUnavailable"},{status:403});
+    if(parsed.data.scheduleType==="RECURRING"&&!await subscriptionAccess.canUseRecurringMessages(company.id))return NextResponse.json({error:"subscription.featureUnavailable"},{status:403});
     const categoryGroups=parsed.data.categoryIds.length?await prisma.categoryGroup.findMany({where:{categoryId:{in:parsed.data.categoryIds},category:{companyId:company.id,archivedAt:null}},select:{groupId:true}}):[];
     const requestedIds=[...new Set([...parsed.data.groupIds,...categoryGroups.map(item=>item.groupId)])];
     const groups = await prisma.whatsAppGroup.findMany({

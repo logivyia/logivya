@@ -5,6 +5,7 @@ import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { hashPassword } from "@/server/security/passwords";
 import { writeAuditLog } from "@/server/security/audit";
+import { subscriptionAccess } from "@/server/billing/subscription-access";
 
 const inviteSchema=z.object({name:z.string().min(2).max(100),email:z.string().email(),role:z.enum(["ADMIN","OPERATOR","VIEWER"])});
 
@@ -27,6 +28,7 @@ export async function POST(request:Request){
     const{company,membership,user:actor}=await requireApiSession();
     if(!["OWNER","ADMIN"].includes(membership.role))return NextResponse.json({error:"FORBIDDEN"},{status:403});
     const parsed=inviteSchema.safeParse(await request.json());if(!parsed.success)return NextResponse.json({error:"validation.invalid"},{status:400});
+    const access=await subscriptionAccess.canInviteUser(company.id);if(!access.allowed)return NextResponse.json({error:"users.planLimit",limit:access.limit},{status:403});
     const email=parsed.data.email.toLowerCase();
     let user=await prisma.user.findUnique({where:{email}});
     if(!user){

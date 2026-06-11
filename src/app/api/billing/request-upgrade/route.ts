@@ -1,0 +1,8 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { requireApiSession } from "@/server/auth/session";
+import { prisma } from "@/server/db";
+import { isBillingProfileComplete } from "@/server/billing/subscription-guard";
+import { writeAuditLog } from "@/server/security/audit";
+const schema=z.object({planSlug:z.enum(["starter","professional","enterprise"]),billingPeriod:z.enum(["MONTHLY","YEARLY","CUSTOM"])});
+export async function POST(request:Request){try{const{company,user}=await requireApiSession();const parsed=schema.safeParse(await request.json());if(!parsed.success)return NextResponse.json({error:"validation.invalid"},{status:400});const[plan,profile]=await Promise.all([prisma.plan.findUnique({where:{slug:parsed.data.planSlug}}),prisma.companyBillingProfile.findUnique({where:{companyId:company.id}})]);if(!plan)return NextResponse.json({error:"NOT_FOUND"},{status:404});if(!isBillingProfileComplete(profile))return NextResponse.json({error:"billing.profileIncomplete"},{status:400});const existing=await prisma.subscription.findFirst({where:{companyId:company.id,status:"MANUAL_PENDING",planId:plan.id}});if(!existing)await prisma.subscription.create({data:{companyId:company.id,planId:plan.id,status:"MANUAL_PENDING",billingPeriod:parsed.data.billingPeriod,source:"MANUAL_ADMIN",provider:"MANUAL"}});await writeAuditLog(request,{companyId:company.id,userId:user.id,action:"subscription.upgrade_requested",entityType:"Plan",entityId:plan.id,after:parsed.data});return NextResponse.json({ok:true,message:"Paket yükseltme talebiniz alındı. Ekibimiz sizinle iletişime geçecektir."})}catch(error){return NextResponse.json({error:error instanceof Error?error.message:"errors.generic"},{status:403})}}

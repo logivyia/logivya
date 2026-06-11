@@ -1,2 +1,2 @@
-import { SubscriptionsSettingsPage } from "@/components/settings-pages";
-export default function Page(){return <SubscriptionsSettingsPage/>}
+import { BillingSubscriptionsPage } from "@/components/billing-subscriptions-page";
+export default function Page(){return <BillingSubscriptionsPage/>}
