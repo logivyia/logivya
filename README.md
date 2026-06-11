@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Logivya Platform
 
-## Getting Started
+Production-oriented foundation for a multi-tenant WhatsApp communication, campaign, and CRM SaaS.
 
-First, run the development server:
+## Included
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Premium responsive App Router dashboard and all MVP workflow screens
+- Dark/light/system theme and six locale dictionaries
+- Tenant-scoped PostgreSQL schema with archive-safe message history
+- Provider-neutral channel core, CRM foundation, AI and billing provider strategies
+- Safety engine, analytics models, signed webhook delivery, API keys, and granular RBAC
+- Invoice-ready company billing profiles, immutable invoice snapshots, paid-plan billing guard, and invoice provider abstraction
+- Defense-in-depth security foundation: Argon2id, AES-256-GCM, tenant guards, security events, secure sessions, idempotency, hardened uploads, headers, and CI gates
+- Fully reactive i18n provider with 15 supported languages, persistent selection, dynamic locale loading, English fallback, translated validation keys, and Arabic RTL
+- Plan and permission seed data, queue contracts, activity feed, and structured logging
+- Interactive mock layer ready to replace with repository/service calls
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Local setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Copy `.env.example` to `.env` and configure PostgreSQL and Redis.
+2. Run `npm install`.
+3. Run `npm run db:generate` and `npm run db:migrate`.
+4. Run `npm run db:seed`.
+5. Run `npm run dev`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Architecture
 
-## Learn More
+UI behavior currently uses `src/lib/mock-data.ts`. Real integrations should flow through server-side repositories and services. Every repository query must accept and filter by `companyId`. WhatsApp integrations implement `src/server/whatsapp/provider.ts`; BullMQ workers consume the contracts in `src/server/queues/contracts.ts` and can be deployed independently.
 
-To learn more about Next.js, take a look at the following resources:
+Never rely on route proxy checks as the sole authorization layer. Revalidate tenant membership and role inside every Server Action and Route Handler.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+See [Enterprise Architecture](docs/enterprise-architecture.md) for the provider-neutral communication core, worker topology, safety enforcement, analytics, CRM, API, webhook, billing, observability, and deployment strategy.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [Security Architecture](docs/security-architecture.md) and [Disaster Recovery](docs/disaster-recovery.md) for mandatory controls, incident response, and recovery targets.

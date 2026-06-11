@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: logivya
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5432:5432"]
+    volumes: [logivya-postgres:/var/lib/postgresql/data]
+  redis:
+    image: redis:8-alpine
+    ports: ["6379:6379"]
+    volumes: [logivya-redis:/data]
+  web:
+    build: .
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/logivya
+      REDIS_URL: redis://redis:6379
+    ports: ["3000:3000"]
+    depends_on: [postgres, redis]
+volumes:
+  logivya-postgres:
+  logivya-redis:

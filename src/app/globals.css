@@ -1,26 +1,60 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f4f6f5;
+  --foreground: #14201b;
+  --card: rgba(255, 255, 255, 0.82);
+  --card-strong: #ffffff;
+  --muted: #64716b;
+  --border: rgba(20, 32, 27, 0.10);
+  --primary: #0f9f6e;
+  --primary-soft: #dff8ee;
+  --sidebar: #101915;
+  --danger: #e85a64;
+}
+
+.dark {
+  --background: #0b100e;
+  --foreground: #ecf4f0;
+  --card: rgba(20, 29, 25, 0.72);
+  --card-strong: #141d19;
+  --muted: #8c9b94;
+  --border: rgba(255, 255, 255, 0.08);
+  --primary: #36d399;
+  --primary-soft: rgba(54, 211, 153, 0.12);
+  --sidebar: #090e0c;
+  --danger: #ff7b84;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-strong: var(--card-strong);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-sidebar: var(--sidebar);
+  --color-danger: var(--danger);
+  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+* { border-color: var(--border); }
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at 85% 0%, rgba(54,211,153,.08), transparent 28rem),
+    var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
 }
+[dir="rtl"] body { text-align: right; }
+[dir="rtl"] table { text-align: right; }
+button, a { transition: all .18s ease; }
+button { cursor: pointer; }
+::selection { background: var(--primary); color: #07100c; }
+.panel { background: var(--card); border: 1px solid var(--border); box-shadow: 0 18px 60px rgba(0,0,0,.08); backdrop-filter: blur(18px); }
+.soft-grid { background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 44px 44px; }

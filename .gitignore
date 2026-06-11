@@ -30,8 +30,41 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files; keep the redacted template
 .env*
+!.env.example
+
+# application logs and runtime data
+logs/
+*.log
+*.pid
+*.pid.lock
+dump.rdb
+appendonly.aof
+
+# WhatsApp and channel provider sessions
+sessions/
+session/
+whatsapp-sessions/
+whatsapp-session/
+auth_info_baileys/
+.wwebjs_auth/
+.wwebjs_cache/
+qr/
+qrcodes/
+temp-qr/
+tmp/
+temp/
+*.session
+*.session.json
+*.qr
+
+# generated and distribution output
+/dist/
+/build/
+/worker/dist/
+/apps/*/dist/
+/packages/*/dist/
 
 # vercel
 .vercel

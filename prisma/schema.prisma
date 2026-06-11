@@ -1,0 +1,1448 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum CompanyRole {
+  OWNER
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum AccountStatus {
+  PENDING_QR
+  CONNECTING
+  CONNECTED
+  DISCONNECTED
+  RECONNECT_REQUIRED
+  ARCHIVED
+  ERROR
+}
+
+enum CampaignType {
+  WHATSAPP_GROUP
+  WHATSAPP_CONTACT
+}
+
+enum ScheduleType {
+  SEND_NOW
+  SCHEDULED
+  RECURRING
+}
+
+enum CampaignStatus {
+  DRAFT
+  QUEUED
+  SENDING
+  COMPLETED
+  PARTIALLY_COMPLETED
+  FAILED
+  CANCELING
+  CANCELED
+  DELETING
+  DELETED
+}
+
+enum RecipientStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  CANCELED
+  SKIPPED
+}
+
+enum ChannelType {
+  WHATSAPP
+  TELEGRAM
+  FACEBOOK_GROUP
+  FACEBOOK_PAGE
+  INSTAGRAM
+  SMS
+  EMAIL
+  API
+}
+
+enum ChannelAccountStatus {
+  PENDING
+  CONNECTING
+  CONNECTED
+  DISCONNECTED
+  RECONNECT_REQUIRED
+  ARCHIVED
+  ERROR
+}
+
+enum ChannelMessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum ChannelMessageStatus {
+  PENDING
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  CANCELED
+}
+
+enum AiProviderType {
+  OPENAI
+  ANTHROPIC
+  GOOGLE_GEMINI
+  LOCAL
+}
+
+enum AiGenerationType {
+  REWRITE
+  IMPROVE
+  TRANSLATE
+  LOGISTICS_ANNOUNCEMENT
+  TRANSPORTATION_OFFER
+  CUSTOMER_CAMPAIGN
+  MARKETING_MESSAGE
+  SALES_MESSAGE
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  LOST
+}
+
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum ActivityType {
+  CALL
+  MESSAGE
+  EMAIL
+  MEETING
+  NOTE
+  SYSTEM
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SafetyRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  DELIVERING
+  DELIVERED
+  FAILED
+  DEAD_LETTER
+}
+
+enum BillingProvider {
+  STRIPE
+  PADDLE
+  IYZICO
+  PAYTR
+  MANUAL
+}
+
+enum BillingType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum InvoiceType {
+  E_INVOICE
+  E_ARCHIVE
+  STANDARD_INVOICE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  CANCELED
+  FAILED
+}
+
+enum InvoiceProviderType {
+  MANUAL
+  PARASUT
+  LOGO
+  MIKRO
+  NEBIM
+  IYZICO
+  PAYTR
+  STRIPE
+  PADDLE
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum SecurityEventSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum DataRequestType {
+  ACCESS
+  EXPORT
+  RECTIFICATION
+  DELETION
+}
+
+enum DataRequestStatus {
+  REQUESTED
+  VERIFYING
+  PROCESSING
+  COMPLETED
+  REJECTED
+  CANCELED
+}
+
+enum ConsentType {
+  PRIVACY_POLICY
+  TERMS_OF_SERVICE
+  MARKETING
+}
+
+enum CompanySecurityStatus {
+  ACTIVE
+  DISABLED
+  UNDER_INVESTIGATION
+}
+
+model User {
+  id                      String                   @id @default(cuid())
+  name                    String
+  username                String                   @unique
+  email                   String                   @unique
+  phone                   String?
+  passwordHash            String
+  avatarUrl               String?
+  locale                  String                   @default("en")
+  theme                   String                   @default("system")
+  status                  UserStatus               @default(ACTIVE)
+  ownedCompanies          Company[]                @relation("CompanyOwner")
+  memberships             CompanyUser[]
+  campaigns               MessageCampaign[]
+  mediaFiles              MediaFile[]
+  notifications           Notification[]
+  auditLogs               AuditLog[]
+  activities              Activity[]
+  assignedTasks           Task[]                   @relation("TaskAssignee")
+  createdTasks            Task[]                   @relation("TaskCreator")
+  notes                   Note[]
+  activityFeed            ActivityFeedEntry[]
+  aiGenerations           AiGeneration[]
+  userMetrics             UserMetricDaily[]
+  loginAttempts           LoginAttempt[]
+  sessions                UserSession[]
+  trustedDevices          TrustedDevice[]
+  securityEvents          SecurityEvent[]
+  consents                ConsentRecord[]
+  dataRequests            DataSubjectRequest[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  mfaCredentials          MfaCredential[]
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+}
+
+model Company {
+  id                String                    @id @default(cuid())
+  name              String
+  address           String?
+  taxOffice         String?
+  taxNumber         String?
+  phone             String?
+  email             String?
+  ownerId           String
+  owner             User                      @relation("CompanyOwner", fields: [ownerId], references: [id])
+  members           CompanyUser[]
+  subscriptions     Subscription[]
+  accounts          WhatsAppAccount[]
+  groups            WhatsAppGroup[]
+  contacts          Contact[]
+  categories        Category[]
+  campaigns         MessageCampaign[]
+  mediaFiles        MediaFile[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+  channels          Channel[]
+  channelAccounts   ChannelAccount[]
+  channelMessages   ChannelMessage[]
+  aiConfigurations  AiProviderConfiguration[]
+  aiGenerations     AiGeneration[]
+  leads             Lead[]
+  customers         Customer[]
+  deals             Deal[]
+  pipelines         Pipeline[]
+  activities        Activity[]
+  tasks             Task[]
+  tags              Tag[]
+  notes             Note[]
+  campaignMetrics   CampaignMetric[]
+  accountMetrics    AccountMetricDaily[]
+  categoryMetrics   CategoryMetricDaily[]
+  userMetrics       UserMetricDaily[]
+  webhooks          WebhookEndpoint[]
+  webhookEvents     WebhookEvent[]
+  apiKeys           ApiKey[]
+  invoices          Invoice[]
+  payments          Payment[]
+  coupons           Coupon[]
+  activityFeed      ActivityFeedEntry[]
+  billingProfile    CompanyBillingProfile?
+  securityEvents    SecurityEvent[]
+  dataRequests      DataSubjectRequest[]
+  idempotencyKeys   IdempotencyKey[]
+  apiUsageLogs      ApiUsageLog[]
+  incidentLogs      IncidentLog[]
+  securityStatus    CompanySecurityStatus     @default(ACTIVE)
+  billingLockedAt   DateTime?
+  campaignsPausedAt DateTime?
+  retentionDays     Int                       @default(90)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  @@index([ownerId])
+}
+
+model CompanyUser {
+  id                  String                  @id @default(cuid())
+  companyId           String
+  userId              String
+  role                CompanyRole             @default(OPERATOR)
+  status              MembershipStatus        @default(ACTIVE)
+  company             Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt           DateTime                @default(now())
+  permissionOverrides CompanyUserPermission[]
+
+  @@unique([companyId, userId])
+  @@index([userId])
+}
+
+model Plan {
+  id                   String           @id @default(cuid())
+  name                 String
+  slug                 String           @unique
+  monthlyPrice         Decimal          @default(0) @db.Decimal(12, 2)
+  yearlyPrice          Decimal          @default(0) @db.Decimal(12, 2)
+  maxWhatsappAccounts  Int
+  maxGroups            Int
+  maxMessagesPerDay    Int
+  maxMessagesPerMonth  Int
+  hasScheduledMessages Boolean          @default(false)
+  hasRecurringMessages Boolean          @default(false)
+  hasNoBranding        Boolean          @default(false)
+  hasCrm               Boolean          @default(false)
+  hasApi               Boolean          @default(false)
+  isActive             Boolean          @default(true)
+  subscriptions        Subscription[]
+  permissions          PlanPermission[]
+}
+
+model Subscription {
+  id                    String               @id @default(cuid())
+  companyId             String
+  planId                String
+  status                SubscriptionStatus   @default(TRIALING)
+  trialStartsAt         DateTime?
+  trialEndsAt           DateTime?
+  currentPeriodStartsAt DateTime?
+  currentPeriodEndsAt   DateTime?
+  cancelAtPeriodEnd     Boolean              @default(false)
+  company               Company              @relation(fields: [companyId], references: [id])
+  plan                  Plan                 @relation(fields: [planId], references: [id])
+  createdAt             DateTime             @default(now())
+  invoices              Invoice[]
+  appliedCoupons        SubscriptionCoupon[]
+
+  @@index([companyId, status])
+}
+
+model WhatsAppAccount {
+  id                  String             @id @default(cuid())
+  companyId           String
+  label               String
+  phoneNumber         String?
+  displayName         String?
+  provider            String
+  providerSessionId   String?
+  status              AccountStatus      @default(PENDING_QR)
+  lastConnectedAt     DateTime?
+  lastDisconnectedAt  DateTime?
+  lastSyncedAt        DateTime?
+  syncIntervalMinutes Int                @default(120)
+  archivedAt          DateTime?
+  company             Company            @relation(fields: [companyId], references: [id])
+  sessions            WhatsAppSession[]
+  groups              WhatsAppGroup[]
+  contacts            Contact[]
+  recipients          MessageRecipient[]
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([companyId, status])
+}
+
+model WhatsAppSession {
+  id                   String          @id @default(cuid())
+  accountId            String
+  qrCode               String?
+  status               AccountStatus
+  sessionDataEncrypted String?
+  expiresAt            DateTime?
+  account              WhatsAppAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@index([accountId, status])
+}
+
+model WhatsAppGroup {
+  id               String             @id @default(cuid())
+  companyId        String
+  accountId        String
+  externalGroupId  String
+  name             String
+  description      String?
+  participantCount Int                @default(0)
+  canSend          Boolean            @default(true)
+  isArchived       Boolean            @default(false)
+  lastSyncedAt     DateTime
+  company          Company            @relation(fields: [companyId], references: [id])
+  account          WhatsAppAccount    @relation(fields: [accountId], references: [id])
+  categories       CategoryGroup[]
+  recipients       MessageRecipient[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@unique([accountId, externalGroupId])
+  @@index([companyId, isArchived])
+}
+
+model Contact {
+  id                String             @id @default(cuid())
+  companyId         String
+  accountId         String
+  externalContactId String
+  name              String?
+  phone             String
+  source            String?
+  company           Company            @relation(fields: [companyId], references: [id])
+  account           WhatsAppAccount    @relation(fields: [accountId], references: [id])
+  recipients        MessageRecipient[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([accountId, externalContactId])
+  @@index([companyId, phone])
+}
+
+model Category {
+  id          String                @id @default(cuid())
+  companyId   String
+  name        String
+  color       String
+  description String?
+  archivedAt  DateTime?
+  company     Company               @relation(fields: [companyId], references: [id])
+  groups      CategoryGroup[]
+  metrics     CategoryMetricDaily[]
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@unique([companyId, name])
+}
+
+model CategoryGroup {
+  id         String        @id @default(cuid())
+  categoryId String
+  groupId    String
+  category   Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  group      WhatsAppGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt  DateTime      @default(now())
+
+  @@unique([categoryId, groupId])
+}
+
+model MessageCampaign {
+  id              String             @id @default(cuid())
+  companyId       String
+  createdById     String
+  title           String
+  content         String
+  contentJson     Json?
+  type            CampaignType
+  status          CampaignStatus     @default(DRAFT)
+  scheduleType    ScheduleType       @default(SEND_NOW)
+  scheduledAt     DateTime?
+  recurringRule   Json?
+  totalRecipients Int                @default(0)
+  sentCount       Int                @default(0)
+  failedCount     Int                @default(0)
+  canceledCount   Int                @default(0)
+  deletedAt       DateTime?
+  company         Company            @relation(fields: [companyId], references: [id])
+  createdBy       User               @relation(fields: [createdById], references: [id])
+  recipients      MessageRecipient[]
+  channelMessages ChannelMessage[]
+  metric          CampaignMetric?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([companyId, status, createdAt])
+}
+
+model MessageRecipient {
+  id                  String          @id @default(cuid())
+  campaignId          String
+  accountId           String
+  groupId             String?
+  contactId           String?
+  recipientName       String
+  recipientExternalId String
+  status              RecipientStatus @default(PENDING)
+  errorMessage        String?
+  sentAt              DateTime?
+  failedAt            DateTime?
+  campaign            MessageCampaign @relation(fields: [campaignId], references: [id])
+  account             WhatsAppAccount @relation(fields: [accountId], references: [id])
+  group               WhatsAppGroup?  @relation(fields: [groupId], references: [id])
+  contact             Contact?        @relation(fields: [contactId], references: [id])
+  createdAt           DateTime        @default(now())
+
+  @@index([campaignId, status])
+  @@index([accountId, status])
+}
+
+model MediaFile {
+  id           String   @id @default(cuid())
+  companyId    String
+  uploadedById String
+  fileName     String
+  mimeType     String
+  size         Int
+  storageKey   String
+  publicUrl    String?
+  company      Company  @relation(fields: [companyId], references: [id])
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([companyId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String
+  type      String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  company   Company  @relation(fields: [companyId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  companyId  String
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  company    Company  @relation(fields: [companyId], references: [id])
+  user       User?    @relation(fields: [userId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@index([companyId, entityType, entityId])
+  @@index([companyId, createdAt])
+}
+
+// Generic communication core. WhatsApp-specific models remain as an MVP adapter
+// until live sessions are migrated into this provider-neutral layer.
+model Channel {
+  id        String           @id @default(cuid())
+  companyId String
+  type      ChannelType
+  name      String
+  isEnabled Boolean          @default(true)
+  settings  Json?
+  company   Company          @relation(fields: [companyId], references: [id])
+  accounts  ChannelAccount[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([companyId, type, name])
+  @@index([companyId, type, isEnabled])
+}
+
+model ChannelAccount {
+  id                   String                @id @default(cuid())
+  companyId            String
+  channelId            String
+  label                String
+  externalAccountId    String?
+  displayName          String?
+  provider             String
+  status               ChannelAccountStatus  @default(PENDING)
+  credentialsEncrypted String?
+  settings             Json?
+  lastConnectedAt      DateTime?
+  lastDisconnectedAt   DateTime?
+  lastSyncedAt         DateTime?
+  archivedAt           DateTime?
+  company              Company               @relation(fields: [companyId], references: [id])
+  channel              Channel               @relation(fields: [channelId], references: [id])
+  sessions             ChannelSession[]
+  messages             ChannelMessage[]
+  safetyProfile        AccountSafetyProfile?
+  accountMetrics       AccountMetricDaily[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@unique([channelId, externalAccountId])
+  @@index([companyId, status])
+}
+
+model ChannelSession {
+  id                   String               @id @default(cuid())
+  channelAccountId     String
+  externalSessionId    String?
+  status               ChannelAccountStatus
+  sessionDataEncrypted String?
+  expiresAt            DateTime?
+  lastHeartbeatAt      DateTime?
+  channelAccount       ChannelAccount       @relation(fields: [channelAccountId], references: [id], onDelete: Cascade)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([channelAccountId, status])
+}
+
+model ChannelMessage {
+  id                  String                  @id @default(cuid())
+  companyId           String
+  channelAccountId    String
+  campaignId          String?
+  externalMessageId   String?
+  externalThreadId    String?
+  recipientExternalId String
+  direction           ChannelMessageDirection
+  status              ChannelMessageStatus    @default(PENDING)
+  content             String?
+  contentJson         Json?
+  errorCode           String?
+  errorMessage        String?
+  queuedAt            DateTime?
+  sentAt              DateTime?
+  deliveredAt         DateTime?
+  readAt              DateTime?
+  failedAt            DateTime?
+  company             Company                 @relation(fields: [companyId], references: [id])
+  channelAccount      ChannelAccount          @relation(fields: [channelAccountId], references: [id])
+  campaign            MessageCampaign?        @relation(fields: [campaignId], references: [id])
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  @@index([companyId, createdAt])
+  @@index([channelAccountId, status])
+  @@index([campaignId, status])
+}
+
+model AiProviderConfiguration {
+  id                   String         @id @default(cuid())
+  companyId            String
+  provider             AiProviderType
+  label                String
+  model                String
+  credentialsEncrypted String?
+  baseUrl              String?
+  settings             Json?
+  isDefault            Boolean        @default(false)
+  isActive             Boolean        @default(true)
+  company              Company        @relation(fields: [companyId], references: [id])
+  generations          AiGeneration[]
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@unique([companyId, label])
+  @@index([companyId, provider, isActive])
+}
+
+model AiGeneration {
+  id              String                   @id @default(cuid())
+  companyId       String
+  userId          String
+  configurationId String?
+  type            AiGenerationType
+  input           Json
+  output          Json?
+  model           String?
+  inputTokens     Int?
+  outputTokens    Int?
+  latencyMs       Int?
+  errorMessage    String?
+  company         Company                  @relation(fields: [companyId], references: [id])
+  user            User                     @relation(fields: [userId], references: [id])
+  configuration   AiProviderConfiguration? @relation(fields: [configurationId], references: [id])
+  createdAt       DateTime                 @default(now())
+
+  @@index([companyId, type, createdAt])
+}
+
+model Lead {
+  id                  String     @id @default(cuid())
+  companyId           String
+  name                String
+  email               String?
+  phone               String?
+  companyName         String?
+  source              String?
+  status              LeadStatus @default(NEW)
+  metadata            Json?
+  convertedCustomerId String?
+  company             Company    @relation(fields: [companyId], references: [id])
+  convertedCustomer   Customer?  @relation(fields: [convertedCustomerId], references: [id])
+  activities          Activity[]
+  notes               Note[]
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  @@index([companyId, status, createdAt])
+}
+
+model Customer {
+  id             String        @id @default(cuid())
+  companyId      String
+  name           String
+  email          String?
+  phone          String?
+  companyName    String?
+  metadata       Json?
+  company        Company       @relation(fields: [companyId], references: [id])
+  convertedLeads Lead[]
+  deals          Deal[]
+  activities     Activity[]
+  notes          Note[]
+  tags           CustomerTag[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([companyId, name])
+  @@index([companyId, phone])
+}
+
+model Pipeline {
+  id        String          @id @default(cuid())
+  companyId String
+  name      String
+  isDefault Boolean         @default(false)
+  company   Company         @relation(fields: [companyId], references: [id])
+  stages    PipelineStage[]
+  deals     Deal[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@unique([companyId, name])
+}
+
+model PipelineStage {
+  id          String   @id @default(cuid())
+  pipelineId  String
+  name        String
+  position    Int
+  probability Int      @default(0)
+  isWon       Boolean  @default(false)
+  isLost      Boolean  @default(false)
+  pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals       Deal[]
+
+  @@unique([pipelineId, position])
+}
+
+model Deal {
+  id              String        @id @default(cuid())
+  companyId       String
+  customerId      String
+  pipelineId      String
+  stageId         String
+  title           String
+  value           Decimal?      @db.Decimal(14, 2)
+  currency        String        @default("USD")
+  status          DealStatus    @default(OPEN)
+  expectedCloseAt DateTime?
+  closedAt        DateTime?
+  company         Company       @relation(fields: [companyId], references: [id])
+  customer        Customer      @relation(fields: [customerId], references: [id])
+  pipeline        Pipeline      @relation(fields: [pipelineId], references: [id])
+  stage           PipelineStage @relation(fields: [stageId], references: [id])
+  activities      Activity[]
+  tasks           Task[]
+  notes           Note[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([companyId, status, stageId])
+}
+
+model Activity {
+  id          String       @id @default(cuid())
+  companyId   String
+  userId      String?
+  customerId  String?
+  leadId      String?
+  dealId      String?
+  type        ActivityType
+  title       String
+  description String?
+  occurredAt  DateTime     @default(now())
+  metadata    Json?
+  company     Company      @relation(fields: [companyId], references: [id])
+  user        User?        @relation(fields: [userId], references: [id])
+  customer    Customer?    @relation(fields: [customerId], references: [id])
+  lead        Lead?        @relation(fields: [leadId], references: [id])
+  deal        Deal?        @relation(fields: [dealId], references: [id])
+
+  @@index([companyId, occurredAt])
+  @@index([customerId, occurredAt])
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  companyId   String
+  createdById String
+  assigneeId  String?
+  dealId      String?
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(NORMAL)
+  dueAt       DateTime?
+  completedAt DateTime?
+  company     Company      @relation(fields: [companyId], references: [id])
+  createdBy   User         @relation("TaskCreator", fields: [createdById], references: [id])
+  assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  deal        Deal?        @relation(fields: [dealId], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([companyId, assigneeId, status, dueAt])
+}
+
+model Tag {
+  id        String        @id @default(cuid())
+  companyId String
+  name      String
+  color     String
+  company   Company       @relation(fields: [companyId], references: [id])
+  customers CustomerTag[]
+
+  @@unique([companyId, name])
+}
+
+model CustomerTag {
+  customerId String
+  tagId      String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([customerId, tagId])
+}
+
+model Note {
+  id         String    @id @default(cuid())
+  companyId  String
+  userId     String
+  customerId String?
+  leadId     String?
+  dealId     String?
+  content    String
+  company    Company   @relation(fields: [companyId], references: [id])
+  user       User      @relation(fields: [userId], references: [id])
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  lead       Lead?     @relation(fields: [leadId], references: [id])
+  deal       Deal?     @relation(fields: [dealId], references: [id])
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([companyId, createdAt])
+}
+
+model AccountSafetyProfile {
+  id               String          @id @default(cuid())
+  channelAccountId String          @unique
+  trustScore       Int             @default(50)
+  accountAgeDays   Int             @default(0)
+  dailyLimit       Int             @default(100)
+  hourlyLimit      Int             @default(20)
+  minDelayMs       Int             @default(3000)
+  maxDelayMs       Int             @default(9000)
+  warmupDay        Int             @default(1)
+  riskLevel        SafetyRiskLevel @default(LOW)
+  warningCount     Int             @default(0)
+  cooldownUntil    DateTime?
+  suspendedAt      DateTime?
+  policy           Json?
+  channelAccount   ChannelAccount  @relation(fields: [channelAccountId], references: [id], onDelete: Cascade)
+  events           SafetyEvent[]
+  updatedAt        DateTime        @updatedAt
+  createdAt        DateTime        @default(now())
+}
+
+model SafetyEvent {
+  id              String               @id @default(cuid())
+  safetyProfileId String
+  type            String
+  riskLevel       SafetyRiskLevel
+  message         String
+  metadata        Json?
+  safetyProfile   AccountSafetyProfile @relation(fields: [safetyProfileId], references: [id], onDelete: Cascade)
+  createdAt       DateTime             @default(now())
+
+  @@index([safetyProfileId, createdAt])
+}
+
+model CampaignMetric {
+  id                    String          @id @default(cuid())
+  companyId             String
+  campaignId            String          @unique
+  totalRecipients       Int
+  deliveredRecipients   Int             @default(0)
+  failedRecipients      Int             @default(0)
+  deliveryRate          Decimal         @default(0) @db.Decimal(7, 4)
+  failureRate           Decimal         @default(0) @db.Decimal(7, 4)
+  averageDeliveryTimeMs Int?
+  company               Company         @relation(fields: [companyId], references: [id])
+  campaign              MessageCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  calculatedAt          DateTime        @default(now())
+
+  @@index([companyId, calculatedAt])
+}
+
+model AccountMetricDaily {
+  id               String         @id @default(cuid())
+  companyId        String
+  channelAccountId String
+  date             DateTime       @db.Date
+  sentCount        Int            @default(0)
+  deliveredCount   Int            @default(0)
+  failedCount      Int            @default(0)
+  company          Company        @relation(fields: [companyId], references: [id])
+  channelAccount   ChannelAccount @relation(fields: [channelAccountId], references: [id])
+
+  @@unique([channelAccountId, date])
+  @@index([companyId, date])
+}
+
+model CategoryMetricDaily {
+  id             String   @id @default(cuid())
+  companyId      String
+  categoryId     String
+  date           DateTime @db.Date
+  recipientCount Int      @default(0)
+  deliveredCount Int      @default(0)
+  failedCount    Int      @default(0)
+  company        Company  @relation(fields: [companyId], references: [id])
+  category       Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([categoryId, date])
+  @@index([companyId, date])
+}
+
+model UserMetricDaily {
+  id             String   @id @default(cuid())
+  companyId      String
+  userId         String
+  date           DateTime @db.Date
+  campaignCount  Int      @default(0)
+  recipientCount Int      @default(0)
+  deliveredCount Int      @default(0)
+  failedCount    Int      @default(0)
+  company        Company  @relation(fields: [companyId], references: [id])
+  user           User     @relation(fields: [userId], references: [id])
+
+  @@unique([companyId, userId, date])
+}
+
+model WebhookEndpoint {
+  id              String            @id @default(cuid())
+  companyId       String
+  url             String
+  secretEncrypted String
+  events          String[]
+  isActive        Boolean           @default(true)
+  company         Company           @relation(fields: [companyId], references: [id])
+  deliveries      WebhookDelivery[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([companyId, isActive])
+}
+
+model WebhookEvent {
+  id         String            @id @default(cuid())
+  companyId  String
+  type       String
+  entityType String?
+  entityId   String?
+  payload    Json
+  company    Company           @relation(fields: [companyId], references: [id])
+  deliveries WebhookDelivery[]
+  createdAt  DateTime          @default(now())
+
+  @@index([companyId, type, createdAt])
+}
+
+model WebhookDelivery {
+  id             String                @id @default(cuid())
+  endpointId     String
+  eventId        String
+  status         WebhookDeliveryStatus @default(PENDING)
+  attemptCount   Int                   @default(0)
+  nextAttemptAt  DateTime?
+  responseStatus Int?
+  responseBody   String?
+  errorMessage   String?
+  deliveredAt    DateTime?
+  endpoint       WebhookEndpoint       @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  event          WebhookEvent          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([endpointId, eventId])
+  @@index([status, nextAttemptAt])
+}
+
+model ApiKey {
+  id          String        @id @default(cuid())
+  companyId   String
+  name        String
+  keyPrefix   String
+  keyHash     String        @unique
+  permissions String[]
+  rateLimit   Int           @default(60)
+  expiresAt   DateTime?
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  company     Company       @relation(fields: [companyId], references: [id])
+  usageLogs   ApiUsageLog[]
+  createdAt   DateTime      @default(now())
+
+  @@index([companyId, revokedAt])
+}
+
+model Permission {
+  id          String                  @id @default(cuid())
+  code        String                  @unique
+  description String?
+  roles       RolePermission[]
+  plans       PlanPermission[]
+  overrides   CompanyUserPermission[]
+}
+
+model RolePermission {
+  role         CompanyRole
+  permissionId String
+  permission   Permission  @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([role, permissionId])
+}
+
+model PlanPermission {
+  planId       String
+  permissionId String
+  plan         Plan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([planId, permissionId])
+}
+
+model CompanyUserPermission {
+  companyUserId String
+  permissionId  String
+  allowed       Boolean
+  companyUser   CompanyUser @relation(fields: [companyUserId], references: [id], onDelete: Cascade)
+  permission    Permission  @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([companyUserId, permissionId])
+}
+
+model CompanyBillingProfile {
+  id               String      @id @default(cuid())
+  companyId        String      @unique
+  billingType      BillingType
+  companyName      String?
+  legalName        String?
+  tradeName        String?
+  fullName         String?
+  taxOffice        String?
+  taxNumber        String?
+  nationalIdNumber String?
+  country          String
+  city             String
+  district         String?
+  addressLine1     String
+  addressLine2     String?
+  postalCode       String?
+  billingEmail     String
+  billingPhone     String?
+  invoiceType      InvoiceType @default(STANDARD_INVOICE)
+  eInvoiceEligible Boolean     @default(false)
+  eArchiveEligible Boolean     @default(false)
+  company          Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([billingType, country])
+}
+
+model Invoice {
+  id                String              @id @default(cuid())
+  companyId         String
+  subscriptionId    String?
+  invoiceNumber     String?
+  invoiceType       InvoiceType
+  status            InvoiceStatus       @default(DRAFT)
+  currency          String              @default("USD")
+  subtotalAmount    Decimal             @db.Decimal(12, 2)
+  taxAmount         Decimal             @default(0) @db.Decimal(12, 2)
+  totalAmount       Decimal             @db.Decimal(12, 2)
+  billingName       String
+  billingTaxOffice  String?
+  billingTaxNumber  String?
+  billingAddress    String
+  billingEmail      String
+  issuedAt          DateTime?
+  dueAt             DateTime?
+  paidAt            DateTime?
+  pdfUrl            String?
+  provider          InvoiceProviderType @default(MANUAL)
+  providerInvoiceId String?
+  company           Company             @relation(fields: [companyId], references: [id])
+  subscription      Subscription?       @relation(fields: [subscriptionId], references: [id])
+  payments          Payment[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([provider, providerInvoiceId])
+  @@index([companyId, status, createdAt])
+}
+
+model Payment {
+  id                String          @id @default(cuid())
+  companyId         String
+  invoiceId         String?
+  provider          BillingProvider
+  externalPaymentId String?
+  status            PaymentStatus   @default(PENDING)
+  amount            Decimal         @db.Decimal(12, 2)
+  currency          String          @default("USD")
+  failureReason     String?
+  paidAt            DateTime?
+  company           Company         @relation(fields: [companyId], references: [id])
+  invoice           Invoice?        @relation(fields: [invoiceId], references: [id])
+  createdAt         DateTime        @default(now())
+
+  @@index([companyId, status, createdAt])
+}
+
+model Coupon {
+  id            String               @id @default(cuid())
+  companyId     String?
+  code          String
+  percentOff    Int?
+  amountOff     Decimal?             @db.Decimal(12, 2)
+  currency      String?
+  maxUses       Int?
+  usedCount     Int                  @default(0)
+  validFrom     DateTime?
+  validUntil    DateTime?
+  isActive      Boolean              @default(true)
+  company       Company?             @relation(fields: [companyId], references: [id])
+  subscriptions SubscriptionCoupon[]
+
+  @@unique([companyId, code])
+}
+
+model SubscriptionCoupon {
+  subscriptionId String
+  couponId       String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  coupon         Coupon       @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  appliedAt      DateTime     @default(now())
+
+  @@id([subscriptionId, couponId])
+}
+
+model ActivityFeedEntry {
+  id         String   @id @default(cuid())
+  companyId  String
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  title      String
+  metadata   Json?
+  company    Company  @relation(fields: [companyId], references: [id])
+  user       User?    @relation(fields: [userId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([companyId, entityType, entityId])
+}
+
+model LoginAttempt {
+  id                String   @id @default(cuid())
+  userId            String?
+  email             String
+  ipAddress         String
+  userAgent         String?
+  deviceFingerprint String?
+  success           Boolean
+  failureReason     String?
+  riskScore         Int      @default(0)
+  createdAt         DateTime @default(now())
+  user              User?    @relation(fields: [userId], references: [id])
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+  @@index([userId, createdAt])
+}
+
+model UserSession {
+  id                String    @id @default(cuid())
+  userId            String
+  companyId         String?
+  sessionTokenHash  String    @unique
+  deviceName        String?
+  deviceFingerprint String?
+  ipAddress         String
+  userAgent         String?
+  lastActiveAt      DateTime  @default(now())
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([companyId, revokedAt])
+}
+
+model TrustedDevice {
+  id                String    @id @default(cuid())
+  userId            String
+  deviceFingerprint String
+  deviceName        String?
+  ipAddress         String
+  userAgent         String?
+  trustedAt         DateTime  @default(now())
+  revokedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceFingerprint])
+  @@index([userId, revokedAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model MfaCredential {
+  id                  String    @id @default(cuid())
+  userId              String
+  type                String
+  secretEncrypted     String
+  recoveryCodesHashed String[]
+  verifiedAt          DateTime?
+  revokedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+}
+
+model IdempotencyKey {
+  id           String    @id @default(cuid())
+  companyId    String
+  keyHash      String
+  operation    String
+  requestHash  String
+  responseCode Int?
+  responseBody Json?
+  lockedUntil  DateTime?
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, keyHash, operation])
+  @@index([expiresAt])
+}
+
+model ApiUsageLog {
+  id         String   @id @default(cuid())
+  companyId  String
+  apiKeyId   String?
+  method     String
+  path       String
+  statusCode Int
+  latencyMs  Int
+  ipAddress  String
+  userAgent  String?
+  abuseScore Int      @default(0)
+  createdAt  DateTime @default(now())
+  company    Company  @relation(fields: [companyId], references: [id])
+  apiKey     ApiKey?  @relation(fields: [apiKeyId], references: [id])
+
+  @@index([companyId, createdAt])
+  @@index([apiKeyId, createdAt])
+  @@index([ipAddress, createdAt])
+}
+
+model SecurityEvent {
+  id         String                @id @default(cuid())
+  companyId  String?
+  userId     String?
+  severity   SecurityEventSeverity
+  type       String
+  message    String
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime              @default(now())
+  resolvedAt DateTime?
+  company    Company?              @relation(fields: [companyId], references: [id])
+  user       User?                 @relation(fields: [userId], references: [id])
+
+  @@index([severity, resolvedAt, createdAt])
+  @@index([companyId, createdAt])
+}
+
+model ConsentRecord {
+  id        String      @id @default(cuid())
+  userId    String
+  type      ConsentType
+  version   String
+  granted   Boolean
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime    @default(now())
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, createdAt])
+}
+
+model DataSubjectRequest {
+  id          String            @id @default(cuid())
+  companyId   String?
+  userId      String?
+  type        DataRequestType
+  status      DataRequestStatus @default(REQUESTED)
+  reason      String?
+  exportUrl   String?
+  requestedAt DateTime          @default(now())
+  completedAt DateTime?
+  company     Company?          @relation(fields: [companyId], references: [id])
+  user        User?             @relation(fields: [userId], references: [id])
+
+  @@index([companyId, status, requestedAt])
+  @@index([userId, status, requestedAt])
+}
+
+model IncidentLog {
+  id          String                @id @default(cuid())
+  companyId   String?
+  severity    SecurityEventSeverity
+  title       String
+  description String
+  status      String
+  startedAt   DateTime              @default(now())
+  resolvedAt  DateTime?
+  metadata    Json?
+  company     Company?              @relation(fields: [companyId], references: [id])
+
+  @@index([severity, status, startedAt])
+}
