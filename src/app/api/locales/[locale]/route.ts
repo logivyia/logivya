@@ -7,5 +7,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ loc
   const { locale } = await params;
   const safeLocale = locales.includes(locale as never) ? locale : fallbackLocale;
   const dictionary = await readFile(path.join(process.cwd(), "locales", `${safeLocale}.json`), "utf8");
-  return new NextResponse(dictionary, { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
+  return new NextResponse(dictionary, { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store, max-age=0" } });
 }

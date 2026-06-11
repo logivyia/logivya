@@ -14,7 +14,7 @@ type I18nContextValue = {
 };
 const I18nContext = createContext<I18nContextValue | null>(null);
 async function loadDictionary(locale: Locale) {
-  const response = await fetch(`/api/locales/${locale}`);
+  const response = await fetch(`/api/locales/${locale}?v=2`, { cache: "no-store" });
   if (!response.ok) throw new Error(`Locale could not be loaded: ${locale}`);
   return response.json() as Promise<Dictionary>;
 }
@@ -38,7 +38,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     queueMicrotask(() => void loadLocale(initialLocale));
   }, [loadLocale]);
   const t = useCallback((key: string, variables: Record<string, string | number> = {}) => {
-    const template = dictionary[key] ?? fallback[key] ?? key;
+    const template = dictionary[key] ?? fallback[key] ?? turkishDictionary[key as keyof typeof turkishDictionary] ?? key;
     return Object.entries(variables).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), template);
   }, [dictionary, fallback]);
   const value = useMemo(() => ({ locale, direction: rtlLocales.includes(locale) ? "rtl" as const : "ltr" as const, localeNames, setLocale: loadLocale, t }), [locale, loadLocale, t]);
