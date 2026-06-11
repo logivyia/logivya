@@ -38,12 +38,15 @@ new Worker(QUEUES.message, async (job) => {
   settings: { backoffStrategy: () => Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000) + Math.floor(Math.random() * Number(process.env.WHATSAPP_MAX_DELAY_MS || 6000)) },
 });
 
-const recoverableAccounts = await prisma.whatsAppAccount.findMany({
-  where: { archivedAt: null, status: { in: ["PENDING_QR", "CONNECTING", "DISCONNECTED"] } },
-  select: { id: true },
-});
-for (const account of recoverableAccounts) {
-  void provider.createSession(account.id).catch((error) => console.error("WhatsApp session recovery failed", account.id, error));
+async function recoverSessions() {
+  const recoverableAccounts = await prisma.whatsAppAccount.findMany({
+    where: { archivedAt: null, status: { in: ["PENDING_QR", "CONNECTING", "DISCONNECTED"] } },
+    select: { id: true },
+  });
+  for (const account of recoverableAccounts) {
+    void provider.createSession(account.id).catch((error) => console.error("WhatsApp session recovery failed", account.id, error));
+  }
 }
+void recoverSessions().catch((error) => console.error("WhatsApp session recovery bootstrap failed", error));
 
 console.log("Logivya WhatsApp worker is ready");
