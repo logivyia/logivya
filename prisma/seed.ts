@@ -1,6 +1,9 @@
+import { PrismaPg } from "@prisma/adapter-pg";
 import { CompanyRole, PrismaClient } from "@prisma/client";
 
-const prisma = new PrismaClient();
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) throw new Error("DATABASE_URL is required");
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 const plans = [
   { name: "Trial", slug: "trial", monthlyPrice: 0, yearlyPrice: 0, maxWhatsappAccounts: 1, maxGroups: 50, maxMessagesPerDay: 250, maxMessagesPerMonth: 1000 },
   { name: "Starter", slug: "starter", monthlyPrice: 39, yearlyPrice: 390, maxWhatsappAccounts: 2, maxGroups: 250, maxMessagesPerDay: 1000, maxMessagesPerMonth: 15000 },
