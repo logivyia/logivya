@@ -1,4 +1,6 @@
 import { AppShell } from "@/components/app-shell";
-export default function PlatformLayout({ children }: { children: React.ReactNode }) {
-  return <AppShell>{children}</AppShell>;
+import { requireSession } from "@/server/auth/session";
+export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
+  const context = await requireSession();
+  return <AppShell workspaceName={context.company.name} userName={context.user.name}>{children}</AppShell>;
 }

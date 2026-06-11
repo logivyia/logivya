@@ -3,15 +3,15 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #f4f6f5;
-  --foreground: #14201b;
-  --card: rgba(255, 255, 255, 0.82);
+  --background: #f8fafc;
+  --foreground: #172033;
+  --card: rgba(255, 255, 255, 0.92);
   --card-strong: #ffffff;
-  --muted: #64716b;
-  --border: rgba(20, 32, 27, 0.10);
-  --primary: #0f9f6e;
-  --primary-soft: #dff8ee;
-  --sidebar: #101915;
+  --muted: #687386;
+  --border: rgba(23, 32, 51, 0.10);
+  --primary: #f97316;
+  --primary-soft: #fff1e7;
+  --sidebar: #111827;
   --danger: #e85a64;
 }
 
@@ -22,9 +22,9 @@
   --card-strong: #141d19;
   --muted: #8c9b94;
   --border: rgba(255, 255, 255, 0.08);
-  --primary: #36d399;
-  --primary-soft: rgba(54, 211, 153, 0.12);
-  --sidebar: #090e0c;
+  --primary: #fb923c;
+  --primary-soft: rgba(249, 115, 22, 0.14);
+  --sidebar: #090f1d;
   --danger: #ff7b84;
 }
 
@@ -46,7 +46,7 @@
 * { border-color: var(--border); }
 body {
   background:
-    radial-gradient(circle at 85% 0%, rgba(54,211,153,.08), transparent 28rem),
+    radial-gradient(circle at 85% 0%, rgba(249,115,22,.09), transparent 28rem),
     var(--background);
   color: var(--foreground);
   font-family: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
@@ -58,3 +58,4 @@ button { cursor: pointer; }
 ::selection { background: var(--primary); color: #07100c; }
 .panel { background: var(--card); border: 1px solid var(--border); box-shadow: 0 18px 60px rgba(0,0,0,.08); backdrop-filter: blur(18px); }
 .soft-grid { background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 44px 44px; }
+.auth-surface { background: radial-gradient(circle at 10% 10%, #fff1e7, transparent 30rem), #f8fafc; }

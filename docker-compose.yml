@@ -19,6 +19,20 @@ services:
       REDIS_URL: redis://redis:6379
     ports: ["3000:3000"]
     depends_on: [postgres, redis]
+  whatsapp-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/logivya
+      REDIS_URL: redis://redis:6379
+      WHATSAPP_SESSION_DIR: /app/sessions
+      WORKER_HEALTH_PORT: 3001
+    ports: ["3001:3001"]
+    volumes: [logivya-whatsapp-sessions:/app/sessions]
+    depends_on: [postgres, redis]
 volumes:
   logivya-postgres:
   logivya-redis:
+  logivya-whatsapp-sessions:

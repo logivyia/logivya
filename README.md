@@ -13,7 +13,9 @@ Production-oriented foundation for a multi-tenant WhatsApp communication, campai
 - Defense-in-depth security foundation: Argon2id, AES-256-GCM, tenant guards, security events, secure sessions, idempotency, hardened uploads, headers, and CI gates
 - Fully reactive i18n provider with 15 supported languages, persistent selection, dynamic locale loading, English fallback, translated validation keys, and Arabic RTL
 - Plan and permission seed data, queue contracts, activity feed, and structured logging
-- Interactive mock layer ready to replace with repository/service calls
+- Production authentication with revocable database sessions and automatic trial workspace creation
+- Real tenant-scoped dashboard, account, group, category, campaign, and history APIs
+- Worker-ready Baileys WhatsApp provider with QR persistence, group synchronization, BullMQ sending, and health endpoint
 
 ## Local setup
 
@@ -25,10 +27,12 @@ Production-oriented foundation for a multi-tenant WhatsApp communication, campai
 
 ## Architecture
 
-UI behavior currently uses `src/lib/mock-data.ts`. Real integrations should flow through server-side repositories and services. Every repository query must accept and filter by `companyId`. WhatsApp integrations implement `src/server/whatsapp/provider.ts`; BullMQ workers consume the contracts in `src/server/queues/contracts.ts` and can be deployed independently.
+User-facing platform pages use tenant-scoped APIs backed by PostgreSQL. Every repository query must accept and filter by `companyId`. Baileys runs only in the independent worker process; BullMQ connects Vercel APIs to that worker.
 
 Never rely on route proxy checks as the sole authorization layer. Revalidate tenant membership and role inside every Server Action and Route Handler.
 
 See [Enterprise Architecture](docs/enterprise-architecture.md) for the provider-neutral communication core, worker topology, safety enforcement, analytics, CRM, API, webhook, billing, observability, and deployment strategy.
 
 See [Security Architecture](docs/security-architecture.md) and [Disaster Recovery](docs/disaster-recovery.md) for mandatory controls, incident response, and recovery targets.
+
+See [Production Runbook](docs/production-runbook.md) and [Manual Test Checklist](docs/manual-test-checklist.md) for deployment and verification.

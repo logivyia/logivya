@@ -1,7 +1,13 @@
 export type ProviderGroup = { externalId: string; name: string; description?: string; participantCount: number; canSend: boolean };
+export type SessionResult = { sessionId: string; qrCode?: string | null };
+export type GroupResult = ProviderGroup;
+export type SendGroupMessageInput = { accountId: string; groupExternalId: string; content: string };
+export type SendResult = { externalMessageId: string };
 export interface WhatsAppProvider {
-  createSession(accountId: string): Promise<{ sessionId: string; qrCode: string }>;
-  disconnect(sessionId: string): Promise<void>;
-  getGroups(sessionId: string): Promise<ProviderGroup[]>;
-  sendGroupMessage(sessionId: string, groupExternalId: string, content: string): Promise<{ externalMessageId: string }>;
+  createSession(accountId: string): Promise<SessionResult>;
+  getQr(accountId: string): Promise<string | null>;
+  disconnect(accountId: string): Promise<void>;
+  reconnect(accountId: string): Promise<void>;
+  syncGroups(accountId: string): Promise<GroupResult[]>;
+  sendGroupMessage(input: SendGroupMessageInput): Promise<SendResult>;
 }

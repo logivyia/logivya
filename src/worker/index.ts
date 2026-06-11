@@ -1,0 +1,41 @@
+import "./health";
+import { Worker } from "bullmq";
+import { prisma } from "@/server/db";
+import { QUEUES } from "@/server/queues/contracts";
+import { BaileysWhatsAppProvider } from "@/worker/baileys-provider";
+
+if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required");
+const redisUrl = new URL(process.env.REDIS_URL);
+const connection = { host: redisUrl.hostname, port: Number(redisUrl.port || 6379), username: redisUrl.username || undefined, password: redisUrl.password || undefined, tls: redisUrl.protocol === "rediss:" ? {} : undefined };
+const provider = new BaileysWhatsAppProvider();
+
+new Worker(QUEUES.sync, async (job) => {
+  const { action, accountId } = job.data as { action: "connect" | "sync" | "disconnect" | "reconnect"; accountId: string };
+  if (action === "connect") return provider.createSession(accountId);
+  if (action === "sync") return provider.syncGroups(accountId);
+  if (action === "disconnect") return provider.disconnect(accountId);
+  return provider.reconnect(accountId);
+}, { connection, concurrency: 5 });
+
+new Worker(QUEUES.message, async (job) => {
+  const { recipientId } = job.data as { recipientId: string };
+  const recipient = await prisma.messageRecipient.findUnique({ where: { id: recipientId }, include: { campaign: true, group: true } });
+  if (!recipient?.group || recipient.campaign.status === "CANCELED" || recipient.campaign.status === "CANCELING") return;
+  await prisma.messageRecipient.update({ where: { id: recipient.id }, data: { status: "SENDING" } });
+  try {
+    await provider.sendGroupMessage({ accountId: recipient.accountId, groupExternalId: recipient.group.externalGroupId, content: recipient.campaign.content });
+    await prisma.messageRecipient.update({ where: { id: recipient.id }, data: { status: "SENT", sentAt: new Date() } });
+    await prisma.messageCampaign.update({ where: { id: recipient.campaignId }, data: { sentCount: { increment: 1 } } });
+  } catch (error) {
+    await prisma.messageRecipient.update({ where: { id: recipient.id }, data: { status: "FAILED", failedAt: new Date(), errorMessage: error instanceof Error ? error.message : "Send failed" } });
+    await prisma.messageCampaign.update({ where: { id: recipient.campaignId }, data: { failedCount: { increment: 1 } } });
+    throw error;
+  }
+}, {
+  connection,
+  concurrency: 1,
+  limiter: { max: Number(process.env.WHATSAPP_MAX_MESSAGES_PER_MINUTE || 12), duration: 60000 },
+  settings: { backoffStrategy: () => Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000) + Math.floor(Math.random() * Number(process.env.WHATSAPP_MAX_DELAY_MS || 6000)) },
+});
+
+console.log("Logivya WhatsApp worker is ready");

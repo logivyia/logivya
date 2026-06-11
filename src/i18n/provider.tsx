@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { fallbackLocale, localeNames, locales, rtlLocales, type Locale } from "@/i18n/config";
-import englishDictionary from "../../locales/en.json";
+import turkishDictionary from "../../locales/tr.json";
 
 type Dictionary = Record<string, string>;
 type I18nContextValue = {
@@ -21,8 +21,8 @@ async function loadDictionary(locale: Locale) {
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(fallbackLocale);
-  const [dictionary, setDictionary] = useState<Dictionary>(englishDictionary);
-  const [fallback, setFallback] = useState<Dictionary>(englishDictionary);
+  const [dictionary, setDictionary] = useState<Dictionary>(turkishDictionary);
+  const [fallback, setFallback] = useState<Dictionary>(turkishDictionary);
   const loadLocale = useCallback(async (next: Locale) => {
     const [nextDictionary, fallbackDictionary] = await Promise.all([loadDictionary(next), loadDictionary(fallbackLocale)]);
     setDictionary(nextDictionary);
