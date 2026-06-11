@@ -18,6 +18,12 @@ const rolePermissions: Record<CompanyRole, string[]> = {
 };
 async function main() {
   for (const plan of plans) await prisma.plan.upsert({ where: { slug: plan.slug }, update: plan, create: plan });
+  const legacySubscriptions=await prisma.subscription.findMany({where:{currentPeriodEndsAt:null},select:{id:true,status:true,createdAt:true,trialStartsAt:true,trialEndsAt:true}});
+  for(const subscription of legacySubscriptions){
+    const startsAt=subscription.trialStartsAt??subscription.createdAt;
+    const endsAt=subscription.trialEndsAt??new Date(startsAt.getTime()+3*86400000);
+    await prisma.subscription.update({where:{id:subscription.id},data:{billingPeriod:subscription.status==="TRIALING"?"TRIAL":"CUSTOM",startsAt,endsAt,currentPeriodStartsAt:startsAt,currentPeriodEndsAt:endsAt,source:subscription.status==="TRIALING"?"TRIAL":"MANUAL_ADMIN",provider:"MANUAL"}});
+  }
   for (const [role, codes] of Object.entries(rolePermissions) as [CompanyRole, string[]][]) {
     for (const code of codes) {
       const permission = await prisma.permission.upsert({ where: { code }, update: {}, create: { code } });
