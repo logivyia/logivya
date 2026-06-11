@@ -4,22 +4,20 @@ import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
 import { messageQueue } from "@/server/queues/client";
 
-const schema = z.object({ title: z.string().min(2).max(120), content: z.string().min(1).max(4096), categoryIds: z.array(z.string()).min(1) });
+const schema = z.object({ title: z.string().min(1).max(120), content: z.string().min(1).max(4096), groupIds: z.array(z.string()).min(1) });
 export async function POST(request: Request) {
   try {
     const { company, user } = await requireApiSession();
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
-    const categoryGroups = await prisma.categoryGroup.findMany({
-      where: { categoryId: { in: parsed.data.categoryIds }, category: { companyId: company.id }, group: { isArchived: false, canSend: true, account: { status: "CONNECTED" } } },
-      include: { group: true },
-      distinct: ["groupId"],
+    const groups = await prisma.whatsAppGroup.findMany({
+      where: { id: { in: parsed.data.groupIds }, companyId: company.id, isArchived: false, canSend: true, account: { status: "CONNECTED" } },
     });
-    if (!categoryGroups.length) return NextResponse.json({ error: "campaign.noConnectedRecipients" }, { status: 400 });
+    if (!groups.length) return NextResponse.json({ error: "campaign.noConnectedRecipients" }, { status: 400 });
     const campaign = await prisma.messageCampaign.create({
       data: {
-        companyId: company.id, createdById: user.id, title: parsed.data.title, content: parsed.data.content, type: "WHATSAPP_GROUP", status: "QUEUED", scheduleType: "SEND_NOW", totalRecipients: categoryGroups.length,
-        recipients: { create: categoryGroups.map(({ group }) => ({ accountId: group.accountId, groupId: group.id, recipientName: group.name, recipientExternalId: group.externalGroupId })) },
+        companyId: company.id, createdById: user.id, title: parsed.data.title, content: parsed.data.content, type: "WHATSAPP_GROUP", status: "QUEUED", scheduleType: "SEND_NOW", totalRecipients: groups.length,
+        recipients: { create: groups.map((group) => ({ accountId: group.accountId, groupId: group.id, recipientName: group.name, recipientExternalId: group.externalGroupId })) },
       },
       include: { recipients: true },
     });

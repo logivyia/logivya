@@ -40,7 +40,7 @@ new Worker(QUEUES.message, async (job) => {
 
 async function recoverSessions() {
   const recoverableAccounts = await prisma.whatsAppAccount.findMany({
-    where: { archivedAt: null, status: { in: ["PENDING_QR", "CONNECTING", "DISCONNECTED"] } },
+    where: { archivedAt: null, status: { in: ["PENDING_QR", "CONNECTING", "CONNECTED", "DISCONNECTED"] } },
     select: { id: true },
   });
   for (const account of recoverableAccounts) {
