@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: logivya-whatsapp-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile.worker
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /
+    autoDeploy: true
+    disk:
+      name: whatsapp-sessions
+      mountPath: /var/data/sessions
+      sizeGB: 10
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: WHATSAPP_SESSION_SECRET
+        sync: false
+      - key: WHATSAPP_PROVIDER
+        value: baileys
+      - key: WHATSAPP_SESSION_DIR
+        value: /var/data/sessions
+      - key: WHATSAPP_SESSION_VOLUME_PERSISTENT
+        value: "true"

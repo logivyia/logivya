@@ -6,6 +6,7 @@ import { BaileysWhatsAppProvider } from "@/worker/baileys-provider";
 import { recurringDelay, type RecurringRule } from "@/server/queues/recurring";
 import { campaignQueue, deadLetterQueue, messageQueue } from "@/server/queues/client";
 import { logger } from "@/server/observability/logger";
+import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 
 if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required");
 const redisUrl = new URL(process.env.REDIS_URL);
@@ -78,7 +79,7 @@ new Worker(QUEUES.message, async (job) => {
 
 async function recoverSessions() {
   const recoverableAccounts = await prisma.whatsAppAccount.findMany({
-    where: { archivedAt: null, status: { in: ["PENDING_QR", "CONNECTING", "CONNECTED", "DISCONNECTED"] } },
+    where: { archivedAt: null, status: { in: ["PENDING_QR", "QR_READY", "CONNECTING", "CONNECTED", "DISCONNECTED"] } },
     select: { id: true },
   });
   for (const account of recoverableAccounts) {
@@ -86,5 +87,12 @@ async function recoverSessions() {
   }
 }
 void recoverSessions().catch((error) => console.error("WhatsApp session recovery bootstrap failed", error));
+
+async function cleanupStuckSessions() {
+  const result = await cleanupStuckWhatsAppAccounts();
+  if (result.count) logger.warn("whatsapp.stuck_sessions.cleaned", { count: result.count });
+}
+void cleanupStuckSessions().catch((error) => logger.error("whatsapp.stuck_sessions.cleanup_failed", error));
+setInterval(() => void cleanupStuckSessions().catch((error) => logger.error("whatsapp.stuck_sessions.cleanup_failed", error)), 60_000).unref();
 
 console.log("Logivya WhatsApp worker is ready");

@@ -18,6 +18,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
   async requestQrCode(accountId:string){if(!sockets.has(accountId))await this.createSession(accountId);for(let i=0;i<20;i++){const account=await prisma.whatsAppAccount.findUnique({where:{id:accountId}});if(account?.qrCode&&account.qrExpiresAt&&account.qrExpiresAt>new Date())return{qr:account.qrCode,expiresAt:account.qrExpiresAt};await new Promise(r=>setTimeout(r,500))}throw new Error("QR_GENERATION_TIMEOUT")}
   async getStatus(accountId:string){return(await prisma.whatsAppAccount.findUniqueOrThrow({where:{id:accountId}})).status}
   async createSession(accountId: string): Promise<SessionResult> {
+    if (sockets.has(accountId)) return { sessionId: accountId, qrCode: await this.getQr(accountId) };
     manuallyDisconnected.delete(accountId);
     await mkdir(sessionRoot, { recursive: true });
     const directory = path.join(sessionRoot, accountId);
@@ -34,8 +35,8 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         const qrCode = await QRCode.toDataURL(qr, { width: 360, margin: 2 });
         await prisma.whatsAppSession.upsert({
           where: { id: accountId },
-          update: { qrCode, status: "PENDING_QR", expiresAt: new Date(Date.now() + 60000) },
-          create: { id: accountId, accountId, qrCode, status: "PENDING_QR", expiresAt: new Date(Date.now() + 60000) },
+          update: { qrCode, status: "QR_READY", expiresAt: new Date(Date.now() + 60000) },
+          create: { id: accountId, accountId, qrCode, status: "QR_READY", expiresAt: new Date(Date.now() + 60000) },
         });
         await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { status: "QR_READY",qrCode,qrExpiresAt:new Date(Date.now()+60000),lastError:null } });
       }
@@ -49,7 +50,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         const code = (lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output?.statusCode;
         const loggedOut = code === DisconnectReason.loggedOut;
         const intentional = manuallyDisconnected.delete(accountId);
-        sockets.delete(accountId);
+        if (sockets.get(accountId) === socket) sockets.delete(accountId);
         await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { status: loggedOut ? "RECONNECT_REQUIRED" : "DISCONNECTED", lastDisconnectedAt: new Date(),lastError:intentional?null:lastDisconnect?.error instanceof Error?lastDisconnect.error.message:"WhatsApp connection closed" } });
         if (!loggedOut && !intentional) setTimeout(() => void this.reconnect(accountId), 5000);
       }
@@ -66,7 +67,15 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     sockets.delete(accountId);
     await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { status: "DISCONNECTED", lastDisconnectedAt: new Date(), lastError: null } });
   }
-  async reconnect(accountId: string) { await this.createSession(accountId); }
+  async reconnect(accountId: string) {
+    const socket = sockets.get(accountId);
+    if (socket) {
+      manuallyDisconnected.add(accountId);
+      socket.end(new Error("Reconnect requested"));
+      sockets.delete(accountId);
+    }
+    await this.createSession(accountId);
+  }
   async syncGroups(accountId: string): Promise<GroupResult[]> {
     const socket = sockets.get(accountId);
     if (!socket) throw new Error("WhatsApp session is not active");

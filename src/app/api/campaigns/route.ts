@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     const groups = await prisma.whatsAppGroup.findMany({
       where: { id: { in: requestedIds }, companyId: company.id, isArchived: false, canSend: true, account: { status: "CONNECTED" } },
     });
-    if (!groups.length) return NextResponse.json({ error: "campaign.noConnectedRecipients" }, { status: 400 });
+    if (!groups.length) return NextResponse.json({ error: "WhatsApp hesabı bağlı değil. Lütfen hesabı yeniden bağlayın." }, { status: 400 });
     const access=await subscriptionAccess.canSendMessage(company.id,groups.length);
     if(!access.allowed){await writeAuditLog(request,{companyId:company.id,userId:user.id,action:"subscription.access_blocked",entityType:"MessageCampaign",after:{reason:access.reason,limit:access.limit,used:access.used}});return NextResponse.json({error:access.reason,limit:access.limit,used:access.used},{status:403})}
     if(parsed.data.scheduleType==="SCHEDULED"&&!await subscriptionAccess.canUseScheduledMessages(company.id))return NextResponse.json({error:"subscription.featureUnavailable"},{status:403});
