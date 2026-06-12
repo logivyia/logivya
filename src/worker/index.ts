@@ -24,7 +24,15 @@ new Worker(QUEUES.campaign,async(job)=>{
 
 new Worker(QUEUES.sync, async (job) => {
   const { action, accountId } = job.data as { action: "connect" | "sync" | "disconnect" | "reconnect"; accountId: string };
-  try{if (action === "connect") return provider.createSession(accountId);if (action === "sync") return provider.syncGroups(accountId);if (action === "disconnect") return provider.disconnect(accountId);return provider.reconnect(accountId)}
+  try{
+    const account=await prisma.whatsAppAccount.findUnique({where:{id:accountId},select:{status:true,archivedAt:true,updatedAt:true}});
+    if(!account||account.archivedAt)return;
+    if(["connect","reconnect"].includes(action)&&account.updatedAt<new Date(Date.now()-10*60_000)&&["PENDING_QR","QR_READY","CONNECTING"].includes(account.status)){
+      await prisma.whatsAppAccount.update({where:{id:accountId},data:{status:"ERROR",lastError:"QR generation expired. Please generate a new QR code.",qrCode:null,qrExpiresAt:null}});
+      return;
+    }
+    if(["connect","reconnect"].includes(action)&&account.status==="ERROR")return;
+    if (action === "connect") return provider.createSession(accountId);if (action === "sync") return provider.syncGroups(accountId);if (action === "disconnect") return provider.disconnect(accountId);return provider.reconnect(accountId)}
   catch(error){await prisma.whatsAppAccount.update({where:{id:accountId},data:{status:"ERROR",lastError:error instanceof Error?error.message:"WhatsApp operation failed"}});logger.error("whatsapp.job.failed",error,{jobId:job.id,accountId,action});throw error}
 }, { connection, concurrency: 5 });
 
