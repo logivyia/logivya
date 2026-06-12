@@ -4,10 +4,13 @@ import { prisma } from "@/server/db";
 const REUSABLE_STATUSES: AccountStatus[] = [
   "NEW",
   "PENDING_QR",
+  "PENDING_PAIRING",
   "QR_READY",
+  "PAIRING_CODE_READY",
   "CONNECTING",
   "DISCONNECTED",
   "RECONNECT_REQUIRED",
+  "FAILED",
   "ERROR",
 ];
 

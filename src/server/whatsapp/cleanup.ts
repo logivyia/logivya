@@ -6,12 +6,12 @@ export async function cleanupStuckWhatsAppAccounts(companyId?: string) {
     where: {
       ...(companyId ? { companyId } : {}),
       archivedAt: null,
-      status: { in: ["PENDING_QR", "QR_READY", "CONNECTING"] },
+      status: { in: ["PENDING_QR", "PENDING_PAIRING", "QR_READY", "PAIRING_CODE_READY", "CONNECTING"] },
       updatedAt: { lt: cutoff },
     },
     data: {
       status: "ERROR",
-      lastError: "QR generation expired. Please generate a new QR code.",
+      lastError: "Bağlantı denemesinin süresi doldu. Lütfen tekrar deneyin.",
       qrCode: null,
       qrExpiresAt: null,
       pairingCode: null,

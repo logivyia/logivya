@@ -27,7 +27,7 @@ type Session = {
 
 const btn = "inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50";
 const primary = `${btn} border-orange-500 bg-orange-500 font-semibold text-white`;
-const reconnectable = ["NEW", "ERROR", "CONNECTING", "QR_READY", "PENDING_QR", "RECONNECT_REQUIRED", "DISCONNECTED"];
+const reconnectable = ["NEW", "ERROR", "FAILED", "CONNECTING", "QR_READY", "PENDING_QR", "PENDING_PAIRING", "PAIRING_CODE_READY", "RECONNECT_REQUIRED", "DISCONNECTED"];
 
 export function AccountsStablePage() {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
@@ -54,7 +54,7 @@ export function AccountsStablePage() {
     return () => clearInterval(timer);
   }, [modal]);
   useEffect(() => {
-    if (!session?.accountId || session.status === "CONNECTED") return;
+    if (!session?.accountId || ["CONNECTED", "FAILED"].includes(session.status)) return;
     const timer = setInterval(async () => {
       try {
         const response = await fetch(`/api/accounts/whatsapp/${session.accountId}/status`, { cache: "no-store" });
@@ -167,7 +167,7 @@ export function AccountsStablePage() {
           {!session?.pairingCode || pairingExpired ? <>
             <label className="mb-2 block text-left text-sm font-medium">Ülke koduyla telefon numarası</label>
             <input className="w-full rounded-xl border p-3 text-base" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+905321234567" />
-            <button disabled={loading} className={`${primary} mt-4 w-full`} onClick={pairing}>{loading && <LoaderCircle className="size-4 animate-spin" />}Telefon kodu oluştur</button>
+            <button disabled={loading} className={`${primary} mt-4 w-full`} onClick={pairing}>{loading && <LoaderCircle className="size-4 animate-spin" />}{session ? "Yeni kod al" : "Telefon kodu oluştur"}</button>
           </> : <>
             <p className="text-sm text-slate-600">WhatsApp → Bağlı cihazlar → Telefon numarasıyla bağla</p>
             <p className="mx-auto my-5 rounded-2xl bg-orange-50 p-5 font-mono text-2xl font-bold tracking-[.18em] text-orange-700 sm:text-3xl">{session.pairingCode}</p>

@@ -17,7 +17,7 @@ export async function assertWhatsAppWorkerReachable() {
 
 export async function waitForAccountQr(accountId: string) {
   const { prisma } = await import("@/server/db");
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
     const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId } });
     if (!account) throw new Error("NOT_FOUND");
     if (account.status === "ERROR") throw new Error(account.lastError || "WhatsApp QR generation failed.");
@@ -29,10 +29,10 @@ export async function waitForAccountQr(accountId: string) {
 
 export async function waitForPairingCode(accountId: string) {
   const { prisma } = await import("@/server/db");
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
     const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId } });
     if (!account) throw new Error("NOT_FOUND");
-    if (account.status === "ERROR") throw new Error(account.lastError || "WhatsApp pairing code generation failed.");
+    if (["ERROR", "FAILED"].includes(account.status)) throw new Error(account.lastError || "WhatsApp pairing code generation failed.");
     if (account.pairingCode && account.pairingCodeExpiresAt && account.pairingCodeExpiresAt > new Date()) return account;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }

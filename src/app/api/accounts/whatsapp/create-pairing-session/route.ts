@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { requirePermission } from "@/server/auth/permissions";
 import { requireApiSession } from "@/server/auth/session";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
@@ -7,18 +6,19 @@ import { prisma } from "@/server/db";
 import { whatsappQueue } from "@/server/queues/client";
 import { writeAuditLog } from "@/server/security/audit";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
+import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
+import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
 import { findReusableWhatsAppAccount } from "@/server/whatsapp/reusable-account";
 import { assertWhatsAppWorkerReachable, waitForPairingCode } from "@/server/whatsapp/worker-health";
-
-const schema = z.object({ phoneNumber: z.string().regex(/^\+?[0-9]{7,15}$/) });
 
 export async function POST(request: Request) {
   let accountId: string | undefined;
   try {
     const { company, membership, user } = await requireApiSession();
     requirePermission(membership.role, "connect_accounts");
-    const parsed = schema.safeParse(await request.json());
-    if (!parsed.success) return NextResponse.json({ error: "Geçerli bir telefon numarası girin." }, { status: 400 });
+    const body = await request.json() as { phoneNumber?: unknown };
+    if (typeof body.phoneNumber !== "string") throw new Error("INVALID_WHATSAPP_PHONE");
+    const phoneNumber = normalizeWhatsAppPhoneNumber(body.phoneNumber);
     await cleanupStuckWhatsAppAccounts(company.id);
     await assertWhatsAppWorkerReachable();
 
@@ -26,24 +26,24 @@ export async function POST(request: Request) {
     if (account) {
       account = await prisma.whatsAppAccount.update({
         where: { id: account.id },
-        data: { phoneNumber: parsed.data.phoneNumber.replace(/\D/g, ""), status: "CONNECTING", qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null },
+        data: { phoneNumber, status: "PENDING_PAIRING", qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null },
       });
     } else {
       const access = await subscriptionAccess.canConnectWhatsAppAccount(company.id);
       if (!access.allowed) return NextResponse.json({ error: access.reason, limit: access.limit }, { status: 403 });
       account = await prisma.whatsAppAccount.create({
-        data: { companyId: company.id, label: null, phoneNumber: parsed.data.phoneNumber.replace(/\D/g, ""), provider: process.env.WHATSAPP_PROVIDER || "baileys", status: "CONNECTING" },
+        data: { companyId: company.id, label: null, phoneNumber, provider: process.env.WHATSAPP_PROVIDER || "baileys", status: "PENDING_PAIRING" },
       });
     }
 
     accountId = account.id;
-    await whatsappQueue().add("pairing", { action: "pairing", accountId, phoneNumber: parsed.data.phoneNumber }, { jobId: `pairing-${accountId}-${Date.now()}` });
+    await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.pairing.requested", entityType: "WhatsAppAccount", entityId: accountId, after: { phoneNumber } });
+    await whatsappQueue().add("pairing", { action: "pairing", accountId, phoneNumber }, { jobId: `pairing-${accountId}-${Date.now()}` });
     const ready = await waitForPairingCode(accountId);
-    await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.pairing.created", entityType: "WhatsAppAccount", entityId: accountId });
     return NextResponse.json({ accountId, status: ready.status, pairingCode: ready.pairingCode, pairingCodeExpiresAt: ready.pairingCodeExpiresAt }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "WhatsApp pairing code generation failed.";
-    if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "ERROR", lastError: message } });
-    return NextResponse.json({ error: message, accountId }, { status: message === "WhatsApp worker is not reachable." ? 503 : 500 });
+    const message = pairingUserMessage(error);
+    if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "FAILED", lastError: message } });
+    return NextResponse.json({ error: message, accountId }, { status: error instanceof Error && error.message === "INVALID_WHATSAPP_PHONE" ? 400 : 503 });
   }
 }

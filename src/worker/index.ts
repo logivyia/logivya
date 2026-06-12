@@ -8,6 +8,7 @@ import { campaignQueue, deadLetterQueue, messageQueue } from "@/server/queues/cl
 import { logger } from "@/server/observability/logger";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { writeWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
+import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -38,7 +39,7 @@ new Worker(QUEUES.sync, async (job) => {
     }
     if(["connect","reconnect"].includes(action)&&account.status==="ERROR")return;
     if (action === "connect") return provider.createSession(accountId);if(action==="pairing"){if(!phoneNumber)throw new Error("Invalid phone number.");return provider.requestPairingCode(accountId,phoneNumber)}if (action === "sync") return provider.syncGroups(accountId);if (action === "disconnect") return provider.disconnect(accountId);return provider.reconnect(accountId)}
-  catch(error){await prisma.whatsAppAccount.update({where:{id:accountId},data:{status:"ERROR",lastError:error instanceof Error?error.message:"WhatsApp operation failed"}});logger.error("whatsapp.job.failed",error,{jobId:job.id,accountId,action});throw error}
+  catch(error){await prisma.whatsAppAccount.update({where:{id:accountId},data:{status:action==="pairing"?"FAILED":"ERROR",lastError:action==="pairing"?pairingUserMessage(error):error instanceof Error?error.message:"WhatsApp operation failed"}});logger.error("whatsapp.job.failed",error,{jobId:job.id,accountId,action});throw error}
 }, { connection, concurrency: 5 });
 
 new Worker(QUEUES.message, async (job) => {
@@ -93,9 +94,10 @@ new Worker(QUEUES.message, async (job) => {
 async function recoverSessions() {
   const recoverableAccounts = await prisma.whatsAppAccount.findMany({
     where: { archivedAt: null, status: { in: ["PENDING_QR", "QR_READY", "CONNECTING", "CONNECTED", "DISCONNECTED"] } },
-    select: { id: true },
+    select: { id: true, pairingCode: true },
   });
   for (const account of recoverableAccounts) {
+    if (account.pairingCode) continue;
     const sessionRoot = process.env.WHATSAPP_SESSION_DIR || path.join(process.cwd(), "sessions");
     try { await access(path.join(sessionRoot, account.id, "creds.json")); } catch { continue; }
     void provider.createSession(account.id).catch((error) => console.error("WhatsApp session recovery failed", account.id, error));
