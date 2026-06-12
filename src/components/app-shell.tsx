@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Bell, Boxes, Building2, ChevronDown, CreditCard, History, Languages, LayoutDashboard, LogOut, Menu, MessageSquareText, Moon, Search, Send, Settings, Smartphone, Sun, Trash2, UserCog, UsersRound, X, Zap } from "lucide-react";
-import { useState } from "react";
+import { Bell, Boxes, Building2, ChevronDown, CreditCard, History, Languages, LayoutDashboard, LogOut, Menu, Moon, Search, Send, Settings, Smartphone, Sun, Trash2, UserCog, UsersRound, X, Zap } from "lucide-react";
+import { useEffect, useState } from "react";
 import { locales, type Locale } from "@/i18n/config";
 import { useI18n } from "@/i18n/provider";
 import { cn } from "@/lib/utils";
@@ -16,14 +16,21 @@ const nav = [
 ] as const;
 const settingsNav = [["/settings/company","settings.company",Building2],["/settings/users","settings.users",UserCog],["/settings/subscriptions","settings.billing",CreditCard],["/settings/delete-account","settings.deleteAccount",Trash2]] as const;
 
-export function AppShell({ children, userName, subscription }: { children: React.ReactNode; userName: string; subscription?: { planName:string;status:string;trialEndsAt?:string } }) {
+type NoticeItem={id:string;title:string;message:string;isRead:boolean;createdAt:string};
+export function AppShell({ children, userName, subscription }: { children: React.ReactNode; userName: string; subscription?: { planName:string;status:string;trialEndsAt?:string;currentPeriodEndsAt?:string } }) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const { locale, localeNames, setLocale, t } = useI18n();
   const [open, setOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [notifications, setNotifications] = useState(false);
+  const [noticeItems,setNoticeItems]=useState<NoticeItem[]>([]);
+  const [unread,setUnread]=useState(0);
+  const [currentTime]=useState(()=>Date.now());
   const [settingsOpen,setSettingsOpen]=useState(pathname.startsWith("/settings"));
+  useEffect(()=>{void fetch("/api/notifications").then(r=>r.json()).then(value=>{setNoticeItems(value.notifications||[]);setUnread(value.unread||0)})},[]);
+  const trialDays=subscription?.trialEndsAt?Math.max(0,Math.ceil((new Date(subscription.trialEndsAt).getTime()-currentTime)/86400000)):0;
+  const banner=subscription?.status==="TRIALING"?`Deneme süreniz devam ediyor. Kalan süre: ${trialDays} gün.`:subscription?.status==="ACTIVE"?`Aktif Paket: ${subscription.planName}`:"Aboneliğiniz aktif değil. Mesaj göndermek için paketinizi yenileyin.";
 
   return <div className="min-h-screen lg:grid lg:grid-cols-[252px_1fr]">
     {open && <button className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setOpen(false)} aria-label={t("common.closeMenu")} />}
@@ -36,9 +43,9 @@ export function AppShell({ children, userName, subscription }: { children: React
       <label className="hidden items-center gap-2 rounded-xl border bg-card px-3 py-2 md:flex"><Search className="size-4 text-muted" /><input className="w-32 bg-transparent text-xs outline-none" placeholder={t("header.search")} /><kbd className="text-[10px] text-muted">{t("header.shortcut")}</kbd></label>
       <div className="relative"><button className="flex items-center gap-1 rounded-xl border bg-card px-2.5 py-2 text-xs" onClick={() => setLanguageOpen(!languageOpen)}><Languages className="size-4" />{locale.toUpperCase()}<ChevronDown className="size-3 text-muted" /></button>{languageOpen && <div className="panel absolute end-0 top-11 z-50 max-h-80 w-48 overflow-auto rounded-xl p-2">{locales.map(item => <button key={item} onClick={() => { void setLocale(item as Locale); setLanguageOpen(false); }} className={cn("block w-full rounded-lg px-3 py-2 text-start text-xs hover:bg-primary-soft", locale === item && "bg-primary-soft text-primary")}>{localeNames[item]}</button>)}</div>}</div>
       <button className="rounded-xl border bg-card p-2" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={t("common.toggleTheme")}>{theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}</button>
-      <div className="relative"><button className="relative rounded-xl border bg-card p-2" onClick={() => setNotifications(!notifications)}><Bell className="size-4" /><span className="absolute end-1.5 top-1.5 size-1.5 rounded-full bg-primary" /></button>{notifications && <div className="panel absolute end-0 top-12 w-80 rounded-2xl p-3"><div className="flex items-center justify-between p-2"><b className="text-sm">{t("notifications.title")}</b><span className="text-xs text-primary">{t("notifications.markAll")}</span></div><Notice icon={MessageSquareText} title={t("notifications.campaignCompleted")} text={t("notifications.delivered")} /><Notice icon={Smartphone} title={t("notifications.disconnected")} text={t("notifications.reconnect")} /></div>}</div>
+      <div className="relative"><button className="relative rounded-xl border bg-card p-2" onClick={() => setNotifications(!notifications)}><Bell className="size-4" />{unread>0&&<span className="absolute end-1 top-1 grid size-4 place-items-center rounded-full bg-primary text-[8px] font-bold text-white">{Math.min(unread,9)}</span>}</button>{notifications && <div className="panel absolute end-0 top-12 max-h-96 w-80 overflow-auto rounded-2xl p-3"><div className="flex items-center justify-between p-2"><b className="text-sm">{t("notifications.title")}</b><button onClick={async()=>{await fetch("/api/notifications",{method:"POST"});setUnread(0);setNoticeItems(items=>items.map(item=>({...item,isRead:true})))}} className="text-xs text-primary">{t("notifications.markAll")}</button></div>{noticeItems.length?noticeItems.map(item=><Notice key={item.id} title={item.title} text={item.message} unread={!item.isRead}/>):<p className="p-4 text-xs text-muted">Bildirim bulunmuyor.</p>}</div>}</div>
       <button title={t("auth.logout")} onClick={async()=>{await fetch("/api/auth/logout",{method:"POST"});location.href="/login";}} className="ms-1 inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white"><span>{userName.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase()}</span><LogOut className="size-3.5"/></button>
-    </div></header><main className="mx-auto max-w-[1600px] p-4 md:p-8">{children}</main></div>
+    </div></header><div className={cn("border-b px-4 py-2 text-center text-xs font-medium md:px-8",subscription?.status==="ACTIVE"?"bg-green-50 text-green-700":subscription?.status==="TRIALING"?"bg-orange-50 text-orange-700":"bg-red-50 text-danger")}>{banner}</div><main className="mx-auto max-w-[1600px] p-4 md:p-8">{children}</main></div>
   </div>;
 }
-function Notice({ icon: Icon, title, text }: { icon: typeof Bell; title: string; text: string }) { return <div className="flex gap-3 rounded-xl p-2 hover:bg-primary-soft"><span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary"><Icon className="size-4" /></span><div><p className="text-xs font-medium">{title}</p><p className="mt-1 text-[11px] leading-4 text-muted">{text}</p></div></div>; }
+function Notice({title,text,unread}:{title:string;text:string;unread:boolean}){return <div className="flex gap-3 rounded-xl p-2 hover:bg-primary-soft"><span className={cn("mt-1 size-2 shrink-0 rounded-full",unread?"bg-primary":"bg-muted/30")}/><div><p className="text-xs font-medium">{title}</p><p className="mt-1 text-[11px] leading-4 text-muted">{text}</p></div></div>}
