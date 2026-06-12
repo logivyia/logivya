@@ -7,7 +7,7 @@ import { requirePermission } from "@/server/auth/permissions";
 import { writeAuditLog } from "@/server/security/audit";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 
-const schema = z.object({ label: z.string().min(2).max(80) });
+const schema = z.object({ label: z.string().min(2).max(80).optional() });
 export async function GET() {
   try {
     const { company } = await requireApiSession();
@@ -23,11 +23,11 @@ export async function POST(request: Request) {
     if (!parsed.success) return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
     const access=await subscriptionAccess.canConnectWhatsAppAccount(company.id);
     if(!access.allowed)return NextResponse.json({error:access.reason,limit:access.limit},{status:403});
-    const account = await prisma.whatsAppAccount.create({ data: { companyId: company.id, label: parsed.data.label, provider: "baileys", status: "PENDING_QR" } });
+    const account = await prisma.whatsAppAccount.create({ data: { companyId: company.id, label: parsed.data.label||"WhatsApp Hesabı", provider: "baileys", status: "PENDING_QR" } });
     try {
       await whatsappQueue().add("connect", { action: "connect", accountId: account.id }, { jobId: `connect-${account.id}` });
     } catch (error) {
-      await prisma.whatsAppAccount.delete({ where: { id: account.id } });
+      await prisma.whatsAppAccount.update({where:{id:account.id},data:{status:"ERROR",lastError:error instanceof Error?error.message:"Queue unavailable"}});
       throw error;
     }
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.account.created", entityType: "WhatsAppAccount", entityId: account.id, after: { label: account.label } });

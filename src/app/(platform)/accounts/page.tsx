@@ -1,2 +1,2 @@
-import { AccountsPage } from "@/components/feature-pages";
-export default function Page(){ return <AccountsPage />; }
+import { AccountsStablePage } from "@/components/accounts-stable-page";
+export default function Page(){ return <AccountsStablePage />; }

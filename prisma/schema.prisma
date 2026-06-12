@@ -49,7 +49,9 @@ enum SubscriptionSource {
 }
 
 enum AccountStatus {
+  NEW
   PENDING_QR
+  QR_READY
   CONNECTING
   CONNECTED
   DISCONNECTED
@@ -563,7 +565,7 @@ model Subscription {
 model WhatsAppAccount {
   id                  String             @id @default(cuid())
   companyId           String
-  label               String
+  label               String?
   phoneNumber         String?
   displayName         String?
   provider            String
@@ -574,6 +576,9 @@ model WhatsAppAccount {
   lastSyncedAt        DateTime?
   syncIntervalMinutes Int                @default(120)
   archivedAt          DateTime?
+  lastError           String?
+  qrCode              String?
+  qrExpiresAt         DateTime?
   company             Company            @relation(fields: [companyId], references: [id])
   sessions            WhatsAppSession[]
   groups              WhatsAppGroup[]
@@ -583,6 +588,8 @@ model WhatsAppAccount {
   updatedAt           DateTime           @updatedAt
 
   @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@index([companyId, archivedAt])
 }
 
 model WhatsAppSession {
@@ -653,6 +660,8 @@ model Category {
   updatedAt   DateTime              @updatedAt
 
   @@unique([companyId, name])
+  @@index([companyId, archivedAt])
+  @@index([companyId, createdAt])
 }
 
 model CategoryGroup {
@@ -664,6 +673,7 @@ model CategoryGroup {
   createdAt  DateTime      @default(now())
 
   @@unique([categoryId, groupId])
+  @@index([groupId, categoryId])
 }
 
 model MessageCampaign {
@@ -692,6 +702,8 @@ model MessageCampaign {
   updatedAt       DateTime           @updatedAt
 
   @@index([companyId, status, createdAt])
+  @@index([companyId, createdAt])
+  @@index([companyId, deletedAt])
 }
 
 model MessageRecipient {
