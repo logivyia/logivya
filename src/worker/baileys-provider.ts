@@ -37,31 +37,49 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     const { version } = await fetchLatestBaileysVersion();
     const socket = makeWASocket({ auth: state, version, printQRInTerminal: false, markOnlineOnConnect: false, syncFullHistory: false });
     sockets.set(accountId, socket);
-    await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { status: "CONNECTING",lastError:null } });
+    const activated = await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "CONNECTING", lastError: null } });
+    if (!activated.count) {
+      sockets.delete(accountId);
+      socket.end(new Error("WhatsApp account no longer exists"));
+      throw new Error("WhatsApp account no longer exists");
+    }
     socket.ev.on("creds.update", saveCreds);
     socket.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
-      if (qr) {
-        const qrCode = await QRCode.toDataURL(qr, { width: 360, margin: 2 });
-        await prisma.whatsAppSession.upsert({
-          where: { id: accountId },
-          update: { qrCode, status: "QR_READY", expiresAt: new Date(Date.now() + 60000) },
-          create: { id: accountId, accountId, qrCode, status: "QR_READY", expiresAt: new Date(Date.now() + 60000) },
-        });
-        await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { status: "QR_READY",qrCode,qrExpiresAt:new Date(Date.now()+60000),lastError:null } });
-      }
-      if (connection === "open") {
-        const phoneNumber = socket.user?.id?.split(":")[0] || socket.user?.id?.split("@")[0];
-        await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { status: "CONNECTED", phoneNumber, displayName: socket.user?.name, lastConnectedAt: new Date(),qrCode:null,qrExpiresAt:null,pairingCode:null,pairingCodeExpiresAt:null,lastError:null } });
-        await prisma.whatsAppSession.updateMany({ where: { accountId }, data: { status: "CONNECTED", qrCode: null, expiresAt: null } });
-        await this.syncGroups(accountId);
-      }
-      if (connection === "close") {
-        const code = (lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output?.statusCode;
-        const loggedOut = code === DisconnectReason.loggedOut;
-        const intentional = manuallyDisconnected.delete(accountId);
+      try {
+        if (qr) {
+          const qrCode = await QRCode.toDataURL(qr, { width: 360, margin: 2 });
+          const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId }, select: { id: true, archivedAt: true } });
+          if (!account || account.archivedAt) {
+            manuallyDisconnected.add(accountId);
+            socket.end(new Error("WhatsApp account no longer exists"));
+            sockets.delete(accountId);
+            return;
+          }
+          await prisma.whatsAppSession.upsert({
+            where: { id: accountId },
+            update: { qrCode, status: "QR_READY", expiresAt: new Date(Date.now() + 60000) },
+            create: { id: accountId, accountId, qrCode, status: "QR_READY", expiresAt: new Date(Date.now() + 60000) },
+          });
+          await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "QR_READY", qrCode, qrExpiresAt: new Date(Date.now() + 60000), lastError: null } });
+        }
+        if (connection === "open") {
+          const phoneNumber = socket.user?.id?.split(":")[0] || socket.user?.id?.split("@")[0];
+          const updated = await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "CONNECTED", phoneNumber, displayName: socket.user?.name, lastConnectedAt: new Date(), qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null } });
+          if (!updated.count) return;
+          await prisma.whatsAppSession.updateMany({ where: { accountId }, data: { status: "CONNECTED", qrCode: null, expiresAt: null } });
+          await this.syncGroups(accountId);
+        }
+        if (connection === "close") {
+          const code = (lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output?.statusCode;
+          const loggedOut = code === DisconnectReason.loggedOut;
+          const intentional = manuallyDisconnected.delete(accountId);
+          if (sockets.get(accountId) === socket) sockets.delete(accountId);
+          const updated = await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: loggedOut ? "RECONNECT_REQUIRED" : "DISCONNECTED", lastDisconnectedAt: new Date(), lastError: intentional ? null : lastDisconnect?.error instanceof Error ? lastDisconnect.error.message : "WhatsApp connection closed" } });
+          if (updated.count && !loggedOut && !intentional) setTimeout(() => void this.reconnect(accountId), 5000);
+        }
+      } catch (error) {
         if (sockets.get(accountId) === socket) sockets.delete(accountId);
-        await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { status: loggedOut ? "RECONNECT_REQUIRED" : "DISCONNECTED", lastDisconnectedAt: new Date(),lastError:intentional?null:lastDisconnect?.error instanceof Error?lastDisconnect.error.message:"WhatsApp connection closed" } });
-        if (!loggedOut && !intentional) setTimeout(() => void this.reconnect(accountId), 5000);
+        console.error("WhatsApp connection update failed", { accountId, error });
       }
     });
     return { sessionId: accountId, qrCode: null };

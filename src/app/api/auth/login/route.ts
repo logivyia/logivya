@@ -8,8 +8,9 @@ export async function POST(request: Request) {
   const ipAddress=request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()||"unknown",userAgent=request.headers.get("user-agent");
   const parsed = loginSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: "auth.invalidCredentials" }, { status: 400 });
-  const identifier = parsed.data.identifier.toLowerCase();
-  const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier }, { username: identifier }] } });
+  const identifier = parsed.data.identifier.trim().toLowerCase();
+  const normalizedPhone = identifier.replace(/\D/g, "");
+  const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier }, ...(normalizedPhone.length >= 7 ? [{ phone: normalizedPhone }] : [])] } });
   if (!user || user.status !== "ACTIVE" || !(await verifyPassword(user.passwordHash, parsed.data.password, process.env.PASSWORD_PEPPER ?? ""))) {
     await prisma.loginAttempt.create({data:{userId:user?.id,email:identifier,ipAddress,userAgent,success:false,failureReason:"INVALID_CREDENTIALS"}});
     return NextResponse.json({ error: "auth.invalidCredentials" }, { status: 401 });

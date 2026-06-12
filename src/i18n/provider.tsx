@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { fallbackLocale, localeNames, locales, rtlLocales, type Locale } from "@/i18n/config";
 import turkishDictionary from "../../locales/tr.json";
+import { localeOverrides } from "@/i18n/overrides";
 
 type Dictionary = Record<string, string>;
 type I18nContextValue = {
@@ -25,16 +26,18 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [fallback, setFallback] = useState<Dictionary>(turkishDictionary);
   const loadLocale = useCallback(async (next: Locale) => {
     const [nextDictionary, fallbackDictionary] = await Promise.all([loadDictionary(next), loadDictionary(fallbackLocale)]);
-    setDictionary(nextDictionary);
-    setFallback(fallbackDictionary);
+    setDictionary({ ...nextDictionary, ...(localeOverrides[next] ?? {}) });
+    setFallback({ ...fallbackDictionary, ...(localeOverrides[fallbackLocale] ?? {}) });
     setLocaleState(next);
     localStorage.setItem("logivya.locale", next);
+    document.cookie = `logivya.locale=${next}; path=/; max-age=31536000; samesite=lax`;
     document.documentElement.lang = next;
     document.documentElement.dir = rtlLocales.includes(next) ? "rtl" : "ltr";
   }, []);
   useEffect(() => {
     const stored = localStorage.getItem("logivya.locale") as Locale | null;
-    const initialLocale = stored && locales.includes(stored) ? stored : fallbackLocale;
+    const browserLocale = navigator.language.split("-")[0] as Locale;
+    const initialLocale = stored && locales.includes(stored) ? stored : locales.includes(browserLocale) ? browserLocale : fallbackLocale;
     queueMicrotask(() => void loadLocale(initialLocale));
   }, [loadLocale]);
   const t = useCallback((key: string, variables: Record<string, string | number> = {}) => {

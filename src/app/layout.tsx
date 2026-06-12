@@ -5,8 +5,9 @@ import "./globals.css";
 import { CookieConsent } from "@/components/cookie-consent";
 
 export const metadata: Metadata = {
-  title: "Logivya | Messaging Operations",
+  title: "Logivya",
   description: "Multi-tenant WhatsApp communication and campaign operations.",
+  icons: { icon: "/logivya/logivya.png", shortcut: "/logivya/logivya.png", apple: "/logivya/logivya.png" },
 };
 
 export default function RootLayout({

@@ -147,7 +147,7 @@ export function AccountsStablePage() {
         <div className="flex flex-wrap gap-2">
           {reconnectable.includes(account.status) && <button className={primary} onClick={() => openExisting(account)}>Yeniden bağla</button>}
           {account.archivedAt ? <button className={btn} onClick={() => void request(`/api/accounts/${account.id}/action`, { action: "restore" })}>Geri yükle</button> : account.status === "CONNECTED" && <button className={btn} onClick={() => void request(`/api/accounts/whatsapp/${account.id}/sync-groups`)}><RefreshCw className="size-4" />Grupları eşitle</button>}
-          <button className={btn} onClick={() => void request(`/api/accounts/whatsapp/${account.id}/cancel`)}>{account._count.recipients ? <Archive className="size-4" /> : <Trash2 className="size-4" />}</button>
+          <button className={btn} onClick={() => void request(`/api/accounts/whatsapp/${account.id}/cancel`)}>{account._count.recipients ? <><Archive className="size-4" />Arşivle</> : <><Trash2 className="size-4" />Sil</>}</button>
         </div>
       </article>)}
     </div>}

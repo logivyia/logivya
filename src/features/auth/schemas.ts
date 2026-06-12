@@ -2,10 +2,9 @@ import { z } from "zod";
 
 export const registerSchema = z.object({
   name: z.string().min(2, "validation.required").max(100),
-  username: z.string().min(3, "validation.required").max(40).regex(/^[a-z0-9._-]+$/i, "validation.invalid"),
   email: z.string().email("validation.email"),
   phone: z.string().min(7, "validation.phone").max(30, "validation.phone"),
-  companyName: z.string().min(2, "validation.required").max(120),
+  companyName: z.string().max(120).optional().default(""),
   password: z.string().min(12, "validation.password").max(128).regex(/[A-Z]/, "validation.password").regex(/[a-z]/, "validation.password").regex(/\d/, "validation.password").regex(/[^A-Za-z0-9]/, "validation.password"),
   passwordConfirmation: z.string(),
   termsAccepted: z.literal("on"),

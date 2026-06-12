@@ -1,9 +1,8 @@
-export const locales = ["tr", "en", "de", "ru", "az", "ar", "ku", "bs", "sr", "hr", "sq", "mk", "bg", "ro", "ka"] as const;
+export const locales = ["tr", "en", "de", "ar", "ru", "zh", "az", "ro", "sr", "hr", "fa"] as const;
 export type Locale = (typeof locales)[number];
 export const fallbackLocale: Locale = "tr";
-export const rtlLocales: readonly Locale[] = ["ar"];
+export const rtlLocales: readonly Locale[] = ["ar", "fa"];
 export const localeNames: Record<Locale, string> = {
-  tr: "Türkçe", en: "English", de: "Deutsch", ru: "Русский", az: "Azərbaycan", ar: "العربية",
-  ku: "Kurdî", bs: "Bosanski", sr: "Srpski", hr: "Hrvatski", sq: "Shqip", mk: "Македонски",
-  bg: "Български", ro: "Română", ka: "ქართული",
+  tr: "TÜRKÇE", en: "İNGİLİZCE", de: "ALMANCA", ar: "ARAPÇA", ru: "RUSÇA",
+  zh: "ÇİNCE", az: "AZERBAYCANCA", ro: "ROMANCA", sr: "SIRBİSTAN", hr: "HIRVATİSTAN", fa: "İRAN",
 };

@@ -1,0 +1,32 @@
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+import { LoaderCircle, Save } from "lucide-react";
+
+type Data = {
+  company: { name: string; phone?: string; address?: string; taxOffice?: string; taxNumber?: string };
+  billing?: { country?: string; city?: string; district?: string; postalCode?: string };
+};
+const fields = [
+  ["companyName", "Şirket Adı", true], ["phone", "Telefon", true], ["address", "Şirket Adresi", true],
+  ["taxOffice", "Vergi Dairesi", true], ["taxNumber", "Vergi Numarası", true], ["city", "İl", true],
+  ["district", "İlçe", false], ["country", "Ülke", true], ["postalCode", "Posta Kodu", false],
+] as const;
+
+export function CompanySettingsPage() {
+  const [data, setData] = useState<Data | null>(null);
+  const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { void fetch("/api/settings/company").then((response) => response.json()).then(setData); }, []);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setSaving(true); setStatus("");
+    const form = new FormData(event.currentTarget);
+    const response = await fetch("/api/settings/company", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(Object.fromEntries(form.entries())) });
+    const result = await response.json();
+    setStatus(response.ok ? "Şirket bilgileri kaydedildi." : result.error || "Bilgiler kaydedilemedi.");
+    setSaving(false);
+  }
+  if (!data) return <LoaderCircle className="size-6 animate-spin text-orange-500" />;
+  const values: Record<string, string> = { companyName: data.company.name, phone: data.company.phone || "", address: data.company.address || "", taxOffice: data.company.taxOffice || "", taxNumber: data.company.taxNumber || "", city: data.billing?.city || "", district: data.billing?.district || "", country: data.billing?.country || "TR", postalCode: data.billing?.postalCode || "" };
+  return <><header className="mb-7"><p className="text-xs font-semibold uppercase tracking-[.2em] text-orange-500">Yönetim</p><h1 className="mt-2 text-3xl font-semibold">Şirket Bilgileri</h1><p className="mt-2 text-sm text-muted">Şirket ve fatura adresi bilgilerinizi yönetin.</p></header><form onSubmit={submit} className="rounded-2xl border bg-card p-6 shadow-[0_18px_60px_rgba(0,0,0,.06)]"><div className="grid gap-5 md:grid-cols-2">{fields.map(([name, label, required]) => <label key={name} className={name === "address" ? "md:col-span-2" : ""}><span className="mb-2 block text-xs font-medium">{label}</span><input required={required} name={name} defaultValue={values[name]} inputMode={name === "phone" || name === "taxNumber" ? "numeric" : undefined} className="w-full rounded-xl border bg-white px-3 py-3 text-sm outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100" /></label>)}</div><button disabled={saving} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{saving ? <LoaderCircle className="size-4 animate-spin" /> : <Save className="size-4" />}Bilgileri kaydet</button>{status && <p className="mt-4 text-sm text-muted">{status}</p>}</form></>;
+}
