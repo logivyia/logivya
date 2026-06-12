@@ -32,6 +32,7 @@ export function AppShell({ children, userName, subscription, isPlatformAdmin=fal
   useEffect(()=>{void fetch("/api/notifications").then(r=>r.json()).then(value=>{setNoticeItems(value.notifications||[]);setUnread(value.unread||0)})},[]);
   const trialDays=subscription?.trialEndsAt?Math.max(0,Math.ceil((new Date(subscription.trialEndsAt).getTime()-currentTime)/86400000)):0;
   const banner=subscription?.status==="TRIALING"?`Deneme süreniz devam ediyor. Kalan süre: ${trialDays} gün.`:subscription?.status==="ACTIVE"?`Aktif Paket: ${subscription.planName}`:"Aboneliğiniz aktif değil. Mesaj göndermek için paketinizi yenileyin.";
+  if(pathname.startsWith("/admin"))return <>{children}</>;
 
   return <div className="min-h-screen lg:grid lg:grid-cols-[252px_1fr]">
     {open && <button className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setOpen(false)} aria-label={t("common.closeMenu")} />}

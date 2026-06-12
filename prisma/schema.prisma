@@ -342,6 +342,17 @@ enum AnnouncementType {
   FEATURE
 }
 
+enum PlatformAdminRole {
+  SUPER_ADMIN
+  PLATFORM_ADMIN
+  SECURITY_ADMIN
+  COMPLIANCE_ADMIN
+  BILLING_ADMIN
+  SUPPORT_ADMIN
+  OPERATIONS_ADMIN
+  READ_ONLY_ADMIN
+}
+
 enum CompanySecurityStatus {
   ACTIVE
   DISABLED
@@ -389,6 +400,8 @@ model User {
   referralCodes                  ReferralCode[]
   referredSignups                ReferralSignup[]          @relation("ReferredUser")
   emailDeliveries                EmailDeliveryLog[]
+  platformAdmin                  PlatformAdmin?
+  adminAccessLogs                AdminAccessLog[]
   manuallyActivatedSubscriptions Subscription[]           @relation("ManualSubscriptionActivator")
   subscriptionEvents             SubscriptionEvent[]
   createdAt                      DateTime                 @default(now())
@@ -1754,4 +1767,48 @@ model FeatureFlag {
   rolloutPercentage Int      @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+model PlatformAdmin {
+  id                 String            @id @default(cuid())
+  userId             String            @unique
+  role               PlatformAdminRole
+  permissions        String[]
+  isActive           Boolean           @default(true)
+  requiresMfa        Boolean           @default(true)
+  lastElevatedAt     DateTime?
+  createdByUserId    String?
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([role, isActive])
+}
+
+model PlatformAdminInvite {
+  id             String            @id @default(cuid())
+  email          String            @unique
+  name           String
+  role           PlatformAdminRole @default(SUPER_ADMIN)
+  tokenHash      String            @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime          @default(now())
+}
+
+model AdminAccessLog {
+  id             String   @id @default(cuid())
+  userId         String
+  path           String
+  method         String
+  purpose        String?
+  permission     String?
+  sensitive      Boolean  @default(false)
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([sensitive, createdAt])
 }

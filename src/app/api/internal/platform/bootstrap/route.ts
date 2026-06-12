@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server";import { ensureInitialPlatformAdminInvite } from "@/server/auth/platform-bootstrap";
+export async function POST(request:Request){if(request.headers.get("authorization")!==`Bearer ${process.env.CRON_SECRET}`)return NextResponse.json({error:"UNAUTHORIZED"},{status:401});const invite=await ensureInitialPlatformAdminInvite();return NextResponse.json({created:Boolean(invite),email:invite?.email});}
