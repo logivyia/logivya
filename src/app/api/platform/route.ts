@@ -11,7 +11,7 @@ export async function GET() {
         include: { _count: { select: { groups: true, contacts: true } }, sessions: { orderBy: { updatedAt: "desc" }, take: 1 } },
         orderBy: { createdAt: "desc" }, take: 100,
       }),
-      prisma.whatsAppGroup.findMany({ where: { companyId: company.id, isArchived: false }, include: { account: { select: { label: true } }, categories: { include: { category: true } } }, orderBy: { name: "asc" }, take: 1000 }),
+      prisma.whatsAppGroup.findMany({ where: { companyId: company.id, isArchived: false, canSend: true, account: { archivedAt: null, status: "CONNECTED" } }, include: { account: { select: { label: true } }, categories: { include: { category: true } } }, orderBy: { name: "asc" }, take: 1000 }),
       prisma.category.findMany({ where: { companyId: company.id, archivedAt: null }, include: { _count: { select: { groups: true } }, groups: { select: { groupId: true } } }, orderBy: { name: "asc" }, take: 200 }),
       prisma.messageCampaign.findMany({ where: { companyId: company.id, deletedAt: null }, orderBy: { createdAt: "desc" }, take: 20 }),
       prisma.subscription.findFirst({ where: { companyId: company.id }, include: { plan: true }, orderBy: { createdAt: "desc" } }),

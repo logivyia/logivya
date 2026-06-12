@@ -19,7 +19,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const permission = ["archive", "restore"].includes(parsed.data.action) ? "archive_accounts" : parsed.data.action === "disconnect" ? "disconnect_accounts" : "manage_accounts";
     requirePermission(membership.role, permission);
     if (parsed.data.action === "archive") {
-      await prisma.whatsAppAccount.update({ where: { id }, data: { archivedAt: new Date(), status: "ARCHIVED" } });
+      await prisma.$transaction([
+        prisma.whatsAppAccount.update({ where: { id }, data: { archivedAt: new Date(), status: "ARCHIVED" } }),
+        prisma.whatsAppGroup.updateMany({ where: { accountId: id }, data: { isArchived: true } }),
+      ]);
       await prisma.notification.create({ data: { companyId: company.id, userId: user.id, type: "ACCOUNT_ARCHIVED", title: "WhatsApp hesabı arşivlendi", message: `${account.label} arşivlendi.` } });
     } else if (parsed.data.action === "restore") {
       await prisma.whatsAppAccount.update({ where: { id }, data: { archivedAt: null, status: "DISCONNECTED", lastError: null } });
