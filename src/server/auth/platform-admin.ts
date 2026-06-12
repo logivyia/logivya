@@ -20,7 +20,7 @@ export async function requirePlatformAdmin(permission="platform:read",request?:R
   const permissions=record?.permissions.length?record.permissions:[...(ADMIN_ROLE_PERMISSIONS[record?.role??"SUPER_ADMIN"]??[])];
   if(!fallback&&!permissions.includes("*")&&!permissions.includes(permission))throw new Error("FORBIDDEN");
   if(request)await prisma.adminAccessLog.create({data:{userId:context.user.id,path:new URL(request.url).pathname,method:request.method,permission,ipAddress:request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),userAgent:request.headers.get("user-agent")}});
-  return{...context,platformAdmin:record??{role:"SUPER_ADMIN" as const,permissions:["*"],isActive:true,requiresMfa:true}};
+  return{...context,platformAdmin:record??{role:"SUPER_ADMIN" as const,permissions:["*"],isActive:true,requiresMfa:true,lastElevatedAt:null}};
 }
 
 export async function requireCriticalAdminAction(request:Request,permission:string,reason?:string){
@@ -30,6 +30,8 @@ export async function requireCriticalAdminAction(request:Request,permission:stri
   if(context.platformAdmin.requiresMfa){
     const mfa=await prisma.mfaCredential.findFirst({where:{userId:context.user.id,verifiedAt:{not:null},revokedAt:null}});
     if(!mfa)throw new Error("ADMIN_MFA_REQUIRED");
+    const elevated=context.platformAdmin.lastElevatedAt;
+    if(!elevated||elevated<new Date(Date.now()-10*60_000))throw new Error("ADMIN_MFA_CONFIRMATION_REQUIRED");
   }
   return context;
 }
