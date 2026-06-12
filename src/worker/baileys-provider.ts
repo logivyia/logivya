@@ -125,7 +125,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     sockets.set(accountId, socket);
     const activated = await prisma.whatsAppAccount.updateMany({
       where: { id: accountId, archivedAt: null },
-      data: { status: mode === "PAIRING" ? "PENDING_PAIRING" : "CONNECTING", lastError: null },
+      data: { status: mode === "PAIRING" ? "PENDING_PAIRING" : "PENDING_QR", lastError: null },
     });
     if (!activated.count) {
       sockets.delete(accountId);
@@ -147,20 +147,21 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           const expiresAt = new Date(Date.now() + 60_000);
           await prisma.whatsAppSession.upsert({
             where: { id: accountId },
-            update: { qrCode, status: "QR_READY", expiresAt },
-            create: { id: accountId, accountId, qrCode, status: "QR_READY", expiresAt },
+            update: { qrCode, status: "PENDING_QR", expiresAt },
+            create: { id: accountId, accountId, qrCode, status: "PENDING_QR", expiresAt },
           });
-          await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "QR_READY", qrCode, qrExpiresAt: expiresAt, lastError: null } });
+          await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "PENDING_QR", qrCode, qrExpiresAt: expiresAt, lastError: null } });
+          await auditAccount(accountId, "whatsapp.qr.generated", { expiresAt: expiresAt.toISOString() });
         }
-        if (connection === "connecting" && currentMode === "PAIRING") {
-          await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null, status: "PAIRING_CODE_READY" }, data: { status: "CONNECTING" } });
+        if (connection === "connecting") {
+          await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null, status: { in: ["PAIRING_CODE_READY", "PENDING_QR"] } }, data: { status: "CONNECTING" } });
         }
         if (connection === "open") {
           const phoneNumber = socket.user?.id?.split(":")[0] || socket.user?.id?.split("@")[0];
           const updated = await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "CONNECTED", phoneNumber, displayName: socket.user?.name, lastConnectedAt: new Date(), qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null } });
           if (!updated.count) return;
           await prisma.whatsAppSession.updateMany({ where: { accountId }, data: { status: "CONNECTED", qrCode: null, expiresAt: null } });
-          await auditAccount(accountId, currentMode === "PAIRING" ? "whatsapp.pairing.connected" : "whatsapp.qr.connected", { phoneNumber });
+          await auditAccount(accountId, "whatsapp.connected", { phoneNumber, mode: currentMode });
           await this.syncGroups(accountId);
         }
         if (connection === "close") {
@@ -186,7 +187,8 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
             await auditAccount(accountId, "whatsapp.pairing.failed", { reason, code });
             return;
           }
-          const updated = await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: loggedOut ? "RECONNECT_REQUIRED" : "DISCONNECTED", lastDisconnectedAt: new Date(), lastError: lastDisconnect?.error instanceof Error ? lastDisconnect.error.message : "WhatsApp connection closed" } });
+          const updated = await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: loggedOut ? "RECONNECT_REQUIRED" : mode === "QR" ? "FAILED" : "DISCONNECTED", lastDisconnectedAt: new Date(), lastError: loggedOut ? "Bağlantı yeniden kurulmalı." : "Bağlantı başarısız oldu. Yeni kod veya QR ile tekrar deneyin." } });
+          await auditAccount(accountId, "whatsapp.failed", { code, loggedOut, mode: currentMode });
           if (updated.count && !loggedOut) setTimeout(() => void this.reconnect(accountId), 5000);
         }
       } catch (error) {
@@ -214,7 +216,8 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
   }
 
   async reconnect(accountId: string) {
-    await this.stopSocket(accountId, "Reconnect requested");
+    await this.clearTemporaryAuth(accountId);
+    await auditAccount(accountId, "whatsapp.session.cleaned");
     await this.createSession(accountId);
   }
 
@@ -230,6 +233,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       create: { companyId: account.companyId, accountId, externalGroupId: group.externalId, name: group.name, description: group.description, participantCount: group.participantCount, canSend: group.canSend, lastSyncedAt: new Date() },
     })));
     await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { lastSyncedAt: new Date() } });
+    await auditAccount(accountId, "whatsapp.groups.synced", { count: groups.length });
     return groups;
   }
 

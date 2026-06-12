@@ -8,6 +8,7 @@ import { writeAuditLog } from "@/server/security/audit";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { assertWhatsAppWorkerReachable } from "@/server/whatsapp/worker-health";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
+import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
 
 const schema = z.object({ label: z.string().min(2).max(80).optional() });
 export async function GET() {
@@ -28,14 +29,14 @@ export async function POST(request: Request) {
     await assertWhatsAppWorkerReachable();
     const access=await subscriptionAccess.canConnectWhatsAppAccount(company.id);
     if(!access.allowed)return NextResponse.json({error:access.reason,limit:access.limit},{status:403});
-    const account = await prisma.whatsAppAccount.create({ data: { companyId: company.id, label: parsed.data.label || null, provider: "baileys", status: "CONNECTING" } });
+    const account = await prisma.whatsAppAccount.create({ data: { companyId: company.id, label: parsed.data.label || null, provider: "baileys", status: "PENDING_QR" } });
     try {
       await whatsappQueue().add("connect", { action: "connect", accountId: account.id }, { jobId: `connect-${account.id}` });
     } catch (error) {
-      await prisma.whatsAppAccount.update({where:{id:account.id},data:{status:"ERROR",lastError:error instanceof Error?error.message:"Queue unavailable"}});
+      await prisma.whatsAppAccount.update({where:{id:account.id},data:{status:"FAILED",lastError:whatsappUserMessage(error,"qr")}});
       throw error;
     }
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.account.created", entityType: "WhatsAppAccount", entityId: account.id, after: { label: account.label } });
     return NextResponse.json({ account }, { status: 201 });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "errors.generic" }, { status: 503 }); }
+  } catch (error) { return NextResponse.json({ error: whatsappUserMessage(error, "qr") }, { status: 503 }); }
 }

@@ -5,6 +5,7 @@ import { prisma } from "@/server/db";
 import { whatsappQueue } from "@/server/queues/client";
 import { writeAuditLog } from "@/server/security/audit";
 import { assertWhatsAppWorkerReachable } from "@/server/whatsapp/worker-health";
+import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -21,6 +22,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: `whatsapp.${action}.requested`, entityType: "WhatsAppAccount", entityId: id });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "errors.generic" }, { status: 503 });
+    return NextResponse.json({ error: whatsappUserMessage(error, "sync") }, { status: 503 });
   }
 }

@@ -20,7 +20,7 @@ export async function waitForAccountQr(accountId: string) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId } });
     if (!account) throw new Error("NOT_FOUND");
-    if (account.status === "ERROR") throw new Error(account.lastError || "WhatsApp QR generation failed.");
+    if (["ERROR", "FAILED", "RECONNECT_REQUIRED"].includes(account.status)) throw new Error(account.lastError || "WhatsApp QR generation failed.");
     if (account.qrCode && account.qrExpiresAt && account.qrExpiresAt > new Date()) return account;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }

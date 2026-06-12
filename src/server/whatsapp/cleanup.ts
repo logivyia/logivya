@@ -10,7 +10,7 @@ export async function cleanupStuckWhatsAppAccounts(companyId?: string) {
       updatedAt: { lt: cutoff },
     },
     data: {
-      status: "ERROR",
+      status: "FAILED",
       lastError: "Bağlantı denemesinin süresi doldu. Lütfen tekrar deneyin.",
       qrCode: null,
       qrExpiresAt: null,

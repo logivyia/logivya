@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
+import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -22,7 +23,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       displayName: account.displayName,
       groupCount: account._count.groups,
       contactCount: account._count.contacts,
-      lastError: account.lastError,
+      lastError: account.lastError ? whatsappUserMessage(account.lastError, account.pairingCode ? "pairing" : "connection") : null,
       lastSyncedAt: account.lastSyncedAt,
     });
   } catch {

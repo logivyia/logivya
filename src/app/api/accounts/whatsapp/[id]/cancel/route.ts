@@ -3,6 +3,7 @@ import { requirePermission } from "@/server/auth/permissions";
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/security/audit";
+import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -16,6 +17,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.connection.canceled", entityType: "WhatsAppAccount", entityId: id });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "errors.generic" }, { status: 403 });
+    return NextResponse.json({ error: whatsappUserMessage(error) }, { status: 403 });
   }
 }

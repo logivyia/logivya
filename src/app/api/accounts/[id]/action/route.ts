@@ -5,6 +5,7 @@ import { prisma } from "@/server/db";
 import { whatsappQueue } from "@/server/queues/client";
 import { requirePermission } from "@/server/auth/permissions";
 import { writeAuditLog } from "@/server/security/audit";
+import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
 
 const schema = z.object({ action: z.enum(["sync", "disconnect", "reconnect", "archive", "restore"]) });
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -25,7 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     } else {
       await whatsappQueue().add(parsed.data.action, { action: parsed.data.action, accountId: id }, { jobId: `${parsed.data.action}-${id}-${Date.now()}` });
     }
-    await writeAuditLog(request, { companyId: company.id, userId: user.id, action: `whatsapp.account.${parsed.data.action}`, entityType: "WhatsAppAccount", entityId: id, before: { status: account.status }, after: { requestedAction: parsed.data.action } });
+    await writeAuditLog(request, { companyId: company.id, userId: user.id, action: parsed.data.action === "reconnect" ? "whatsapp.reconnect.requested" : `whatsapp.account.${parsed.data.action}`, entityType: "WhatsAppAccount", entityId: id, before: { status: account.status }, after: { requestedAction: parsed.data.action } });
     return NextResponse.json({ ok: true });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "errors.generic" }, { status: 503 }); }
+  } catch (error) { return NextResponse.json({ error: whatsappUserMessage(error) }, { status: 503 }); }
 }
