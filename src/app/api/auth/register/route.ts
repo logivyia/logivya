@@ -25,6 +25,14 @@ export async function POST(request: Request) {
     await tx.subscriptionEvent.create({data:{companyId:company.id,subscriptionId:subscription.id,actorUserId:user.id,type:"TRIAL_STARTED",message:"3 günlük ücretsiz deneme başlatıldı."}});
     await tx.notification.create({data:{companyId:company.id,userId:user.id,type:"TRIAL_STARTED",title:"Deneme paketi başladı",message:"3 günlük ücretsiz denemeniz başladı."}});
     await tx.companyBillingProfile.create({ data: { companyId: company.id, billingType: "COMPANY", companyName: company.name, country: "TR", city: "-", addressLine1: "-", billingEmail: user.email } });
+    await tx.onboardingChecklist.create({data:{companyId:company.id}});
+    await tx.consentRecord.createMany({data:[
+      {userId:user.id,type:"TERMS_OF_SERVICE",version:"2026-06-12",granted:true,ipAddress:request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),userAgent:request.headers.get("user-agent")},
+      {userId:user.id,type:"PRIVACY_POLICY",version:"2026-06-12",granted:true,ipAddress:request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),userAgent:request.headers.get("user-agent")},
+      {userId:user.id,type:"KVKK",version:"2026-06-12",granted:true,ipAddress:request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),userAgent:request.headers.get("user-agent")},
+      ...(input.marketingAccepted?[{userId:user.id,type:"MARKETING" as const,version:"2026-06-12",granted:true,ipAddress:request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),userAgent:request.headers.get("user-agent")}]:[]),
+    ]});
+    if(input.referralCode){const referral=await tx.referralCode.findFirst({where:{code:input.referralCode,isActive:true}});if(referral)await tx.referralSignup.create({data:{referralCodeId:referral.id,referredUserId:user.id,referredCompanyId:company.id}})}
     await tx.auditLog.create({ data: { companyId: company.id, userId: user.id, action: "workspace.registered", entityType: "Company", entityId: company.id, ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(), userAgent: request.headers.get("user-agent") } });
     return { user, company };
   });

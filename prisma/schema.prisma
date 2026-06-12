@@ -297,7 +297,49 @@ enum DataRequestStatus {
 enum ConsentType {
   PRIVACY_POLICY
   TERMS_OF_SERVICE
+  KVKK
   MARKETING
+}
+
+enum SupportTicketStatus {
+  OPEN
+  PENDING
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SupportSenderType {
+  CUSTOMER
+  ADMIN
+  SYSTEM
+}
+
+enum EmailDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum ReferralSignupStatus {
+  PENDING
+  QUALIFIED
+  CONVERTED
+  REJECTED
+}
+
+enum AnnouncementType {
+  INFO
+  WARNING
+  MAINTENANCE
+  FEATURE
 }
 
 enum CompanySecurityStatus {
@@ -315,6 +357,8 @@ model User {
   passwordHash                   String
   avatarUrl                      String?
   locale                         String                   @default("en")
+  timezone                       String                   @default("Europe/Istanbul")
+  country                        String                   @default("TR")
   theme                          String                   @default("system")
   status                         UserStatus               @default(ACTIVE)
   ownedCompanies                 Company[]                @relation("CompanyOwner")
@@ -339,6 +383,12 @@ model User {
   passwordResetTokens            PasswordResetToken[]
   emailVerificationTokens        EmailVerificationToken[]
   mfaCredentials                 MfaCredential[]
+  createdSupportTickets          SupportTicket[]          @relation("SupportTicketCreator")
+  assignedSupportTickets         SupportTicket[]          @relation("SupportTicketAssignee")
+  supportMessages                SupportTicketMessage[]
+  referralCodes                  ReferralCode[]
+  referredSignups                ReferralSignup[]          @relation("ReferredUser")
+  emailDeliveries                EmailDeliveryLog[]
   manuallyActivatedSubscriptions Subscription[]           @relation("ManualSubscriptionActivator")
   subscriptionEvents             SubscriptionEvent[]
   createdAt                      DateTime                 @default(now())
@@ -396,10 +446,21 @@ model Company {
   idempotencyKeys    IdempotencyKey[]
   apiUsageLogs       ApiUsageLog[]
   incidentLogs       IncidentLog[]
+  supportTickets     SupportTicket[]
+  internalNotes      CompanyInternalNote[]
+  onboarding         OnboardingChecklist?
+  branding           BrandingSettings?
+  referralCodes      ReferralCode[]
+  referredSignups    ReferralSignup[]            @relation("ReferredCompany")
+  emailDeliveries    EmailDeliveryLog[]
   securityStatus     CompanySecurityStatus     @default(ACTIVE)
   billingLockedAt    DateTime?
   campaignsPausedAt  DateTime?
   retentionDays      Int                       @default(90)
+  defaultLanguage    String                    @default("tr")
+  defaultTimezone    String                    @default("Europe/Istanbul")
+  defaultCurrency    String                    @default("TRY")
+  defaultCountry     String                    @default("TR")
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
 
@@ -1544,4 +1605,153 @@ model IncidentLog {
   company     Company?              @relation(fields: [companyId], references: [id])
 
   @@index([severity, status, startedAt])
+}
+
+model SupportTicket {
+  id                String                @id @default(cuid())
+  companyId         String
+  createdById       String
+  assignedToAdminId String?
+  subject           String
+  type              String
+  status            SupportTicketStatus   @default(OPEN)
+  priority          SupportTicketPriority @default(MEDIUM)
+  lastMessageAt     DateTime              @default(now())
+  closedAt          DateTime?
+  company           Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy         User                  @relation("SupportTicketCreator", fields: [createdById], references: [id])
+  assignedToAdmin   User?                 @relation("SupportTicketAssignee", fields: [assignedToAdminId], references: [id])
+  messages          SupportTicketMessage[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([companyId, status, lastMessageAt])
+  @@index([status, priority, lastMessageAt])
+}
+
+model SupportTicketMessage {
+  id           String            @id @default(cuid())
+  ticketId     String
+  senderUserId String?
+  senderType   SupportSenderType
+  message      String
+  attachmentUrl String?
+  isInternal   Boolean           @default(false)
+  ticket       SupportTicket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderUser   User?             @relation(fields: [senderUserId], references: [id])
+  createdAt    DateTime          @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+model CompanyInternalNote {
+  id          String   @id @default(cuid())
+  companyId   String
+  adminUserId String
+  note        String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([companyId, createdAt])
+}
+
+model OnboardingChecklist {
+  id                      String   @id @default(cuid())
+  companyId               String   @unique
+  companyProfileCompleted Boolean  @default(false)
+  whatsappConnected       Boolean  @default(false)
+  groupsSynced             Boolean  @default(false)
+  categoryCreated          Boolean  @default(false)
+  firstMessageSent        Boolean  @default(false)
+  completedAt             DateTime?
+  company                 Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+model EmailDeliveryLog {
+  id         String              @id @default(cuid())
+  companyId  String?
+  userId     String?
+  template   String
+  recipient  String
+  provider   String
+  status     EmailDeliveryStatus @default(PENDING)
+  providerId String?
+  errorCode  String?
+  sentAt     DateTime?
+  company    Company?            @relation(fields: [companyId], references: [id])
+  user       User?               @relation(fields: [userId], references: [id])
+  createdAt  DateTime            @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([status, createdAt])
+}
+
+model ReferralCode {
+  id        String           @id @default(cuid())
+  userId    String
+  companyId String
+  code      String           @unique
+  isActive  Boolean          @default(true)
+  user      User             @relation(fields: [userId], references: [id])
+  company   Company          @relation(fields: [companyId], references: [id])
+  signups   ReferralSignup[]
+  createdAt DateTime         @default(now())
+
+  @@index([companyId, isActive])
+}
+
+model ReferralSignup {
+  id                String               @id @default(cuid())
+  referralCodeId    String
+  referredUserId    String
+  referredCompanyId String
+  status            ReferralSignupStatus @default(PENDING)
+  referralCode      ReferralCode         @relation(fields: [referralCodeId], references: [id])
+  referredUser      User                 @relation("ReferredUser", fields: [referredUserId], references: [id])
+  referredCompany   Company              @relation("ReferredCompany", fields: [referredCompanyId], references: [id])
+  createdAt         DateTime             @default(now())
+
+  @@unique([referralCodeId, referredUserId])
+}
+
+model BrandingSettings {
+  id                  String   @id @default(cuid())
+  companyId           String   @unique
+  customDomain        String?
+  logoUrl             String?
+  primaryColor        String?
+  secondaryColor      String?
+  hideLogivyaBranding Boolean  @default(false)
+  emailFromName       String?
+  emailFromAddress    String?
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Announcement {
+  id        String           @id @default(cuid())
+  title     String
+  message   String
+  type      AnnouncementType @default(INFO)
+  startsAt  DateTime
+  endsAt    DateTime?
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([isActive, startsAt, endsAt])
+}
+
+model FeatureFlag {
+  id                String   @id @default(cuid())
+  key               String   @unique
+  name              String
+  description       String?
+  isEnabled         Boolean  @default(false)
+  rolloutPercentage Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }

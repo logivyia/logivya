@@ -1,0 +1,1 @@
+import { LegalPage } from "@/components/legal-page";export default function Page(){return <LegalPage title="Kullanım Koşulları"><p>Logivya yalnızca hukuka uygun ve alıcı izinlerine uygun mesajlaşma operasyonlarında kullanılabilir.</p><p>Spam, kötüye kullanım, yetkisiz erişim ve platform güvenliğini riske atan faaliyetler yasaktır.</p></LegalPage>}

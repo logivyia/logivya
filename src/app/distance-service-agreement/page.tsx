@@ -1,0 +1,1 @@
+import { LegalPage } from "@/components/legal-page";export default function Page(){return <LegalPage title="Mesafeli Hizmet Sözleşmesi"><p>Abonelik planı, dönem, ücret, iptal ve hizmet kapsamı satın alma öncesinde kullanıcıya sunulur.</p></LegalPage>}

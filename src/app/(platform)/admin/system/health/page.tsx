@@ -1,0 +1,1 @@
+import { SystemHealthPage } from "@/components/operations-pages";import { requirePlatformAdmin } from "@/server/auth/platform-admin";export default async function Page(){await requirePlatformAdmin();return <SystemHealthPage/>}

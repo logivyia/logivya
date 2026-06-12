@@ -1,0 +1,1 @@
+import { SupportPage } from "@/components/operations-pages";export default function Page(){return <SupportPage/>}

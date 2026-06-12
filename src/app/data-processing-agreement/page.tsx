@@ -1,0 +1,1 @@
+import { LegalPage } from "@/components/legal-page";export default function Page(){return <LegalPage title="Veri İşleme Sözleşmesi"><p>Logivya, müşteri adına işlenen veriler için veri işleyen olarak güvenlik, gizlilik ve erişim kontrolü yükümlülüklerini uygular.</p></LegalPage>}

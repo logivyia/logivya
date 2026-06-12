@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server";import Redis from "ioredis";
+export async function GET(){const started=Date.now(),redis=new Redis(process.env.REDIS_URL||"",{lazyConnect:true,maxRetriesPerRequest:1});try{await redis.connect();await redis.ping();return NextResponse.json({service:"logivya-redis",status:"healthy",latencyMs:Date.now()-started})}catch{return NextResponse.json({service:"logivya-redis",status:"unhealthy"},{status:503})}finally{redis.disconnect()}}

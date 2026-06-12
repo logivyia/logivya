@@ -1,0 +1,1 @@
+import { LegalPage } from "@/components/legal-page";export default function Page(){return <LegalPage title="Cookie Politikası"><p>Zorunlu cookie&apos;ler oturum ve güvenlik için kullanılır. Analitik ve pazarlama cookie&apos;leri yalnızca kullanıcı tercihiyle etkinleştirilir.</p></LegalPage>}

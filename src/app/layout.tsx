@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ThemeProvider } from "@/components/theme-provider";
 import { I18nProvider } from "@/i18n/provider";
 import "./globals.css";
+import { CookieConsent } from "@/components/cookie-consent";
 
 export const metadata: Metadata = {
   title: "Logivya | Messaging Operations",
@@ -16,7 +17,7 @@ export default function RootLayout({
   return (
     <html lang="tr" suppressHydrationWarning>
       <body>
-        <ThemeProvider><I18nProvider>{children}</I18nProvider></ThemeProvider>
+        <ThemeProvider><I18nProvider>{children}<CookieConsent/></I18nProvider></ThemeProvider>
       </body>
     </html>
   );
