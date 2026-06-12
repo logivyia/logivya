@@ -8,7 +8,7 @@ import { writeAuditLog } from "@/server/security/audit";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
-import { findReusableWhatsAppAccount } from "@/server/whatsapp/reusable-account";
+import { findReusableWhatsAppAccount, findSingleSlotWhatsAppAccount } from "@/server/whatsapp/reusable-account";
 import { assertWhatsAppWorkerReachable, waitForPairingCode } from "@/server/whatsapp/worker-health";
 
 export async function POST(request: Request) {
@@ -23,14 +23,17 @@ export async function POST(request: Request) {
     await assertWhatsAppWorkerReachable();
 
     let account = await findReusableWhatsAppAccount(company.id);
+    if (!account) {
+      const access = await subscriptionAccess.canConnectWhatsAppAccount(company.id);
+      if (!access.allowed) account = await findSingleSlotWhatsAppAccount(company.id, access.limit);
+      if (!account && !access.allowed) return NextResponse.json({ error: access.reason, limit: access.limit }, { status: 403 });
+    }
     if (account) {
       account = await prisma.whatsAppAccount.update({
         where: { id: account.id },
         data: { phoneNumber, status: "PENDING_PAIRING", qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null },
       });
     } else {
-      const access = await subscriptionAccess.canConnectWhatsAppAccount(company.id);
-      if (!access.allowed) return NextResponse.json({ error: access.reason, limit: access.limit }, { status: 403 });
       account = await prisma.whatsAppAccount.create({
         data: { companyId: company.id, label: null, phoneNumber, provider: process.env.WHATSAPP_PROVIDER || "baileys", status: "PENDING_PAIRING" },
       });

@@ -20,3 +20,11 @@ export function findReusableWhatsAppAccount(companyId: string) {
     orderBy: { updatedAt: "desc" },
   });
 }
+
+export async function findSingleSlotWhatsAppAccount(companyId: string, accountLimit: number) {
+  if (accountLimit !== 1) return null;
+  return prisma.whatsAppAccount.findFirst({
+    where: { companyId, archivedAt: null },
+    orderBy: { updatedAt: "desc" },
+  });
+}
