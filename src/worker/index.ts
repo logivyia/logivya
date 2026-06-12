@@ -93,13 +93,19 @@ new Worker(QUEUES.message, async (job) => {
 
 async function recoverSessions() {
   const recoverableAccounts = await prisma.whatsAppAccount.findMany({
-    where: { archivedAt: null, status: { in: ["PENDING_QR", "QR_READY", "CONNECTING", "CONNECTED", "DISCONNECTED"] } },
+    where: { archivedAt: null, status: { in: ["PENDING_QR", "QR_READY", "CONNECTING", "CONNECTED", "DISCONNECTED", "RECONNECT_REQUIRED"] } },
     select: { id: true, pairingCode: true },
   });
   for (const account of recoverableAccounts) {
     if (account.pairingCode) continue;
     const sessionRoot = process.env.WHATSAPP_SESSION_DIR || path.join(process.cwd(), "sessions");
-    try { await access(path.join(sessionRoot, account.id, "creds.json")); } catch { continue; }
+    try { await access(path.join(sessionRoot, account.id, "creds.json")); } catch {
+      await prisma.whatsAppAccount.updateMany({
+        where: { id: account.id, archivedAt: null, status: { in: ["CONNECTED", "CONNECTING", "DISCONNECTED", "RECONNECT_REQUIRED"] } },
+        data: { status: "RECONNECT_REQUIRED", lastError: "WhatsApp bağlantısını QR kod veya telefon koduyla yeniden kurun." },
+      });
+      continue;
+    }
     void provider.createSession(account.id).catch((error) => console.error("WhatsApp session recovery failed", account.id, error));
   }
 }

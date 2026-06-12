@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { access, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState, type WASocket } from "@whiskeysockets/baileys";
 import { Prisma } from "@prisma/client";
@@ -12,6 +12,7 @@ import type { GroupResult, SendGroupMessageInput, SendResult, SessionResult, Wha
 const sockets = new Map<string, WASocket>();
 const manuallyDisconnected = new Set<string>();
 const sessionModes = new Map<string, "QR" | "PAIRING">();
+const sessionRestarts = new Map<string, Promise<WASocket>>();
 const sessionRoot = path.resolve(process.env.WHATSAPP_SESSION_DIR || path.join(process.cwd(), "sessions"));
 
 async function auditAccount(accountId: string, action: string, metadata: Record<string, unknown> = {}) {
@@ -29,6 +30,54 @@ function accountSessionDirectory(accountId: string) {
 }
 
 export class BaileysWhatsAppProvider implements WhatsAppProvider {
+  private async waitForConnectedSocket(accountId: string, timeoutMs = 20_000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const socket = sockets.get(accountId);
+      if (socket?.user) return socket;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    throw new Error("WHATSAPP_SESSION_CONNECTION_TIMEOUT");
+  }
+
+  private async ensureConnectedSocket(accountId: string) {
+    const activeSocket = sockets.get(accountId);
+    if (activeSocket?.user) return activeSocket;
+
+    const existingRestart = sessionRestarts.get(accountId);
+    if (existingRestart) return existingRestart;
+
+    const restart = (async () => {
+      const account = await prisma.whatsAppAccount.findUnique({
+        where: { id: accountId },
+        select: { id: true, archivedAt: true },
+      });
+      if (!account || account.archivedAt) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
+
+      try {
+        await access(path.join(accountSessionDirectory(accountId), "creds.json"));
+      } catch {
+        await prisma.whatsAppAccount.updateMany({
+          where: { id: accountId, archivedAt: null },
+          data: { status: "RECONNECT_REQUIRED", lastError: "WhatsApp bağlantısını QR kod veya telefon koduyla yeniden kurun." },
+        });
+        throw new Error("WHATSAPP_RECONNECT_REQUIRED");
+      }
+
+      logger.info("whatsapp.session.recovery_started", { accountId });
+      if (!sockets.has(accountId)) {
+        const { initialized } = await this.startSession(accountId, "QR");
+        await initialized;
+      }
+      const socket = await this.waitForConnectedSocket(accountId);
+      logger.info("whatsapp.session.recovery_completed", { accountId });
+      return socket;
+    })().finally(() => sessionRestarts.delete(accountId));
+
+    sessionRestarts.set(accountId, restart);
+    return restart;
+  }
+
   private async stopSocket(accountId: string, reason: string) {
     const socket = sockets.get(accountId);
     if (socket) {
@@ -125,7 +174,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     sockets.set(accountId, socket);
     const activated = await prisma.whatsAppAccount.updateMany({
       where: { id: accountId, archivedAt: null },
-      data: { status: mode === "PAIRING" ? "PENDING_PAIRING" : "PENDING_QR", lastError: null },
+      data: { status: state.creds.registered ? "CONNECTING" : mode === "PAIRING" ? "PENDING_PAIRING" : "PENDING_QR", lastError: null },
     });
     if (!activated.count) {
       sockets.delete(accountId);
@@ -187,9 +236,22 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
             await auditAccount(accountId, "whatsapp.pairing.failed", { reason, code });
             return;
           }
-          const updated = await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: loggedOut ? "RECONNECT_REQUIRED" : mode === "QR" ? "FAILED" : "DISCONNECTED", lastDisconnectedAt: new Date(), lastError: loggedOut ? "Bağlantı yeniden kurulmalı." : "Bağlantı başarısız oldu. Yeni kod veya QR ile tekrar deneyin." } });
+          const updated = await prisma.whatsAppAccount.updateMany({
+            where: { id: accountId, archivedAt: null },
+            data: {
+              status: loggedOut ? "RECONNECT_REQUIRED" : state.creds.registered ? "DISCONNECTED" : "FAILED",
+              lastDisconnectedAt: new Date(),
+              lastError: loggedOut ? "Bağlantı yeniden kurulmalı." : state.creds.registered ? "Bağlantı geçici olarak kesildi. Yeniden bağlanılıyor." : "Bağlantı başarısız oldu. Yeni kod veya QR ile tekrar deneyin.",
+            },
+          });
           await auditAccount(accountId, "whatsapp.failed", { code, loggedOut, mode: currentMode });
-          if (updated.count && !loggedOut) setTimeout(() => void this.reconnect(accountId), 5000);
+          if (updated.count && !loggedOut && state.creds.registered) {
+            setTimeout(() => {
+              void this.startSession(accountId, "QR")
+                .then(({ initialized }) => initialized)
+                .catch((error) => logger.error("whatsapp.session.auto_reconnect_failed", error, { accountId }));
+            }, 5_000);
+          }
         }
       } catch (error) {
         if (sockets.get(accountId) === socket) sockets.delete(accountId);
@@ -222,8 +284,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
   }
 
   async syncGroups(accountId: string): Promise<GroupResult[]> {
-    const socket = sockets.get(accountId);
-    if (!socket) throw new Error("WhatsApp session is not active");
+    const socket = await this.ensureConnectedSocket(accountId);
     const metadata = await socket.groupFetchAllParticipating();
     const groups = Object.values(metadata).map((group) => ({ externalId: group.id, name: group.subject, description: group.desc, participantCount: group.participants.length, canSend: !group.announce }));
     const account = await prisma.whatsAppAccount.findUniqueOrThrow({ where: { id: accountId } });
@@ -239,10 +300,10 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
 
   async sendGroupMessage(input: SendGroupMessageInput): Promise<SendResult> {
     const account = await prisma.whatsAppAccount.findUnique({ where: { id: input.accountId } });
-    if (account?.status !== "CONNECTED") throw new Error("WhatsApp account is not connected.");
+    if (!account || account.archivedAt) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
+    if (["RECONNECT_REQUIRED", "FAILED", "ERROR"].includes(account.status)) throw new Error("WHATSAPP_RECONNECT_REQUIRED");
     if (!input.groupExternalId) throw new Error("Missing external group ID.");
-    const socket = sockets.get(input.accountId);
-    if (!socket) throw new Error("WhatsApp session is not active");
+    const socket = await this.ensureConnectedSocket(input.accountId);
     const result = await socket.sendMessage(input.groupExternalId, { text: input.content });
     if (!result?.key.id) throw new Error("WhatsApp did not return a message id");
     return { externalMessageId: result.key.id };
