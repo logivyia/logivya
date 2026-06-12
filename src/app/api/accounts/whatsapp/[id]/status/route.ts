@@ -16,6 +16,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       status: account.status,
       qrCode: account.qrCode,
       qrExpiresAt: account.qrExpiresAt,
+      pairingCode: account.pairingCode,
+      pairingCodeExpiresAt: account.pairingCodeExpiresAt,
       phoneNumber: account.phoneNumber,
       displayName: account.displayName,
       groupCount: account._count.groups,

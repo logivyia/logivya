@@ -14,6 +14,8 @@ export async function cleanupStuckWhatsAppAccounts(companyId?: string) {
       lastError: "QR generation expired. Please generate a new QR code.",
       qrCode: null,
       qrExpiresAt: null,
+      pairingCode: null,
+      pairingCodeExpiresAt: null,
     },
   });
 }

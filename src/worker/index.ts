@@ -23,7 +23,7 @@ new Worker(QUEUES.campaign,async(job)=>{
 },{connection,concurrency:2});
 
 new Worker(QUEUES.sync, async (job) => {
-  const { action, accountId } = job.data as { action: "connect" | "sync" | "disconnect" | "reconnect"; accountId: string };
+  const { action, accountId, phoneNumber } = job.data as { action: "connect" | "pairing" | "sync" | "disconnect" | "reconnect"; accountId: string; phoneNumber?: string };
   try{
     const account=await prisma.whatsAppAccount.findUnique({where:{id:accountId},select:{status:true,archivedAt:true,updatedAt:true}});
     if(!account||account.archivedAt)return;
@@ -32,7 +32,7 @@ new Worker(QUEUES.sync, async (job) => {
       return;
     }
     if(["connect","reconnect"].includes(action)&&account.status==="ERROR")return;
-    if (action === "connect") return provider.createSession(accountId);if (action === "sync") return provider.syncGroups(accountId);if (action === "disconnect") return provider.disconnect(accountId);return provider.reconnect(accountId)}
+    if (action === "connect") return provider.createSession(accountId);if(action==="pairing"){if(!phoneNumber)throw new Error("Invalid phone number.");return provider.requestPairingCode(accountId,phoneNumber)}if (action === "sync") return provider.syncGroups(accountId);if (action === "disconnect") return provider.disconnect(accountId);return provider.reconnect(accountId)}
   catch(error){await prisma.whatsAppAccount.update({where:{id:accountId},data:{status:"ERROR",lastError:error instanceof Error?error.message:"WhatsApp operation failed"}});logger.error("whatsapp.job.failed",error,{jobId:job.id,accountId,action});throw error}
 }, { connection, concurrency: 5 });
 

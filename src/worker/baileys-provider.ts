@@ -11,9 +11,18 @@ const sessionRoot = process.env.WHATSAPP_SESSION_DIR || path.join(process.cwd(),
 
 export class BaileysWhatsAppProvider implements WhatsAppProvider {
   async requestPairingCode(accountId: string, phoneNumber: string): Promise<{code:string;expiresAt:Date}> {
-    void accountId;
-    void phoneNumber;
-    throw new Error("PAIRING_CODE_UNSUPPORTED");
+    if (!sockets.has(accountId)) await this.createSession(accountId);
+    const socket = sockets.get(accountId);
+    if (!socket) throw new Error("WhatsApp session is not active");
+    const normalized = phoneNumber.replace(/\D/g, "");
+    if (normalized.length < 7 || normalized.length > 15) throw new Error("Invalid phone number.");
+    const code = await socket.requestPairingCode(normalized);
+    const expiresAt = new Date(Date.now() + 5 * 60_000);
+    await prisma.whatsAppAccount.update({
+      where: { id: accountId },
+      data: { status: "CONNECTING", phoneNumber: normalized, pairingCode: code, pairingCodeExpiresAt: expiresAt, lastError: null },
+    });
+    return { code, expiresAt };
   }
   async requestQrCode(accountId:string){if(!sockets.has(accountId))await this.createSession(accountId);for(let i=0;i<20;i++){const account=await prisma.whatsAppAccount.findUnique({where:{id:accountId}});if(account?.qrCode&&account.qrExpiresAt&&account.qrExpiresAt>new Date())return{qr:account.qrCode,expiresAt:account.qrExpiresAt};await new Promise(r=>setTimeout(r,500))}throw new Error("QR_GENERATION_TIMEOUT")}
   async getStatus(accountId:string){return(await prisma.whatsAppAccount.findUniqueOrThrow({where:{id:accountId}})).status}
@@ -42,7 +51,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       }
       if (connection === "open") {
         const phoneNumber = socket.user?.id?.split(":")[0] || socket.user?.id?.split("@")[0];
-        await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { status: "CONNECTED", phoneNumber, displayName: socket.user?.name, lastConnectedAt: new Date(),qrCode:null,qrExpiresAt:null,lastError:null } });
+        await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { status: "CONNECTED", phoneNumber, displayName: socket.user?.name, lastConnectedAt: new Date(),qrCode:null,qrExpiresAt:null,pairingCode:null,pairingCodeExpiresAt:null,lastError:null } });
         await prisma.whatsAppSession.updateMany({ where: { accountId }, data: { status: "CONNECTED", qrCode: null, expiresAt: null } });
         await this.syncGroups(accountId);
       }
