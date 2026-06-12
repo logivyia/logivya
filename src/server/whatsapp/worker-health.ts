@@ -1,14 +1,18 @@
 export const WORKER_UNREACHABLE_MESSAGE = "WhatsApp worker is not reachable.";
+import { readWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
 
 export async function assertWhatsAppWorkerReachable() {
   const url = process.env.WHATSAPP_WORKER_URL || process.env.WORKER_HEALTH_URL;
-  if (!url) throw new Error(WORKER_UNREACHABLE_MESSAGE);
-  const response = await fetch(url, {
-    cache: "no-store",
-    headers: process.env.WHATSAPP_SESSION_SECRET ? { authorization: `Bearer ${process.env.WHATSAPP_SESSION_SECRET}` } : undefined,
-    signal: AbortSignal.timeout(3_000),
-  }).catch(() => null);
-  if (!response?.ok) throw new Error(WORKER_UNREACHABLE_MESSAGE);
+  if (url) {
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: process.env.WHATSAPP_SESSION_SECRET ? { authorization: `Bearer ${process.env.WHATSAPP_SESSION_SECRET}` } : undefined,
+      signal: AbortSignal.timeout(3_000),
+    }).catch(() => null);
+    if (response?.ok) return;
+  }
+  const heartbeat = await readWorkerHeartbeat().catch(() => null);
+  if (!heartbeat || Date.now() - new Date(heartbeat.timestamp).getTime() > 20_000) throw new Error(WORKER_UNREACHABLE_MESSAGE);
 }
 
 export async function waitForAccountQr(accountId: string) {

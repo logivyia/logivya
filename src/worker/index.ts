@@ -7,11 +7,16 @@ import { recurringDelay, type RecurringRule } from "@/server/queues/recurring";
 import { campaignQueue, deadLetterQueue, messageQueue } from "@/server/queues/client";
 import { logger } from "@/server/observability/logger";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
+import { writeWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
+import { access } from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
 
 if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required");
 const redisUrl = new URL(process.env.REDIS_URL);
 const connection = { host: redisUrl.hostname, port: Number(redisUrl.port || 6379), username: redisUrl.username || undefined, password: redisUrl.password || undefined, tls: redisUrl.protocol === "rediss:" ? { servername: redisUrl.hostname } : undefined, maxRetriesPerRequest: null };
 const provider = new BaileysWhatsAppProvider();
+const workerId = process.env.WORKER_ID || `${os.hostname()}-${process.pid}`;
 
 new Worker(QUEUES.campaign,async(job)=>{
   const{templateCampaignId,companyId}=job.data as{templateCampaignId:string;companyId:string};
@@ -91,6 +96,8 @@ async function recoverSessions() {
     select: { id: true },
   });
   for (const account of recoverableAccounts) {
+    const sessionRoot = process.env.WHATSAPP_SESSION_DIR || path.join(process.cwd(), "sessions");
+    try { await access(path.join(sessionRoot, account.id, "creds.json")); } catch { continue; }
     void provider.createSession(account.id).catch((error) => console.error("WhatsApp session recovery failed", account.id, error));
   }
 }
@@ -102,5 +109,7 @@ async function cleanupStuckSessions() {
 }
 void cleanupStuckSessions().catch((error) => logger.error("whatsapp.stuck_sessions.cleanup_failed", error));
 setInterval(() => void cleanupStuckSessions().catch((error) => logger.error("whatsapp.stuck_sessions.cleanup_failed", error)), 60_000).unref();
+void writeWorkerHeartbeat(workerId).catch((error) => logger.error("worker.heartbeat.failed", error));
+setInterval(() => void writeWorkerHeartbeat(workerId).catch((error) => logger.error("worker.heartbeat.failed", error)), 5_000).unref();
 
 console.log("Logivya WhatsApp worker is ready");
