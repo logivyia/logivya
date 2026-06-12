@@ -7,6 +7,7 @@ import { prisma } from "@/server/db";
 import { whatsappQueue } from "@/server/queues/client";
 import { writeAuditLog } from "@/server/security/audit";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
+import { findReusableWhatsAppAccount } from "@/server/whatsapp/reusable-account";
 import { assertWhatsAppWorkerReachable, waitForPairingCode } from "@/server/whatsapp/worker-health";
 
 const schema = z.object({ phoneNumber: z.string().regex(/^\+?[0-9]{7,15}$/) });
@@ -20,16 +21,26 @@ export async function POST(request: Request) {
     if (!parsed.success) return NextResponse.json({ error: "Geçerli bir telefon numarası girin." }, { status: 400 });
     await cleanupStuckWhatsAppAccounts(company.id);
     await assertWhatsAppWorkerReachable();
-    const access = await subscriptionAccess.canConnectWhatsAppAccount(company.id);
-    if (!access.allowed) return NextResponse.json({ error: access.reason, limit: access.limit }, { status: 403 });
-    const account = await prisma.whatsAppAccount.create({
-      data: { companyId: company.id, label: null, phoneNumber: parsed.data.phoneNumber.replace(/\D/g, ""), provider: process.env.WHATSAPP_PROVIDER || "baileys", status: "CONNECTING" },
-    });
+
+    let account = await findReusableWhatsAppAccount(company.id);
+    if (account) {
+      account = await prisma.whatsAppAccount.update({
+        where: { id: account.id },
+        data: { phoneNumber: parsed.data.phoneNumber.replace(/\D/g, ""), status: "CONNECTING", qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null },
+      });
+    } else {
+      const access = await subscriptionAccess.canConnectWhatsAppAccount(company.id);
+      if (!access.allowed) return NextResponse.json({ error: access.reason, limit: access.limit }, { status: 403 });
+      account = await prisma.whatsAppAccount.create({
+        data: { companyId: company.id, label: null, phoneNumber: parsed.data.phoneNumber.replace(/\D/g, ""), provider: process.env.WHATSAPP_PROVIDER || "baileys", status: "CONNECTING" },
+      });
+    }
+
     accountId = account.id;
-    await whatsappQueue().add("pairing", { action: "pairing", accountId: account.id, phoneNumber: parsed.data.phoneNumber }, { jobId: `pairing-${account.id}` });
-    const ready = await waitForPairingCode(account.id);
-    await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.pairing.created", entityType: "WhatsAppAccount", entityId: account.id });
-    return NextResponse.json({ accountId: ready.id, status: ready.status, pairingCode: ready.pairingCode, pairingCodeExpiresAt: ready.pairingCodeExpiresAt }, { status: 201 });
+    await whatsappQueue().add("pairing", { action: "pairing", accountId, phoneNumber: parsed.data.phoneNumber }, { jobId: `pairing-${accountId}-${Date.now()}` });
+    const ready = await waitForPairingCode(accountId);
+    await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.pairing.created", entityType: "WhatsAppAccount", entityId: accountId });
+    return NextResponse.json({ accountId, status: ready.status, pairingCode: ready.pairingCode, pairingCodeExpiresAt: ready.pairingCodeExpiresAt }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "WhatsApp pairing code generation failed.";
     if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "ERROR", lastError: message } });
