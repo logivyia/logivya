@@ -2,16 +2,27 @@ import { randomInt, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { sendTemplateEmailSafely } from "@/server/email/service";
+import { logger } from "@/server/observability/logger";
 import { hashOpaqueToken } from "@/server/security/authentication";
 import { hashPassword } from "@/server/security/passwords";
-import { logger } from "@/server/observability/logger";
 
 const TOKEN_TTL_MS = 10 * 60_000;
 const REQUEST_WINDOW_MS = 60 * 60_000;
 const MAX_ACCOUNT_REQUESTS = 3;
 const MAX_IP_REQUESTS = 10;
 const MAX_ATTEMPTS = 5;
+
 export const RESET_REQUEST_MESSAGE = "Eğer bilgiler sistemde kayıtlıysa doğrulama kodu gönderilmiştir.";
+export const RESET_EMAIL_DELIVERY_FAILED_MESSAGE = "Doğrulama kodu gönderilemedi. Lütfen SMTP ayarlarını kontrol edip tekrar deneyin.";
+
+export class PasswordResetEmailDeliveryError extends Error {
+  constructor(public readonly errorCode = "EMAIL_DELIVERY_FAILED") {
+    super("PASSWORD_RESET_EMAIL_NOT_SENT");
+    this.name = "PasswordResetEmailDeliveryError";
+  }
+}
+
+export type ResetCodeVerificationResult = "OK" | "INVALID" | "EXPIRED" | "LOCKED";
 
 type ResetUser = {
   id: string;
@@ -97,6 +108,7 @@ export async function requestPasswordReset(request: Request, identifier: string)
   const ipRequests = await prisma.loginAttempt.count({
     where: { ipAddress, failureReason: "PASSWORD_RESET_REQUEST", createdAt: { gte: since } },
   });
+
   await recordIpRequest(request, identifier);
   if (ipRequests >= MAX_IP_REQUESTS) return;
 
@@ -128,8 +140,18 @@ export async function requestPasswordReset(request: Request, identifier: string)
     companyId: companyIdFor(user),
     userId: user.id,
   });
-  if (delivery.sent) await audit(request, user, "auth.password_reset_code_sent", token.id);
-  else logger.warn("Password reset email delivery failed", { userId: user.id, tokenId: token.id });
+
+  if (delivery.sent) {
+    await audit(request, user, "auth.password_reset_code_sent", token.id);
+    return;
+  }
+
+  await audit(request, user, "auth.password_reset_failed", token.id, {
+    reason: "EMAIL_DELIVERY_FAILED",
+    errorCode: delivery.errorCode,
+  });
+  logger.warn("Password reset email delivery failed", { userId: user.id, tokenId: token.id, errorCode: delivery.errorCode });
+  throw new PasswordResetEmailDeliveryError(delivery.errorCode);
 }
 
 async function activeToken(identifier: string) {
@@ -142,20 +164,25 @@ async function activeToken(identifier: string) {
   return { user, token };
 }
 
-export async function verifyPasswordResetCode(request: Request, identifier: string, code: string) {
+export async function verifyPasswordResetCode(request: Request, identifier: string, code: string): Promise<ResetCodeVerificationResult> {
   const { user, token } = await activeToken(identifier);
-  if (!user || !token) return false;
+  if (!user || !token) return "INVALID";
+
   if (token.expiresAt <= new Date() || token.attempts >= MAX_ATTEMPTS) {
-    await audit(request, user, "auth.password_reset_failed", token.id, { reason: token.attempts >= MAX_ATTEMPTS ? "ATTEMPTS_EXHAUSTED" : "EXPIRED" });
-    return false;
+    await audit(request, user, "auth.password_reset_failed", token.id, {
+      reason: token.attempts >= MAX_ATTEMPTS ? "ATTEMPTS_EXHAUSTED" : "EXPIRED",
+    });
+    return token.attempts >= MAX_ATTEMPTS ? "LOCKED" : "EXPIRED";
   }
+
   if (!codeMatches(user.id, code, token.tokenHash)) {
     await prisma.passwordResetToken.update({ where: { id: token.id }, data: { attempts: { increment: 1 } } });
     await audit(request, user, "auth.password_reset_failed", token.id, { reason: "INVALID_CODE" });
-    return false;
+    return "INVALID";
   }
+
   await audit(request, user, "auth.password_reset_verified", token.id);
-  return true;
+  return "OK";
 }
 
 export async function completePasswordReset(request: Request, identifier: string, code: string, password: string) {
@@ -167,6 +194,7 @@ export async function completePasswordReset(request: Request, identifier: string
     }
     return false;
   }
+
   const passwordHash = await hashPassword(password, process.env.PASSWORD_PEPPER ?? "");
   await prisma.$transaction([
     prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
