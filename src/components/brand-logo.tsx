@@ -1,7 +1,13 @@
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
-export function BrandLogo({ dark = false, className }: { dark?: boolean; className?: string }) {
-  return <span aria-label="Logivya" className={cn("inline-flex h-9 items-center font-sans text-xl font-black tracking-[.22em]", dark ? "text-white" : "text-slate-950", className)}>
-    LOGIVYA
-  </span>;
+export function BrandLogo({ className }: { dark?: boolean; className?: string }) {
+  return <Image
+    src="/logivya/logo-v3.jpeg"
+    alt="Logivya"
+    width={1180}
+    height={449}
+    priority
+    className={cn("h-auto w-[170px] max-w-full object-contain", className)}
+  />;
 }

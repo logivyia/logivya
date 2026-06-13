@@ -12,15 +12,15 @@ export const metadata: Metadata = {
   },
   applicationName: "Logivya",
   description: "Multi-tenant WhatsApp communication and campaign operations.",
-  manifest: "/manifest.webmanifest",
+  manifest: "/manifest.webmanifest?v=3",
   icons: {
     icon: [
-      { url: "/logivya/favicon-v2.ico", sizes: "any" },
-      { url: "/logivya/favicon-16x16-v2.png", type: "image/png", sizes: "16x16" },
-      { url: "/logivya/favicon-32x32-v2.png", type: "image/png", sizes: "32x32" },
+      { url: "/favicon.ico?v=3", sizes: "any" },
+      { url: "/favicon-16x16.png?v=3", type: "image/png", sizes: "16x16" },
+      { url: "/favicon-32x32.png?v=3", type: "image/png", sizes: "32x32" },
     ],
-    shortcut: "/logivya/favicon-v2.ico",
-    apple: [{ url: "/logivya/apple-touch-icon-v2.png", type: "image/png", sizes: "180x180" }],
+    shortcut: "/favicon.ico?v=3",
+    apple: [{ url: "/apple-touch-icon.png?v=3", type: "image/png", sizes: "180x180" }],
   },
   appleWebApp: {
     capable: true,

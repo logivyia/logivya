@@ -7,23 +7,23 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Multi-tenant WhatsApp communication and campaign operations.",
     start_url: "/",
     display: "standalone",
-    background_color: "#ffffff",
-    theme_color: "#f97316",
+    background_color: "#0B1020",
+    theme_color: "#0B1020",
     icons: [
       {
-        src: "/logivya/icon-192x192-v2.png",
+        src: "/android-chrome-192x192.png?v=3",
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/logivya/icon-512x512-v2.png",
+        src: "/android-chrome-512x512.png?v=3",
         sizes: "512x512",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/logivya/icon-512x512-v2.png",
+        src: "/android-chrome-512x512.png?v=3",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

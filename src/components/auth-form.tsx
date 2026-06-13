@@ -24,7 +24,7 @@ function AuthBrandPanel({ compact = false }: { compact?: boolean }) {
   }>
     {!compact && <><div className="absolute -start-28 -top-28 size-80 rounded-full bg-orange-500/10 blur-3xl" /><div className="absolute -bottom-36 -end-28 size-96 rounded-full bg-orange-500/10 blur-3xl" /></>}
     <div className="relative flex max-w-[420px] flex-col items-center justify-center text-center">
-      <BrandLogo dark className={compact ? "h-auto text-[32px] leading-none tracking-[.24em]" : "h-auto text-[48px] leading-none tracking-[.24em]"} />
+      <BrandLogo dark className={compact ? "w-[230px] max-w-[80%]" : "w-[340px] max-w-[80%]"} />
       <div className={compact ? "my-5 h-px w-16 bg-orange-400/70" : "my-9 h-px w-20 bg-orange-400/70"} />
       <p className={compact ? "max-w-sm text-base font-medium leading-6 text-white/85" : "max-w-[420px] text-[21px] font-medium leading-[1.5] text-white/85"}>
         {slogan}

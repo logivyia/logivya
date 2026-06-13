@@ -24,6 +24,8 @@ export async function POST(request: Request) {
     const trusted=await prisma.trustedDevice.findFirst({where:{userId:user.id,ipAddress,revokedAt:null}});
     const riskScore=trusted?0:35;
     await prisma.adminAccessLog.create({data:{userId:user.id,path:"/login",method:"POST",purpose:"ADMIN_LOGIN",permission:"platform:read",sensitive:true,ipAddress,userAgent}});
+    await prisma.platformAdmin.update({where:{userId:user.id},data:{lastElevatedAt:new Date()}});
+    await prisma.adminSessionEvent.create({data:{userId:user.id,type:"ADMIN_LOGIN",ipAddress,userAgent}});
     if(riskScore>20)await prisma.securityEvent.create({data:{userId:user.id,severity:"MEDIUM",type:"ADMIN_NEW_DEVICE_LOGIN",message:"Platform yöneticisi yeni IP veya cihazdan giriş yaptı.",ipAddress,userAgent,metadata:{riskScore}}});
   }
   return NextResponse.json({ ok: true });

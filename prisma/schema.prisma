@@ -28,6 +28,7 @@ enum MembershipStatus {
 enum SubscriptionStatus {
   TRIALING
   ACTIVE
+  SUSPENDED
   PAST_DUE
   CANCELED
   EXPIRED
@@ -247,6 +248,8 @@ enum InvoiceProviderType {
 
 enum PaymentStatus {
   PENDING
+  MANUALLY_CONFIRMED
+  REJECTED
   SUCCEEDED
   PAID
   FAILED
@@ -256,6 +259,8 @@ enum PaymentStatus {
 
 enum PaymentMethod {
   MANUAL_BANK_TRANSFER
+  MANUAL
+  FREE_PROMO
   CREDIT_CARD
   DEBIT_CARD
   CASH
@@ -408,6 +413,8 @@ model User {
   emailDeliveries                EmailDeliveryLog[]
   platformAdmin                  PlatformAdmin?
   adminAccessLogs                AdminAccessLog[]
+  adminSessionEvents             AdminSessionEvent[]
+  twoFactorRecoveryCodes         TwoFactorRecoveryCode[]
   manuallyActivatedSubscriptions Subscription[]           @relation("ManualSubscriptionActivator")
   subscriptionEvents             SubscriptionEvent[]
   createdAt                      DateTime                 @default(now())
@@ -1535,6 +1542,7 @@ model MfaCredential {
   revokedAt           DateTime?
   createdAt           DateTime  @default(now())
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recoveryCodes       TwoFactorRecoveryCode[]
 
   @@index([userId, revokedAt])
 }
@@ -1804,6 +1812,68 @@ model PlatformAdmin {
   updatedAt          DateTime          @updatedAt
 
   @@index([role, isActive])
+}
+
+model AdminPermission {
+  id          String                @id @default(cuid())
+  code        String                @unique
+  description String?
+  roles       AdminRolePermission[]
+  createdAt   DateTime              @default(now())
+}
+
+model AdminRolePermission {
+  id           String            @id @default(cuid())
+  role         PlatformAdminRole
+  permissionId String
+  permission   AdminPermission   @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
+
+  @@unique([role, permissionId])
+  @@index([role])
+}
+
+model AdminSessionEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  type       String
+  requestId  String?
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+}
+
+model TwoFactorRecoveryCode {
+  id           String        @id @default(cuid())
+  userId       String
+  credentialId String
+  codeHash     String        @unique
+  usedAt       DateTime?
+  createdAt    DateTime      @default(now())
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credential   MfaCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+  @@index([credentialId, usedAt])
+}
+
+model RateLimitEvent {
+  id          String   @id @default(cuid())
+  scope       String
+  subjectHash String
+  ipAddress   String?
+  requestId   String?
+  blocked     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([scope, createdAt])
+  @@index([subjectHash, createdAt])
+  @@index([blocked, createdAt])
 }
 
 model PlatformAdminInvite {

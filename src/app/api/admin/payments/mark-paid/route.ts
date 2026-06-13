@@ -8,7 +8,7 @@ import { writeAuditLog } from "@/server/security/audit";
 const schema=z.object({paymentId:z.string(),note:z.string().max(500).optional()});
 export async function POST(request:Request){
   try{
-    const{user}=await requirePlatformAdmin(),parsed=schema.safeParse(await request.json());if(!parsed.success)return NextResponse.json({error:"validation.invalid"},{status:400});
+    const{user}=await requirePlatformAdmin("admin.payments.confirm",request),parsed=schema.safeParse(await request.json());if(!parsed.success)return NextResponse.json({error:"validation.invalid"},{status:400});
     const payment=await prisma.payment.findUnique({where:{id:parsed.data.paymentId},include:{invoice:true,subscription:true,company:{include:{billingProfile:true}}}});
     if(!payment)return NextResponse.json({error:"NOT_FOUND"},{status:404});if(payment.status==="PAID")return NextResponse.json({payment,idempotent:true});
     const profile=payment.company.billingProfile;if(!isBillingProfileComplete(profile))return NextResponse.json({error:"billing.profileIncomplete"},{status:400});

@@ -1,50 +1,28 @@
-import { loadEnvConfig } from "@next/env";
-
-const email = process.argv[2]?.trim().toLowerCase();
+import { prisma } from "@/server/db";
+import { ADMIN_PERMISSIONS } from "@/server/auth/admin-permissions";
 
 async function main() {
-  if (!email) {
-    console.error("Usage: npm exec tsx scripts/promote-super-admin.ts -- <email>");
-    process.exitCode = 1;
-    return;
-  }
+  const email = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
+  if (!email) throw new Error("SUPER_ADMIN_EMAIL is required");
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) throw new Error("User not found. Please register first.");
 
-  loadEnvConfig(process.cwd());
-  const { prisma } = await import("../src/server/db");
-  try {
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true, email: true },
+  await prisma.$transaction(async (transaction) => {
+    await transaction.platformAdmin.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, role: "SUPER_ADMIN", permissions: [...ADMIN_PERMISSIONS], isActive: true, requiresMfa: true },
+      update: { role: "SUPER_ADMIN", permissions: [...ADMIN_PERMISSIONS], isActive: true, requiresMfa: true },
     });
-
-    if (!user) {
-      console.error("User not found. Please register first.");
-      process.exitCode = 1;
-    } else {
-      await prisma.platformAdmin.upsert({
-        where: { userId: user.id },
-        create: {
-          userId: user.id,
-          role: "SUPER_ADMIN",
-          permissions: ["*"],
-          isActive: true,
-          requiresMfa: false,
-        },
-        update: {
-          role: "SUPER_ADMIN",
-          permissions: ["*"],
-          isActive: true,
-        },
+    for (const code of ADMIN_PERMISSIONS) {
+      const permission = await transaction.adminPermission.upsert({ where: { code }, create: { code }, update: {} });
+      await transaction.adminRolePermission.upsert({
+        where: { role_permissionId: { role: "SUPER_ADMIN", permissionId: permission.id } },
+        create: { role: "SUPER_ADMIN", permissionId: permission.id },
+        update: {},
       });
-      console.log(`${user.email} promoted to SUPER_ADMIN.`);
     }
-  } finally {
-    await prisma.$disconnect();
-  }
+  }, { timeout: 30_000 });
+  console.log(`Promoted existing user ${email} to SUPER_ADMIN without changing credentials.`);
 }
 
-main()
-  .catch((error) => {
-    console.error(error instanceof Error ? error.message : "SUPER_ADMIN promotion failed.");
-    process.exitCode = 1;
-  });
+main().finally(() => prisma.$disconnect());

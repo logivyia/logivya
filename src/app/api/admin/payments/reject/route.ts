@@ -8,7 +8,7 @@ const schema = z.object({ paymentId: z.string(), reason: z.string().trim().min(5
 
 export async function POST(request: Request) {
   try {
-    const { user } = await requirePlatformAdmin("billing:manage", request);
+    const { user } = await requirePlatformAdmin("admin.payments.confirm", request);
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
     const payment = await prisma.payment.findUnique({
