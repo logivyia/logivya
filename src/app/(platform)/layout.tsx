@@ -7,5 +7,5 @@ export default async function PlatformLayout({ children }: { children: React.Rea
     prisma.subscription.findFirst({ where: { companyId: context.company.id }, include: { plan: true }, orderBy: { createdAt: "desc" } }),
     prisma.platformAdmin.findUnique({ where: { userId: context.user.id }, select: { role: true, isActive: true } }),
   ]);
-  return <AppShell userName={context.user.name} isPlatformAdmin={platformAdmin?.isActive === true && platformAdmin.role === "SUPER_ADMIN"} subscription={subscription ? { planName: subscription.plan.name, status: subscription.status, trialEndsAt: subscription.trialEndsAt?.toISOString(),currentPeriodEndsAt:subscription.currentPeriodEndsAt?.toISOString() } : undefined}>{children}</AppShell>;
+  return <AppShell userName={context.user.name} isPlatformAdmin={platformAdmin?.isActive === true && platformAdmin.role === "SUPER_ADMIN"} subscription={subscription ? { planName: subscription.plan.name, status: subscription.status, trialEndsAt: subscription.trialEndsAt?.toISOString(), currentPeriodEndsAt: subscription.currentPeriodEndsAt?.toISOString(), endsAt: subscription.endsAt?.toISOString() } : undefined}>{children}</AppShell>;
 }
