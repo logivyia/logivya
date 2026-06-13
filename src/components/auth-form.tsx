@@ -15,6 +15,23 @@ const registerFields = [
   { name: "email", type: "email", required: true }, { name: "companyName", type: "text", required: false },
   { name: "password", type: "password", required: true }, { name: "passwordConfirmation", type: "password", required: true },
 ] as const;
+const slogan = "Tüm İletişim Kanallarınızı ve İş Süreçlerinizi Tek Platformdan Yönetin";
+
+function AuthBrandPanel({ compact = false }: { compact?: boolean }) {
+  return <div className={compact
+    ? "flex flex-col items-center justify-center rounded-2xl bg-gradient-to-br from-[#080d18] via-[#111827] to-[#1f2937] px-5 py-7 text-center lg:hidden"
+    : "relative hidden min-h-[680px] place-items-center overflow-hidden bg-gradient-to-br from-[#080d18] via-[#111827] to-[#1f2937] p-12 lg:grid"
+  }>
+    {!compact && <><div className="absolute -start-28 -top-28 size-80 rounded-full bg-orange-500/10 blur-3xl" /><div className="absolute -bottom-36 -end-28 size-96 rounded-full bg-orange-500/10 blur-3xl" /></>}
+    <div className="relative flex max-w-[420px] flex-col items-center justify-center text-center">
+      <BrandLogo dark className={compact ? "h-auto text-[32px] leading-none tracking-[.24em]" : "h-auto text-[48px] leading-none tracking-[.24em]"} />
+      <div className={compact ? "my-5 h-px w-16 bg-orange-400/70" : "my-9 h-px w-20 bg-orange-400/70"} />
+      <p className={compact ? "max-w-sm text-base font-medium leading-6 text-white/85" : "max-w-[420px] text-[21px] font-medium leading-[1.5] text-white/85"}>
+        {slogan}
+      </p>
+    </div>
+  </div>;
+}
 
 export function AuthForm({ mode }: { mode: Mode }) {
   const router = useRouter();
@@ -33,9 +50,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
   return <main className="auth-surface relative grid min-h-screen place-items-center p-4 sm:p-5">
     <div className="absolute end-4 top-4 z-10"><LanguageSelector /></div>
     <section className="grid w-full max-w-5xl overflow-hidden rounded-[2rem] border bg-white shadow-2xl lg:grid-cols-[.85fr_1.15fr]">
-      <div className="hidden min-h-[680px] place-items-center bg-gradient-to-br from-[#080d18] via-[#111827] to-[#1f2937] p-12 lg:grid"><BrandLogo dark className="w-64 shadow-2xl" /></div>
+      <AuthBrandPanel />
       <div className="p-7 sm:p-12">
-        <div className="mb-8 lg:hidden"><BrandLogo className="w-44" /></div>
+        <div className="mb-8 lg:hidden"><AuthBrandPanel compact /></div>
         <div className="mb-8"><h1 className="text-3xl font-semibold text-slate-950">{t(`auth.${mode}Title`)}</h1><p className="mt-2 text-sm text-muted">{t(`auth.${mode}Description`)}</p></div>
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={submit}>
           {fields.map((field) => <label key={field.name} className={mode === "login" ? "sm:col-span-2" : ""}><span className="mb-2 block text-xs font-medium">{t(`auth.${field.name}`)}</span><input required={field.required} name={field.name} type={field.type} autoComplete={field.name === "password" && mode === "login" ? "current-password" : field.name.includes("password") ? "new-password" : field.name} className="w-full rounded-xl border bg-white px-3 py-3 text-sm outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100" /></label>)}
