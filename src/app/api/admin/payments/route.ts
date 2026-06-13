@@ -1,2 +1,38 @@
-import { NextResponse } from "next/server";import { requirePlatformAdmin } from "@/server/auth/platform-admin";import { prisma } from "@/server/db";
-export async function GET(request:Request){try{await requirePlatformAdmin();const p=new URL(request.url).searchParams,page=Math.max(1,Number(p.get("page")||1)),q=p.get("q")||"";const where=q?{company:{name:{contains:q,mode:"insensitive" as const}}}:undefined;const[payments,total]=await Promise.all([prisma.payment.findMany({where,include:{company:{select:{name:true}},plan:{select:{name:true}},invoice:{select:{invoiceNumber:true}}},orderBy:{createdAt:"desc"},skip:(page-1)*30,take:30}),prisma.payment.count({where})]);return NextResponse.json({payments,pagination:{page,total,pages:Math.ceil(total/30)}})}catch{return NextResponse.json({error:"FORBIDDEN"},{status:403})}}
+import { NextResponse } from "next/server";
+import { requirePlatformAdmin } from "@/server/auth/platform-admin";
+import { prisma } from "@/server/db";
+
+export async function GET(request: Request) {
+  try {
+    await requirePlatformAdmin("billing:read", request);
+    const params = new URL(request.url).searchParams;
+    const page = Math.max(1, Number(params.get("page") || 1));
+    const query = params.get("q") || "";
+    const where = query ? { company: { name: { contains: query, mode: "insensitive" as const } } } : undefined;
+    const [payments, total] = await Promise.all([
+      prisma.payment.findMany({
+        where,
+        select: {
+          id: true,
+          status: true,
+          paymentMethod: true,
+          amount: true,
+          currency: true,
+          failureReason: true,
+          paidAt: true,
+          createdAt: true,
+          company: { select: { name: true } },
+          plan: { select: { name: true } },
+          invoice: { select: { invoiceNumber: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * 30,
+        take: 30,
+      }),
+      prisma.payment.count({ where }),
+    ]);
+    return NextResponse.json({ payments, pagination: { page, total, pages: Math.ceil(total / 30) } });
+  } catch {
+    return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  }
+}
