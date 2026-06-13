@@ -24,7 +24,7 @@ export function findReusableWhatsAppAccount(companyId: string) {
 export async function findSingleSlotWhatsAppAccount(companyId: string, accountLimit: number) {
   if (accountLimit !== 1) return null;
   return prisma.whatsAppAccount.findFirst({
-    where: { companyId, archivedAt: null },
+    where: { companyId, archivedAt: null, status: { in: REUSABLE_STATUSES } },
     orderBy: { updatedAt: "desc" },
   });
 }

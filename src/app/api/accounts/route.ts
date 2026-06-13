@@ -9,18 +9,22 @@ import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { assertWhatsAppWorkerReachable } from "@/server/whatsapp/worker-health";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
+import { AccountStatus } from "@prisma/client";
+import { assertSameOrigin } from "@/server/whatsapp/request-guards";
 
 const schema = z.object({ label: z.string().min(2).max(80).optional() });
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { company } = await requireApiSession();
     await cleanupStuckWhatsAppAccounts(company.id);
-    const accounts = await prisma.whatsAppAccount.findMany({ where: { companyId: company.id }, include: { _count: { select: { groups: true, contacts: true, recipients: true } } }, orderBy: { createdAt: "desc" }, take: 100 });
+    const includeArchived = new URL(request.url).searchParams.get("archived") === "true";
+    const accounts = await prisma.whatsAppAccount.findMany({ where: { companyId: company.id, ...(includeArchived ? {} : { archivedAt: null }) }, include: { _count: { select: { groups: true, contacts: true, recipients: true } } }, orderBy: { createdAt: "desc" }, take: 100 });
     return NextResponse.json({ accounts });
   } catch { return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 }); }
 }
 export async function POST(request: Request) {
   try {
+    assertSameOrigin(request);
     const { company, membership, user } = await requireApiSession();
     await cleanupStuckWhatsAppAccounts(company.id);
     requirePermission(membership.role, "connect_accounts");
@@ -29,7 +33,7 @@ export async function POST(request: Request) {
     await assertWhatsAppWorkerReachable();
     const access=await subscriptionAccess.canConnectWhatsAppAccount(company.id);
     if(!access.allowed)return NextResponse.json({error:access.reason,limit:access.limit},{status:403});
-    const account = await prisma.whatsAppAccount.create({ data: { companyId: company.id, label: parsed.data.label || null, provider: "baileys", status: "PENDING_QR" } });
+    const account = await prisma.whatsAppAccount.create({ data: { companyId: company.id, label: parsed.data.label || null, provider: "baileys", status: AccountStatus.CREATED } });
     try {
       await whatsappQueue().add("connect", { action: "connect", accountId: account.id }, { jobId: `connect-${account.id}` });
     } catch (error) {

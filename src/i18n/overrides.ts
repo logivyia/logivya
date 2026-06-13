@@ -1,5 +1,11 @@
 export const localeOverrides: Record<string, Record<string, string>> = {
   tr: {
+    "auth.forgotPassword": "Parolamı Unuttum?", "auth.forgotTitle": "Parolanızı sıfırlayın", "auth.forgotDescription": "Hesabınıza kayıtlı e-posta adresini veya telefon numarasını girin.",
+    "auth.sendResetCode": "Doğrulama kodu gönder", "auth.resetTitle": "Yeni parola oluşturun", "auth.resetDescription": "E-postanıza gönderilen 6 haneli kodu doğrulayın ve yeni parolanızı belirleyin.",
+    "auth.verificationCode": "Doğrulama kodu", "auth.verifyCode": "Kodu doğrula", "auth.resetVerified": "Kod doğrulandı. Yeni parolanızı belirleyebilirsiniz.",
+    "auth.newPassword": "Yeni parola", "auth.passwordPolicy": "En az 12 karakter; büyük harf, küçük harf, sayı ve özel karakter içermelidir.",
+    "auth.resetAction": "Parolayı güncelle", "auth.backToLogin": "Giriş sayfasına dön", "auth.resetInvalidCode": "Kod geçersiz, süresi dolmuş veya kullanım sınırına ulaşmıştır.",
+    "auth.resetCompleted": "Şifreniz başarıyla güncellendi.",
     "auth.loginTitle": "Tekrar hoş geldiniz", "auth.loginDescription": "Oturum açın",
     "auth.registerTitle": "Kayıt Olun", "auth.registerDescription": "3 günlük ücretsiz denemenizi başlatın.",
     "auth.identifier": "E-posta veya telefon", "auth.companyName": "Şirket adı (opsiyonel)",
@@ -16,6 +22,12 @@ export const localeOverrides: Record<string, Record<string, string>> = {
     "company.companyName": "Şirket Adı", "company.phone": "Telefon", "company.address": "Şirket Adresi", "company.taxOffice": "Vergi Dairesi", "company.taxNumber": "Vergi Numarası", "company.city": "İl", "company.district": "İlçe", "company.country": "Ülke", "company.postalCode": "Posta Kodu", "company.description": "Şirket ve fatura adresi bilgilerinizi yönetin.", "company.save": "Bilgileri kaydet", "company.saved": "Şirket bilgileri kaydedildi.", "company.saveFailed": "Bilgiler kaydedilemedi.",
   },
   en: {
+    "auth.forgotPassword": "Forgot password?", "auth.forgotTitle": "Reset your password", "auth.forgotDescription": "Enter the email address or phone number registered to your account.",
+    "auth.sendResetCode": "Send verification code", "auth.resetTitle": "Create a new password", "auth.resetDescription": "Verify the six-digit code sent to your email and choose a new password.",
+    "auth.verificationCode": "Verification code", "auth.verifyCode": "Verify code", "auth.resetVerified": "Code verified. You can now choose a new password.",
+    "auth.newPassword": "New password", "auth.passwordPolicy": "Use at least 12 characters with uppercase, lowercase, a number, and a special character.",
+    "auth.resetAction": "Update password", "auth.backToLogin": "Back to sign in", "auth.resetInvalidCode": "The code is invalid, expired, or has reached its attempt limit.",
+    "auth.resetCompleted": "Your password was updated successfully.",
     "auth.loginTitle": "Welcome back", "auth.loginDescription": "Sign in",
     "auth.registerTitle": "Create your account", "auth.registerDescription": "Start your 3-day free trial.",
     "auth.identifier": "Email or phone", "auth.companyName": "Company name (optional)",

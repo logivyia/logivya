@@ -9,9 +9,13 @@ import { logger } from "@/server/observability/logger";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { writeWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
-import { access } from "node:fs/promises";
-import path from "node:path";
+import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
+/**
+ * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
+ * Do not modify without running the full WhatsApp regression test suite.
+ */
 import os from "node:os";
+import { hasWhatsAppCredentials } from "@/lib/whatsapp/session-manager";
 
 if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required");
 const redisUrl = new URL(process.env.REDIS_URL);
@@ -50,7 +54,12 @@ new Worker(QUEUES.message, async (job) => {
   if (!claimed.count) return;
   await prisma.messageCampaign.updateMany({ where: { id: recipient.campaignId, status: "QUEUED" }, data: { status: "SENDING" } });
   try {
-    await provider.sendGroupMessage({ accountId: recipient.accountId, groupExternalId: recipient.group.externalGroupId, content: recipient.campaign.content });
+    const [target] = await resolveSendableWhatsAppGroups(recipient.campaign.companyId, [recipient.group.id]);
+    if (!target) throw new Error("WHATSAPP_RECONNECT_REQUIRED");
+    if (target.id !== recipient.group.id || target.accountId !== recipient.accountId) {
+      await prisma.messageRecipient.update({ where: { id: recipient.id }, data: { groupId: target.id, accountId: target.accountId, recipientName: target.name, recipientExternalId: target.externalGroupId } });
+    }
+    await provider.sendGroupMessage({ accountId: target.accountId, groupExternalId: target.externalGroupId, content: recipient.campaign.content });
     await prisma.messageRecipient.update({ where: { id: recipient.id }, data: { status: "SENT", sentAt: new Date(), failedAt: null, errorMessage: null } });
   } catch (error) {
     const attempts = Number(job.opts.attempts ?? 1);
@@ -98,8 +107,7 @@ async function recoverSessions() {
   });
   for (const account of recoverableAccounts) {
     if (account.pairingCode) continue;
-    const sessionRoot = process.env.WHATSAPP_SESSION_DIR || path.join(process.cwd(), "sessions");
-    try { await access(path.join(sessionRoot, account.id, "creds.json")); } catch {
+    if (!(await hasWhatsAppCredentials(account.id))) {
       await prisma.whatsAppAccount.updateMany({
         where: { id: account.id, archivedAt: null, status: { in: ["CONNECTED", "CONNECTING", "DISCONNECTED", "RECONNECT_REQUIRED"] } },
         data: { status: "RECONNECT_REQUIRED", lastError: "WhatsApp bağlantısını QR kod veya telefon koduyla yeniden kurun." },

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/server/auth/session";
 
-const authPaths = ["/login", "/register"];
+const authPaths = ["/login", "/register", "/forgot-password", "/reset-password"];
 
 export function proxy(request: NextRequest) {
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
@@ -16,5 +16,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/accounts/:path*", "/groups/:path*", "/categories/:path*", "/send-message/:path*", "/messages/:path*", "/message-history/:path*", "/settings/:path*", "/support/:path*", "/activity/:path*", "/onboarding/:path*", "/admin/:path*", "/login", "/register"],
+  matcher: ["/dashboard/:path*", "/accounts/:path*", "/groups/:path*", "/categories/:path*", "/send-message/:path*", "/messages/:path*", "/message-history/:path*", "/settings/:path*", "/support/:path*", "/activity/:path*", "/onboarding/:path*", "/admin/:path*", "/login", "/register", "/forgot-password", "/reset-password"],
 };

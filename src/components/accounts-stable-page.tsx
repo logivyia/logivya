@@ -1,4 +1,8 @@
 "use client";
+/**
+ * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
+ * Do not modify without running the full WhatsApp regression test suite.
+ */
 /* eslint-disable react-hooks/set-state-in-effect,@next/next/no-img-element */
 import { useCallback, useEffect, useState } from "react";
 import { Archive, CheckCircle2, LoaderCircle, Plus, RefreshCw, Smartphone, Trash2, X } from "lucide-react";
@@ -42,15 +46,16 @@ export function AccountsStablePage() {
   const [tab, setTab] = useState<"QR" | "CODE">("QR");
   const [archived, setArchived] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [phone, setPhone] = useState("+90");
+  const [countryCode, setCountryCode] = useState("90");
+  const [phone, setPhone] = useState("");
   const [now, setNow] = useState(0);
 
   const load = useCallback(async () => {
-    const response = await fetch("/api/accounts", { cache: "no-store" });
+    const response = await fetch(`/api/accounts${archived ? "?archived=true" : ""}`, { cache: "no-store" });
     const value = await response.json();
     if (response.ok) setAccounts(value.accounts);
     else setError(value.error);
-  }, []);
+  }, [archived]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -116,10 +121,23 @@ export function AccountsStablePage() {
   }
   function pairing() {
     const url = session?.accountId ? `/api/accounts/${session.accountId}/pairing-code` : "/api/accounts/whatsapp/create-pairing-session";
-    void request(url, { phoneNumber: phone });
+    void request(url, { phoneNumber: phone.startsWith("+") ? phone : `${countryCode}${phone}` });
+  }
+  async function checkConnection() {
+    if (!session?.accountId) return;
+    setLoading(true); setError("");
+    try {
+      const response = await fetch(`/api/accounts/${session.accountId}/status`, { cache: "no-store" });
+      const value = await response.json();
+      if (!response.ok) throw new Error(value.error);
+      setSession(value);
+      if (value.status === "CONNECTED") void load();
+    } catch (checkError) {
+      setError(checkError instanceof Error ? checkError.message : "Baglanti durumu alinamadi.");
+    } finally { setLoading(false); }
   }
 
-  const visible = accounts?.filter((account) => archived || !account.archivedAt) || [];
+  const visible = accounts || [];
   const qrSeconds = session?.qrExpiresAt ? Math.max(0, Math.ceil((new Date(session.qrExpiresAt).getTime() - now) / 1_000)) : 0;
   const codeSeconds = session?.pairingCodeExpiresAt ? Math.max(0, Math.ceil((new Date(session.pairingCodeExpiresAt).getTime() - now) / 1_000)) : 0;
   const expired = Boolean(session?.qrExpiresAt && qrSeconds === 0);
@@ -171,7 +189,12 @@ export function AccountsStablePage() {
         </div> : tab === "CODE" ? <div className="mt-6 text-center">
           {!session?.pairingCode || pairingExpired ? <>
             <label className="mb-2 block text-left text-sm font-medium !text-slate-900">Ülke koduyla telefon numarası</label>
-            <input className={modalInput} inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+905321234567" />
+            <div className="grid grid-cols-[7rem_1fr] gap-2">
+              <select aria-label="Ulke kodu" className={modalInput} value={countryCode} onChange={(event) => setCountryCode(event.target.value)}>
+                <option value="90">TR +90</option><option value="49">DE +49</option><option value="994">AZ +994</option><option value="44">UK +44</option>
+              </select>
+              <input aria-label="Telefon numarasi" className={modalInput} inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="552 004 81 07" />
+            </div>
             <button disabled={loading} className={`${primary} mt-4 w-full`} onClick={pairing}>{loading && <LoaderCircle className="size-4 animate-spin" />}{session ? "Yeni kod al" : "Telefon kodu oluştur"}</button>
           </> : <>
             <p className="text-sm text-slate-600">WhatsApp → Bağlı cihazlar → Telefon numarasıyla bağla</p>
@@ -182,10 +205,11 @@ export function AccountsStablePage() {
           {!session && <button disabled={loading} className={`${primary} w-full sm:w-auto sm:min-w-48`} onClick={() => void request("/api/accounts/whatsapp/create-session")}>{loading && <LoaderCircle className="size-4 animate-spin" />}QR kodu oluştur</button>}
           {session && !session.qrCode && !error && !expired && <><LoaderCircle className="mx-auto my-8 size-10 animate-spin text-orange-500" /><p className="text-sm text-slate-500">Gerçek QR kod hazırlanıyor, en fazla 15 saniye...</p></>}
           {session?.qrCode && !expired && <><div className="mx-auto my-5 w-fit rounded-2xl border-4 border-orange-500 bg-white p-3 shadow-lg"><img src={session.qrCode} alt="WhatsApp bağlantı QR kodu" className="size-[min(70vw,300px)] min-h-60 min-w-60" /></div><p className="text-sm text-slate-600">WhatsApp → Bağlı cihazlar → Cihaz bağla</p><p className="mt-2 text-sm font-medium text-orange-700">QR kalan süresi: {qrSeconds} saniye</p></>}
+          {session && expired && <p className="mb-3 text-sm font-medium text-red-700">QR kod süresi doldu. Yeni QR oluşturun.</p>}
           {session && (expired || error) && <button disabled={loading} className={`${primary} w-full sm:w-auto`} onClick={() => void request(`/api/accounts/whatsapp/${session.accountId}/regenerate-qr`)}>{loading && <LoaderCircle className="size-4 animate-spin" />}Yeni QR kodu oluştur</button>}
         </div>}
         {error && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-        {session && session.status !== "CONNECTED" && <button disabled={loading} className={`${btn} mt-4 w-full`} onClick={() => void request(`/api/accounts/whatsapp/${session.accountId}/cancel`)}>Bağlantıyı iptal et</button>}
+        {session && session.status !== "CONNECTED" && <div className="mt-4 grid gap-2 sm:grid-cols-2"><button disabled={loading} className={btn} onClick={() => void checkConnection()}><RefreshCw className="size-4" />Bağlantıyı Kontrol Et</button><button disabled={loading} className={btn} onClick={() => void request(`/api/accounts/whatsapp/${session.accountId}/cancel`)}>Bağlantıyı iptal et</button></div>}
       </section>
     </div>}
   </>;

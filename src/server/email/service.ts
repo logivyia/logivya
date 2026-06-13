@@ -7,7 +7,9 @@ export async function sendTemplateEmailSafely(input:TemplateEmailInput&{companyI
   try{
     const result=await emailProvider().sendTemplateEmail(input);
     await prisma.emailDeliveryLog.update({where:{id:log.id},data:{status:"SENT",providerId:result.providerId,sentAt:new Date()}});
+    return { sent: true as const, providerId: result.providerId };
   }catch(error){
     await prisma.emailDeliveryLog.update({where:{id:log.id},data:{status:"FAILED",errorCode:error instanceof Error?error.name:"UNKNOWN"}});
+    return { sent: false as const };
   }
 }

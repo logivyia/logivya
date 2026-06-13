@@ -1,5 +1,7 @@
-import { access, mkdir, rm } from "node:fs/promises";
-import path from "node:path";
+/**
+ * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
+ * Do not modify without running the full WhatsApp regression test suite.
+ */
 import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState, type WASocket } from "@whiskeysockets/baileys";
 import { Prisma } from "@prisma/client";
 import QRCode from "qrcode";
@@ -7,26 +9,19 @@ import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
+import { clearWhatsAppSession, ensureWhatsAppSessionRoot, hasWhatsAppCredentials, whatsappSessionDirectory } from "@/lib/whatsapp/session-manager";
 import type { GroupResult, SendGroupMessageInput, SendResult, SessionResult, WhatsAppProvider } from "@/server/whatsapp/provider";
 
 const sockets = new Map<string, WASocket>();
 const manuallyDisconnected = new Set<string>();
 const sessionModes = new Map<string, "QR" | "PAIRING">();
 const sessionRestarts = new Map<string, Promise<WASocket>>();
-const sessionRoot = path.resolve(process.env.WHATSAPP_SESSION_DIR || path.join(process.cwd(), "sessions"));
 
 async function auditAccount(accountId: string, action: string, metadata: Record<string, unknown> = {}) {
   const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId }, select: { companyId: true } });
   if (!account) return;
   const auditMetadata = JSON.parse(JSON.stringify(metadata)) as Prisma.InputJsonValue;
   await prisma.auditLog.create({ data: { companyId: account.companyId, action, entityType: "WhatsAppAccount", entityId: accountId, metadata: auditMetadata } });
-}
-
-function accountSessionDirectory(accountId: string) {
-  const directory = path.resolve(sessionRoot, accountId);
-  const relative = path.relative(sessionRoot, directory);
-  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("INVALID_SESSION_PATH");
-  return directory;
 }
 
 export class BaileysWhatsAppProvider implements WhatsAppProvider {
@@ -54,9 +49,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       });
       if (!account || account.archivedAt) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
 
-      try {
-        await access(path.join(accountSessionDirectory(accountId), "creds.json"));
-      } catch {
+      if (!(await hasWhatsAppCredentials(accountId))) {
         await prisma.whatsAppAccount.updateMany({
           where: { id: accountId, archivedAt: null },
           data: { status: "RECONNECT_REQUIRED", lastError: "WhatsApp bağlantısını QR kod veya telefon koduyla yeniden kurun." },
@@ -90,8 +83,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
 
   private async clearTemporaryAuth(accountId: string) {
     await this.stopSocket(accountId, "Pairing session reset");
-    await rm(accountSessionDirectory(accountId), { recursive: true, force: true });
-    await prisma.whatsAppSession.deleteMany({ where: { accountId } });
+    await clearWhatsAppSession(accountId);
   }
 
   private waitForSocketInitialization(socket: WASocket) {
@@ -163,8 +155,8 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
   private async startSession(accountId: string, mode: "QR" | "PAIRING") {
     manuallyDisconnected.delete(accountId);
     sessionModes.set(accountId, mode);
-    await mkdir(sessionRoot, { recursive: true });
-    const directory = accountSessionDirectory(accountId);
+    await ensureWhatsAppSessionRoot();
+    const directory = whatsappSessionDirectory(accountId);
     // Baileys uses this name for its auth-state factory; it is not a React hook.
     // eslint-disable-next-line react-hooks/rules-of-hooks
     const { state, saveCreds } = await useMultiFileAuthState(directory);
@@ -231,7 +223,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
             }
             const reason = lastDisconnect?.error instanceof Error ? lastDisconnect.error.message : "WhatsApp pairing connection closed";
             logger.error("whatsapp.pairing.connection_closed", lastDisconnect?.error, { accountId, code });
-            await rm(accountSessionDirectory(accountId), { recursive: true, force: true });
+            await clearWhatsAppSession(accountId);
             await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "FAILED", pairingCode: null, pairingCodeExpiresAt: null, lastError: pairingUserMessage(lastDisconnect?.error) } });
             await auditAccount(accountId, "whatsapp.pairing.failed", { reason, code });
             return;

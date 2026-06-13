@@ -6,20 +6,25 @@ import { whatsappQueue } from "@/server/queues/client";
 import { writeAuditLog } from "@/server/security/audit";
 import { assertWhatsAppWorkerReachable, waitForAccountQr } from "@/server/whatsapp/worker-health";
 import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
+import { AccountStatus } from "@prisma/client";
+import { resetAccountForConnection } from "@/lib/whatsapp/account-status-machine";
+import { assertSameOrigin, enforceWhatsAppRateLimit } from "@/server/whatsapp/request-guards";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    assertSameOrigin(request);
     const { company, membership, user } = await requireApiSession();
     requirePermission(membership.role, "connect_accounts");
     await assertWhatsAppWorkerReachable();
     const { id } = await params;
     const account = await prisma.whatsAppAccount.findFirst({ where: { id, companyId: company.id, archivedAt: null } });
     if (!account) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
-    await prisma.whatsAppAccount.update({ where: { id }, data: { status: "PENDING_QR", qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null } });
+    await enforceWhatsAppRateLimit("qr-account", id);
+    await resetAccountForConnection(id, AccountStatus.PENDING_QR);
     await whatsappQueue().add("reconnect", { action: "reconnect", accountId: id }, { jobId: `regenerate-${id}-${Date.now()}` });
     const ready = await waitForAccountQr(id);
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.qr.regenerated", entityType: "WhatsAppAccount", entityId: id });
-    return NextResponse.json({ accountId: id, status: ready.status, qrCode: ready.qrCode, qrExpiresAt: ready.qrExpiresAt });
+    return NextResponse.json({ ok: true, accountId: id, status: ready.status, qr: ready.qrCode, qrCode: ready.qrCode, expiresAt: ready.qrExpiresAt, qrExpiresAt: ready.qrExpiresAt });
   } catch (error) {
     return NextResponse.json({ error: whatsappUserMessage(error, "qr") }, { status: 503 });
   }

@@ -13,6 +13,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     });
     if (!account) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
     return NextResponse.json({
+      ok: true,
       accountId: account.id,
       status: account.status,
       qrCode: account.qrCode,
@@ -20,11 +21,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       pairingCode: account.pairingCode,
       pairingCodeExpiresAt: account.pairingCodeExpiresAt,
       phoneNumber: account.phoneNumber,
+      phone: account.phoneNumber,
       displayName: account.displayName,
+      connectedAt: account.lastConnectedAt,
       groupCount: account._count.groups,
       contactCount: account._count.contacts,
       lastError: account.lastError ? whatsappUserMessage(account.lastError, account.pairingCode ? "pairing" : "connection") : null,
+      failureReasonSafe: account.lastError ? whatsappUserMessage(account.lastError, account.pairingCode ? "pairing" : "connection") : null,
       lastSyncedAt: account.lastSyncedAt,
+      lastSyncAt: account.lastSyncedAt,
+      pairingExpiresAt: account.pairingCodeExpiresAt,
     });
   } catch {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
