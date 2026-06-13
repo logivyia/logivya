@@ -11,7 +11,7 @@ import { assertWhatsAppWorkerReachable, waitForAccountQr } from "@/server/whatsa
 import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
 import { AccountStatus } from "@prisma/client";
 import { resetAccountForConnection } from "@/lib/whatsapp/account-status-machine";
-import { assertSameOrigin, enforceWhatsAppRateLimit } from "@/server/whatsapp/request-guards";
+import { assertSameOrigin, enforceWhatsAppRateLimit, whatsappRequestErrorStatus } from "@/server/whatsapp/request-guards";
 
 export async function POST(request: Request) {
   let accountId: string | undefined;
@@ -45,8 +45,9 @@ export async function POST(request: Request) {
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.qr.requested", entityType: "WhatsAppAccount", entityId: accountId });
     return NextResponse.json({ ok: true, accountId, status: ready.status, qr: ready.qrCode, qrCode: ready.qrCode, expiresAt: ready.qrExpiresAt, qrExpiresAt: ready.qrExpiresAt }, { status: 201 });
   } catch (error) {
+    const status = whatsappRequestErrorStatus(error);
     const message = whatsappUserMessage(error, "qr");
     if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "FAILED", lastError: message } });
-    return NextResponse.json({ error: message, accountId }, { status: 503 });
+    return NextResponse.json({ error: status === 401 ? "UNAUTHORIZED" : message, accountId }, { status });
   }
 }

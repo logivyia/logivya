@@ -12,7 +12,7 @@ import { findReusableWhatsAppAccount, findSingleSlotWhatsAppAccount } from "@/se
 import { assertWhatsAppWorkerReachable, waitForPairingCode } from "@/server/whatsapp/worker-health";
 import { AccountStatus } from "@prisma/client";
 import { resetAccountForConnection } from "@/lib/whatsapp/account-status-machine";
-import { assertSameOrigin, enforceWhatsAppRateLimit } from "@/server/whatsapp/request-guards";
+import { assertSameOrigin, enforceWhatsAppRateLimit, whatsappRequestErrorStatus } from "@/server/whatsapp/request-guards";
 
 export async function POST(request: Request) {
   let accountId: string | undefined;
@@ -48,8 +48,9 @@ export async function POST(request: Request) {
     const ready = await waitForPairingCode(accountId);
     return NextResponse.json({ ok: true, accountId, status: ready.status, pairingCode: ready.pairingCode, expiresAt: ready.pairingCodeExpiresAt, pairingCodeExpiresAt: ready.pairingCodeExpiresAt }, { status: 201 });
   } catch (error) {
+    const status = whatsappRequestErrorStatus(error, error instanceof Error && error.message === "INVALID_WHATSAPP_PHONE" ? 400 : 503);
     const message = pairingUserMessage(error);
     if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "FAILED", lastError: message } });
-    return NextResponse.json({ error: message, accountId }, { status: error instanceof Error && error.message === "INVALID_WHATSAPP_PHONE" ? 400 : 503 });
+    return NextResponse.json({ error: status === 401 ? "UNAUTHORIZED" : message, accountId }, { status });
   }
 }

@@ -20,3 +20,11 @@ export async function enforceWhatsAppRateLimit(scope: string, subject: string, m
   if (count === 1) await client().expire(key, windowSeconds);
   if (count > max) throw new Error("WHATSAPP_RATE_LIMITED");
 }
+
+export function whatsappRequestErrorStatus(error: unknown, fallback = 503) {
+  if (!(error instanceof Error)) return fallback;
+  if (error.message === "UNAUTHORIZED") return 401;
+  if (error.message === "CSRF_REJECTED") return 403;
+  if (error.message === "WHATSAPP_RATE_LIMITED") return 429;
+  return fallback;
+}
