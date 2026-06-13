@@ -1,2 +1,2 @@
-import { HistoryPage } from "@/components/feature-pages";
-export default function Page(){ return <HistoryPage />; }
+import { MessageHistoryStablePage } from "@/components/message-history-stable-page";
+export default function Page(){ return <MessageHistoryStablePage />; }

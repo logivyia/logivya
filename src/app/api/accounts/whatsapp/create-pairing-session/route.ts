@@ -25,6 +25,10 @@ export async function POST(request: Request) {
     const phoneNumber = normalizeWhatsAppPhoneNumber(body.phoneNumber);
     await enforceWhatsAppRateLimit("pairing-phone", phoneNumber);
     await cleanupStuckWhatsAppAccounts(company.id);
+    const connected = await prisma.whatsAppAccount.findFirst({ where: { companyId: company.id, archivedAt: null, status: "CONNECTED" } });
+    if (connected) {
+      return NextResponse.json({ ok: true, alreadyConnected: true, accountId: connected.id, status: connected.status, message: "WhatsApp hesabınız zaten bağlı." });
+    }
     await assertWhatsAppWorkerReachable();
 
     let account = await findReusableWhatsAppAccount(company.id);

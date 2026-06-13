@@ -19,6 +19,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { id } = await params;
     const account = await prisma.whatsAppAccount.findFirst({ where: { id, companyId: company.id, archivedAt: null } });
     if (!account) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
+    if (account.status === "CONNECTED") {
+      return NextResponse.json({ ok: true, alreadyConnected: true, accountId: account.id, status: account.status, message: "WhatsApp hesabınız zaten bağlı." });
+    }
     await enforceWhatsAppRateLimit("qr-account", id);
     await resetAccountForConnection(id, AccountStatus.PENDING_QR);
     await whatsappQueue().add("reconnect", { action: "reconnect", accountId: id }, { jobId: `regenerate-${id}-${Date.now()}` });
