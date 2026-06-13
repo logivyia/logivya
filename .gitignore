@@ -43,18 +43,18 @@ dump.rdb
 appendonly.aof
 
 # WhatsApp and channel provider sessions
-sessions/
-session/
-whatsapp-sessions/
-whatsapp-session/
-auth_info_baileys/
-.wwebjs_auth/
-.wwebjs_cache/
-qr/
-qrcodes/
-temp-qr/
-tmp/
-temp/
+/sessions/
+/session/
+/whatsapp-sessions/
+/whatsapp-session/
+/auth_info_baileys/
+/.wwebjs_auth/
+/.wwebjs_cache/
+/qr/
+/qrcodes/
+/temp-qr/
+/tmp/
+/temp/
 *.session
 *.session.json
 *.qr
