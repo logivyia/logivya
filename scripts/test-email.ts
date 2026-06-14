@@ -1,5 +1,6 @@
 import { loadEnvConfig } from "@next/env";
-import { sendEmail, verifySmtpConnection } from "../src/lib/email/send-email";
+import { getEmailProviderStatus } from "../src/lib/email/email-provider";
+import { sendEmail, verifyEmailProviderConnection } from "../src/lib/email/send-email";
 
 loadEnvConfig(process.cwd());
 
@@ -10,32 +11,54 @@ async function main() {
     process.exit(1);
   }
 
-  const health = await verifySmtpConnection();
+  const status = getEmailProviderStatus();
+  if (!status.configured) {
+    console.error("Email provider is not configured.");
+    console.error(
+      JSON.stringify(
+        {
+          provider: status.provider,
+          configured: status.configured,
+          missingVariables: status.missingVariables,
+          fromConfigured: status.fromConfigured,
+        },
+        null,
+        2,
+      ),
+    );
+    process.exit(1);
+  }
+
+  const health = await verifyEmailProviderConnection();
   if (!health.ok) {
-    console.error("SMTP health check failed");
-    console.error(JSON.stringify({
-      configured: health.diagnostics.configured,
-      missing: health.diagnostics.missing,
-      host: health.diagnostics.host,
-      port: health.diagnostics.port,
-      secure: health.diagnostics.secure,
-      fromConfigured: health.diagnostics.fromConfigured,
-      error: health.errorCode,
-    }, null, 2));
+    console.error("Email provider health check failed.");
+    console.error(
+      JSON.stringify(
+        {
+          provider: status.provider,
+          configured: status.configured,
+          missingVariables: status.missingVariables,
+          fromConfigured: status.fromConfigured,
+          error: health.errorCode,
+        },
+        null,
+        2,
+      ),
+    );
     process.exit(1);
   }
 
   const result = await sendEmail({
     to,
-    subject: "Logivya SMTP Test",
-    text: "Bu e-posta Logivya SMTP yapılandırmasını test etmek için gönderildi.",
+    subject: "Logivya E-posta Testi",
+    text: "Bu e-posta Logivya parola sifirlama e-posta servisini test etmek icin gonderildi.",
     html: `<div style="font-family:Arial,sans-serif;color:#111827">
-      <h1>Logivya SMTP Test</h1>
-      <p>Bu e-posta Logivya SMTP yapılandırmasını test etmek için gönderildi.</p>
+      <h1>Logivya E-posta Testi</h1>
+      <p>Bu e-posta Logivya parola sifirlama e-posta servisini test etmek icin gonderildi.</p>
     </div>`,
   });
 
-  console.log(JSON.stringify({ ok: true, to, providerId: result.providerId }, null, 2));
+  console.log(JSON.stringify({ ok: true, to, provider: result.provider, providerId: result.providerId }, null, 2));
 }
 
 main().catch((error) => {

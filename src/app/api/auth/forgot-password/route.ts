@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof PasswordResetEmailDeliveryError) {
       logger.error("Password reset email was not sent", undefined, { errorCode: error.errorCode });
-      if (error.errorCode === "SMTP_CONFIGURATION_MISSING") {
+      if (error.errorCode.includes("CONFIGURATION_MISSING")) {
         return NextResponse.json(
           { error: "auth.emailServiceNotConfigured", message: RESET_EMAIL_CONFIGURATION_MESSAGE },
           { status: 503 },

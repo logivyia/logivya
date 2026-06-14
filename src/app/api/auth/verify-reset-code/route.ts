@@ -21,10 +21,10 @@ export async function POST(request: Request) {
     if (!parsed.success) return NextResponse.json({ error: "auth.resetInvalidCode" }, { status: 400 });
     const result = await verifyPasswordResetCode(request, parsed.data.identifier, parsed.data.code);
     return result === "OK"
-      ? NextResponse.json({ ok: true })
+      ? NextResponse.json({ ok: true, message: "Kod doğrulandı." })
       : NextResponse.json({ error: resetCodeError(result), message: resetCodeMessage(result) }, { status: 400 });
   } catch (error) {
     logger.error("Password reset verification failed", error);
-    return NextResponse.json({ error: "auth.resetInvalidCode" }, { status: 400 });
+    return NextResponse.json({ error: "auth.resetInvalidCode", message: "Kod hatalı veya geçersiz." }, { status: 400 });
   }
 }

@@ -1,24 +1,31 @@
 import { NextResponse } from "next/server";
-import { verifySmtpConnection } from "@/lib/email/send-email";
+import { getEmailProviderStatus } from "@/lib/email/email-provider";
+import { verifyEmailProviderConnection } from "@/lib/email/send-email";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { logger } from "@/server/observability/logger";
 
 export async function GET() {
   try {
     await requirePlatformAdmin("platform:read");
-    const result = await verifySmtpConnection();
+    const status = getEmailProviderStatus();
+    const connection = await verifyEmailProviderConnection();
 
     return NextResponse.json({
-      ok: result.ok,
-      provider: "SMTP",
-      configured: result.diagnostics.configured,
-      missing: result.diagnostics.missing,
-      host: result.diagnostics.host,
-      port: result.diagnostics.port,
-      secure: result.diagnostics.secure,
-      fromConfigured: result.diagnostics.fromConfigured,
-      reachable: result.ok,
-      error: result.ok ? undefined : result.errorCode,
+      ok: connection.ok,
+      provider: status.provider,
+      configured: status.configured,
+      missingVariables: status.missingVariables,
+      fromConfigured: status.fromConfigured,
+      smtp: connection.smtp
+        ? {
+            host: connection.smtp.diagnostics.host,
+            port: connection.smtp.diagnostics.port,
+            secure: connection.smtp.diagnostics.secure,
+            canConnect: connection.smtp.ok,
+          }
+        : undefined,
+      reachable: connection.ok,
+      error: connection.ok ? undefined : connection.errorCode,
     });
   } catch (error) {
     logger.error("Admin email health check failed", error);

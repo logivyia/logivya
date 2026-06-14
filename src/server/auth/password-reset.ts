@@ -1,9 +1,9 @@
 import { randomInt, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
-import { sendTemplateEmailSafely } from "@/server/email/service";
-import { getSmtpDiagnostics } from "@/lib/email/send-email";
+import { getEmailProviderStatus } from "@/lib/email/email-provider";
 import { logger } from "@/server/observability/logger";
+import { sendTemplateEmailSafely } from "@/server/email/service";
 import { hashOpaqueToken } from "@/server/security/authentication";
 import { hashPassword } from "@/server/security/passwords";
 
@@ -14,7 +14,7 @@ const MAX_IP_REQUESTS = 10;
 const MAX_ATTEMPTS = 5;
 
 export const RESET_REQUEST_MESSAGE = "Eğer bilgiler sistemde kayıtlıysa doğrulama kodu gönderilmiştir.";
-export const RESET_EMAIL_DELIVERY_FAILED_MESSAGE = "Doğrulama kodu gönderilemedi. Lütfen yöneticiyle iletişime geçin.";
+export const RESET_EMAIL_DELIVERY_FAILED_MESSAGE = "Doğrulama kodu gönderilemedi. Lütfen daha sonra tekrar deneyin.";
 export const RESET_EMAIL_CONFIGURATION_MESSAGE = "E-posta servisi yapılandırılmamış. Lütfen yöneticiyle iletişime geçin.";
 
 export class PasswordResetEmailDeliveryError extends Error {
@@ -111,12 +111,6 @@ export async function requestPasswordReset(request: Request, identifier: string)
     hasPhoneIdentifier: Boolean(normalized.phone),
   });
 
-  const smtpDiagnostics = getSmtpDiagnostics();
-  if (!smtpDiagnostics.configured) {
-    logger.error("SMTP configuration missing", undefined, { missing: smtpDiagnostics.missing });
-    throw new PasswordResetEmailDeliveryError("SMTP_CONFIGURATION_MISSING");
-  }
-
   const { ipAddress } = requestMetadata(request);
   const since = new Date(Date.now() - REQUEST_WINDOW_MS);
   const ipRequests = await prisma.loginAttempt.count({
@@ -138,6 +132,17 @@ export async function requestPasswordReset(request: Request, identifier: string)
   if (!user) return;
 
   await audit(request, user, "auth.password_reset_requested");
+
+  const providerStatus = getEmailProviderStatus();
+  if (!providerStatus.configured) {
+    logger.error("Email configuration missing", undefined, {
+      normalizedEmail: normalized.email || undefined,
+      provider: providerStatus.provider,
+      missing: providerStatus.missingVariables,
+      userFound: true,
+    });
+    throw new PasswordResetEmailDeliveryError("EMAIL_CONFIGURATION_MISSING");
+  }
 
   const accountRequests = await prisma.passwordResetToken.count({
     where: { userId: user.id, createdAt: { gte: since } },
@@ -171,6 +176,7 @@ export async function requestPasswordReset(request: Request, identifier: string)
   logger.info("Forgot password email send started", {
     userId: user.id,
     tokenId: token.id,
+    provider: providerStatus.provider,
     emailSendAttempted: true,
   });
 
@@ -186,6 +192,7 @@ export async function requestPasswordReset(request: Request, identifier: string)
     logger.info("Forgot password email provider success", {
       userId: user.id,
       tokenId: token.id,
+      provider: providerStatus.provider,
       providerId: delivery.providerId,
     });
     await audit(request, user, "auth.password_reset_code_sent", token.id);
@@ -199,6 +206,7 @@ export async function requestPasswordReset(request: Request, identifier: string)
   logger.warn("Forgot password email provider failure", {
     userId: user.id,
     tokenId: token.id,
+    provider: providerStatus.provider,
     errorCode: delivery.errorCode,
   });
   throw new PasswordResetEmailDeliveryError(delivery.errorCode);

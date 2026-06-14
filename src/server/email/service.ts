@@ -1,11 +1,8 @@
 import { prisma } from "@/server/db";
 import { emailProvider, type TemplateEmailInput } from "@/server/email/provider";
-import { getSmtpDiagnostics, verifySmtpConnection } from "@/lib/email/send-email";
+import { getEmailProviderStatus } from "@/lib/email/email-provider";
+import { verifyEmailProviderConnection } from "@/lib/email/send-email";
 import { logger } from "@/server/observability/logger";
-
-function currentProviderName() {
-  return process.env.EMAIL_PROVIDER || "SMTP";
-}
 
 function deliveryErrorCode(error: unknown) {
   if (error instanceof Error && error.message) return error.message.slice(0, 120);
@@ -13,8 +10,8 @@ function deliveryErrorCode(error: unknown) {
 }
 
 export async function sendTemplateEmailSafely(input: TemplateEmailInput & { companyId?: string; userId?: string }) {
-  const provider = currentProviderName();
-  const smtpDiagnostics = provider.toUpperCase() === "SMTP" ? getSmtpDiagnostics() : undefined;
+  const providerStatus = getEmailProviderStatus();
+  const provider = providerStatus.provider;
   const log = await prisma.emailDeliveryLog.create({
     data: {
       companyId: input.companyId,
@@ -26,24 +23,25 @@ export async function sendTemplateEmailSafely(input: TemplateEmailInput & { comp
     },
   });
 
-  if (smtpDiagnostics && !smtpDiagnostics.configured) {
-    const errorCode = "SMTP_CONFIGURATION_MISSING";
-    logger.error("SMTP configuration missing", undefined, {
+  if (!providerStatus.configured) {
+    const errorCode = "EMAIL_CONFIGURATION_MISSING";
+    logger.error("Email configuration missing", undefined, {
       template: input.template,
-      missing: smtpDiagnostics.missing,
+      provider,
+      missing: providerStatus.missingVariables,
       emailDeliveryLogId: log.id,
     });
     await prisma.emailDeliveryLog.update({
       where: { id: log.id },
       data: { status: "FAILED", errorCode },
     });
-    return { sent: false as const, errorCode, missing: smtpDiagnostics.missing };
+    return { sent: false as const, errorCode, missing: providerStatus.missingVariables };
   }
 
   try {
-    if (smtpDiagnostics) {
+    if (provider === "smtp") {
       logger.info("SMTP connection verification started", { template: input.template, emailDeliveryLogId: log.id });
-      const verification = await verifySmtpConnection();
+      const verification = await verifyEmailProviderConnection();
       if (!verification.ok) {
         const errorCode = verification.errorCode || "SMTP_VERIFY_FAILED";
         logger.error("SMTP connection verification failed", undefined, {
