@@ -20,8 +20,21 @@ async function loadDictionary(locale: Locale) {
   return response.json() as Promise<Dictionary>;
 }
 
-export function I18nProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(fallbackLocale);
+function normalizeLocale(value: string | null | undefined): Locale | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase().split("-")[0] as Locale;
+  return locales.includes(normalized) ? normalized : null;
+}
+
+function readCookieLocale() {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|;\s*)logivya\.locale=([^;]+)/);
+  return normalizeLocale(match ? decodeURIComponent(match[1]) : null);
+}
+
+export function I18nProvider({ children, initialLocale = fallbackLocale }: { children: React.ReactNode; initialLocale?: Locale }) {
+  const safeInitialLocale = normalizeLocale(initialLocale) ?? fallbackLocale;
+  const [locale, setLocaleState] = useState<Locale>(safeInitialLocale);
   const [dictionary, setDictionary] = useState<Dictionary>(turkishDictionary);
   const [fallback, setFallback] = useState<Dictionary>(turkishDictionary);
   const loadLocale = useCallback(async (next: Locale) => {
@@ -35,11 +48,12 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.dir = rtlLocales.includes(next) ? "rtl" : "ltr";
   }, []);
   useEffect(() => {
-    const stored = localStorage.getItem("logivya.locale") as Locale | null;
-    const browserLocale = navigator.language.split("-")[0] as Locale;
-    const initialLocale = stored && locales.includes(stored) ? stored : locales.includes(browserLocale) ? browserLocale : fallbackLocale;
-    queueMicrotask(() => void loadLocale(initialLocale));
-  }, [loadLocale]);
+    const cookieLocale = readCookieLocale();
+    const stored = normalizeLocale(localStorage.getItem("logivya.locale"));
+    const browserLocale = normalizeLocale(navigator.language);
+    const nextLocale = cookieLocale ?? safeInitialLocale ?? stored ?? browserLocale ?? fallbackLocale;
+    queueMicrotask(() => void loadLocale(nextLocale));
+  }, [loadLocale, safeInitialLocale]);
   const t = useCallback((key: string, variables: Record<string, string | number> = {}) => {
     const template = dictionary[key] ?? fallback[key] ?? turkishDictionary[key as keyof typeof turkishDictionary];
     if (!template && process.env.NODE_ENV === "development") {

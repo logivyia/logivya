@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "@/components/theme-provider";
 import { I18nProvider } from "@/i18n/provider";
+import { getServerLocale } from "@/i18n/server";
 import "./globals.css";
 import { CookieConsent } from "@/components/cookie-consent";
 
@@ -42,15 +43,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getServerLocale();
   return (
-    <html lang="tr" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <body>
-        <ThemeProvider><I18nProvider>{children}<CookieConsent/></I18nProvider></ThemeProvider>
+        <ThemeProvider><I18nProvider initialLocale={locale}>{children}<CookieConsent/></I18nProvider></ThemeProvider>
       </body>
     </html>
   );
