@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     requirePermission(membership.role, "send_messages");
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
+    if (parsed.data.scheduleType === "SCHEDULED" && parsed.data.scheduledAt && parsed.data.scheduledAt.getTime() <= Date.now()) return NextResponse.json({ error: "composer.scheduleFuture" }, { status: 400 });
     if (parsed.data.scheduleType!=="SEND_NOW") requirePermission(membership.role,"schedule_messages");
     const categoryGroups=parsed.data.categoryIds.length?await prisma.categoryGroup.findMany({where:{categoryId:{in:parsed.data.categoryIds},category:{companyId:company.id,archivedAt:null}},select:{groupId:true}}):[];
     const requestedIds=[...new Set([...parsed.data.groupIds,...categoryGroups.map(item=>item.groupId)])];
@@ -47,7 +48,11 @@ export async function POST(request: Request) {
       const queue = messageQueue();
       const baseDelay=parsed.data.scheduleType==="SCHEDULED"&&parsed.data.scheduledAt?Math.max(0,parsed.data.scheduledAt.getTime()-Date.now()):0;
       for (const [index, recipient] of campaign.recipients.entries()) {
-        await queue.add("send-recipient", { companyId: company.id, campaignId: campaign.id, recipientId: recipient.id }, { jobId:`recipient-${recipient.id}`, delay:baseDelay+index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000) });
+        await queue.add("send-recipient", { companyId: company.id, campaignId: campaign.id, recipientId: recipient.id }, {
+          jobId:`recipient-${recipient.id}`,
+          delay:baseDelay+index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000),
+          ...(parsed.data.scheduleType === "SCHEDULED" ? { attempts: 288, backoff: { type: "fixed", delay: 5 * 60_000 } } : {}),
+        });
       }
     }
     await writeAuditLog(request,{companyId:company.id,userId:user.id,action:"campaign.created",entityType:"MessageCampaign",entityId:campaign.id,after:{scheduleType:campaign.scheduleType,totalRecipients:campaign.totalRecipients}});

@@ -41,8 +41,12 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     queueMicrotask(() => void loadLocale(initialLocale));
   }, [loadLocale]);
   const t = useCallback((key: string, variables: Record<string, string | number> = {}) => {
-    const template = dictionary[key] ?? fallback[key] ?? turkishDictionary[key as keyof typeof turkishDictionary] ?? key;
-    return Object.entries(variables).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), template);
+    const template = dictionary[key] ?? fallback[key] ?? turkishDictionary[key as keyof typeof turkishDictionary];
+    if (!template && process.env.NODE_ENV === "development") {
+      console.warn(`[i18n] missing translation key: ${key}`);
+    }
+    const safeTemplate = template ?? key.replace(/[._-]+/g, " ");
+    return Object.entries(variables).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), safeTemplate);
   }, [dictionary, fallback]);
   const value = useMemo(() => ({ locale, direction: rtlLocales.includes(locale) ? "rtl" as const : "ltr" as const, localeNames, setLocale: loadLocale, t }), [locale, loadLocale, t]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

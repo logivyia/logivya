@@ -2,6 +2,7 @@ import { randomInt, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { sendTemplateEmailSafely } from "@/server/email/service";
+import { getSmtpDiagnostics } from "@/lib/email/send-email";
 import { logger } from "@/server/observability/logger";
 import { hashOpaqueToken } from "@/server/security/authentication";
 import { hashPassword } from "@/server/security/passwords";
@@ -13,7 +14,8 @@ const MAX_IP_REQUESTS = 10;
 const MAX_ATTEMPTS = 5;
 
 export const RESET_REQUEST_MESSAGE = "Eğer bilgiler sistemde kayıtlıysa doğrulama kodu gönderilmiştir.";
-export const RESET_EMAIL_DELIVERY_FAILED_MESSAGE = "Doğrulama kodu gönderilemedi. Lütfen SMTP ayarlarını kontrol edip tekrar deneyin.";
+export const RESET_EMAIL_DELIVERY_FAILED_MESSAGE = "Doğrulama kodu gönderilemedi. Lütfen yöneticiyle iletişime geçin.";
+export const RESET_EMAIL_CONFIGURATION_MESSAGE = "E-posta servisi yapılandırılmamış. Lütfen yöneticiyle iletişime geçin.";
 
 export class PasswordResetEmailDeliveryError extends Error {
   constructor(public readonly errorCode = "EMAIL_DELIVERY_FAILED") {
@@ -103,6 +105,18 @@ async function recordIpRequest(request: Request, identifier: string) {
 }
 
 export async function requestPasswordReset(request: Request, identifier: string) {
+  const normalized = normalizeIdentifier(identifier);
+  logger.info("Forgot password request received", {
+    normalizedEmail: normalized.email || undefined,
+    hasPhoneIdentifier: Boolean(normalized.phone),
+  });
+
+  const smtpDiagnostics = getSmtpDiagnostics();
+  if (!smtpDiagnostics.configured) {
+    logger.error("SMTP configuration missing", undefined, { missing: smtpDiagnostics.missing });
+    throw new PasswordResetEmailDeliveryError("SMTP_CONFIGURATION_MISSING");
+  }
+
   const { ipAddress } = requestMetadata(request);
   const since = new Date(Date.now() - REQUEST_WINDOW_MS);
   const ipRequests = await prisma.loginAttempt.count({
@@ -110,27 +124,54 @@ export async function requestPasswordReset(request: Request, identifier: string)
   });
 
   await recordIpRequest(request, identifier);
-  if (ipRequests >= MAX_IP_REQUESTS) return;
+  if (ipRequests >= MAX_IP_REQUESTS) {
+    logger.warn("Forgot password IP rate limit reached", { ipAddress });
+    return;
+  }
 
   const user = await findUser(identifier);
+  logger.info("Forgot password user lookup completed", {
+    normalizedEmail: normalized.email || undefined,
+    userFound: Boolean(user),
+  });
+
   if (!user) return;
+
   await audit(request, user, "auth.password_reset_requested");
 
   const accountRequests = await prisma.passwordResetToken.count({
     where: { userId: user.id, createdAt: { gte: since } },
   });
-  if (accountRequests >= MAX_ACCOUNT_REQUESTS) return;
+  if (accountRequests >= MAX_ACCOUNT_REQUESTS) {
+    logger.warn("Forgot password account rate limit reached", { userId: user.id });
+    return;
+  }
 
   const code = randomInt(100_000, 1_000_000).toString();
   const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
+  let resetCodeRecordCreated = false;
   const token = await prisma.$transaction(async (tx) => {
     await tx.passwordResetToken.updateMany({
       where: { userId: user.id, usedAt: null },
       data: { usedAt: new Date() },
     });
-    return tx.passwordResetToken.create({
+    const created = await tx.passwordResetToken.create({
       data: { userId: user.id, email: user.email, tokenHash: codeHash(user.id, code), expiresAt },
     });
+    resetCodeRecordCreated = true;
+    return created;
+  });
+
+  logger.info("Forgot password reset code record completed", {
+    userId: user.id,
+    tokenId: token.id,
+    resetCodeRecordCreated,
+  });
+
+  logger.info("Forgot password email send started", {
+    userId: user.id,
+    tokenId: token.id,
+    emailSendAttempted: true,
   });
 
   const delivery = await sendTemplateEmailSafely({
@@ -142,6 +183,11 @@ export async function requestPasswordReset(request: Request, identifier: string)
   });
 
   if (delivery.sent) {
+    logger.info("Forgot password email provider success", {
+      userId: user.id,
+      tokenId: token.id,
+      providerId: delivery.providerId,
+    });
     await audit(request, user, "auth.password_reset_code_sent", token.id);
     return;
   }
@@ -150,7 +196,11 @@ export async function requestPasswordReset(request: Request, identifier: string)
     reason: "EMAIL_DELIVERY_FAILED",
     errorCode: delivery.errorCode,
   });
-  logger.warn("Password reset email delivery failed", { userId: user.id, tokenId: token.id, errorCode: delivery.errorCode });
+  logger.warn("Forgot password email provider failure", {
+    userId: user.id,
+    tokenId: token.id,
+    errorCode: delivery.errorCode,
+  });
   throw new PasswordResetEmailDeliveryError(delivery.errorCode);
 }
 

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { LoaderCircle, Search, Send } from "lucide-react";
 import { useI18n } from "@/i18n/provider";
 import { cn } from "@/lib/utils";
+import { localDateTimeToIso } from "@/lib/datetime";
 
 type Group = { id: string; name: string; participantCount: number; canSend: boolean; account: { label: string } };
 type Category = { id: string; name: string; _count: { groups: number }; groups?: Array<{ groupId: string }> };
@@ -34,7 +35,7 @@ export function CampaignComposerPage() {
   const resolved = useMemo(() => new Set([...selected, ...(data?.categories.filter((category) => selectedCategories.includes(category.id)).flatMap((category) => category.groups?.map((item) => item.groupId) || []) || [])]), [data, selected, selectedCategories]);
   async function send() {
     setSending(true); setStatus("");
-    const response = await fetch("/api/campaigns", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: text.slice(0, 60), content: text, groupIds: selected, categoryIds: selectedCategories, scheduleType: mode, scheduledAt: mode === "SCHEDULED" ? scheduledAt : undefined, recurringRule: mode === "RECURRING" ? { frequency, interval } : undefined }) });
+    const response = await fetch("/api/campaigns", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: text.slice(0, 60), content: text, groupIds: selected, categoryIds: selectedCategories, scheduleType: mode, scheduledAt: mode === "SCHEDULED" ? localDateTimeToIso(scheduledAt) : undefined, recurringRule: mode === "RECURRING" ? { frequency, interval } : undefined }) });
     const result = await response.json(); setSending(false);
     if (!response.ok) { setStatus(t(result.error || "errors.generic")); return; }
     setStatus(t("composer.queued")); setText(""); setSelected([]); setSelectedCategories([]); localStorage.removeItem("logivya.selectedGroupIds");

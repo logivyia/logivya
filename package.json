@@ -10,6 +10,7 @@
     "worker": "tsx src/worker/index.ts",
     "worker:health": "tsx src/worker/health.ts",
     "lint": "eslint",
+    "test:email": "tsx scripts/test-email.ts",
     "test:whatsapp": "tsx scripts/test-whatsapp.ts",
     "test:admin-security": "tsx scripts/test-admin-security.ts",
     "test:subscription-admin": "tsx scripts/test-subscription-admin.ts",

@@ -2,6 +2,8 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { Archive, FileText, LoaderCircle, RefreshCw, Trash2 } from "lucide-react";
+import { useI18n } from "@/i18n/provider";
+import { getMessageStatusLabel } from "@/lib/i18n/status-labels";
 
 type Campaign = { id:string;title:string;status:string;totalRecipients:number;sentCount:number;failedCount:number;createdAt:string };
 
@@ -16,6 +18,7 @@ async function post(url:string, body:unknown = {}) {
 }
 
 export function MessageHistoryStablePage() {
+  const { locale } = useI18n();
   const [showDeleted, setShowDeleted] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -67,7 +70,7 @@ export function MessageHistoryStablePage() {
     </header>
     {status && <p className="mb-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-700">{status}</p>}
     {loading ? <LoaderCircle className="animate-spin text-primary"/> : <section className="panel overflow-hidden rounded-2xl">
-      {!campaigns.length ? <div className="p-10 text-center text-sm text-muted">Henüz kampanya yok.</div> : <div className="overflow-x-auto"><table className="w-full text-start text-sm"><thead className="border-b bg-foreground/[.025] text-[10px] uppercase text-muted"><tr><th className="px-5 py-4"><input type="checkbox" checked={allSelected} onChange={e=>setSelected(e.target.checked?campaigns.map(c=>c.id):[])}/></th><th className="px-5 py-4 font-medium">Kampanya</th><th className="px-5 py-4 font-medium">Durum</th><th className="px-5 py-4 font-medium">İlerleme</th><th className="px-5 py-4 font-medium">Tarih</th><th className="px-5 py-4 font-medium">İşlemler</th></tr></thead><tbody>{campaigns.map(c=><tr key={c.id} className="border-b last:border-0"><td className="px-5 py-4"><input type="checkbox" checked={selected.includes(c.id)} onChange={e=>setSelected(e.target.checked?[...selected,c.id]:selected.filter(id=>id!==c.id))}/></td><td className="px-5 py-4 font-medium">{c.title}</td><td className="px-5 py-4">{c.status}</td><td className="px-5 py-4">{c.sentCount} gönderildi, {c.failedCount} başarısız / {c.totalRecipients}</td><td className="px-5 py-4 text-muted">{new Date(c.createdAt).toLocaleString()}</td><td className="px-5 py-4"><div className="flex flex-wrap gap-2">{c.failedCount>0&&<button title="Başarısızları tekrar dene" onClick={()=>void post(`/api/messages/campaigns/${c.id}/retry-failed`).then(load)} className={ghost}><RefreshCw className="size-4"/></button>}{c.status!=="DELETED"&&<><button onClick={()=>void mutate(c.id,"archive")} className={ghost}><Archive className="size-4"/>Arşivle</button><button disabled title="Bu mesaj için WhatsApp mesaj kimliği bulunamadı." onClick={()=>void deleteEveryone(c.id)} className={ghost}>Herkesten sil</button><button onClick={()=>void mutate(c.id,"delete")} className={danger}><Trash2 className="size-4"/>Sil</button></>}</div></td></tr>)}</tbody></table></div>}
+      {!campaigns.length ? <div className="p-10 text-center text-sm text-muted">Henüz kampanya yok.</div> : <div className="overflow-x-auto"><table className="w-full text-start text-sm"><thead className="border-b bg-foreground/[.025] text-[10px] uppercase text-muted"><tr><th className="px-5 py-4"><input type="checkbox" checked={allSelected} onChange={e=>setSelected(e.target.checked?campaigns.map(c=>c.id):[])}/></th><th className="px-5 py-4 font-medium">Kampanya</th><th className="px-5 py-4 font-medium">Durum</th><th className="px-5 py-4 font-medium">İlerleme</th><th className="px-5 py-4 font-medium">Tarih</th><th className="px-5 py-4 font-medium">İşlemler</th></tr></thead><tbody>{campaigns.map(c=><tr key={c.id} className="border-b last:border-0"><td className="px-5 py-4"><input type="checkbox" checked={selected.includes(c.id)} onChange={e=>setSelected(e.target.checked?[...selected,c.id]:selected.filter(id=>id!==c.id))}/></td><td className="px-5 py-4 font-medium">{c.title}</td><td className="px-5 py-4">{getMessageStatusLabel(c.status, locale)}</td><td className="px-5 py-4">{c.sentCount} gönderildi, {c.failedCount} başarısız / {c.totalRecipients}</td><td className="px-5 py-4 text-muted">{new Date(c.createdAt).toLocaleString()}</td><td className="px-5 py-4"><div className="flex flex-wrap gap-2">{c.failedCount>0&&<button title="Başarısızları tekrar dene" onClick={()=>void post(`/api/messages/campaigns/${c.id}/retry-failed`).then(load)} className={ghost}><RefreshCw className="size-4"/></button>}{c.status!=="DELETED"&&<><button onClick={()=>void mutate(c.id,"archive")} className={ghost}><Archive className="size-4"/>Arşivle</button><button disabled title="Bu mesaj için WhatsApp mesaj kimliği bulunamadı." onClick={()=>void deleteEveryone(c.id)} className={ghost}>Herkesten sil</button><button onClick={()=>void mutate(c.id,"delete")} className={danger}><Trash2 className="size-4"/>Sil</button></>}</div></td></tr>)}</tbody></table></div>}
     </section>}
   </>;
 }

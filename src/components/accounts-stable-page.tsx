@@ -2,6 +2,8 @@
 /* eslint-disable react-hooks/set-state-in-effect,@next/next/no-img-element */
 import { useCallback, useEffect, useState } from "react";
 import { Archive, CheckCircle2, LoaderCircle, Plus, RefreshCw, Smartphone, Trash2, X } from "lucide-react";
+import { useI18n } from "@/i18n/provider";
+import { getWhatsAppStatusLabel } from "@/lib/i18n/status-labels";
 
 type Account = {
   id: string;
@@ -38,24 +40,15 @@ const modalInput = "w-full rounded-xl border !border-slate-300 !bg-white p-3 tex
 const reconnectable = ["NEW", "ERROR", "FAILED", "CONNECTING", "QR_READY", "PENDING_QR", "PENDING_PAIRING", "PAIRING_CODE_READY", "RECONNECT_REQUIRED", "DISCONNECTED"];
 const pendingStatuses = ["PENDING_QR", "QR_READY", "PENDING_PAIRING", "PAIRING_CODE_READY", "CONNECTING"];
 
-const statusMap: Record<string, { label: string; className: string }> = {
-  CONNECTED: { label: "BAĞLI", className: "bg-green-50 text-green-700" },
-  ACTIVE: { label: "BAĞLI", className: "bg-green-50 text-green-700" },
-  FAILED: { label: "BAŞARISIZ", className: "bg-red-50 text-red-700" },
-  ERROR: { label: "BAŞARISIZ", className: "bg-red-50 text-red-700" },
-  PENDING_QR: { label: "QR BEKLENİYOR", className: "bg-amber-50 text-amber-700" },
-  QR_READY: { label: "QR BEKLENİYOR", className: "bg-amber-50 text-amber-700" },
-  PENDING_PAIRING: { label: "TELEFON KODU BEKLENİYOR", className: "bg-amber-50 text-amber-700" },
-  PAIRING_CODE_READY: { label: "TELEFON KODU BEKLENİYOR", className: "bg-amber-50 text-amber-700" },
-  DISCONNECTED: { label: "BAĞLANTI KESİLDİ", className: "bg-red-50 text-red-700" },
-  ARCHIVED: { label: "ARŞİVLENDİ", className: "bg-slate-100 text-slate-600" },
-};
-
-function statusBadge(status: string) {
-  return statusMap[status] || { label: status, className: "bg-slate-100 text-slate-700" };
+function statusTone(status: string) {
+  if (["CONNECTED", "ACTIVE"].includes(status)) return "bg-green-50 text-green-700";
+  if (["PENDING_QR", "QR_READY", "PENDING_PHONE", "PENDING_PAIRING", "PAIRING_CODE_READY", "CONNECTING"].includes(status)) return "bg-amber-50 text-amber-700";
+  if (status === "ARCHIVED") return "bg-slate-100 text-slate-600";
+  return "bg-red-50 text-red-700";
 }
 
 export function AccountsStablePage() {
+  const { locale } = useI18n();
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [modal, setModal] = useState(false);
   const [session, setSession] = useState<Session>();
@@ -200,9 +193,9 @@ export function AccountsStablePage() {
     {error && !modal && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {!accounts ? <LoaderCircle className="animate-spin" /> : <div className="grid gap-5 xl:grid-cols-3">
       {visible.map((account) => {
-        const badge = statusBadge(account.status);
+        const badgeLabel = getWhatsAppStatusLabel(account.status, locale);
         return <article className="panel rounded-2xl p-5" key={account.id}>
-          <div className="flex justify-between"><Smartphone className="text-orange-500" /><span className={`rounded-full px-2 py-1 text-xs font-semibold ${badge.className}`}>{badge.label}</span></div>
+          <div className="flex justify-between"><Smartphone className="text-orange-500" /><span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusTone(account.status)}`}>{badgeLabel}</span></div>
           <h2 className="mt-5 font-semibold">{account.displayName || account.label || "WhatsApp Hesabı"}</h2>
           <p className="text-xs text-muted">{account.phoneNumber || "Telefon bekleniyor"}</p>
           {account.lastError && <p className="mt-3 rounded-lg bg-red-50 p-2 text-xs text-red-700">Bağlantı başarısız oldu. Yeni kod veya QR ile tekrar deneyin.</p>}
