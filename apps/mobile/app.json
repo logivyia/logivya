@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Logivya",
+    "slug": "logivya-mobile",
+    "scheme": "logivya",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icons/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.logivya.mobile"
+    },
+    "android": {
+      "package": "com.logivya.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icons/icon.png",
+        "backgroundColor": "#0f172a"
+      }
+    },
+    "extra": {
+      "apiBaseUrl": "https://www.logivya.com"
+    }
+  }
+}
