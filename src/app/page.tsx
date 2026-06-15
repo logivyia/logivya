@@ -1,28 +1,165 @@
 import Link from "next/link";
 import { ArrowRight, CalendarClock, Check, Layers3, LockKeyhole, MessagesSquare, RefreshCw, ShieldCheck, Zap } from "lucide-react";
-import { getSessionContext } from "@/server/auth/session";
 import { BrandLogo } from "@/components/brand-logo";
 import { LanguageSelector } from "@/components/language-selector";
+import { getSessionContext } from "@/server/auth/session";
+
+const brandSlogan = "Tüm İletişim Kanallarınızı ve İş Süreçlerinizi Tek Platformdan Yönetin";
 
 const features = [
-  ["Hızlı Toplu Mesaj", MessagesSquare], ["İleri Tarihli Gönderim", CalendarClock], ["Tekrarlı Gönderim", RefreshCw],
-  ["Akıllı Grup Yönetimi", Layers3], ["Toplu Mesaj Listeleri", Zap], ["Güvenli Bağlantı", ShieldCheck],
+  ["Çok Kanallı İletişim", MessagesSquare],
+  ["İleri Tarihli Gönderim", CalendarClock],
+  ["Tekrarlı Gönderim", RefreshCw],
+  ["Akıllı Grup Yönetimi", Layers3],
+  ["Akıllı İş Süreçleri", Zap],
+  ["Güvenli Bağlantı", ShieldCheck],
 ] as const;
-const plans: ReadonlyArray<{name:string;badge?:string;price:string;period:string;description:string;features:readonly string[];cta:string}> = [
-  { name: "DENEME", badge: "Ücretsiz Dene", price: "0 TL", period: "3 Gün", description: "İlk kayıt olan kullanıcılar için 3 günlük ücretsiz deneme.", features: ["1 Hesap", "Tüm özellikleri test etme"], cta: "Hemen Başla" },
-  { name: "BAŞLANGIÇ", price: "350 TL / Ay", period: "3600 TL / Yıl", description: "Küçük işletmeler ve bireysel kullanıcılar için.", features: ["2 Hesap", "Reklamsız gönderim", "WhatsApp grup yönetimi", "İleri tarihli gönderim"], cta: "Paketi Seç" },
-  { name: "PROFESYONEL", badge: "En Popüler", price: "450 TL / Ay", period: "4500 TL / Yıl", description: "Profesyonel ekipler ve yoğun kullanım için.", features: ["3 Hesap", "3 Kullanıcı", "Reklamsız gönderim", "Gelişmiş raporlama"], cta: "Paketi Seç" },
-  { name: "KURUMSAL", price: "Teklif Alınız", period: "Özel plan", description: "Kurumsal firmalar ve yüksek hacimli operasyonlar için.", features: ["Sınırsız hesap", "CRM paneli", "API erişimi", "Dedicated destek"], cta: "Teklif Al" },
+
+const plans: ReadonlyArray<{
+  name: string;
+  badge?: string;
+  price: string;
+  period: string;
+  description: string;
+  features: readonly string[];
+  cta: string;
+}> = [
+  {
+    name: "DENEME",
+    badge: "Ücretsiz Dene",
+    price: "0 TL",
+    period: "3 Gün",
+    description: "İlk kayıt olan kullanıcılar için 3 günlük ücretsiz deneme.",
+    features: ["1 Hesap", "Tüm özellikleri test etme"],
+    cta: "Hemen Başla",
+  },
+  {
+    name: "BAŞLANGIÇ",
+    price: "350 TL / Ay",
+    period: "3600 TL / Yıl",
+    description: "Küçük işletmeler ve bireysel kullanıcılar için.",
+    features: ["2 Hesap", "Reklamsız gönderim", "İletişim kanalı yönetimi", "İleri tarihli gönderim"],
+    cta: "Paketi Seç",
+  },
+  {
+    name: "PROFESYONEL",
+    badge: "En Popüler",
+    price: "450 TL / Ay",
+    period: "4500 TL / Yıl",
+    description: "Profesyonel ekipler ve yoğun kullanım için.",
+    features: ["3 Hesap", "3 Kullanıcı", "Reklamsız gönderim", "Gelişmiş raporlama"],
+    cta: "Paketi Seç",
+  },
+  {
+    name: "KURUMSAL",
+    price: "Teklif Alınız",
+    period: "Özel plan",
+    description: "Kurumsal firmalar ve yüksek hacimli operasyonlar için.",
+    features: ["Sınırsız hesap", "CRM paneli", "API erişimi", "Dedicated destek"],
+    cta: "Teklif Al",
+  },
 ];
 
 export default async function Home() {
   const session = await getSessionContext();
   if (session) return <meta httpEquiv="refresh" content="0;url=/dashboard" />;
-  return <main className="min-h-screen bg-[#090d19] text-white">
-    <header className="mx-auto flex max-w-7xl items-center px-5 py-6"><Link href="/"><BrandLogo dark className="w-48" /></Link><nav className="ms-auto flex items-center gap-3"><LanguageSelector dark/><Link href="/login" className="rounded-xl px-4 py-2 text-sm text-white/70 hover:text-white">Giriş Yap</Link><Link href="/register" className="rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold">Ücretsiz Dene</Link></nav></header>
-    <section className="relative overflow-hidden px-5 py-24 text-center"><div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(124,58,237,.4),transparent_35%),radial-gradient(circle_at_75%_35%,rgba(45,212,191,.25),transparent_35%)]"/><div className="relative mx-auto max-w-4xl"><span className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-orange-300">3 Gün Ücretsiz Deneme</span><h1 className="mt-8 text-5xl font-bold tracking-tight sm:text-7xl">WhatsApp Gruplarına <span className="text-orange-400">Toplu Mesaj</span></h1><p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-white/60">400+ grubunuza saatler yerine dakikalar içinde ulaşın. Gruplarınızı kategorize edin, mesajlarınızı planlayın ve otomatik gönderin.</p><div className="mt-9 flex justify-center gap-3"><Link href="/register" className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-6 py-3 font-semibold">Hemen Başla<ArrowRight className="size-4"/></Link><Link href="/login" className="rounded-xl border border-white/15 px-6 py-3 font-semibold">Giriş Yap</Link></div></div></section>
-    <section className="mx-auto grid max-w-7xl gap-4 px-5 py-16 md:grid-cols-3">{features.map(([title,Icon])=><article key={title} className="rounded-2xl border border-white/10 bg-white/[.04] p-6"><Icon className="size-6 text-orange-400"/><h2 className="mt-5 font-semibold">{title}</h2><p className="mt-2 text-sm leading-6 text-white/45">Logivya ile güvenli, ölçülebilir ve kontrollü mesajlaşma operasyonları.</p></article>)}</section>
-    <section className="mx-auto max-w-7xl px-5 py-20"><div className="text-center"><p className="text-sm font-semibold text-orange-400">ŞEFFAF FİYATLANDIRMA</p><h2 className="mt-3 text-4xl font-bold">İşletmenize uygun plan</h2></div><div className="mt-12 grid gap-5 lg:grid-cols-4">{plans.map(plan=><article key={plan.name} className="relative rounded-2xl border border-white/10 bg-white/[.04] p-6">{plan.badge&&<span className="absolute end-5 top-5 rounded-full bg-orange-500/15 px-3 py-1 text-[10px] font-bold text-orange-300">{plan.badge}</span>}<h3 className="text-sm font-bold">{plan.name}</h3><p className="mt-6 text-2xl font-bold">{plan.price}</p><p className="mt-1 text-xs text-white/40">{plan.period}</p><p className="mt-5 min-h-16 text-sm leading-6 text-white/50">{plan.description}</p><ul className="my-6 space-y-3 text-sm text-white/70">{plan.features.map(feature=><li key={feature} className="flex gap-2"><Check className="size-4 text-teal-400"/>{feature}</li>)}</ul><Link href="/register" className="block rounded-xl bg-white px-4 py-3 text-center text-sm font-semibold text-slate-950">{plan.cta}</Link></article>)}</div></section>
-    <footer className="border-t border-white/10 px-5 py-8 text-center text-xs text-white/35"><LockKeyhole className="mx-auto mb-3 size-4"/><p>Logivya güvenli ve ölçeklenebilir mesajlaşma operasyon sistemi.</p><div className="mt-4 flex flex-wrap justify-center gap-4"><Link href="/privacy-policy">Gizlilik</Link><Link href="/terms-of-service">Kullanım Koşulları</Link><Link href="/cookie-policy">Cookie Politikası</Link><Link href="/kvkk">KVKK</Link><Link href="/data-processing-agreement">Veri İşleme</Link></div></footer>
-  </main>;
+
+  return (
+    <main className="min-h-screen bg-[#090d19] text-white">
+      <header className="mx-auto flex max-w-7xl items-center px-5 py-6">
+        <Link href="/">
+          <BrandLogo dark className="w-48" />
+        </Link>
+        <nav className="ms-auto flex items-center gap-3">
+          <LanguageSelector dark />
+          <Link href="/login" className="rounded-xl px-4 py-2 text-sm text-white/70 hover:text-white">
+            Giriş Yap
+          </Link>
+          <Link href="/register" className="rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold">
+            Ücretsiz Dene
+          </Link>
+        </nav>
+      </header>
+
+      <section className="relative overflow-hidden px-5 py-24 text-center">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(124,58,237,.4),transparent_35%),radial-gradient(circle_at_75%_35%,rgba(45,212,191,.25),transparent_35%)]" />
+        <div className="relative mx-auto flex max-w-4xl flex-col items-center">
+          <span className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-orange-300">
+            3 Gün Ücretsiz Deneme
+          </span>
+          <BrandLogo dark className="mt-10 w-[360px] max-w-[88vw] sm:w-[520px]" />
+          <div className="my-8 h-px w-24 bg-orange-400/70" />
+          <h1 className="max-w-3xl text-3xl font-bold leading-tight tracking-tight text-white sm:text-5xl">
+            {brandSlogan}
+          </h1>
+          <div className="mt-10 flex justify-center gap-3">
+            <Link href="/register" className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-6 py-3 font-semibold">
+              Hemen Başla
+              <ArrowRight className="size-4" />
+            </Link>
+            <Link href="/login" className="rounded-xl border border-white/15 px-6 py-3 font-semibold">
+              Giriş Yap
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto grid max-w-7xl gap-4 px-5 py-16 md:grid-cols-3">
+        {features.map(([title, Icon]) => (
+          <article key={title} className="rounded-2xl border border-white/10 bg-white/[.04] p-6">
+            <Icon className="size-6 text-orange-400" />
+            <h2 className="mt-5 font-semibold">{title}</h2>
+            <p className="mt-2 text-sm leading-6 text-white/45">
+              Logivya ile güvenli, ölçülebilir ve kontrollü mesajlaşma operasyonları.
+            </p>
+          </article>
+        ))}
+      </section>
+
+      <section className="mx-auto max-w-7xl px-5 py-20">
+        <div className="text-center">
+          <p className="text-sm font-semibold text-orange-400">ŞEFFAF FİYATLANDIRMA</p>
+          <h2 className="mt-3 text-4xl font-bold">İşletmenize uygun plan</h2>
+        </div>
+        <div className="mt-12 grid gap-5 lg:grid-cols-4">
+          {plans.map((plan) => (
+            <article key={plan.name} className="relative rounded-2xl border border-white/10 bg-white/[.04] p-6">
+              {plan.badge && (
+                <span className="absolute end-5 top-5 rounded-full bg-orange-500/15 px-3 py-1 text-[10px] font-bold text-orange-300">
+                  {plan.badge}
+                </span>
+              )}
+              <h3 className="text-sm font-bold">{plan.name}</h3>
+              <p className="mt-6 text-2xl font-bold">{plan.price}</p>
+              <p className="mt-1 text-xs text-white/40">{plan.period}</p>
+              <p className="mt-5 min-h-16 text-sm leading-6 text-white/50">{plan.description}</p>
+              <ul className="my-6 space-y-3 text-sm text-white/70">
+                {plan.features.map((feature) => (
+                  <li key={feature} className="flex gap-2">
+                    <Check className="size-4 text-teal-400" />
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/register" className="block rounded-xl bg-white px-4 py-3 text-center text-sm font-semibold text-slate-950">
+                {plan.cta}
+              </Link>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <footer className="border-t border-white/10 px-5 py-8 text-center text-xs text-white/35">
+        <LockKeyhole className="mx-auto mb-3 size-4" />
+        <p>Logivya güvenli ve ölçeklenebilir mesajlaşma operasyon sistemi.</p>
+        <div className="mt-4 flex flex-wrap justify-center gap-4">
+          <Link href="/privacy-policy">Gizlilik</Link>
+          <Link href="/terms-of-service">Kullanım Koşulları</Link>
+          <Link href="/cookie-policy">Cookie Politikası</Link>
+          <Link href="/kvkk">KVKK</Link>
+          <Link href="/data-processing-agreement">Veri İşleme</Link>
+        </div>
+      </footer>
+    </main>
+  );
 }

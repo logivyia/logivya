@@ -78,10 +78,14 @@ export function PasswordResetForm({ mode }: { mode: Mode }) {
     router.push("/login?reset=success");
   }
 
-  return <main className="auth-surface relative grid min-h-screen place-items-center p-4 sm:p-5">
+  return <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[radial-gradient(circle_at_15%_15%,rgba(255,102,0,0.14),transparent_34%),linear-gradient(135deg,#fff7ed_0%,#f8fafc_42%,#eef2f7_100%)] p-4 sm:p-5">
     <div className="absolute end-4 top-4"><LanguageSelector /></div>
-    <section className="w-full max-w-lg rounded-[2rem] border bg-white p-7 shadow-2xl sm:p-10">
-      <div className="flex justify-center"><BrandLogo className="text-2xl tracking-[.2em]" /></div>
+    <section className="w-full max-w-lg rounded-[2rem] border border-slate-200 bg-white p-7 shadow-2xl shadow-slate-300/50 sm:p-10">
+      <div className="flex justify-center">
+        <div className="rounded-3xl bg-[#0b1220] px-7 py-5 shadow-xl shadow-slate-900/20">
+          <BrandLogo dark className="w-[250px] max-w-full" />
+        </div>
+      </div>
       <div className="mt-8 flex justify-center"><span className="grid size-14 place-items-center rounded-2xl bg-orange-50 text-orange-600"><ShieldCheck className="size-7" /></span></div>
       <h1 className="mt-5 text-center text-3xl font-semibold text-slate-950">{t(mode === "forgot" ? "auth.forgotTitle" : "auth.resetTitle")}</h1>
       <p className="mt-2 text-center text-sm leading-6 text-slate-500">{t(mode === "forgot" ? "auth.forgotDescription" : "auth.resetDescription")}</p>
