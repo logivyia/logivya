@@ -258,6 +258,7 @@ export async function completePasswordReset(request: Request, identifier: string
     prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
     prisma.passwordResetToken.update({ where: { id: token.id }, data: { usedAt: new Date() } }),
     prisma.userSession.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } }),
+    prisma.mobileDeviceSession.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } }),
   ]);
   await audit(request, user, "auth.password_reset_completed", token.id);
   return true;

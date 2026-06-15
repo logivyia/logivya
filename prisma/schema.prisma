@@ -364,6 +364,13 @@ enum PlatformAdminRole {
   READ_ONLY_ADMIN
 }
 
+enum MobilePlatform {
+  IOS
+  ANDROID
+  WEB
+  UNKNOWN
+}
+
 enum CompanySecurityStatus {
   ACTIVE
   DISABLED
@@ -398,6 +405,8 @@ model User {
   userMetrics                    UserMetricDaily[]
   loginAttempts                  LoginAttempt[]
   sessions                       UserSession[]
+  mobileDeviceSessions           MobileDeviceSession[]
+  mobilePushTokens               MobilePushToken[]
   trustedDevices                 TrustedDevice[]
   securityEvents                 SecurityEvent[]
   consents                       ConsentRecord[]
@@ -479,6 +488,8 @@ model Company {
   referralCodes      ReferralCode[]
   referredSignups    ReferralSignup[]            @relation("ReferredCompany")
   emailDeliveries    EmailDeliveryLog[]
+  mobileDeviceSessions MobileDeviceSession[]
+  mobilePushTokens   MobilePushToken[]
   securityStatus     CompanySecurityStatus     @default(ACTIVE)
   billingLockedAt    DateTime?
   campaignsPausedAt  DateTime?
@@ -1487,6 +1498,50 @@ model UserSession {
 
   @@index([userId, revokedAt, expiresAt])
   @@index([companyId, revokedAt])
+}
+
+model MobileDeviceSession {
+  id               String         @id @default(cuid())
+  userId           String
+  companyId        String
+  deviceId         String
+  platform         MobilePlatform @default(UNKNOWN)
+  appVersion       String?
+  userAgent        String?
+  refreshTokenHash String         @unique
+  lastUsedAt       DateTime       @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([companyId, revokedAt])
+  @@index([deviceId])
+  @@index([refreshTokenHash])
+}
+
+model MobilePushToken {
+  id         String         @id @default(cuid())
+  userId     String
+  companyId  String
+  deviceId   String
+  platform   MobilePlatform
+  tokenHash  String         @unique
+  token      String
+  appVersion String?
+  revokedAt  DateTime?
+  lastSeenAt DateTime       @default(now())
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company    Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([companyId, platform])
+  @@index([deviceId])
 }
 
 model TrustedDevice {
