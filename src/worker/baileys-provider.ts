@@ -17,6 +17,13 @@ const manuallyDisconnected = new Set<string>();
 const sessionModes = new Map<string, "QR" | "PAIRING">();
 const sessionRestarts = new Map<string, Promise<WASocket>>();
 
+function maskPhoneNumber(phoneNumber?: string | null) {
+  if (!phoneNumber) return null;
+  const digits = phoneNumber.replace(/\D/g, "");
+  if (digits.length <= 4) return "****";
+  return `${digits.slice(0, 3)}****${digits.slice(-2)}`;
+}
+
 async function auditAccount(accountId: string, action: string, metadata: Record<string, unknown> = {}) {
   const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId }, select: { companyId: true } });
   if (!account) return;
@@ -86,29 +93,9 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     await clearWhatsAppSession(accountId);
   }
 
-  private waitForSocketInitialization(socket: WASocket) {
-    return new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        socket.ev.off("connection.update", listener);
-        reject(new Error("WhatsApp socket initialization timed out."));
-      }, 12_000);
-      const listener = ({ connection, qr, lastDisconnect }: { connection?: string; qr?: string; lastDisconnect?: { error?: unknown } }) => {
-        if (connection === "connecting" || connection === "open" || qr) {
-          clearTimeout(timeout);
-          socket.ev.off("connection.update", listener);
-          resolve();
-        } else if (connection === "close") {
-          clearTimeout(timeout);
-          socket.ev.off("connection.update", listener);
-          reject(lastDisconnect?.error instanceof Error ? lastDisconnect.error : new Error("WhatsApp socket closed before pairing."));
-        }
-      };
-      socket.ev.on("connection.update", listener);
-    });
-  }
-
   async requestPairingCode(accountId: string, phoneNumber: string): Promise<{ code: string; expiresAt: Date }> {
     const normalized = normalizeWhatsAppPhoneNumber(phoneNumber);
+    logger.info("whatsapp.pairing.request_started", { accountId, phoneNumber: maskPhoneNumber(normalized) });
     await this.clearTemporaryAuth(accountId);
     sessionModes.set(accountId, "PAIRING");
     await prisma.whatsAppAccount.update({
@@ -126,10 +113,11 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         where: { id: accountId },
         data: { status: "PAIRING_CODE_READY", phoneNumber: normalized, pairingCode: code, pairingCodeExpiresAt: expiresAt, lastError: null },
       });
-      await auditAccount(accountId, "whatsapp.pairing.code_generated", { phoneNumber: normalized, expiresAt: expiresAt.toISOString() });
+      logger.info("whatsapp.pairing.code_generated", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
+      await auditAccount(accountId, "whatsapp.pairing.code_generated", { phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
       return { code, expiresAt };
     } catch (error) {
-      logger.error("whatsapp.pairing.failed", error, { accountId, phoneNumber: normalized });
+      logger.error("whatsapp.pairing.failed", error, { accountId, phoneNumber: maskPhoneNumber(normalized) });
       await this.clearTemporaryAuth(accountId);
       const message = pairingUserMessage(error);
       await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "FAILED", pairingCode: null, pairingCodeExpiresAt: null, lastError: message } });
@@ -161,28 +149,43 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     const { state, saveCreds } = await useMultiFileAuthState(directory);
     const { version } = await fetchLatestBaileysVersion();
-    const socket = makeWASocket({ auth: state, version, printQRInTerminal: false, markOnlineOnConnect: false, syncFullHistory: false });
-    const initialized = this.waitForSocketInitialization(socket);
-    sockets.set(accountId, socket);
     const activated = await prisma.whatsAppAccount.updateMany({
       where: { id: accountId, archivedAt: null },
       data: { status: state.creds.registered ? "CONNECTING" : mode === "PAIRING" ? "PENDING_PAIRING" : "PENDING_QR", lastError: null },
     });
     if (!activated.count) {
-      sockets.delete(accountId);
-      socket.end(new Error("WhatsApp account no longer exists"));
       throw new Error("WhatsApp account no longer exists");
     }
+
+    logger.info("whatsapp.session.starting", { accountId, mode, registered: state.creds.registered });
+    const socket = makeWASocket({ auth: state, version, printQRInTerminal: false, markOnlineOnConnect: false, syncFullHistory: false });
+    sockets.set(accountId, socket);
+
+    let initializedSettled = false;
+    let initializationTimeout: ReturnType<typeof setTimeout> | undefined;
+    let settleInitialized: (error?: unknown) => void = () => undefined;
+    const initialized = new Promise<void>((resolve, reject) => {
+      settleInitialized = (error?: unknown) => {
+        if (initializedSettled) return;
+        initializedSettled = true;
+        if (initializationTimeout) clearTimeout(initializationTimeout);
+        if (error) reject(error);
+        else resolve();
+      };
+      initializationTimeout = setTimeout(() => settleInitialized(new Error("WhatsApp socket initialization timed out.")), 12_000);
+    });
 
     socket.ev.on("creds.update", saveCreds);
     socket.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
       try {
         const currentMode = sessionModes.get(accountId) || mode;
         if (qr && currentMode === "QR") {
+          logger.info("whatsapp.qr.received", { accountId });
           const qrCode = await QRCode.toDataURL(qr, { width: 360, margin: 2 });
           const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId }, select: { id: true, archivedAt: true } });
           if (!account || account.archivedAt) {
             await this.stopSocket(accountId, "WhatsApp account no longer exists");
+            settleInitialized(new Error("WhatsApp account no longer exists"));
             return;
           }
           const expiresAt = new Date(Date.now() + 60_000);
@@ -192,17 +195,22 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
             create: { id: accountId, accountId, qrCode, status: "PENDING_QR", expiresAt },
           });
           await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "PENDING_QR", qrCode, qrExpiresAt: expiresAt, lastError: null } });
+          logger.info("whatsapp.qr.saved", { accountId, expiresAt: expiresAt.toISOString() });
           await auditAccount(accountId, "whatsapp.qr.generated", { expiresAt: expiresAt.toISOString() });
+          settleInitialized();
         }
         if (connection === "connecting") {
           await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null, status: { in: ["PAIRING_CODE_READY", "PENDING_QR"] } }, data: { status: "CONNECTING" } });
+          if (currentMode === "PAIRING") settleInitialized();
         }
         if (connection === "open") {
           const phoneNumber = socket.user?.id?.split(":")[0] || socket.user?.id?.split("@")[0];
           const updated = await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "CONNECTED", phoneNumber, displayName: socket.user?.name, lastConnectedAt: new Date(), qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null } });
           if (!updated.count) return;
           await prisma.whatsAppSession.updateMany({ where: { accountId }, data: { status: "CONNECTED", qrCode: null, expiresAt: null } });
-          await auditAccount(accountId, "whatsapp.connected", { phoneNumber, mode: currentMode });
+          logger.info("whatsapp.connection.open", { accountId, mode: currentMode, phoneNumber: maskPhoneNumber(phoneNumber) });
+          await auditAccount(accountId, "whatsapp.connected", { phoneNumber: maskPhoneNumber(phoneNumber), mode: currentMode });
+          settleInitialized();
           await this.syncGroups(accountId);
         }
         if (connection === "close") {
@@ -210,13 +218,15 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           const loggedOut = code === DisconnectReason.loggedOut;
           const intentional = manuallyDisconnected.delete(accountId);
           if (sockets.get(accountId) === socket) sockets.delete(accountId);
+          logger.warn("whatsapp.connection.closed", { accountId, code, loggedOut, intentional, mode: currentMode });
+          if (!initializedSettled) settleInitialized(lastDisconnect?.error instanceof Error ? lastDisconnect.error : new Error("WhatsApp socket closed before initialization."));
           if (intentional) return;
           if (currentMode === "PAIRING") {
             if (code === DisconnectReason.restartRequired) {
               await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "CONNECTING", pairingCode: null, pairingCodeExpiresAt: null, lastError: null } });
               setTimeout(() => {
                 void this.startSession(accountId, "PAIRING")
-                  .then(({ initialized }) => initialized)
+                  .then(({ initialized: nextInitialized }) => nextInitialized)
                   .catch((error) => logger.error("whatsapp.pairing.restart_failed", error, { accountId }));
               }, 1_000);
               return;
@@ -240,7 +250,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           if (updated.count && !loggedOut && state.creds.registered) {
             setTimeout(() => {
               void this.startSession(accountId, "QR")
-                .then(({ initialized }) => initialized)
+                .then(({ initialized: nextInitialized }) => nextInitialized)
                 .catch((error) => logger.error("whatsapp.session.auto_reconnect_failed", error, { accountId }));
             }, 5_000);
           }
@@ -248,6 +258,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       } catch (error) {
         if (sockets.get(accountId) === socket) sockets.delete(accountId);
         logger.error("whatsapp.connection.update_failed", error, { accountId, mode: sessionModes.get(accountId) || mode });
+        if (!initializedSettled) settleInitialized(error);
       }
     });
     return { socket, registered: state.creds.registered, initialized };
