@@ -6,6 +6,16 @@ function safeError(error: unknown) {
   return error instanceof Error ? error.message : "UNKNOWN_WORKER_HEALTH_ERROR";
 }
 
+async function queueSnapshot(name: string, queue: ReturnType<typeof messageQueue>) {
+  try {
+    return { name, status: "healthy" as const, counts: await queue.getJobCounts("waiting", "active", "delayed", "failed") };
+  } catch (error) {
+    return { name, status: "unhealthy" as const, error: safeError(error) };
+  } finally {
+    await queue.close().catch(() => undefined);
+  }
+}
+
 export async function GET() {
   const workerUrl = process.env.WHATSAPP_WORKER_URL || process.env.WORKER_HEALTH_URL;
   const remote = workerUrl
@@ -15,35 +25,31 @@ export async function GET() {
       signal: AbortSignal.timeout(3_000),
     }).then((response) => response.ok).catch(() => false)
     : null;
-  const heartbeat = await readWorkerHeartbeat().catch(() => null);
+  let heartbeatError: string | null = null;
+  const heartbeat = await readWorkerHeartbeat().catch((error) => {
+    heartbeatError = safeError(error);
+    return null;
+  });
   const heartbeatFresh = Boolean(heartbeat && Date.now() - new Date(heartbeat.timestamp).getTime() <= 20_000);
 
-  const queueSnapshots: Record<string, unknown> = {};
-  let queueStatus: "healthy" | "unhealthy" = "healthy";
-  const queues = [
-    { name: "sessions", queue: whatsappQueue() },
-    { name: "messages", queue: messageQueue() },
-  ];
-  for (const item of queues) {
-    try {
-      queueSnapshots[item.name] = await item.queue.getJobCounts("waiting", "active", "delayed", "failed");
-    } catch (error) {
-      queueStatus = "unhealthy";
-      queueSnapshots[item.name] = { error: safeError(error) };
-    } finally {
-      await item.queue.close().catch(() => undefined);
-    }
-  }
+  const queues = await Promise.all([
+    queueSnapshot("logivya-sync", whatsappQueue()),
+    queueSnapshot("logivya-message", messageQueue()),
+  ]);
+  const queueStatus = queues.every((queue) => queue.status === "healthy") ? "healthy" : "unhealthy";
 
-  const healthy = remote === true || heartbeatFresh;
+  const workerReachable = remote === true || heartbeatFresh;
+  const healthy = workerReachable && queueStatus === "healthy";
   return NextResponse.json({
     service: "logivya-worker",
     status: healthy ? "healthy" : "unhealthy",
     remoteConfigured: Boolean(workerUrl),
     remoteReachable: remote,
     heartbeat,
+    heartbeatError,
     heartbeatFresh,
+    workerReachable,
     queueStatus,
-    queues: queueSnapshots,
+    queues,
   }, { status: healthy ? 200 : 503 });
 }

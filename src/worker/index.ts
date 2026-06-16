@@ -22,19 +22,36 @@ if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required");
 const connection = redisConnectionOptions();
 const provider = new BaileysWhatsAppProvider();
 const workerId = process.env.WORKER_ID || `${os.hostname()}-${process.pid}`;
+const workers: Worker[] = [];
 
-new Worker(QUEUES.campaign,async(job)=>{
+function registerWorker(name: string, worker: Worker) {
+  workers.push(worker);
+  logger.info("worker.queue.registered", { workerId, queue: name });
+  worker.on("ready", () => logger.info("worker.queue.ready", { workerId, queue: name }));
+  worker.on("active", (job) => logger.info("worker.job.received", { workerId, queue: name, jobId: job.id, jobName: job.name }));
+  worker.on("completed", (job) => logger.info("worker.job.completed", { workerId, queue: name, jobId: job.id, jobName: job.name }));
+  worker.on("failed", (job, error) => logger.error("worker.job.failed", error, { workerId, queue: name, jobId: job?.id, jobName: job?.name }));
+  worker.on("error", (error) => logger.error("worker.queue.error", error, { workerId, queue: name }));
+  return worker;
+}
+
+registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign,async(job)=>{
   const{templateCampaignId,companyId}=job.data as{templateCampaignId:string;companyId:string};
   const template=await prisma.messageCampaign.findFirst({where:{id:templateCampaignId,companyId,deletedAt:null,scheduleType:"RECURRING"},include:{recipients:true}});
   if(!template||["CANCELED","DELETED"].includes(template.status))return;
   const occurrence=await prisma.messageCampaign.create({data:{companyId,createdById:template.createdById,title:template.title,content:template.content,contentJson:template.contentJson??undefined,type:template.type,status:"QUEUED",scheduleType:"RECURRING",recurringRule:template.recurringRule??undefined,totalRecipients:template.recipients.length,recipients:{create:template.recipients.map(recipient=>({accountId:recipient.accountId,groupId:recipient.groupId,contactId:recipient.contactId,recipientName:recipient.recipientName,recipientExternalId:recipient.recipientExternalId}))}},include:{recipients:true}});
-  const queue=messageQueue();for(const[index,recipient]of occurrence.recipients.entries())await queue.add("send-recipient",{companyId,campaignId:occurrence.id,recipientId:recipient.id},{jobId:`recipient-${recipient.id}`,delay:index*Number(process.env.WHATSAPP_MIN_DELAY_MS||3000)});
-  await campaignQueue().add("recurring-run",{companyId,templateCampaignId},{jobId:`recurring-${templateCampaignId}-${Date.now()}`,delay:recurringDelay(template.recurringRule as RecurringRule)});
-},{connection,concurrency:2});
+  const queue=messageQueue();
+  try{for(const[index,recipient]of occurrence.recipients.entries())await queue.add("send-recipient",{companyId,campaignId:occurrence.id,recipientId:recipient.id},{jobId:`recipient-${recipient.id}`,delay:index*Number(process.env.WHATSAPP_MIN_DELAY_MS||3000)});}
+  finally{await queue.close().catch(() => undefined);}
+  const recurringQueue=campaignQueue();
+  try{await recurringQueue.add("recurring-run",{companyId,templateCampaignId},{jobId:`recurring-${templateCampaignId}-${Date.now()}`,delay:recurringDelay(template.recurringRule as RecurringRule)});}
+  finally{await recurringQueue.close().catch(() => undefined);}
+},{connection,concurrency:2}));
 
-new Worker(QUEUES.sync, async (job) => {
+registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
   const { action, accountId, phoneNumber } = job.data as { action: "connect" | "pairing" | "sync" | "disconnect" | "reconnect"; accountId: string; phoneNumber?: string };
   try{
+    logger.info("whatsapp.job.received", { workerId, jobId: job.id, action, accountId });
     const account=await prisma.whatsAppAccount.findUnique({where:{id:accountId},select:{status:true,archivedAt:true,updatedAt:true}});
     if(!account||account.archivedAt)return;
     if(["connect","reconnect"].includes(action)&&account.updatedAt<new Date(Date.now()-10*60_000)&&["PENDING_QR","QR_READY","CONNECTING"].includes(account.status)){
@@ -44,10 +61,11 @@ new Worker(QUEUES.sync, async (job) => {
     if(["connect","reconnect"].includes(action)&&account.status==="ERROR")return;
     if (action === "connect") return provider.createSession(accountId);if(action==="pairing"){if(!phoneNumber)throw new Error("Invalid phone number.");return provider.requestPairingCode(accountId,phoneNumber)}if (action === "sync") return provider.syncGroups(accountId);if (action === "disconnect") return provider.disconnect(accountId);return provider.reconnect(accountId)}
   catch(error){await prisma.whatsAppAccount.update({where:{id:accountId},data:{status:"FAILED",lastError:action==="pairing"?pairingUserMessage(error):"Bağlantı başarısız oldu. Yeni kod veya QR ile tekrar deneyin."}});logger.error("whatsapp.job.failed",error,{jobId:job.id,accountId,action});throw error}
-}, { connection, concurrency: 5 });
+}, { connection, concurrency: 5 }));
 
-new Worker(QUEUES.message, async (job) => {
+registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
   const { recipientId } = job.data as { recipientId: string };
+  logger.info("message.job.received", { workerId, jobId: job.id, recipientId });
   const recipient = await prisma.messageRecipient.findUnique({ where: { id: recipientId }, include: { campaign: true, group: true } });
   if (!recipient?.group || recipient.status === "SENT" || ["CANCELED", "CANCELING", "DELETED"].includes(recipient.campaign.status)) return;
   const claimed = await prisma.messageRecipient.updateMany({ where: { id: recipient.id, status: { in: ["PENDING", "FAILED"] } }, data: { status: "SENDING" } });
@@ -103,7 +121,7 @@ new Worker(QUEUES.message, async (job) => {
   concurrency: 1,
   limiter: { max: Number(process.env.WHATSAPP_MAX_MESSAGES_PER_MINUTE || 12), duration: 60000 },
   settings: { backoffStrategy: () => Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000) + Math.floor(Math.random() * Number(process.env.WHATSAPP_MAX_DELAY_MS || 6000)) },
-});
+}));
 
 async function recoverSessions() {
   const recoverableAccounts = await prisma.whatsAppAccount.findMany({
@@ -130,10 +148,22 @@ async function cleanupStuckSessions() {
 }
 void cleanupStuckSessions().catch((error) => logger.error("whatsapp.stuck_sessions.cleanup_failed", error));
 setInterval(() => void cleanupStuckSessions().catch((error) => logger.error("whatsapp.stuck_sessions.cleanup_failed", error)), 60_000).unref();
+logger.info("worker.started", { workerId, queues: [QUEUES.campaign, QUEUES.sync, QUEUES.message] });
 void writeWorkerHeartbeat(workerId).catch((error) => logger.error("worker.heartbeat.failed", error));
 setInterval(() => void writeWorkerHeartbeat(workerId).catch((error) => logger.error("worker.heartbeat.failed", error)), 5_000).unref();
 
 console.log("Logivya WhatsApp worker is ready");
+
+async function shutdown(signal: string) {
+  logger.warn("worker.shutdown.started", { workerId, signal });
+  await Promise.all(workers.map((worker) => worker.close().catch((error) => logger.error("worker.shutdown.queue_failed", error, { workerId, queue: worker.name }))));
+  await prisma.$disconnect();
+  logger.warn("worker.shutdown.completed", { workerId, signal });
+  process.exit(0);
+}
+
+process.once("SIGTERM", () => void shutdown("SIGTERM"));
+process.once("SIGINT", () => void shutdown("SIGINT"));
 
 async function createCampaignFinalNotification(campaign: {
   id: string;
