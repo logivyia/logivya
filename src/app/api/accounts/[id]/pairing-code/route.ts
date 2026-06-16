@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePermission } from "@/server/auth/permissions";
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
-import { whatsappQueue } from "@/server/queues/client";
+import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { writeAuditLog } from "@/server/security/audit";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
@@ -31,7 +31,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     accountId = id;
     await resetAccountForConnection(id, AccountStatus.PENDING_PAIRING, { phoneNumber });
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.pairing.requested", entityType: "WhatsAppAccount", entityId: id, after: { phoneNumber } });
-    await whatsappQueue().add("pairing", { action: "pairing", accountId: id, phoneNumber }, { jobId: `pairing-${id}-${Date.now()}` });
+    await enqueueWhatsAppJob("pairing", { action: "pairing", accountId: id, phoneNumber }, { jobId: `pairing-${id}-${Date.now()}` });
     const ready = await waitForPairingCode(id);
     return NextResponse.json({ ok: true, accountId: id, status: ready.status, pairingCode: ready.pairingCode, expiresAt: ready.pairingCodeExpiresAt, pairingCodeExpiresAt: ready.pairingCodeExpiresAt });
   } catch (error) {

@@ -3,7 +3,7 @@ import { requirePermission } from "@/server/auth/permissions";
 import { requireApiSession } from "@/server/auth/session";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { prisma } from "@/server/db";
-import { whatsappQueue } from "@/server/queues/client";
+import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { writeAuditLog } from "@/server/security/audit";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
 
     accountId = account.id;
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.pairing.requested", entityType: "WhatsAppAccount", entityId: accountId, after: { phoneNumber } });
-    await whatsappQueue().add("pairing", { action: "pairing", accountId, phoneNumber }, { jobId: `pairing-${accountId}-${Date.now()}` });
+    await enqueueWhatsAppJob("pairing", { action: "pairing", accountId, phoneNumber }, { jobId: `pairing-${accountId}-${Date.now()}` });
     const ready = await waitForPairingCode(accountId);
     return NextResponse.json({ ok: true, accountId, status: ready.status, pairingCode: ready.pairingCode, expiresAt: ready.pairingCodeExpiresAt, pairingCodeExpiresAt: ready.pairingCodeExpiresAt }, { status: 201 });
   } catch (error) {

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
-import { whatsappQueue } from "@/server/queues/client";
+import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { requirePermission } from "@/server/auth/permissions";
 import { writeAuditLog } from "@/server/security/audit";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     if(!access.allowed)return NextResponse.json({error:access.reason,limit:access.limit},{status:403});
     const account = await prisma.whatsAppAccount.create({ data: { companyId: company.id, label: parsed.data.label || null, provider: "baileys", status: AccountStatus.CREATED } });
     try {
-      await whatsappQueue().add("connect", { action: "connect", accountId: account.id }, { jobId: `connect-${account.id}` });
+      await enqueueWhatsAppJob("connect", { action: "connect", accountId: account.id }, { jobId: `connect-${account.id}` });
     } catch (error) {
       await prisma.whatsAppAccount.update({where:{id:account.id},data:{status:"FAILED",lastError:whatsappUserMessage(error,"qr")}});
       throw error;

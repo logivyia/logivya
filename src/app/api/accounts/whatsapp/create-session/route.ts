@@ -3,7 +3,7 @@ import { requirePermission } from "@/server/auth/permissions";
 import { requireApiSession } from "@/server/auth/session";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { prisma } from "@/server/db";
-import { whatsappQueue } from "@/server/queues/client";
+import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { writeAuditLog } from "@/server/security/audit";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { findReusableWhatsAppAccount, findSingleSlotWhatsAppAccount } from "@/server/whatsapp/reusable-account";
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     }
 
     accountId = account.id;
-    await whatsappQueue().add("reconnect", { action: "reconnect", accountId }, { jobId: `qr-${accountId}-${Date.now()}` });
+    await enqueueWhatsAppJob("reconnect", { action: "reconnect", accountId }, { jobId: `qr-${accountId}-${Date.now()}` });
     const ready = await waitForAccountQr(accountId);
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.qr.requested", entityType: "WhatsAppAccount", entityId: accountId });
     return NextResponse.json({ ok: true, accountId, status: ready.status, qr: ready.qrCode, qrCode: ready.qrCode, expiresAt: ready.qrExpiresAt, qrExpiresAt: ready.qrExpiresAt }, { status: 201 });

@@ -3,7 +3,7 @@ import { requirePermission } from "@/server/auth/permissions";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { resetAccountForConnection } from "@/lib/whatsapp/account-status-machine";
 import { prisma } from "@/server/db";
-import { whatsappQueue } from "@/server/queues/client";
+import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { enforceMobileRateLimit } from "@/server/mobile/rate-limit";
 import { mobileError, mobileSafeError, mobileSuccess } from "@/server/mobile/response";
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       ? await resetAccountForConnection(account.id, AccountStatus.PENDING_QR)
       : await prisma.whatsAppAccount.create({ data: { companyId: company.id, provider: process.env.WHATSAPP_PROVIDER || "baileys", status: AccountStatus.PENDING_QR } });
     accountId = account.id;
-    await whatsappQueue().add("reconnect", { action: "reconnect", accountId }, { jobId: `mobile-qr-${accountId}-${Date.now()}` });
+    await enqueueWhatsAppJob("reconnect", { action: "reconnect", accountId }, { jobId: `mobile-qr-${accountId}-${Date.now()}` });
     const ready = await waitForAccountQr(accountId);
     const refreshed = await prisma.whatsAppAccount.findUniqueOrThrow({ where: { id: accountId }, include: { _count: { select: { groups: true, contacts: true } } } });
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "mobile.whatsapp.qr.requested", entityType: "WhatsAppAccount", entityId: accountId });

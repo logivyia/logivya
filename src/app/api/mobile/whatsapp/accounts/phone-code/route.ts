@@ -4,7 +4,7 @@ import { requirePermission } from "@/server/auth/permissions";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { resetAccountForConnection } from "@/lib/whatsapp/account-status-machine";
 import { prisma } from "@/server/db";
-import { whatsappQueue } from "@/server/queues/client";
+import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { enforceMobileRateLimit } from "@/server/mobile/rate-limit";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       : await prisma.whatsAppAccount.create({ data: { companyId: company.id, phoneNumber, provider: process.env.WHATSAPP_PROVIDER || "baileys", status: AccountStatus.PENDING_PAIRING } });
     accountId = account.id;
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "mobile.whatsapp.pairing.requested", entityType: "WhatsAppAccount", entityId: accountId, after: { phoneNumber } });
-    await whatsappQueue().add("pairing", { action: "pairing", accountId, phoneNumber }, { jobId: `mobile-pairing-${accountId}-${Date.now()}` });
+    await enqueueWhatsAppJob("pairing", { action: "pairing", accountId, phoneNumber }, { jobId: `mobile-pairing-${accountId}-${Date.now()}` });
     const ready = await waitForPairingCode(accountId);
     const refreshed = await prisma.whatsAppAccount.findUniqueOrThrow({ where: { id: accountId }, include: { _count: { select: { groups: true, contacts: true } } } });
     return mobileSuccess({ account: serializeMobileAccount({ ...refreshed, pairingCode: ready.pairingCode, pairingCodeExpiresAt: ready.pairingCodeExpiresAt }) }, { status: 201 });

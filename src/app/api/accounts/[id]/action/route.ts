@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
-import { whatsappQueue } from "@/server/queues/client";
+import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { requirePermission } from "@/server/auth/permissions";
 import { writeAuditLog } from "@/server/security/audit";
 import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
@@ -33,7 +33,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         await enforceWhatsAppRateLimit("reconnect-account", id);
         await transitionAccountStatus(id, AccountStatus.CREATED, { qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null });
       }
-      await whatsappQueue().add(parsed.data.action, { action: parsed.data.action, accountId: id }, { jobId: `${parsed.data.action}-${id}-${Date.now()}` });
+      await enqueueWhatsAppJob(parsed.data.action, { action: parsed.data.action, accountId: id }, { jobId: `${parsed.data.action}-${id}-${Date.now()}` });
     }
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: parsed.data.action === "reconnect" ? "whatsapp.reconnect.requested" : `whatsapp.account.${parsed.data.action}`, entityType: "WhatsAppAccount", entityId: id, before: { status: account.status }, after: { requestedAction: parsed.data.action } });
     return NextResponse.json({ ok: true });

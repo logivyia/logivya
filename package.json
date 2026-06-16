@@ -9,6 +9,7 @@
     "start": "next start",
     "worker": "tsx src/worker/index.ts",
     "worker:health": "tsx src/worker/health.ts",
+    "check:whatsapp-production": "tsx scripts/check-whatsapp-production.ts",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:email": "tsx scripts/test-email.ts",

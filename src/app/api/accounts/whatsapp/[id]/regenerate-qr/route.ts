@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePermission } from "@/server/auth/permissions";
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
-import { whatsappQueue } from "@/server/queues/client";
+import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { writeAuditLog } from "@/server/security/audit";
 import { assertWhatsAppWorkerReachable, waitForAccountQr } from "@/server/whatsapp/worker-health";
 import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
@@ -24,7 +24,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     await enforceWhatsAppRateLimit("qr-account", id);
     await resetAccountForConnection(id, AccountStatus.PENDING_QR);
-    await whatsappQueue().add("reconnect", { action: "reconnect", accountId: id }, { jobId: `regenerate-${id}-${Date.now()}` });
+    await enqueueWhatsAppJob("reconnect", { action: "reconnect", accountId: id }, { jobId: `regenerate-${id}-${Date.now()}` });
     const ready = await waitForAccountQr(id);
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.qr.regenerated", entityType: "WhatsAppAccount", entityId: id });
     return NextResponse.json({ ok: true, accountId: id, status: ready.status, qr: ready.qrCode, qrCode: ready.qrCode, expiresAt: ready.qrExpiresAt, qrExpiresAt: ready.qrExpiresAt });
