@@ -4,6 +4,7 @@ import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { prisma } from "@/server/db";
 import { messageQueue } from "@/server/queues/client";
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
+import { createNotification, NOTIFICATION_TYPES } from "@/server/notifications/service";
 import { writeAuditLog } from "@/server/security/audit";
 import type { MobileAuthContext } from "@/server/mobile/auth";
 
@@ -52,5 +53,15 @@ export async function createMobileMessageCampaign(request: Request, context: Mob
     });
   }
   await writeAuditLog(request, { companyId: context.company.id, userId: context.user.id, action: input.scheduledAt ? "mobile.message.scheduled" : "mobile.message.sent", entityType: "MessageCampaign", entityId: campaign.id, after: { totalRecipients: groups.length } });
+  if (input.scheduledAt) {
+    await createNotification({
+      companyId: context.company.id,
+      userId: context.user.id,
+      type: NOTIFICATION_TYPES.CAMPAIGN_SCHEDULED_STARTED,
+      title: "Kampanya zamanlandı",
+      message: `${campaign.title} kampanyası planlanan zamanda gönderilmek üzere sıraya alındı.`,
+      payload: { campaignId: campaign.id, scheduledAt: input.scheduledAt.toISOString(), totalRecipients: groups.length }
+    });
+  }
   return campaign;
 }

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
+import { NOTIFICATION_TYPES, notifyPlatformAdmins } from "@/server/notifications/service";
 import { writeAuditLog } from "@/server/security/audit";
 
 const schema = z.object({ subject: z.string().min(3).max(160), type: z.string().min(2).max(80), message: z.string().min(5).max(10000) });
@@ -43,12 +44,13 @@ export async function POST(request: Request) {
       },
       select: { id: true, subject: true, type: true, status: true, priority: true, createdAt: true },
     });
-    const admins = await prisma.platformAdmin.findMany({ where: { role: "SUPER_ADMIN", isActive: true }, select: { userId: true } });
-    if (admins.length) {
-      await prisma.notification.createMany({
-        data: admins.map((admin) => ({ companyId: company.id, userId: admin.userId, type: "SUPPORT_TICKET_CREATED", title: "Yeni destek talebi", message: `${company.name} şirketinden yeni destek talebi oluşturuldu: ${parsed.data.subject}` })),
-      });
-    }
+    await notifyPlatformAdmins({
+      companyId: company.id,
+      type: NOTIFICATION_TYPES.SUPPORT_TICKET_CREATED,
+      title: "Yeni destek talebi",
+      message: `${company.name} şirketinden yeni destek talebi oluşturuldu: ${parsed.data.subject}`,
+      payload: { ticketId: ticket.id, companyId: company.id }
+    });
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "mobile.support.ticket.created", entityType: "SupportTicket", entityId: ticket.id });
     return mobileSuccess({ ticket }, { status: 201 });
   } catch (error) {

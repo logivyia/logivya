@@ -21,6 +21,7 @@ export function RegisterScreen() {
   const [phone, setPhone] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleRegister() {
@@ -32,6 +33,7 @@ export function RegisterScreen() {
         phone,
         companyName,
         password,
+        passwordConfirmation,
         acceptTerms: true,
         acceptPrivacy: true,
         acceptKvkk: true
@@ -55,7 +57,8 @@ export function RegisterScreen() {
           <TextField label="Telefon" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
           <TextField label="Şirket adı" value={companyName} onChangeText={setCompanyName} />
           <TextField label="Parola" secureTextEntry value={password} onChangeText={setPassword} />
-          <PrimaryButton title={t("register")} loading={loading} disabled={!fullName || !email || !password} onPress={handleRegister} />
+          <TextField label="Parola tekrar" secureTextEntry value={passwordConfirmation} onChangeText={setPasswordConfirmation} />
+          <PrimaryButton title={t("register")} loading={loading} disabled={!fullName || !email || !password || password !== passwordConfirmation} onPress={handleRegister} />
           <Pressable onPress={() => navigation.navigate("Login")} style={styles.centerLink}>
             <Text style={{ color: theme.muted }}>Zaten hesabınız var mı? <Text style={{ color: theme.primary }}>Giriş yap</Text></Text>
           </Pressable>

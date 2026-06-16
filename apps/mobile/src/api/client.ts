@@ -1,6 +1,8 @@
-import { config } from "@/constants/config";
 import { useAuthStore } from "@/auth/auth-store";
-import { clearTokens, readTokens, saveTokens } from "@/storage/secure-storage";
+import { config } from "@/constants/config";
+import { trackEvent } from "@/services/analytics";
+import { captureAppError } from "@/services/crash-reporting";
+import { readTokens, saveTokens } from "@/storage/secure-storage";
 import type { AuthTokens, MobileApiResponse } from "@/types/api";
 
 type ApiOptions = RequestInit & {
@@ -18,8 +20,12 @@ class MobileApiClient {
     headers.set("Accept", "application/json");
 
     if (shouldAuth) {
-      const token = useAuthStore.getState().tokens?.accessToken ?? (await readTokens())?.accessToken;
-      if (token) headers.set("Authorization", `Bearer ${token}`);
+      let tokens = useAuthStore.getState().tokens ?? (await readTokens());
+      if (tokens && this.isTokenExpiringSoon(tokens.accessTokenExpiresAt)) {
+        tokens = await this.refreshTokens();
+      }
+
+      if (tokens?.accessToken) headers.set("Authorization", `Bearer ${tokens.accessToken}`);
     }
 
     const response = await this.fetchWithRetry(path, { ...options, headers });
@@ -33,11 +39,15 @@ class MobileApiClient {
     const payload = (await response.json().catch(() => null)) as MobileApiResponse<T> | null;
 
     if (!payload) {
-      throw new Error("Sunucudan geçersiz yanıt alındı.");
+      const error = new Error("Sunucudan gecersiz yanit alindi.");
+      this.reportApiError(error, path, response.status, "INVALID_RESPONSE");
+      throw error;
     }
 
     if (!payload.success) {
-      throw new Error(payload.error.message || "İşlem tamamlanamadı.");
+      const error = new Error(payload.error.message || "Islem tamamlanamadi.");
+      this.reportApiError(error, path, response.status, payload.error.code);
+      throw error;
     }
 
     return payload.data;
@@ -47,6 +57,21 @@ class MobileApiClient {
     return this.request<T>(path, {
       method: "POST",
       body: JSON.stringify(body),
+      ...options
+    });
+  }
+
+  async patch<T, B extends Record<string, unknown> = Record<string, unknown>>(path: string, body: B, options?: ApiOptions) {
+    return this.request<T>(path, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      ...options
+    });
+  }
+
+  async delete<T>(path: string, options?: ApiOptions) {
+    return this.request<T>(path, {
+      method: "DELETE",
       ...options
     });
   }
@@ -73,7 +98,9 @@ class MobileApiClient {
       }
     }
 
-    throw lastError instanceof Error ? lastError : new Error("Ağ bağlantısı kurulamadı.");
+    const error = lastError instanceof Error ? lastError : new Error("Ag baglantisi kurulamadi.");
+    this.reportApiError(error, path, 0, "NETWORK_ERROR");
+    throw error;
   }
 
   private async refreshTokens() {
@@ -82,6 +109,10 @@ class MobileApiClient {
     this.refreshPromise = (async () => {
       const storedTokens = await readTokens();
       if (!storedTokens?.refreshToken) return null;
+      if (this.isTokenExpired(storedTokens.refreshTokenExpiresAt)) {
+        await this.forceLogout();
+        return null;
+      }
 
       try {
         const response = await this.post<{ tokens: AuthTokens }>(
@@ -103,8 +134,29 @@ class MobileApiClient {
   }
 
   private async forceLogout() {
-    await clearTokens();
-    useAuthStore.getState().clearSession();
+    const { clearMobileSessionState } = await import("@/auth/session-cleanup");
+    await clearMobileSessionState();
+  }
+
+  private isTokenExpired(expiresAt?: string | null) {
+    if (!expiresAt) return true;
+    const expiresAtMs = Date.parse(expiresAt);
+    return Number.isNaN(expiresAtMs) || expiresAtMs <= Date.now();
+  }
+
+  private isTokenExpiringSoon(expiresAt?: string | null) {
+    if (!expiresAt) return true;
+    const expiresAtMs = Date.parse(expiresAt);
+    return Number.isNaN(expiresAtMs) || expiresAtMs - Date.now() < 60_000;
+  }
+
+  private reportApiError(error: Error, path: string, status: number, code: string) {
+    const context = { path, status, code };
+    void trackEvent("mobile_api_error", context);
+
+    if (status === 0 || status === 401 || status >= 500) {
+      captureAppError(error, context);
+    }
   }
 }
 

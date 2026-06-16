@@ -17,6 +17,10 @@ export type MobileWhatsAppAccount = {
   phoneNumber: string | null;
   displayName: string | null;
   status: MobileWhatsAppStatus;
+  qrCode?: string | null;
+  qrExpiresAt?: string | null;
+  pairingCode?: string | null;
+  pairingCodeExpiresAt?: string | null;
   groupCount: number;
   contactCount: number;
   lastConnectedAt: string | null;
@@ -28,6 +32,18 @@ export type MobileWhatsAppAccount = {
 
 export function getMobileWhatsAppAccounts() {
   return apiClient.request<{ accounts: MobileWhatsAppAccount[] }>("/api/mobile/whatsapp/accounts");
+}
+
+export function createMobileWhatsAppQrSession() {
+  return apiClient.post<{ account: MobileWhatsAppAccount }>("/api/mobile/whatsapp/accounts/qr", {});
+}
+
+export function createMobileWhatsAppPhoneCode(phoneNumber: string) {
+  return apiClient.post<{ account: MobileWhatsAppAccount }>("/api/mobile/whatsapp/accounts/phone-code", { phoneNumber });
+}
+
+export function getMobileWhatsAppAccountStatus(id: string) {
+  return apiClient.request<{ account: MobileWhatsAppAccount }>(`/api/mobile/whatsapp/accounts/${id}/status`, { retry: false });
 }
 
 export function reconnectMobileWhatsAppAccount(id: string) {

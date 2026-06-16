@@ -1,12 +1,12 @@
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 
-import { CategoriesScreen } from "@/screens/app/categories-screen";
 import { DashboardScreen } from "@/screens/app/dashboard-screen";
 import { GroupsScreen } from "@/screens/app/groups-screen";
 import { MessagingScreen } from "@/screens/app/messaging-screen";
-import { ProfileScreen } from "@/screens/app/profile-screen";
-import { SupportScreen } from "@/screens/app/support-screen";
-import { WhatsAppScreen } from "@/screens/app/whatsapp-screen";
+import { CategoriesNavigator } from "@/navigation/categories-navigator";
+import { ProfileNavigator } from "@/navigation/profile-navigator";
+import { SupportNavigator } from "@/navigation/support-navigator";
+import { WhatsAppNavigator } from "@/navigation/whatsapp-navigator";
 import { useTranslation } from "@/i18n/use-translation";
 import type { AppTabParamList } from "@/types/navigation";
 
@@ -23,12 +23,12 @@ export function AppNavigator() {
       }}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: t("dashboard") }} />
-      <Tab.Screen name="WhatsApp" component={WhatsAppScreen} options={{ title: t("whatsapp") }} />
+      <Tab.Screen name="WhatsApp" component={WhatsAppNavigator} options={{ title: t("whatsapp"), headerShown: false }} />
       <Tab.Screen name="Groups" component={GroupsScreen} options={{ title: t("groups") }} />
-      <Tab.Screen name="Categories" component={CategoriesScreen} options={{ title: t("categories") }} />
+      <Tab.Screen name="Categories" component={CategoriesNavigator} options={{ title: t("categories"), headerShown: false }} />
       <Tab.Screen name="Messaging" component={MessagingScreen} options={{ title: t("messaging") }} />
-      <Tab.Screen name="Support" component={SupportScreen} options={{ title: t("support") }} />
-      <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: t("profile") }} />
+      <Tab.Screen name="Support" component={SupportNavigator} options={{ title: t("support"), headerShown: false }} />
+      <Tab.Screen name="Profile" component={ProfileNavigator} options={{ title: t("profile"), headerShown: false }} />
     </Tab.Navigator>
   );
 }

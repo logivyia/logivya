@@ -7,7 +7,7 @@ Use this checklist after deploying the web app and restarting the WhatsApp worke
 - `REDIS_URL` is configured for both Vercel and the worker runtime.
 - `WHATSAPP_WORKER_HEARTBEAT_KEY` is the same in Vercel and the worker runtime.
 - `WHATSAPP_SESSION_ROOT` points to persistent storage on the worker runtime.
-- The worker process is running `npm run worker:whatsapp` or the production equivalent.
+- The worker process is running `npm run worker` or the production equivalent.
 - Vercel API routes do not run Baileys directly; they enqueue work and wait for worker-produced state.
 
 ## QR connection

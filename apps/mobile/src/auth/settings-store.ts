@@ -7,16 +7,20 @@ type SettingsState = {
   theme: ThemePreference;
   locale: Locale;
   biometricEnabled: boolean;
+  notificationsEnabled: boolean;
   setTheme: (theme: ThemePreference) => void;
   setLocale: (locale: Locale) => void;
   setBiometricEnabled: (enabled: boolean) => void;
+  setNotificationsEnabled: (enabled: boolean) => void;
 };
 
 export const useSettingsStore = create<SettingsState>((set) => ({
   theme: "system",
   locale: "tr",
   biometricEnabled: false,
+  notificationsEnabled: true,
   setTheme: (theme) => set({ theme }),
   setLocale: (locale) => set({ locale }),
-  setBiometricEnabled: (biometricEnabled) => set({ biometricEnabled })
+  setBiometricEnabled: (biometricEnabled) => set({ biometricEnabled }),
+  setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled })
 }));

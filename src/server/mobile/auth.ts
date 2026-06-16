@@ -21,6 +21,8 @@ export type MobileAuthContext = {
   company: Company;
   membership: CompanyUser;
   sessionId: string;
+  deviceId: string;
+  platform: MobilePlatform;
 };
 
 export function parseMobilePlatform(value: unknown): MobilePlatform {
@@ -168,5 +170,5 @@ export async function requireMobileAuth(request: Request): Promise<MobileAuthCon
   });
   if (!membership || membership.status !== "ACTIVE") throw new Error("UNAUTHORIZED");
   await prisma.mobileDeviceSession.update({ where: { id: session.id }, data: { lastUsedAt: new Date(), userAgent: request.headers.get("user-agent") } });
-  return { user: session.user, company: session.company, membership, sessionId: session.id };
+  return { user: session.user, company: session.company, membership, sessionId: session.id, deviceId: session.deviceId, platform: session.platform };
 }

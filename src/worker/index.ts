@@ -4,12 +4,13 @@ import { prisma } from "@/server/db";
 import { QUEUES } from "@/server/queues/contracts";
 import { BaileysWhatsAppProvider } from "@/worker/baileys-provider";
 import { recurringDelay, type RecurringRule } from "@/server/queues/recurring";
-import { campaignQueue, deadLetterQueue, messageQueue } from "@/server/queues/client";
+import { campaignQueue, deadLetterQueue, messageQueue, redisConnectionOptions } from "@/server/queues/client";
 import { logger } from "@/server/observability/logger";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { writeWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
+import { createNotification, NOTIFICATION_TYPES } from "@/server/notifications/service";
 /**
  * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
  * Do not modify without running the full WhatsApp regression test suite.
@@ -18,8 +19,7 @@ import os from "node:os";
 import { hasWhatsAppCredentials } from "@/lib/whatsapp/session-manager";
 
 if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required");
-const redisUrl = new URL(process.env.REDIS_URL);
-const connection = { host: redisUrl.hostname, port: Number(redisUrl.port || 6379), username: redisUrl.username || undefined, password: redisUrl.password || undefined, tls: redisUrl.protocol === "rediss:" ? { servername: redisUrl.hostname } : undefined, maxRetriesPerRequest: null };
+const connection = redisConnectionOptions();
 const provider = new BaileysWhatsAppProvider();
 const workerId = process.env.WORKER_ID || `${os.hostname()}-${process.pid}`;
 
@@ -83,15 +83,20 @@ new Worker(QUEUES.message, async (job) => {
     const count = (status: string) => counts.find((item) => item.status === status)?._count._all ?? 0;
     const pending = count("PENDING") + count("SENDING");
     const sent = count("SENT"), failed = count("FAILED"), canceled = count("CANCELED");
-    await prisma.messageCampaign.update({
+    const nextStatus = pending ? "SENDING" : failed ? sent ? "PARTIALLY_COMPLETED" : "FAILED" : "COMPLETED";
+    const updatedCampaign = await prisma.messageCampaign.update({
       where: { id: recipient.campaignId },
       data: {
         sentCount: sent,
         failedCount: failed,
         canceledCount: canceled,
-        status: pending ? "SENDING" : failed ? sent ? "PARTIALLY_COMPLETED" : "FAILED" : "COMPLETED",
+        status: nextStatus,
       },
+      select: { id: true, companyId: true, createdById: true, title: true, status: true, sentCount: true, failedCount: true, totalRecipients: true },
     });
+    if (!pending && ["COMPLETED", "PARTIALLY_COMPLETED", "FAILED"].includes(nextStatus) && recipient.campaign.status !== nextStatus) {
+      void createCampaignFinalNotification(updatedCampaign).catch((error) => logger.error("notification.campaign_final.failed", error, { campaignId: updatedCampaign.id }));
+    }
   }
 }, {
   connection,
@@ -129,3 +134,45 @@ void writeWorkerHeartbeat(workerId).catch((error) => logger.error("worker.heartb
 setInterval(() => void writeWorkerHeartbeat(workerId).catch((error) => logger.error("worker.heartbeat.failed", error)), 5_000).unref();
 
 console.log("Logivya WhatsApp worker is ready");
+
+async function createCampaignFinalNotification(campaign: {
+  id: string;
+  companyId: string;
+  createdById: string;
+  title: string;
+  status: string;
+  sentCount: number;
+  failedCount: number;
+  totalRecipients: number;
+}) {
+  const type =
+    campaign.status === "COMPLETED"
+      ? NOTIFICATION_TYPES.CAMPAIGN_COMPLETED
+      : campaign.status === "PARTIALLY_COMPLETED"
+        ? NOTIFICATION_TYPES.CAMPAIGN_PARTIAL_DELIVERY
+        : NOTIFICATION_TYPES.CAMPAIGN_FAILED;
+  const title =
+    campaign.status === "COMPLETED"
+      ? "Kampanya tamamlandı"
+      : campaign.status === "PARTIALLY_COMPLETED"
+        ? "Kampanya kısmen tamamlandı"
+        : "Kampanya başarısız oldu";
+  const message =
+    campaign.status === "COMPLETED"
+      ? `${campaign.title} kampanyası başarıyla tamamlandı.`
+      : `${campaign.title} kampanyasında ${campaign.sentCount} başarılı, ${campaign.failedCount} başarısız teslimat var.`;
+  await createNotification({
+    companyId: campaign.companyId,
+    userId: campaign.createdById,
+    type,
+    title,
+    message,
+    payload: {
+      campaignId: campaign.id,
+      status: campaign.status,
+      sentCount: campaign.sentCount,
+      failedCount: campaign.failedCount,
+      totalRecipients: campaign.totalRecipients
+    }
+  });
+}

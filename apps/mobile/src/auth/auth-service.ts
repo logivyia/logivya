@@ -1,8 +1,7 @@
 import { loginRequest, logoutRequest, meRequest, registerRequest } from "@/api/auth-api";
 import { useAuthStore } from "@/auth/auth-store";
-import { useDashboardStore } from "@/features/dashboard/dashboardStore";
-import { useWhatsAppStore } from "@/features/whatsapp/whatsappStore";
-import { clearTokens, readTokens, saveTokens } from "@/storage/secure-storage";
+import { clearMobileSessionState } from "@/auth/session-cleanup";
+import { readTokens, saveTokens } from "@/storage/secure-storage";
 import { getOrCreateDeviceId } from "@/storage/device-storage";
 
 export async function login(identifier: string, password: string) {
@@ -18,6 +17,7 @@ export async function register(input: {
   phone?: string;
   companyName?: string;
   password: string;
+  passwordConfirmation: string;
   acceptTerms: boolean;
   acceptPrivacy: boolean;
   acceptKvkk: boolean;
@@ -40,12 +40,9 @@ export async function restoreSession() {
 
   try {
     const session = await meRequest();
-    useAuthStore.getState().setSession({ ...session, tokens });
+    useAuthStore.getState().setSession({ ...session, user: { ...session.user, role: session.role }, tokens });
   } catch {
-    await clearTokens();
-    useDashboardStore.getState().reset();
-    useWhatsAppStore.getState().reset();
-    useAuthStore.getState().clearSession();
+    await clearMobileSessionState();
   }
 }
 
@@ -55,9 +52,6 @@ export async function logout() {
   try {
     if (refreshToken) await logoutRequest(refreshToken);
   } finally {
-    await clearTokens();
-    useDashboardStore.getState().reset();
-    useWhatsAppStore.getState().reset();
-    useAuthStore.getState().clearSession();
+    await clearMobileSessionState();
   }
 }

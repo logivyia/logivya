@@ -407,6 +407,7 @@ model User {
   sessions                       UserSession[]
   mobileDeviceSessions           MobileDeviceSession[]
   mobilePushTokens               MobilePushToken[]
+  mobileFeedback                  MobileFeedback[]
   trustedDevices                 TrustedDevice[]
   securityEvents                 SecurityEvent[]
   consents                       ConsentRecord[]
@@ -490,6 +491,7 @@ model Company {
   emailDeliveries    EmailDeliveryLog[]
   mobileDeviceSessions MobileDeviceSession[]
   mobilePushTokens   MobilePushToken[]
+  mobileFeedback     MobileFeedback[]
   securityStatus     CompanySecurityStatus     @default(ACTIVE)
   billingLockedAt    DateTime?
   campaignsPausedAt  DateTime?
@@ -775,12 +777,15 @@ model Notification {
   type      String
   title     String
   message   String
+  payload   Json?
   isRead    Boolean  @default(false)
   company   Company  @relation(fields: [companyId], references: [id])
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
 
   @@index([userId, isRead, createdAt])
+  @@index([companyId, userId, createdAt])
+  @@index([companyId, type, createdAt])
 }
 
 model AuditLog {
@@ -1542,6 +1547,28 @@ model MobilePushToken {
   @@index([userId, revokedAt])
   @@index([companyId, platform])
   @@index([deviceId])
+}
+
+model MobileFeedback {
+  id          String         @id @default(cuid())
+  companyId   String
+  userId      String
+  type        String
+  subject     String
+  message     String
+  screenshot  String?
+  deviceInfo  Json?
+  appVersion  String?
+  platform    MobilePlatform @default(UNKNOWN)
+  status      String         @default("OPEN")
+  company     Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([companyId, createdAt])
+  @@index([userId, createdAt])
+  @@index([type, status])
 }
 
 model TrustedDevice {

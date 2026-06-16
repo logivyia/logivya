@@ -1,6 +1,13 @@
 import { apiClient } from "@/api/client";
 import { getMobilePlatform } from "@/utils/device";
-import type { AuthSessionPayload } from "@/types/api";
+import type { AuthSessionPayload, MobileCompany, MobileUser } from "@/types/api";
+
+export type MobileMePayload = {
+  user: Omit<MobileUser, "role"> & { role?: string };
+  company: MobileCompany;
+  role: string;
+  permissions: string[];
+};
 
 export function loginRequest(input: { identifier: string; password: string; deviceId: string; appVersion?: string }) {
   return apiClient.post<AuthSessionPayload>("/api/mobile/auth/login", {
@@ -15,6 +22,7 @@ export function registerRequest(input: {
   phone?: string;
   companyName?: string;
   password: string;
+  passwordConfirmation: string;
   acceptTerms: boolean;
   acceptPrivacy: boolean;
   acceptKvkk: boolean;
@@ -22,7 +30,16 @@ export function registerRequest(input: {
   deviceId: string;
 }) {
   return apiClient.post<AuthSessionPayload>("/api/mobile/auth/register", {
-    ...input,
+    name: input.fullName,
+    email: input.email,
+    phone: input.phone,
+    password: input.password,
+    passwordConfirmation: input.passwordConfirmation,
+    termsAccepted: input.acceptTerms,
+    privacyAccepted: input.acceptPrivacy,
+    kvkkAccepted: input.acceptKvkk,
+    referralCode: undefined,
+    deviceId: input.deviceId,
     platform: getMobilePlatform()
   }, { auth: false });
 }
@@ -41,7 +58,7 @@ export function resetPasswordRequest(input: {
 }
 
 export function meRequest() {
-  return apiClient.request<AuthSessionPayload>("/api/mobile/auth/me");
+  return apiClient.request<MobileMePayload>("/api/mobile/auth/me");
 }
 
 export function logoutRequest(refreshToken: string) {

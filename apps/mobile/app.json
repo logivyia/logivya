@@ -3,7 +3,7 @@
     "name": "Logivya",
     "slug": "logivya-mobile",
     "scheme": "logivya",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icons/icon.png",
     "userInterfaceStyle": "automatic",
@@ -17,17 +17,46 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.logivya.mobile"
+      "bundleIdentifier": "com.logivya.mobile",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      }
     },
     "android": {
       "package": "com.logivya.mobile",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icons/icon.png",
+        "foregroundImage": "./assets/icons/adaptive-icon.png",
         "backgroundColor": "#0f172a"
-      }
+      },
+      "permissions": [
+        "INTERNET",
+        "POST_NOTIFICATIONS"
+      ]
     },
     "extra": {
-      "apiBaseUrl": "https://www.logivya.com"
-    }
+      "apiBaseUrl": "https://www.logivya.com",
+      "sentryDsn": "",
+      "eas": {
+        "projectId": ""
+      }
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-notifications",
+      "@react-native-firebase/app",
+      "@react-native-firebase/analytics",
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "logivya-mobile",
+          "organization": "logivya"
+        }
+      ]
+    ]
   }
 }

@@ -14,7 +14,11 @@ export function mapWhatsAppStatus(status?: string | null): WhatsAppStatusMeta {
       return { labelKey: "statusConnected", tone: "success", iconName: "check-circle" };
     case "PENDING_QR":
       return { labelKey: "statusWaitingQr", tone: "warning", iconName: "qr-code" };
+    case "PENDING_PHONE":
     case "PENDING_PHONE_CODE":
+    case "PENDING_PAIRING":
+    case "PAIRING_CODE_READY":
+      return { labelKey: "statusWaitingPhone", tone: "warning", iconName: "phone" };
     case "CONNECTING":
       return { labelKey: "statusConnecting", tone: "warning", iconName: "loader" };
     case "FAILED":

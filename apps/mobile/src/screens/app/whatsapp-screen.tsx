@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { MobileWhatsAppAccount } from "@/api/mobileWhatsApp";
 import { useWhatsAppStore } from "@/features/whatsapp/whatsappStore";
@@ -7,10 +9,14 @@ import { mapWhatsAppStatus, type WhatsAppStatusTone } from "@/features/whatsapp/
 import { EmptyState } from "@/components/state/empty-state";
 import { ErrorState } from "@/components/state/error-state";
 import { LoadingState } from "@/components/state/loading-state";
+import { PrimaryButton } from "@/components/primary-button";
 import { Screen } from "@/components/screen";
 import { useTranslation } from "@/i18n/use-translation";
 import { colors } from "@/theme/colors";
 import { useTheme } from "@/theme/theme-provider";
+import type { WhatsAppStackParamList } from "@/types/navigation";
+
+type WhatsAppNavigation = NativeStackNavigationProp<WhatsAppStackParamList>;
 
 function toneColor(tone: WhatsAppStatusTone) {
   if (tone === "success") return colors.success;
@@ -24,15 +30,16 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));
 }
 
-function AccountAction({ label, onPress, danger = false }: { label: string; onPress: () => void; danger?: boolean }) {
+function AccountAction({ label, onPress, danger = false, loading = false }: { label: string; onPress: () => void; danger?: boolean; loading?: boolean }) {
   const theme = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
+      disabled={loading}
       onPress={onPress}
       style={({ pressed }) => [
         styles.actionButton,
-        { borderColor: danger ? colors.danger : theme.border, opacity: pressed ? 0.8 : 1 }
+        { borderColor: danger ? colors.danger : theme.border, opacity: pressed || loading ? 0.72 : 1 }
       ]}
     >
       <Text style={[styles.actionText, { color: danger ? colors.danger : theme.text }]}>{label}</Text>
@@ -43,16 +50,26 @@ function AccountAction({ label, onPress, danger = false }: { label: string; onPr
 function AccountCard({ account }: { account: MobileWhatsAppAccount }) {
   const theme = useTheme();
   const { t } = useTranslation();
-  const { reconnect, archive, remove } = useWhatsAppStore();
+  const { reconnect, archive, remove, actionLoadingId } = useWhatsAppStore();
   const status = mapWhatsAppStatus(account.status);
   const displayName = account.displayName || account.label || account.phoneNumber || t("unknown");
+  const loading = actionLoadingId === account.id;
+
+  const confirmAction = (title: string, message: string, action: () => Promise<void>) => {
+    Alert.alert(title, message, [
+      { text: t("cancel"), style: "cancel" },
+      { text: t("confirm"), onPress: () => void action(), style: title === t("delete") ? "destructive" : "default" }
+    ]);
+  };
 
   return (
     <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
       <View style={styles.cardHeader}>
         <View style={styles.titleBlock}>
           <Text style={[styles.accountName, { color: theme.text }]}>{displayName}</Text>
-          <Text style={[styles.phone, { color: theme.muted }]}>{account.phoneNumber ?? "-"}</Text>
+          <Text style={[styles.phone, { color: theme.muted }]}>
+            {t("phone")}: {account.phoneNumber ?? "-"}
+          </Text>
         </View>
         <View style={[styles.statusPill, { backgroundColor: `${toneColor(status.tone)}20` }]}>
           <Text style={[styles.statusText, { color: toneColor(status.tone) }]}>{t(status.labelKey)}</Text>
@@ -60,32 +77,38 @@ function AccountCard({ account }: { account: MobileWhatsAppAccount }) {
       </View>
 
       <View style={styles.statsRow}>
-        <View>
+        <View style={styles.stat}>
           <Text style={[styles.statValue, { color: theme.text }]}>{account.groupCount}</Text>
-          <Text style={[styles.statLabel, { color: theme.muted }]}>{t("groups")}</Text>
+          <Text style={[styles.statLabel, { color: theme.muted }]}>{t("connectedGroups")}</Text>
         </View>
-        <View>
-          <Text style={[styles.statValue, { color: theme.text }]}>{account.contactCount}</Text>
-          <Text style={[styles.statLabel, { color: theme.muted }]}>{t("contacts")}</Text>
-        </View>
-        <View>
+        <View style={styles.stat}>
           <Text style={[styles.statValue, { color: theme.text }]}>{formatDate(account.lastSyncedAt)}</Text>
           <Text style={[styles.statLabel, { color: theme.muted }]}>{t("lastSync")}</Text>
         </View>
+        <View style={styles.stat}>
+          <Text style={[styles.statValue, { color: toneColor(status.tone) }]}>{t(status.labelKey)}</Text>
+          <Text style={[styles.statLabel, { color: theme.muted }]}>{t("connectionState")}</Text>
+        </View>
       </View>
 
+      {account.lastError ? <Text style={[styles.errorText, { color: colors.danger }]}>{account.lastError}</Text> : null}
+
       <View style={styles.actions}>
-        <AccountAction label={account.status === "CONNECTED" ? t("reconnect") : t("connect")} onPress={() => void reconnect(account.id)} />
-        <AccountAction label={t("archive")} onPress={() => void archive(account.id)} />
+        <AccountAction
+          label={t("reconnect")}
+          loading={loading}
+          onPress={() => confirmAction(t("reconnect"), t("reconnectConfirmation"), () => reconnect(account.id))}
+        />
+        <AccountAction
+          label={t("archive")}
+          loading={loading}
+          onPress={() => confirmAction(t("archive"), t("archiveConfirmation"), () => archive(account.id))}
+        />
         <AccountAction
           label={t("delete")}
           danger
-          onPress={() =>
-            Alert.alert(t("delete"), "Bu WhatsApp hesabını silmek istediğinizden emin misiniz?", [
-              { text: "Vazgeç", style: "cancel" },
-              { text: t("delete"), style: "destructive", onPress: () => void remove(account.id) }
-            ])
-          }
+          loading={loading}
+          onPress={() => confirmAction(t("delete"), t("deleteConfirmation"), () => remove(account.id))}
         />
       </View>
     </View>
@@ -95,7 +118,8 @@ function AccountCard({ account }: { account: MobileWhatsAppAccount }) {
 export function WhatsAppScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
-  const { accounts, loading, refreshing, error, load, refresh } = useWhatsAppStore();
+  const navigation = useNavigation<WhatsAppNavigation>();
+  const { accounts, loading, refreshing, error, load, refresh, resetConnection } = useWhatsAppStore();
 
   useEffect(() => {
     if (accounts.length === 0 && !loading) void load();
@@ -128,6 +152,29 @@ export function WhatsAppScreen() {
           <Text style={[styles.eyebrow, { color: theme.primary }]}>{t("whatsappAccounts")}</Text>
           <Text style={[styles.title, { color: theme.text }]}>{t("whatsappAccounts")}</Text>
           <Text style={[styles.subtitle, { color: theme.muted }]}>{t("accountActionsPrepared")}</Text>
+        </View>
+
+        <View style={styles.connectionButtons}>
+          <PrimaryButton
+            title={t("connectWithQr")}
+            onPress={() => {
+              resetConnection("qr");
+              navigation.navigate("WhatsAppQR");
+            }}
+          />
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              resetConnection("phoneCode");
+              navigation.navigate("WhatsAppPhoneConnect");
+            }}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              { backgroundColor: theme.card, borderColor: theme.border, opacity: pressed ? 0.82 : 1 }
+            ]}
+          >
+            <Text style={[styles.secondaryButtonText, { color: theme.text }]}>{t("connectWithPhoneCode")}</Text>
+          </Pressable>
         </View>
 
         {accounts.length === 0 ? (
@@ -165,6 +212,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     fontWeight: "600"
+  },
+  connectionButtons: {
+    gap: 12
+  },
+  secondaryButton: {
+    minHeight: 56,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  secondaryButtonText: {
+    fontSize: 17,
+    fontWeight: "800"
   },
   card: {
     borderWidth: 1,
@@ -204,12 +265,19 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12
   },
+  stat: {
+    flex: 1
+  },
   statValue: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: "900"
   },
   statLabel: {
     fontSize: 12,
+    fontWeight: "700"
+  },
+  errorText: {
+    fontSize: 13,
     fontWeight: "700"
   },
   actions: {
