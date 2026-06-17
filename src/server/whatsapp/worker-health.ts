@@ -20,14 +20,21 @@ function requiresRemoteWorkerUrl() {
 
 export async function assertWhatsAppWorkerReachable() {
   const url = process.env.WHATSAPP_WORKER_URL || process.env.WORKER_HEALTH_URL;
-  if (!url && requiresRemoteWorkerUrl()) throw new Error("WHATSAPP_WORKER_URL_REQUIRED");
   if (url) {
     const response = await fetch(url, {
       cache: "no-store",
       headers: process.env.WHATSAPP_SESSION_SECRET ? { authorization: `Bearer ${process.env.WHATSAPP_SESSION_SECRET}` } : undefined,
       signal: AbortSignal.timeout(3_000),
-    }).catch(() => null);
+    }).catch((error) => {
+      logger.warn("whatsapp.worker.remote_health_failed", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    });
     if (response?.ok) return;
+    if (response) {
+      logger.warn("whatsapp.worker.remote_health_unhealthy", { status: response.status });
+    }
   }
   const heartbeat = await readWorkerHeartbeat().catch((error) => {
     if (isRedisQuotaOrTransientHeartbeatError(error)) {
@@ -36,10 +43,22 @@ export async function assertWhatsAppWorkerReachable() {
       });
       return "redis-degraded" as const;
     }
+    logger.warn("whatsapp.worker.heartbeat_check_failed", {
+      reason: error instanceof Error ? error.message : String(error),
+    });
     return null;
   });
   if (heartbeat === "redis-degraded") throw new Error("REDIS_MAX_REQUESTS_EXCEEDED");
-  if (!isWorkerHeartbeatFresh(heartbeat)) throw new Error(WORKER_UNREACHABLE_MESSAGE);
+  if (isWorkerHeartbeatFresh(heartbeat)) {
+    if (!url && requiresRemoteWorkerUrl()) {
+      logger.warn("whatsapp.worker.remote_url_missing_heartbeat_ok", {
+        env: process.env.VERCEL_ENV || "unknown",
+      });
+    }
+    return;
+  }
+  if (!url && requiresRemoteWorkerUrl()) throw new Error("WHATSAPP_WORKER_URL_REQUIRED");
+  throw new Error(WORKER_UNREACHABLE_MESSAGE);
 }
 
 export async function waitForAccountQr(accountId: string) {

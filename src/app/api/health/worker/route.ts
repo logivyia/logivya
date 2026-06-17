@@ -30,13 +30,17 @@ export async function GET() {
   const queueStatus = queues.every((queue) => queue.status === "healthy") ? "healthy" : "unhealthy";
 
   const workerReachable = remote === true || heartbeatFresh;
-  const missingRequiredRemote = !workerUrl && requiresRemoteWorkerUrl();
+  const remoteRecommended = requiresRemoteWorkerUrl();
+  const missingRecommendedRemote = !workerUrl && remoteRecommended;
+  const missingRequiredRemote = missingRecommendedRemote && !heartbeatFresh;
   const healthy = !missingRequiredRemote && workerReachable && queueStatus === "healthy";
   return NextResponse.json({
     service: "logivya-worker",
     status: healthy ? "healthy" : "unhealthy",
     remoteConfigured: Boolean(workerUrl),
-    remoteRequired: requiresRemoteWorkerUrl(),
+    remoteRecommended,
+    remoteRequired: missingRequiredRemote,
+    missingRecommendedRemote,
     missingRequiredRemote,
     remoteReachable: remote,
     heartbeat,
