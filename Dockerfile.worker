@@ -1,10 +1,21 @@
 FROM node:24-bookworm-slim
+
 WORKDIR /app
+
+RUN apt-get update -y && apt-get install -y openssl
+
 COPY package.json package-lock.json ./
+COPY prisma ./prisma
+
 RUN npm ci
+
 COPY . .
+
 RUN npm run db:generate
+
 ENV NODE_ENV=production
 ENV WHATSAPP_SESSION_DIR=/app/sessions
+
 EXPOSE 3001
+
 CMD ["npm", "run", "worker"]
