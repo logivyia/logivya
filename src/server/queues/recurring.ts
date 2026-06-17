@@ -6,3 +6,12 @@ export function recurringDelay(rule: RecurringRule) {
   if (rule.frequency === "MONTHLY") return interval * 30 * day;
   return interval * day;
 }
+
+export function nextRecurringRunAt(rule: RecurringRule, from = Date.now()) {
+  return from + recurringDelay(rule);
+}
+
+export function recurringJobId(templateCampaignId: string, runAt: number) {
+  const minuteBucket = Math.floor(runAt / 60_000) * 60_000;
+  return `recurring-${templateCampaignId}-${minuteBucket}`;
+}

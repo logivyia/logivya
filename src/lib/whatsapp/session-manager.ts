@@ -6,7 +6,16 @@ import { access, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "@/server/db";
 
-const sessionRoot = path.resolve(process.env.WHATSAPP_SESSION_DIR || path.join(process.cwd(), "sessions"));
+const configuredSessionRoot =
+  process.env.WHATSAPP_SESSION_DIR ||
+  process.env.WHATSAPP_SESSION_ROOT ||
+  (process.env.WHATSAPP_SESSION_VOLUME_PERSISTENT === "true" ? "/sessions" : path.join(process.cwd(), "sessions"));
+
+const sessionRoot = path.resolve(configuredSessionRoot);
+
+export function getWhatsAppSessionRoot() {
+  return sessionRoot;
+}
 
 export function whatsappSessionDirectory(accountId: string) {
   if (!/^[a-zA-Z0-9_-]+$/.test(accountId)) throw new Error("INVALID_SESSION_ID");
@@ -18,6 +27,7 @@ export function whatsappSessionDirectory(accountId: string) {
 
 export async function ensureWhatsAppSessionRoot() {
   await mkdir(sessionRoot, { recursive: true });
+  await access(sessionRoot);
 }
 
 export async function hasWhatsAppCredentials(accountId: string) {

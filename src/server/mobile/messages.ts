@@ -3,6 +3,7 @@ import { requirePermission } from "@/server/auth/permissions";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { prisma } from "@/server/db";
 import { messageQueue } from "@/server/queues/client";
+import { SCHEDULED_MESSAGE_JOB_OPTIONS } from "@/server/queues/contracts";
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
 import { createNotification, NOTIFICATION_TYPES } from "@/server/notifications/service";
 import { writeAuditLog } from "@/server/security/audit";
@@ -45,12 +46,16 @@ export async function createMobileMessageCampaign(request: Request, context: Mob
   });
   const baseDelay = input.scheduledAt ? Math.max(0, input.scheduledAt.getTime() - Date.now()) : 0;
   const queue = messageQueue();
-  for (const [index, recipient] of campaign.recipients.entries()) {
-    await queue.add("send-recipient", { companyId: context.company.id, campaignId: campaign.id, recipientId: recipient.id }, {
-      jobId: `mobile-recipient-${recipient.id}`,
-      delay: baseDelay + index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000),
-      ...(input.scheduledAt ? { attempts: 288, backoff: { type: "fixed", delay: 5 * 60_000 } } : {}),
-    });
+  try {
+    for (const [index, recipient] of campaign.recipients.entries()) {
+      await queue.add("send-recipient", { companyId: context.company.id, campaignId: campaign.id, recipientId: recipient.id }, {
+        jobId: `mobile-recipient-${recipient.id}`,
+        delay: baseDelay + index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000),
+        ...(input.scheduledAt ? SCHEDULED_MESSAGE_JOB_OPTIONS : {}),
+      });
+    }
+  } finally {
+    await queue.close().catch(() => undefined);
   }
   await writeAuditLog(request, { companyId: context.company.id, userId: context.user.id, action: input.scheduledAt ? "mobile.message.scheduled" : "mobile.message.sent", entityType: "MessageCampaign", entityId: campaign.id, after: { totalRecipients: groups.length } });
   if (input.scheduledAt) {

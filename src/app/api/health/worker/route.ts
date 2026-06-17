@@ -1,19 +1,10 @@
 import { NextResponse } from "next/server";
 import { messageQueue, whatsappQueue } from "@/server/queues/client";
-import { readWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
+import { getCachedQueueHealth } from "@/server/queues/health";
+import { isWorkerHeartbeatFresh, readWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
 
 function safeError(error: unknown) {
   return error instanceof Error ? error.message : "UNKNOWN_WORKER_HEALTH_ERROR";
-}
-
-async function queueSnapshot(name: string, queue: ReturnType<typeof messageQueue>) {
-  try {
-    return { name, status: "healthy" as const, counts: await queue.getJobCounts("waiting", "active", "delayed", "failed") };
-  } catch (error) {
-    return { name, status: "unhealthy" as const, error: safeError(error) };
-  } finally {
-    await queue.close().catch(() => undefined);
-  }
 }
 
 export async function GET() {
@@ -30,11 +21,11 @@ export async function GET() {
     heartbeatError = safeError(error);
     return null;
   });
-  const heartbeatFresh = Boolean(heartbeat && Date.now() - new Date(heartbeat.timestamp).getTime() <= 20_000);
+  const heartbeatFresh = isWorkerHeartbeatFresh(heartbeat);
 
   const queues = await Promise.all([
-    queueSnapshot("logivya-sync", whatsappQueue()),
-    queueSnapshot("logivya-message", messageQueue()),
+    getCachedQueueHealth("logivya-sync", whatsappQueue),
+    getCachedQueueHealth("logivya-message", messageQueue),
   ]);
   const queueStatus = queues.every((queue) => queue.status === "healthy") ? "healthy" : "unhealthy";
 

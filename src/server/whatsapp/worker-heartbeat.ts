@@ -2,7 +2,8 @@ import Redis from "ioredis";
 import { redisConnectionOptions } from "@/server/queues/client";
 
 const HEARTBEAT_KEY = "logivya:whatsapp-worker:heartbeat";
-const HEARTBEAT_TTL_SECONDS = 20;
+export const WORKER_HEARTBEAT_TTL_SECONDS = Number(process.env.WORKER_HEARTBEAT_TTL_SECONDS || 90);
+export const WORKER_HEARTBEAT_FRESH_MS = Number(process.env.WORKER_HEARTBEAT_FRESH_MS || 60_000);
 let redis: Redis | null = null;
 
 function client() {
@@ -22,7 +23,7 @@ async function ensureConnected(instance: Redis) {
 export async function writeWorkerHeartbeat(workerId: string) {
   const instance = client();
   await ensureConnected(instance);
-  await instance.set(HEARTBEAT_KEY, JSON.stringify({ workerId, timestamp: new Date().toISOString() }), "EX", HEARTBEAT_TTL_SECONDS);
+  await instance.set(HEARTBEAT_KEY, JSON.stringify({ workerId, timestamp: new Date().toISOString() }), "EX", WORKER_HEARTBEAT_TTL_SECONDS);
 }
 
 export async function readWorkerHeartbeat() {
@@ -30,4 +31,8 @@ export async function readWorkerHeartbeat() {
   await ensureConnected(instance);
   const value = await instance.get(HEARTBEAT_KEY);
   return value ? JSON.parse(value) as { workerId: string; timestamp: string } : null;
+}
+
+export function isWorkerHeartbeatFresh(heartbeat: { workerId: string; timestamp: string } | null) {
+  return Boolean(heartbeat && Date.now() - new Date(heartbeat.timestamp).getTime() <= WORKER_HEARTBEAT_FRESH_MS);
 }

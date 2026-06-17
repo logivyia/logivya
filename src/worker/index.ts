@@ -3,7 +3,7 @@ import { Worker } from "bullmq";
 import { prisma } from "@/server/db";
 import { QUEUES } from "@/server/queues/contracts";
 import { BaileysWhatsAppProvider } from "@/worker/baileys-provider";
-import { recurringDelay, type RecurringRule } from "@/server/queues/recurring";
+import { nextRecurringRunAt, recurringJobId, type RecurringRule } from "@/server/queues/recurring";
 import { campaignQueue, deadLetterQueue, messageQueue, redisConnectionOptions } from "@/server/queues/client";
 import { logger } from "@/server/observability/logger";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
@@ -28,7 +28,13 @@ function registerWorker(name: string, worker: Worker) {
   workers.push(worker);
   logger.info("worker.queue.registered", { workerId, queue: name });
   worker.on("ready", () => logger.info("worker.queue.ready", { workerId, queue: name }));
-  worker.on("active", (job) => logger.info("worker.job.received", { workerId, queue: name, jobId: job.id, jobName: job.name }));
+  worker.on("active", (job) => {
+    logger.info("worker.job.received", { workerId, queue: name, jobId: job.id, jobName: job.name });
+    if (name === QUEUES.sync) {
+      const data = job.data as { action?: string; accountId?: string };
+      logger.info("whatsapp.worker.job.received", { workerId, queue: name, jobId: job.id, jobName: job.name, action: data.action, accountId: data.accountId });
+    }
+  });
   worker.on("completed", (job) => logger.info("worker.job.completed", { workerId, queue: name, jobId: job.id, jobName: job.name }));
   worker.on("failed", (job, error) => logger.error("worker.job.failed", error, { workerId, queue: name, jobId: job?.id, jobName: job?.name }));
   worker.on("error", (error) => logger.error("worker.queue.error", error, { workerId, queue: name }));
@@ -44,13 +50,15 @@ registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign,async(job)=>{
   try{for(const[index,recipient]of occurrence.recipients.entries())await queue.add("send-recipient",{companyId,campaignId:occurrence.id,recipientId:recipient.id},{jobId:`recipient-${recipient.id}`,delay:index*Number(process.env.WHATSAPP_MIN_DELAY_MS||3000)});}
   finally{await queue.close().catch(() => undefined);}
   const recurringQueue=campaignQueue();
-  try{await recurringQueue.add("recurring-run",{companyId,templateCampaignId},{jobId:`recurring-${templateCampaignId}-${Date.now()}`,delay:recurringDelay(template.recurringRule as RecurringRule)});}
+  const nextRunAt = nextRecurringRunAt(template.recurringRule as RecurringRule);
+  try{await recurringQueue.add("recurring-run",{companyId,templateCampaignId},{jobId:recurringJobId(templateCampaignId,nextRunAt),delay:Math.max(0,nextRunAt-Date.now())});}
   finally{await recurringQueue.close().catch(() => undefined);}
 },{connection,concurrency:2}));
 
 registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
   const { action, accountId, phoneNumber } = job.data as { action: "connect" | "pairing" | "sync" | "disconnect" | "reconnect"; accountId: string; phoneNumber?: string };
   try{
+    logger.info("whatsapp.worker.job.received", { workerId, jobId: job.id, action, accountId });
     logger.info("whatsapp.job.received", { workerId, jobId: job.id, action, accountId });
     const account=await prisma.whatsAppAccount.findUnique({where:{id:accountId},select:{status:true,archivedAt:true,updatedAt:true}});
     if(!account||account.archivedAt)return;
@@ -150,7 +158,7 @@ void cleanupStuckSessions().catch((error) => logger.error("whatsapp.stuck_sessio
 setInterval(() => void cleanupStuckSessions().catch((error) => logger.error("whatsapp.stuck_sessions.cleanup_failed", error)), 60_000).unref();
 logger.info("worker.started", { workerId, queues: [QUEUES.campaign, QUEUES.sync, QUEUES.message] });
 void writeWorkerHeartbeat(workerId).catch((error) => logger.error("worker.heartbeat.failed", error));
-setInterval(() => void writeWorkerHeartbeat(workerId).catch((error) => logger.error("worker.heartbeat.failed", error)), 5_000).unref();
+setInterval(() => void writeWorkerHeartbeat(workerId).catch((error) => logger.error("worker.heartbeat.failed", error)), Number(process.env.WORKER_HEARTBEAT_INTERVAL_MS || 30_000)).unref();
 
 console.log("Logivya WhatsApp worker is ready");
 

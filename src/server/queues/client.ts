@@ -22,4 +22,12 @@ export function redisConnectionOptions() {
 export function whatsappQueue() { return new Queue(QUEUES.sync, { connection: redisConnectionOptions(), defaultJobOptions: DEFAULT_JOB_OPTIONS }); }
 export function messageQueue() { return new Queue(QUEUES.message, { connection: redisConnectionOptions(), defaultJobOptions: DEFAULT_JOB_OPTIONS }); }
 export function campaignQueue() { return new Queue(QUEUES.campaign, { connection: redisConnectionOptions(), defaultJobOptions: DEFAULT_JOB_OPTIONS }); }
-export function deadLetterQueue() { return new Queue(QUEUES.deadLetter, { connection: redisConnectionOptions(), defaultJobOptions: { removeOnComplete: 1_000, removeOnFail: 10_000 } }); }
+export function deadLetterQueue() {
+  return new Queue(QUEUES.deadLetter, {
+    connection: redisConnectionOptions(),
+    defaultJobOptions: {
+      removeOnComplete: { age: 86_400, count: 200 },
+      removeOnFail: { age: 7 * 86_400, count: 500 },
+    },
+  });
+}

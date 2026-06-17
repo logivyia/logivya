@@ -4,8 +4,9 @@ import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
 import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { writeAuditLog } from "@/server/security/audit";
-import { assertWhatsAppWorkerReachable, waitForAccountQr } from "@/server/whatsapp/worker-health";
+import { assertWhatsAppWorkerReachable, isWhatsAppWaitTimeout, waitForAccountQr } from "@/server/whatsapp/worker-health";
 import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
+import { logger } from "@/server/observability/logger";
 import { AccountStatus } from "@prisma/client";
 import { resetAccountForConnection } from "@/lib/whatsapp/account-status-machine";
 import { assertSameOrigin, enforceWhatsAppRateLimit } from "@/server/whatsapp/request-guards";
@@ -24,10 +25,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     await enforceWhatsAppRateLimit("qr-account", id);
     await resetAccountForConnection(id, AccountStatus.PENDING_QR);
-    await enqueueWhatsAppJob("reconnect", { action: "reconnect", accountId: id }, { jobId: `regenerate-${id}-${Date.now()}` });
-    const ready = await waitForAccountQr(id);
+    logger.info("whatsapp.connect.requested", { companyId: company.id, userId: user.id, accountId: id, mode: "QR_REGENERATE" });
+    const job = await enqueueWhatsAppJob("reconnect", { action: "reconnect", accountId: id }, { jobId: `regenerate-${id}-${Date.now()}` });
+    logger.info("whatsapp.connect.job.enqueued", { accountId: id, jobId: job.id, action: "reconnect", mode: "QR_REGENERATE" });
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.qr.regenerated", entityType: "WhatsAppAccount", entityId: id });
-    return NextResponse.json({ ok: true, accountId: id, status: ready.status, qr: ready.qrCode, qrCode: ready.qrCode, expiresAt: ready.qrExpiresAt, qrExpiresAt: ready.qrExpiresAt });
+    try {
+      const ready = await waitForAccountQr(id);
+      return NextResponse.json({ ok: true, accountId: id, status: ready.status, qr: ready.qrCode, qrCode: ready.qrCode, expiresAt: ready.qrExpiresAt, qrExpiresAt: ready.qrExpiresAt });
+    } catch (waitError) {
+      if (!isWhatsAppWaitTimeout(waitError)) throw waitError;
+      const pending = await prisma.whatsAppAccount.findUnique({ where: { id } });
+      return NextResponse.json({
+        ok: true,
+        pending: true,
+        accountId: id,
+        status: pending?.status || AccountStatus.PENDING_QR,
+        qr: pending?.qrCode || null,
+        qrCode: pending?.qrCode || null,
+        expiresAt: pending?.qrExpiresAt || null,
+        qrExpiresAt: pending?.qrExpiresAt || null,
+        message: "QR kod hazırlanıyor. Lütfen birkaç saniye bekleyin.",
+      }, { status: 202 });
+    }
   } catch (error) {
     return NextResponse.json({ error: whatsappUserMessage(error, "qr") }, { status: 503 });
   }

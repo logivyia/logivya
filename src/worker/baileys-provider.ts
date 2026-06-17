@@ -16,6 +16,16 @@ const sockets = new Map<string, WASocket>();
 const manuallyDisconnected = new Set<string>();
 const sessionModes = new Map<string, "QR" | "PAIRING">();
 const sessionRestarts = new Map<string, Promise<WASocket>>();
+const SOCKET_INITIALIZATION_TIMEOUT_MS = Number(process.env.WHATSAPP_SOCKET_INITIALIZATION_TIMEOUT_MS || 30_000);
+const PAIRING_SOCKET_BOOTSTRAP_MS = Number(process.env.WHATSAPP_PAIRING_SOCKET_BOOTSTRAP_MS || 1_500);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
 
 function maskPhoneNumber(phoneNumber?: string | null) {
   if (!phoneNumber) return null;
@@ -95,6 +105,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
 
   async requestPairingCode(accountId: string, phoneNumber: string): Promise<{ code: string; expiresAt: Date }> {
     const normalized = normalizeWhatsAppPhoneNumber(phoneNumber);
+    logger.info("whatsapp.pairing.requested", { accountId, phoneNumber: maskPhoneNumber(normalized) });
     logger.info("whatsapp.pairing.request_started", { accountId, phoneNumber: maskPhoneNumber(normalized) });
     await this.clearTemporaryAuth(accountId);
     sessionModes.set(accountId, "PAIRING");
@@ -106,17 +117,20 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     try {
       const { socket, registered, initialized } = await this.startSession(accountId, "PAIRING");
       if (registered) throw new Error("Pairing requires a clean unregistered auth state.");
-      await initialized;
+      void initialized.catch((error) => logger.warn("whatsapp.pairing.initialization_deferred_failed", { accountId, reason: errorMessage(error) }));
+      await sleep(PAIRING_SOCKET_BOOTSTRAP_MS);
       const code = await socket.requestPairingCode(normalized);
       const expiresAt = new Date(Date.now() + 5 * 60_000);
       await prisma.whatsAppAccount.update({
         where: { id: accountId },
         data: { status: "PAIRING_CODE_READY", phoneNumber: normalized, pairingCode: code, pairingCodeExpiresAt: expiresAt, lastError: null },
       });
+      logger.info("whatsapp.pairing.ready", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
       logger.info("whatsapp.pairing.code_generated", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
       await auditAccount(accountId, "whatsapp.pairing.code_generated", { phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
       return { code, expiresAt };
     } catch (error) {
+      logger.error("whatsapp.connection.failed", error, { accountId, mode: "PAIRING", phoneNumber: maskPhoneNumber(normalized), reason: errorMessage(error) });
       logger.error("whatsapp.pairing.failed", error, { accountId, phoneNumber: maskPhoneNumber(normalized) });
       await this.clearTemporaryAuth(accountId);
       const message = pairingUserMessage(error);
@@ -157,6 +171,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       throw new Error("WhatsApp account no longer exists");
     }
 
+    logger.info("whatsapp.baileys.start", { accountId, mode, registered: state.creds.registered, sessionDirectory: directory });
     logger.info("whatsapp.session.starting", { accountId, mode, registered: state.creds.registered });
     const socket = makeWASocket({ auth: state, version, printQRInTerminal: false, markOnlineOnConnect: false, syncFullHistory: false });
     sockets.set(accountId, socket);
@@ -172,7 +187,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         if (error) reject(error);
         else resolve();
       };
-      initializationTimeout = setTimeout(() => settleInitialized(new Error("WhatsApp socket initialization timed out.")), 12_000);
+      initializationTimeout = setTimeout(() => settleInitialized(new Error("WhatsApp socket initialization timed out.")), SOCKET_INITIALIZATION_TIMEOUT_MS);
     });
 
     socket.ev.on("creds.update", saveCreds);
@@ -191,16 +206,16 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           const expiresAt = new Date(Date.now() + 60_000);
           await prisma.whatsAppSession.upsert({
             where: { id: accountId },
-            update: { qrCode, status: "PENDING_QR", expiresAt },
-            create: { id: accountId, accountId, qrCode, status: "PENDING_QR", expiresAt },
+            update: { qrCode, status: "QR_READY", expiresAt },
+            create: { id: accountId, accountId, qrCode, status: "QR_READY", expiresAt },
           });
-          await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "PENDING_QR", qrCode, qrExpiresAt: expiresAt, lastError: null } });
+          await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "QR_READY", qrCode, qrExpiresAt: expiresAt, lastError: null } });
           logger.info("whatsapp.qr.saved", { accountId, expiresAt: expiresAt.toISOString() });
           await auditAccount(accountId, "whatsapp.qr.generated", { expiresAt: expiresAt.toISOString() });
           settleInitialized();
         }
         if (connection === "connecting") {
-          await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null, status: { in: ["PAIRING_CODE_READY", "PENDING_QR"] } }, data: { status: "CONNECTING" } });
+          await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null, status: { in: ["PENDING_PAIRING", "PAIRING_CODE_READY", "PENDING_QR"] } }, data: { status: "CONNECTING" } });
           if (currentMode === "PAIRING") settleInitialized();
         }
         if (connection === "open") {
@@ -208,6 +223,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           const updated = await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "CONNECTED", phoneNumber, displayName: socket.user?.name, lastConnectedAt: new Date(), qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null } });
           if (!updated.count) return;
           await prisma.whatsAppSession.updateMany({ where: { accountId }, data: { status: "CONNECTED", qrCode: null, expiresAt: null } });
+          logger.info("whatsapp.connected", { accountId, mode: currentMode, phoneNumber: maskPhoneNumber(phoneNumber) });
           logger.info("whatsapp.connection.open", { accountId, mode: currentMode, phoneNumber: maskPhoneNumber(phoneNumber) });
           await auditAccount(accountId, "whatsapp.connected", { phoneNumber: maskPhoneNumber(phoneNumber), mode: currentMode });
           settleInitialized();
@@ -257,7 +273,13 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         }
       } catch (error) {
         if (sockets.get(accountId) === socket) sockets.delete(accountId);
-        logger.error("whatsapp.connection.update_failed", error, { accountId, mode: sessionModes.get(accountId) || mode });
+        const modeAtFailure = sessionModes.get(accountId) || mode;
+        await prisma.whatsAppAccount.updateMany({
+          where: { id: accountId, archivedAt: null, status: { in: ["PENDING_QR", "QR_READY", "PENDING_PAIRING", "PAIRING_CODE_READY", "CONNECTING"] } },
+          data: { status: "FAILED", lastError: modeAtFailure === "PAIRING" ? pairingUserMessage(error) : "Bağlantı başarısız oldu. Yeni kod veya QR ile tekrar deneyin." },
+        });
+        logger.error("whatsapp.connection.failed", error, { accountId, mode: modeAtFailure, reason: errorMessage(error) });
+        logger.error("whatsapp.connection.update_failed", error, { accountId, mode: modeAtFailure });
         if (!initializedSettled) settleInitialized(error);
       }
     });
@@ -267,7 +289,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
   async createSession(accountId: string): Promise<SessionResult> {
     if (sockets.has(accountId)) return { sessionId: accountId, qrCode: await this.getQr(accountId) };
     const { initialized } = await this.startSession(accountId, "QR");
-    await initialized;
+    void initialized.catch((error) => logger.warn("whatsapp.qr.initialization_deferred_failed", { accountId, reason: errorMessage(error) }));
     return { sessionId: accountId, qrCode: null };
   }
 

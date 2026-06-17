@@ -4,9 +4,10 @@ import { Prisma } from "@prisma/client";
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
 import { campaignQueue, messageQueue } from "@/server/queues/client";
+import { SCHEDULED_MESSAGE_JOB_OPTIONS } from "@/server/queues/contracts";
 import { requirePermission } from "@/server/auth/permissions";
 import { writeAuditLog } from "@/server/security/audit";
-import { recurringDelay, type RecurringRule } from "@/server/queues/recurring";
+import { nextRecurringRunAt, recurringJobId, type RecurringRule } from "@/server/queues/recurring";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
 
@@ -43,16 +44,26 @@ export async function POST(request: Request) {
       include: { recipients: true },
     });
     if(parsed.data.scheduleType==="RECURRING"){
-      await campaignQueue().add("recurring-run",{companyId:company.id,templateCampaignId:campaign.id},{jobId:`recurring-${campaign.id}-${Date.now()}`,delay:recurringDelay(parsed.data.recurringRule as RecurringRule)});
+      const queue = campaignQueue();
+      const nextRunAt = nextRecurringRunAt(parsed.data.recurringRule as RecurringRule);
+      try {
+        await queue.add("recurring-run", { companyId: company.id, templateCampaignId: campaign.id }, { jobId: recurringJobId(campaign.id, nextRunAt), delay: Math.max(0, nextRunAt - Date.now()) });
+      } finally {
+        await queue.close().catch(() => undefined);
+      }
     }else{
       const queue = messageQueue();
-      const baseDelay=parsed.data.scheduleType==="SCHEDULED"&&parsed.data.scheduledAt?Math.max(0,parsed.data.scheduledAt.getTime()-Date.now()):0;
-      for (const [index, recipient] of campaign.recipients.entries()) {
-        await queue.add("send-recipient", { companyId: company.id, campaignId: campaign.id, recipientId: recipient.id }, {
-          jobId:`recipient-${recipient.id}`,
-          delay:baseDelay+index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000),
-          ...(parsed.data.scheduleType === "SCHEDULED" ? { attempts: 288, backoff: { type: "fixed", delay: 5 * 60_000 } } : {}),
-        });
+      try {
+        const baseDelay=parsed.data.scheduleType==="SCHEDULED"&&parsed.data.scheduledAt?Math.max(0,parsed.data.scheduledAt.getTime()-Date.now()):0;
+        for (const [index, recipient] of campaign.recipients.entries()) {
+          await queue.add("send-recipient", { companyId: company.id, campaignId: campaign.id, recipientId: recipient.id }, {
+            jobId:`recipient-${recipient.id}`,
+            delay:baseDelay+index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000),
+            ...(parsed.data.scheduleType === "SCHEDULED" ? SCHEDULED_MESSAGE_JOB_OPTIONS : {}),
+          });
+        }
+      } finally {
+        await queue.close().catch(() => undefined);
       }
     }
     await writeAuditLog(request,{companyId:company.id,userId:user.id,action:"campaign.created",entityType:"MessageCampaign",entityId:campaign.id,after:{scheduleType:campaign.scheduleType,totalRecipients:campaign.totalRecipients}});

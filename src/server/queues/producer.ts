@@ -15,6 +15,12 @@ export async function enqueueWhatsAppJob(name: string, data: WhatsAppConnectionJ
       action: data.action,
     });
     const job = await queue.add(name, data, options);
+    logger.info("whatsapp.connect.job.enqueued", {
+      jobName: name,
+      jobId: job.id,
+      accountId: data.accountId,
+      action: data.action,
+    });
     logger.info("queue.whatsapp.enqueue.completed", {
       jobName: name,
       jobId: job.id,
