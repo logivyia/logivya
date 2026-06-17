@@ -14,8 +14,13 @@ function isRedisQuotaOrTransientHeartbeatError(error: unknown) {
   );
 }
 
+function requiresRemoteWorkerUrl() {
+  return process.env.VERCEL === "1" || process.env.VERCEL_ENV === "production";
+}
+
 export async function assertWhatsAppWorkerReachable() {
   const url = process.env.WHATSAPP_WORKER_URL || process.env.WORKER_HEALTH_URL;
+  if (!url && requiresRemoteWorkerUrl()) throw new Error("WHATSAPP_WORKER_URL_REQUIRED");
   if (url) {
     const response = await fetch(url, {
       cache: "no-store",
@@ -29,11 +34,11 @@ export async function assertWhatsAppWorkerReachable() {
       logger.warn("whatsapp.worker.heartbeat_check_degraded", {
         reason: error instanceof Error ? error.message : String(error),
       });
-      return "degraded" as const;
+      return "redis-degraded" as const;
     }
     return null;
   });
-  if (heartbeat === "degraded") return;
+  if (heartbeat === "redis-degraded") throw new Error("REDIS_MAX_REQUESTS_EXCEEDED");
   if (!isWorkerHeartbeatFresh(heartbeat)) throw new Error(WORKER_UNREACHABLE_MESSAGE);
 }
 

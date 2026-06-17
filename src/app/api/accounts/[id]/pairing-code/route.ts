@@ -5,6 +5,7 @@ import { prisma } from "@/server/db";
 import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { writeAuditLog } from "@/server/security/audit";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
+import { whatsappLastErrorCode } from "@/server/whatsapp/user-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
 import { assertWhatsAppWorkerReachable, isWhatsAppWaitTimeout, waitForPairingCode } from "@/server/whatsapp/worker-health";
 import { logger } from "@/server/observability/logger";
@@ -54,7 +55,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
   } catch (error) {
     const message = pairingUserMessage(error);
-    if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "FAILED", lastError: message } });
+    if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "FAILED", lastError: whatsappLastErrorCode(error) } });
     return NextResponse.json({ error: message, accountId }, { status: error instanceof Error && error.message === "INVALID_WHATSAPP_PHONE" ? 400 : 503 });
   }
 }

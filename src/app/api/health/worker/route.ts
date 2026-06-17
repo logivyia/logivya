@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
-import { messageQueue, whatsappQueue } from "@/server/queues/client";
-import { getCachedQueueHealth } from "@/server/queues/health";
+import { getWhatsAppQueueHealth } from "@/server/queues/health";
 import { isWorkerHeartbeatFresh, readWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
 
 function safeError(error: unknown) {
   return error instanceof Error ? error.message : "UNKNOWN_WORKER_HEALTH_ERROR";
+}
+
+function requiresRemoteWorkerUrl() {
+  return process.env.VERCEL === "1" || process.env.VERCEL_ENV === "production";
 }
 
 export async function GET() {
@@ -23,18 +26,18 @@ export async function GET() {
   });
   const heartbeatFresh = isWorkerHeartbeatFresh(heartbeat);
 
-  const queues = await Promise.all([
-    getCachedQueueHealth("logivya-sync", whatsappQueue),
-    getCachedQueueHealth("logivya-message", messageQueue),
-  ]);
+  const queues = await getWhatsAppQueueHealth();
   const queueStatus = queues.every((queue) => queue.status === "healthy") ? "healthy" : "unhealthy";
 
   const workerReachable = remote === true || heartbeatFresh;
-  const healthy = workerReachable && queueStatus === "healthy";
+  const missingRequiredRemote = !workerUrl && requiresRemoteWorkerUrl();
+  const healthy = !missingRequiredRemote && workerReachable && queueStatus === "healthy";
   return NextResponse.json({
     service: "logivya-worker",
     status: healthy ? "healthy" : "unhealthy",
     remoteConfigured: Boolean(workerUrl),
+    remoteRequired: requiresRemoteWorkerUrl(),
+    missingRequiredRemote,
     remoteReachable: remote,
     heartbeat,
     heartbeatError,

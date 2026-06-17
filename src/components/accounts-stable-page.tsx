@@ -40,6 +40,15 @@ const modalInput = "w-full rounded-xl border !border-slate-300 !bg-white p-3 tex
 const reconnectable = ["NEW", "ERROR", "FAILED", "CONNECTING", "QR_READY", "PENDING_QR", "PENDING_PAIRING", "PAIRING_CODE_READY", "RECONNECT_REQUIRED", "DISCONNECTED"];
 const pendingStatuses = ["PENDING_QR", "QR_READY", "PENDING_PAIRING", "PAIRING_CODE_READY", "CONNECTING"];
 
+function normalizePhoneForPairing(input: string, selectedCountryCode: string) {
+  let digits = input.replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith(selectedCountryCode)) {
+    return `${selectedCountryCode}${digits.slice(selectedCountryCode.length).replace(/^0+/, "")}`;
+  }
+  return `${selectedCountryCode}${digits.replace(/^0+/, "")}`;
+}
+
 function statusTone(status: string) {
   if (["CONNECTED", "ACTIVE"].includes(status)) return "bg-green-50 text-green-700";
   if (["PENDING_QR", "QR_READY", "PENDING_PHONE", "PENDING_PAIRING", "PAIRING_CODE_READY", "CONNECTING"].includes(status)) return "bg-amber-50 text-amber-700";
@@ -145,8 +154,7 @@ export function AccountsStablePage() {
       setError("Telefon numaranızı girin.");
       return;
     }
-    const digits = trimmed.replace(/\D/g, "");
-    const phoneNumber = trimmed.startsWith("+") || digits.startsWith(countryCode) ? trimmed : `${countryCode}${trimmed}`;
+    const phoneNumber = normalizePhoneForPairing(trimmed, countryCode);
     const url = session?.accountId ? `/api/accounts/${session.accountId}/pairing-code` : "/api/accounts/whatsapp/create-pairing-session";
     void request(url, { phoneNumber });
   }

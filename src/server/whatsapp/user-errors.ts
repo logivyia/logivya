@@ -1,5 +1,18 @@
 import { WORKER_UNREACHABLE_MESSAGE } from "@/server/whatsapp/worker-health";
 
+export function whatsappLastErrorCode(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("max requests limit exceeded")) return "REDIS_MAX_REQUESTS_EXCEEDED";
+  if (message.includes(WORKER_UNREACHABLE_MESSAGE)) return WORKER_UNREACHABLE_MESSAGE;
+  if (message.includes("WHATSAPP_WORKER_URL_REQUIRED")) return "WHATSAPP_WORKER_URL_REQUIRED";
+  if (message === "INVALID_WHATSAPP_PHONE") return "INVALID_WHATSAPP_PHONE";
+  if (message === "WHATSAPP_RATE_LIMITED") return "WHATSAPP_RATE_LIMITED";
+  if (message === "WHATSAPP_RATE_LIMIT_UNAVAILABLE") return "WHATSAPP_RATE_LIMIT_UNAVAILABLE";
+  if (message === "accounts.planLimit") return "accounts.planLimit";
+  if (message === "subscription.inactive") return "subscription.inactive";
+  return message.slice(0, 500);
+}
+
 export function whatsappUserMessage(error: unknown, operation: "qr" | "pairing" | "connection" | "sync" = "connection") {
   const message = error instanceof Error ? error.message : String(error);
 
@@ -23,6 +36,12 @@ export function whatsappUserMessage(error: unknown, operation: "qr" | "pairing" 
   }
   if (message.includes(WORKER_UNREACHABLE_MESSAGE)) {
     return "WhatsApp baglanti servisine su anda ulasilamiyor. Lutfen kisa sure sonra tekrar deneyin.";
+  }
+  if (message.includes("WHATSAPP_WORKER_URL_REQUIRED")) {
+    return "WhatsApp baglanti servisi production ortaminda tanimli degil. Lutfen yoneticiyle iletisime gecin.";
+  }
+  if (message.includes("REDIS_MAX_REQUESTS_EXCEEDED") || message.includes("max requests limit exceeded")) {
+    return "WhatsApp baglanti kuyrugu su anda Redis kota sinirina takildi. Lutfen kisa sure sonra tekrar deneyin.";
   }
 
   if (operation === "qr") return "QR kod olusturulamadi. Yeni QR olusturun.";

@@ -3,6 +3,13 @@ import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
 import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
 
+function operationForAccount(status: string, phoneNumber: string | null) {
+  if (["PENDING_PAIRING", "PAIRING_CODE_READY"].includes(status)) return "pairing";
+  if (["PENDING_QR", "QR_READY"].includes(status)) return "qr";
+  if (status === "FAILED") return phoneNumber ? "pairing" : "qr";
+  return "connection";
+}
+
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { company } = await requireApiSession();
@@ -26,8 +33,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       connectedAt: account.lastConnectedAt,
       groupCount: account._count.groups,
       contactCount: account._count.contacts,
-      lastError: account.lastError ? whatsappUserMessage(account.lastError, account.pairingCode ? "pairing" : "connection") : null,
-      failureReasonSafe: account.lastError ? whatsappUserMessage(account.lastError, account.pairingCode ? "pairing" : "connection") : null,
+      lastError: account.lastError ? whatsappUserMessage(account.lastError, operationForAccount(account.status, account.phoneNumber)) : null,
+      failureReasonSafe: account.lastError ? whatsappUserMessage(account.lastError, operationForAccount(account.status, account.phoneNumber)) : null,
       lastSyncedAt: account.lastSyncedAt,
       lastSyncAt: account.lastSyncedAt,
       pairingExpiresAt: account.pairingCodeExpiresAt,

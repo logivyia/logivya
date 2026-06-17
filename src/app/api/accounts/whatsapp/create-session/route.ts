@@ -8,7 +8,7 @@ import { writeAuditLog } from "@/server/security/audit";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { findReusableWhatsAppAccount, findSingleSlotWhatsAppAccount } from "@/server/whatsapp/reusable-account";
 import { assertWhatsAppWorkerReachable, isWhatsAppWaitTimeout, waitForAccountQr } from "@/server/whatsapp/worker-health";
-import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
+import { whatsappLastErrorCode, whatsappUserMessage } from "@/server/whatsapp/user-errors";
 import { logger } from "@/server/observability/logger";
 import { AccountStatus } from "@prisma/client";
 import { resetAccountForConnection } from "@/lib/whatsapp/account-status-machine";
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     const status = whatsappRequestErrorStatus(error);
     const message = whatsappUserMessage(error, "qr");
     logger.error("whatsapp.connect.request_failed", error, { accountId, status, message });
-    if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "FAILED", lastError: message } });
+    if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "FAILED", lastError: whatsappLastErrorCode(error) } });
     return NextResponse.json({ error: status === 401 ? "UNAUTHORIZED" : message, accountId }, { status });
   }
 }

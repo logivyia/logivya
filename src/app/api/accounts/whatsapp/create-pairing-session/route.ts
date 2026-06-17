@@ -7,7 +7,7 @@ import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { writeAuditLog } from "@/server/security/audit";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
-import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
+import { whatsappLastErrorCode, whatsappUserMessage } from "@/server/whatsapp/user-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
 import { findReusableWhatsAppAccount, findSingleSlotWhatsAppAccount } from "@/server/whatsapp/reusable-account";
 import { assertWhatsAppWorkerReachable, isWhatsAppWaitTimeout, waitForPairingCode } from "@/server/whatsapp/worker-health";
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     const status = whatsappRequestErrorStatus(error, error instanceof Error && error.message === "INVALID_WHATSAPP_PHONE" ? 400 : 503);
     const message = pairingUserMessage(error);
     logger.error("whatsapp.pairing.request_failed", error, { accountId, status, message });
-    if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "FAILED", lastError: message } });
+    if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "FAILED", lastError: whatsappLastErrorCode(error) } });
     return NextResponse.json({ error: status === 401 ? "UNAUTHORIZED" : message, accountId }, { status });
   }
 }
