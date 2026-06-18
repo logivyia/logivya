@@ -1,264 +1,429 @@
 "use client";
+
 /* eslint-disable react-hooks/set-state-in-effect,@next/next/no-img-element */
 import { useCallback, useEffect, useState } from "react";
 import { Archive, CheckCircle2, LoaderCircle, Plus, RefreshCw, Smartphone, Trash2, X } from "lucide-react";
+
 import { useI18n } from "@/i18n/provider";
 import { getWhatsAppStatusLabel } from "@/lib/i18n/status-labels";
 
 type Account = {
   id: string;
-  label?: string;
-  displayName?: string;
-  phoneNumber?: string;
+  displayName?: string | null;
+  phoneNumber?: string | null;
   status: string;
-  lastError?: string;
-  lastSyncedAt?: string;
-  qrExpiresAt?: string;
-  archivedAt?: string;
-  _count: { groups: number; contacts: number; recipients: number };
+  lastError?: string | null;
+  archivedAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  groupCount?: number;
+  contactCount?: number;
+  lastSyncAt?: string | null;
+  qrCode?: string | null;
+  pairingCode?: string | null;
+  pairingCodeExpiresAt?: string | null;
 };
+
 type Session = {
+  id: string;
   accountId: string;
   status: string;
-  qrCode?: string;
-  qrExpiresAt?: string;
-  pairingCode?: string;
-  pairingCodeExpiresAt?: string;
-  lastError?: string;
-  message?: string;
-  alreadyConnected?: boolean;
+  qrCode?: string | null;
+  qrExpiresAt?: string | null;
+  pairingCode?: string | null;
+  pairingCodeExpiresAt?: string | null;
+  lastError?: string | null;
 };
 
-const buttonBase = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70";
-const btn = `${buttonBase} !border-slate-300 !bg-white !text-slate-900 hover:!bg-slate-100 active:!bg-slate-200 disabled:!bg-slate-100 disabled:!text-slate-600`;
-const dangerBtn = `${buttonBase} !border-red-200 !bg-red-50 !text-red-700 hover:!bg-red-100 active:!bg-red-200`;
-const primary = `${buttonBase} !border-orange-600 !bg-orange-500 font-semibold !text-white hover:!bg-orange-600 active:!bg-orange-700 disabled:!bg-orange-300 disabled:!text-white`;
-const tabButton = "min-h-11 rounded-xl px-3 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 disabled:opacity-70";
-const inactiveTab = "!bg-transparent !text-slate-900 hover:!bg-white active:!bg-slate-200";
-const activeTab = "!bg-orange-500 !text-white hover:!bg-orange-600 active:!bg-orange-700";
-const modalInput = "w-full rounded-xl border !border-slate-300 !bg-white p-3 text-base !text-slate-900 caret-orange-500 placeholder:!text-slate-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-200 disabled:!bg-slate-100 disabled:!text-slate-600";
-const reconnectable = ["NEW", "ERROR", "FAILED", "CONNECTING", "QR_READY", "PENDING_QR", "PENDING_PAIRING", "PAIRING_CODE_READY", "RECONNECT_REQUIRED", "DISCONNECTED"];
-const pendingStatuses = ["PENDING_QR", "QR_READY", "PENDING_PAIRING", "PAIRING_CODE_READY", "CONNECTING"];
+const buttonBase = "inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition disabled:cursor-not-allowed";
+const lightButton = `${buttonBase} border border-slate-200 bg-white text-slate-900 hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-500`;
+const orangeButton = `${buttonBase} bg-orange-500 text-white shadow-lg shadow-orange-500/20 hover:bg-orange-600 disabled:bg-orange-200 disabled:text-white`;
 
-function normalizePhoneForPairing(input: string, selectedCountryCode: string) {
-  let digits = input.replace(/\D/g, "");
-  if (digits.startsWith("00")) digits = digits.slice(2);
-  if (digits.startsWith(selectedCountryCode)) {
-    return `${selectedCountryCode}${digits.slice(selectedCountryCode.length).replace(/^0+/, "")}`;
-  }
-  return `${selectedCountryCode}${digits.replace(/^0+/, "")}`;
+const countryOptions = [
+  { value: "90", label: "TR +90" },
+  { value: "40", label: "RO +40" },
+  { value: "49", label: "DE +49" },
+  { value: "994", label: "AZ +994" },
+  { value: "44", label: "UK +44" },
+] as const;
+
+function defaultCountryCode(locale: string) {
+  if (locale === "ro") return "40";
+  if (locale === "de") return "49";
+  if (locale === "az") return "994";
+  return "90";
+}
+
+function dateLocale(locale: string) {
+  if (locale === "ro") return "ro-RO";
+  if (locale === "de") return "de-DE";
+  if (locale === "en") return "en-US";
+  return "tr-TR";
+}
+
+function isConnected(status?: string | null) {
+  return ["CONNECTED", "ACTIVE"].includes(String(status ?? "").toUpperCase());
 }
 
 function statusTone(status: string) {
-  if (["CONNECTED", "ACTIVE"].includes(status)) return "bg-green-50 text-green-700";
-  if (["PENDING_QR", "QR_READY", "PENDING_PHONE", "PENDING_PAIRING", "PAIRING_CODE_READY", "CONNECTING"].includes(status)) return "bg-amber-50 text-amber-700";
-  if (status === "ARCHIVED") return "bg-slate-100 text-slate-600";
-  return "bg-red-50 text-red-700";
+  const value = status.toUpperCase();
+  if (isConnected(value)) return "bg-emerald-50 text-emerald-700";
+  if (["FAILED", "ERROR", "RECONNECT_REQUIRED", "DISCONNECTED"].includes(value)) return "bg-rose-50 text-rose-700";
+  if (value === "ARCHIVED") return "bg-slate-100 text-slate-700";
+  return "bg-orange-50 text-orange-700";
+}
+
+function normalizePhone(countryCode: string, phone: string) {
+  const cc = countryCode.replace(/\D/g, "");
+  let digits = phone.replace(/\D/g, "");
+  while (digits.startsWith("0")) digits = digits.slice(1);
+  if (digits.startsWith(cc)) return digits;
+  return `${cc}${digits}`;
 }
 
 export function AccountsStablePage() {
-  const { locale } = useI18n();
-  const [accounts, setAccounts] = useState<Account[] | null>(null);
-  const [modal, setModal] = useState(false);
-  const [session, setSession] = useState<Session>();
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [tab, setTab] = useState<"QR" | "CODE">("QR");
+  const { locale, t } = useI18n();
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [archived, setArchived] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [countryCode, setCountryCode] = useState("90");
+  const [loading, setLoading] = useState(true);
+  const [workingId, setWorkingId] = useState<string | null>(null);
+  const [modal, setModal] = useState<{ accountId?: string; mode: "qr" | "phone" } | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [label, setLabel] = useState("");
   const [phone, setPhone] = useState("");
-  const [now, setNow] = useState(0);
+  const [countryCode, setCountryCode] = useState(() => defaultCountryCode(locale));
+  const [modalError, setModalError] = useState("");
+  const [error, setError] = useState("");
+
+  const localizeError = useCallback(
+    (message: string | undefined, fallbackKey: string) => {
+      if (!message) return t(fallbackKey);
+      return /^[a-z0-9_.-]+$/i.test(message) ? t(message) : message;
+    },
+    [t],
+  );
 
   const load = useCallback(async () => {
-    const response = await fetch(`/api/accounts${archived ? "?archived=true" : ""}`, { cache: "no-store" });
-    const value = await response.json();
-    if (response.ok) setAccounts(value.accounts);
-    else setError(value.error || "Hesaplar yüklenemedi.");
-  }, [archived]);
-
-  useEffect(() => { void load(); }, [load]);
-  useEffect(() => {
-    if (!modal) return;
-    const timer = setInterval(() => setNow(Date.now()), 1_000);
-    return () => clearInterval(timer);
-  }, [modal]);
-  useEffect(() => {
-    if (!session?.accountId || ["CONNECTED", "FAILED", "ARCHIVED"].includes(session.status)) return;
-    const timer = setInterval(async () => {
-      try {
-        const response = await fetch(`/api/accounts/whatsapp/${session.accountId}/status`, { cache: "no-store" });
-        const value = await response.json();
-        if (!response.ok) throw new Error(value.error);
-        setSession(value);
-        setError(value.lastError || "");
-        if (value.status === "CONNECTED") {
-          setSuccess("WhatsApp hesabınız zaten bağlı.");
-          clearInterval(timer);
-          void load();
-        }
-      } catch (pollError) {
-        setError(pollError instanceof Error ? pollError.message : "Bağlantı durumu alınamadı.");
-      }
-    }, 2_000);
-    return () => clearInterval(timer);
-  }, [session?.accountId, session?.status, load]);
-
-  async function request(url: string, body?: unknown) {
-    setLoading(true);
-    setError("");
-    setSuccess("");
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: body ? { "content-type": "application/json" } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      const value = await response.json();
-      if (!response.ok) throw new Error(value.error || "İşlem başarısız.");
-      if (value.accountId) setSession(value);
-      if (value.message) setSuccess(value.message);
-      if (!value.accountId) {
-        setModal(false);
-        setSession(undefined);
-      }
-      void load();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "İşlem başarısız.");
+      setLoading(true);
+      const res = await fetch(`/api/accounts?archived=${archived ? "1" : "0"}`, { cache: "no-store" });
+      const value = await res.json().catch(() => ({}));
+      if (!res.ok || !value.ok) throw new Error(value.error || "accounts.loadFailed");
+      setAccounts(Array.isArray(value.accounts) ? value.accounts : []);
+      setError("");
+    } catch (err) {
+      setError(localizeError(err instanceof Error ? err.message : undefined, "accounts.loadFailed"));
     } finally {
       setLoading(false);
     }
+  }, [archived, localizeError]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!modal?.accountId || isConnected(session?.status)) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const res = await fetch(`/api/accounts/${modal.accountId}/connection-status`, { cache: "no-store" });
+        const value = await res.json().catch(() => ({}));
+        if (!res.ok || !value.ok) throw new Error(value.error || "accounts.statusUnavailable");
+        if (value.session) setSession(value.session);
+        if (isConnected(value.account?.status) || isConnected(value.session?.status)) {
+          setModalError("");
+          void load();
+        }
+      } catch (err) {
+        setModalError(localizeError(err instanceof Error ? err.message : undefined, "accounts.statusUnavailable"));
+      }
+    }, 3500);
+    return () => window.clearInterval(timer);
+  }, [load, localizeError, modal?.accountId, session?.status]);
+
+  async function request(accountId: string, action: string, body?: unknown) {
+    const res = await fetch(`/api/accounts/${accountId}/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+    const value = await res.json().catch(() => ({}));
+    if (!res.ok || !value.ok) throw new Error(value.error || "accounts.actionFailed");
+    return value;
   }
 
-  function open() {
-    setModal(true);
-    setSession(undefined);
-    setError("");
-    setSuccess("");
+  async function open(mode: "qr" | "phone") {
+    const name = window.prompt(t("accounts.labelPrompt"), label || t("accounts.defaultLabel"));
+    if (name === null) return;
+    setLabel(name.trim() || t("accounts.defaultLabel"));
+    setCountryCode(defaultCountryCode(locale));
     setPhone("");
-    setTab("QR");
+    setSession(null);
+    setModalError("");
+    setModal({ mode });
   }
 
-  function openExisting(account: Account) {
-    setModal(true);
-    setSession({ accountId: account.id, status: account.status, qrExpiresAt: account.qrExpiresAt, lastError: account.lastError });
-    setError("");
-    setSuccess(account.status === "CONNECTED" ? "WhatsApp hesabınız zaten bağlı." : "");
-    setPhone("");
-    setTab("QR");
+  async function openExisting(account: Account, mode: "qr" | "phone") {
+    setLabel(account.displayName || t("accounts.defaultLabel"));
+    setPhone(account.phoneNumber || "");
+    setCountryCode(defaultCountryCode(locale));
+    setSession(null);
+    setModalError(isConnected(account.status) ? t("accounts.alreadyConnected") : account.lastError || "");
+    setModal({ accountId: account.id, mode });
   }
 
-  function pairing() {
-    const trimmed = phone.trim();
-    if (!trimmed) {
-      setError("Telefon numaranızı girin.");
+  async function startQr() {
+    setModalError("");
+    try {
+      let accountId = modal?.accountId;
+      if (!accountId) {
+        const res = await fetch("/api/accounts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ label: label || t("accounts.defaultLabel") }),
+        });
+        const value = await res.json().catch(() => ({}));
+        if (!res.ok || !value.ok) throw new Error(value.error || "accounts.actionFailed");
+        accountId = value.account?.id;
+        setModal({ accountId, mode: "qr" });
+      }
+      if (!accountId) throw new Error("accounts.actionFailed");
+      const value = await request(accountId, "connect", { method: "qr" });
+      setSession(value.session);
+      void load();
+    } catch (err) {
+      setModalError(localizeError(err instanceof Error ? err.message : undefined, "accounts.qrFailedRetry"));
+    }
+  }
+
+  async function startPhone() {
+    setModalError("");
+    const normalized = normalizePhone(countryCode, phone);
+    if (!normalized) {
+      setModalError(t("accounts.phoneRequired"));
       return;
     }
-    const phoneNumber = normalizePhoneForPairing(trimmed, countryCode);
-    const url = session?.accountId ? `/api/accounts/${session.accountId}/pairing-code` : "/api/accounts/whatsapp/create-pairing-session";
-    void request(url, { phoneNumber });
-  }
-
-  async function checkConnection() {
-    if (!session?.accountId) return;
-    setLoading(true); setError("");
     try {
-      const response = await fetch(`/api/accounts/${session.accountId}/status`, { cache: "no-store" });
-      const value = await response.json();
-      if (!response.ok) throw new Error(value.error);
-      setSession(value);
-      if (value.status === "CONNECTED") {
-        setSuccess("WhatsApp hesabınız zaten bağlı.");
-        void load();
+      let accountId = modal?.accountId;
+      if (!accountId) {
+        const res = await fetch("/api/accounts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ label: label || t("accounts.defaultLabel"), phoneNumber: normalized }),
+        });
+        const value = await res.json().catch(() => ({}));
+        if (!res.ok || !value.ok) throw new Error(value.error || "accounts.actionFailed");
+        accountId = value.account?.id;
+        setModal({ accountId, mode: "phone" });
       }
-    } catch (checkError) {
-      setError(checkError instanceof Error ? checkError.message : "Bağlantı durumu alınamadı.");
-    } finally { setLoading(false); }
+      if (!accountId) throw new Error("accounts.actionFailed");
+      const value = await request(accountId, "pairing-code", { phoneNumber: normalized });
+      setSession(value.session);
+      void load();
+    } catch (err) {
+      setModalError(localizeError(err instanceof Error ? err.message : undefined, "accounts.connectionFailedRetry"));
+    }
   }
 
-  async function deleteAccount(account: Account) {
-    if (!confirm("Bu WhatsApp hesabını silmek istediğinizden emin misiniz?")) return;
-    await request(`/api/accounts/whatsapp/${account.id}/cancel`);
+  async function action(account: Account, actionName: "connect" | "sync" | "archive" | "restore" | "delete") {
+    if (actionName === "delete" && !window.confirm(t("accounts.deleteConfirm"))) return;
+    try {
+      setWorkingId(account.id);
+      if (actionName === "connect") {
+        await openExisting(account, "qr");
+        return;
+      }
+      if (actionName === "sync") await request(account.id, "sync-groups");
+      if (actionName === "archive") await request(account.id, "archive");
+      if (actionName === "restore") await request(account.id, "restore");
+      if (actionName === "delete") await request(account.id, "delete");
+      await load();
+    } catch (err) {
+      setError(localizeError(err instanceof Error ? err.message : undefined, "accounts.actionFailed"));
+    } finally {
+      setWorkingId(null);
+    }
   }
 
-  const visible = accounts || [];
-  const codeSeconds = session?.pairingCodeExpiresAt ? Math.max(0, Math.ceil((new Date(session.pairingCodeExpiresAt).getTime() - now) / 1_000)) : 0;
-  const expired = Boolean(session?.qrExpiresAt && now > 0 && new Date(session.qrExpiresAt).getTime() <= now);
-  const pairingExpired = Boolean(session?.pairingCodeExpiresAt && codeSeconds === 0);
+  const visibleQr = session?.qrCode;
+  const visiblePairing = session?.pairingCode;
 
-  return <>
-    <header className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[.2em] text-orange-500">WhatsApp Katmanı</p>
-        <h1 className="mt-2 text-3xl font-semibold">Bağlı hesaplar</h1>
-        <p className="mt-2 text-sm text-muted">WhatsApp hesabınızı QR kod veya telefon koduyla güvenli biçimde bağlayın.</p>
-      </div>
-      <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-        <button className={btn} onClick={() => setArchived((value) => !value)}>Arşivlenenleri göster</button>
-        <button className={primary} onClick={open}><Plus className="size-4" />WhatsApp hesabı ekle</button>
-      </div>
-    </header>
-    {error && !modal && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-    {!accounts ? <LoaderCircle className="animate-spin" /> : <div className="grid gap-5 xl:grid-cols-3">
-      {visible.map((account) => {
-        const badgeLabel = getWhatsAppStatusLabel(account.status, locale);
-        return <article className="panel rounded-2xl p-5" key={account.id}>
-          <div className="flex justify-between"><Smartphone className="text-orange-500" /><span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusTone(account.status)}`}>{badgeLabel}</span></div>
-          <h2 className="mt-5 font-semibold">{account.displayName || account.label || "WhatsApp Hesabı"}</h2>
-          <p className="text-xs text-muted">{account.phoneNumber || "Telefon bekleniyor"}</p>
-          {account.lastError && <p className="mt-3 rounded-lg bg-red-50 p-2 text-xs text-red-700">Bağlantı başarısız oldu. Yeni kod veya QR ile tekrar deneyin.</p>}
-          <div className="my-5 grid grid-cols-3 text-center text-xs">
-            <span>{account._count.groups}<small className="block text-muted">Grup</small></span>
-            <span>{account._count.contacts}<small className="block text-muted">Kişi</small></span>
-            <span>{account.lastSyncedAt ? new Date(account.lastSyncedAt).toLocaleDateString() : "-"}<small className="block text-muted">Eşitleme</small></span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {reconnectable.includes(account.status) && <button className={primary} onClick={() => openExisting(account)}>Yeniden bağla</button>}
-            {pendingStatuses.includes(account.status) && <button className={btn} onClick={() => openExisting(account)}>Bağlantıyı kontrol et</button>}
-            {account.archivedAt ? <button className={btn} onClick={() => void request(`/api/accounts/${account.id}/action`, { action: "restore" })}>Geri yükle</button> : account.status === "CONNECTED" && <button className={btn} onClick={() => void request(`/api/accounts/whatsapp/${account.id}/sync-groups`)}><RefreshCw className="size-4" />Grupları eşitle</button>}
-            {!account.archivedAt && <button className={btn} onClick={() => void request(`/api/accounts/${account.id}/action`, { action: "archive" })}><Archive className="size-4" />Arşivle</button>}
-            <button className={dangerBtn} onClick={() => void deleteAccount(account)}><Trash2 className="size-4" />Sil</button>
-          </div>
-        </article>;
-      })}
-    </div>}
-    {modal && <div className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-black/60 p-3 sm:p-6">
-      <section className="my-auto w-full max-w-xl rounded-3xl !bg-white p-4 !text-slate-900 shadow-2xl sm:p-6">
-        <button aria-label="Kapat" className="float-end rounded-lg p-2 !text-slate-900 hover:!bg-slate-100 active:!bg-slate-200" onClick={() => setModal(false)}><X /></button>
-        <h2 className="pr-10 text-xl font-semibold !text-slate-900 sm:text-2xl">WhatsApp hesabı bağla</h2>
-        <p className="mt-1 text-sm !text-slate-600">Bilgisayarda QR okutun veya telefonda bağlantı kodunu kullanın.</p>
-        <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
-          <button className={`${tabButton} ${tab === "QR" ? activeTab : inactiveTab}`} onClick={() => { setTab("QR"); setError(""); }}>QR Kod</button>
-          <button className={`${tabButton} ${tab === "CODE" ? activeTab : inactiveTab}`} onClick={() => { setTab("CODE"); setError(""); }}>Telefon Kodu</button>
+  return (
+    <main className="space-y-8">
+      <section className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.45em] text-orange-500">{t("accounts.eyebrow")}</p>
+          <h1 className="mt-4 text-4xl font-black text-slate-950">{t("accounts.title")}</h1>
+          <p className="mt-3 text-lg text-slate-600">{t("accounts.description")}</p>
         </div>
-        {success && <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</p>}
-        {session?.status === "CONNECTED" ? <div className="mt-6 rounded-2xl bg-emerald-50 p-6 text-center text-emerald-800">
-          <CheckCircle2 className="mx-auto mb-3 size-10" /><p className="font-semibold">WhatsApp hesabınız zaten bağlı.</p>
-          <button className={`${primary} mt-4`} onClick={() => setModal(false)}>Tamam</button>
-        </div> : tab === "CODE" ? <div className="mt-6 text-center">
-          {!session?.pairingCode || pairingExpired ? <>
-            <label className="mb-2 block text-left text-sm font-medium !text-slate-900">Ülke koduyla telefon numarası</label>
-            <div className="grid grid-cols-[7rem_1fr] gap-2">
-              <select aria-label="Ülke kodu" className={modalInput} value={countryCode} onChange={(event) => setCountryCode(event.target.value)}>
-                <option value="90">TR +90</option><option value="49">DE +49</option><option value="994">AZ +994</option><option value="44">UK +44</option>
-              </select>
-              <input aria-label="Telefon numarası" className={modalInput} inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Telefon numaranızı girin" />
-            </div>
-            <button disabled={loading} className={`${primary} mt-4 w-full`} onClick={pairing}>{loading && <LoaderCircle className="size-4 animate-spin" />}{session ? "Yeni kod al" : "Telefon kodu oluştur"}</button>
-          </> : <>
-            <p className="text-sm text-slate-600">WhatsApp → Bağlı cihazlar → Telefon numarasıyla bağla</p>
-            <p className="mx-auto my-5 rounded-2xl bg-orange-50 p-5 font-mono text-2xl font-bold tracking-[.18em] text-orange-700 sm:text-3xl">{session.pairingCode}</p>
-          </>}
-        </div> : <div className="mt-6 text-center">
-          {!session && <button disabled={loading} className={`${primary} w-full sm:w-auto sm:min-w-48`} onClick={() => void request("/api/accounts/whatsapp/create-session")}>{loading && <LoaderCircle className="size-4 animate-spin" />}QR kodu oluştur</button>}
-          {session && !session.qrCode && !error && !expired && <><LoaderCircle className="mx-auto my-8 size-10 animate-spin text-orange-500" /><p className="text-sm text-slate-500">QR kod hazırlanıyor. Lütfen bekleyin.</p></>}
-          {session?.qrCode && !expired && <><div className="mx-auto my-5 w-fit rounded-2xl border-4 border-orange-500 bg-white p-3 shadow-lg"><img src={session.qrCode} alt="WhatsApp bağlantı QR kodu" className="size-[min(70vw,300px)] min-h-60 min-w-60" /></div><p className="text-sm text-slate-600">WhatsApp → Bağlı cihazlar → Cihaz bağla adımlarını izleyerek QR kodu okutun.</p></>}
-          {session && expired && <p className="mb-3 text-sm font-medium text-red-700">QR kod oluşturulamadı. Lütfen tekrar deneyin.</p>}
-          {session && (expired || error) && <button disabled={loading} className={`${primary} w-full sm:w-auto`} onClick={() => void request(`/api/accounts/whatsapp/${session.accountId}/regenerate-qr`)}>{loading && <LoaderCircle className="size-4 animate-spin" />}Yeni QR kodu oluştur</button>}
-        </div>}
-        {error && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-        {session && session.status !== "CONNECTED" && <div className="mt-4 grid gap-2 sm:grid-cols-2"><button disabled={loading} className={btn} onClick={() => void checkConnection()}><RefreshCw className="size-4" />Bağlantıyı Kontrol Et</button><button disabled={loading} className={btn} onClick={() => void request(`/api/accounts/whatsapp/${session.accountId}/cancel`)}>Bağlantıyı iptal et</button></div>}
+        <div className="flex flex-wrap items-center gap-3">
+          <button className={lightButton} type="button" onClick={() => setArchived((value) => !value)}>
+            {t("accounts.showArchived")}
+          </button>
+          <button className={orangeButton} type="button" onClick={() => void open("qr")}>
+            <Plus className="h-5 w-5" /> {t("accounts.add")}
+          </button>
+        </div>
       </section>
-    </div>}
-  </>;
+
+      {error ? <div className="rounded-2xl bg-rose-50 px-5 py-4 text-sm text-rose-700">{error}</div> : null}
+
+      {loading ? (
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 text-slate-600">{t("common.loading")}</div>
+      ) : accounts.length === 0 ? (
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 text-slate-600">{t("accounts.empty")}</div>
+      ) : (
+        <section className="grid gap-6 xl:grid-cols-3">
+          {accounts.map((account) => (
+            <article key={account.id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60">
+              <div className="flex items-start justify-between gap-3">
+                <Smartphone className="h-8 w-8 text-orange-500" />
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusTone(account.status)}`}>
+                  {getWhatsAppStatusLabel(account.status, locale)}
+                </span>
+              </div>
+              <h2 className="mt-7 text-xl font-black text-slate-950">{account.displayName || t("accounts.defaultLabel")}</h2>
+              <p className="mt-1 text-sm text-slate-500">{account.phoneNumber || t("accounts.phoneWaiting")}</p>
+              {account.lastError ? <p className="mt-4 rounded-2xl bg-rose-50 p-3 text-sm text-rose-700">{localizeError(account.lastError, "accounts.connectionFailedRetry")}</p> : null}
+              <dl className="mt-6 grid grid-cols-3 gap-3 text-center">
+                <div>
+                  <dt className="text-2xl font-black text-slate-950">{account.groupCount ?? 0}</dt>
+                  <dd className="text-xs text-slate-500">{t("common.group")}</dd>
+                </div>
+                <div>
+                  <dt className="text-2xl font-black text-slate-950">{account.contactCount ?? 0}</dt>
+                  <dd className="text-xs text-slate-500">{t("accounts.people")}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-black text-slate-950">
+                    {account.lastSyncAt ? new Date(account.lastSyncAt).toLocaleDateString(dateLocale(locale)) : "-"}
+                  </dt>
+                  <dd className="text-xs text-slate-500">{t("accounts.sync")}</dd>
+                </div>
+              </dl>
+              <div className="mt-7 grid grid-cols-2 gap-3">
+                {!isConnected(account.status) ? (
+                  <button className={orangeButton} disabled={workingId === account.id} type="button" onClick={() => void openExisting(account, "qr")}>
+                    <RefreshCw className="h-4 w-4" /> {t("accounts.reconnect")}
+                  </button>
+                ) : (
+                  <button className={lightButton} disabled={workingId === account.id} type="button" onClick={() => void openExisting(account, "qr")}>
+                    <CheckCircle2 className="h-4 w-4" /> {t("accounts.checkConnection")}
+                  </button>
+                )}
+                {account.archivedAt ? (
+                  <button className={lightButton} disabled={workingId === account.id} type="button" onClick={() => void action(account, "restore")}>
+                    {t("accounts.restore")}
+                  </button>
+                ) : (
+                  <button className={lightButton} disabled={workingId === account.id} type="button" onClick={() => void action(account, "sync")}>
+                    {t("accounts.syncGroups")}
+                  </button>
+                )}
+                {!account.archivedAt ? (
+                  <button className={lightButton} disabled={workingId === account.id} type="button" onClick={() => void action(account, "archive")}>
+                    <Archive className="h-4 w-4" /> {t("accounts.archive")}
+                  </button>
+                ) : null}
+                <button className={lightButton} disabled={workingId === account.id} type="button" onClick={() => void action(account, "delete")}>
+                  <Trash2 className="h-4 w-4" /> {t("accounts.delete")}
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
+
+      {modal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-2xl rounded-3xl bg-white p-8 text-slate-950 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-3xl font-black">{t("accounts.connectTitle")}</h2>
+                <p className="mt-2 text-slate-600">{t("accounts.connectDescription")}</p>
+              </div>
+              <button aria-label={t("accounts.close")} className="rounded-full p-2 text-slate-900 hover:bg-slate-100" type="button" onClick={() => setModal(null)}>
+                <X />
+              </button>
+            </div>
+
+            <div className="mt-7 grid grid-cols-2 rounded-2xl bg-slate-100 p-1">
+              <button className={`rounded-xl px-4 py-3 font-bold ${modal.mode === "qr" ? "bg-orange-500 text-white" : "text-slate-900"}`} type="button" onClick={() => setModal({ ...modal, mode: "qr" })}>
+                {t("accounts.qrTab")}
+              </button>
+              <button className={`rounded-xl px-4 py-3 font-bold ${modal.mode === "phone" ? "bg-orange-500 text-white" : "text-slate-900"}`} type="button" onClick={() => setModal({ ...modal, mode: "phone" })}>
+                {t("accounts.codeTab")}
+              </button>
+            </div>
+
+            {isConnected(session?.status) ? (
+              <div className="mt-7 rounded-2xl bg-emerald-50 p-4 text-emerald-700">{t("accounts.connectedTitle")}</div>
+            ) : modal.mode === "phone" ? (
+              <div className="mt-7 space-y-5">
+                <label className="block text-sm font-bold text-slate-900">{t("accounts.phoneLabel")}</label>
+                <div className="grid gap-3 sm:grid-cols-[140px_1fr]">
+                  <select
+                    aria-label={t("accounts.countryCode")}
+                    className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-950"
+                    value={countryCode}
+                    onChange={(event) => setCountryCode(event.target.value)}
+                  >
+                    {countryOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    aria-label={t("accounts.phoneNumber")}
+                    className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-950 placeholder:text-slate-400"
+                    inputMode="tel"
+                    placeholder={t("accounts.phonePlaceholder")}
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value)}
+                  />
+                </div>
+                <button className={orangeButton + " w-full"} type="button" onClick={() => void startPhone()}>
+                  {visiblePairing ? t("accounts.newCode") : t("accounts.createPhoneCode")}
+                </button>
+                {visiblePairing ? (
+                  <div className="rounded-3xl border border-orange-200 bg-orange-50 p-6 text-center">
+                    <p className="text-sm font-semibold text-slate-700">{t("accounts.phoneInstructions")}</p>
+                    <p className="mt-4 text-4xl font-black tracking-[0.35em] text-orange-600">{visiblePairing}</p>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-7 space-y-5 text-center">
+                <button className={orangeButton} type="button" onClick={() => void startQr()}>
+                  {t("accounts.qrGenerate")}
+                </button>
+                {session && !visibleQr ? (
+                  <div className="mx-auto flex max-w-md items-center justify-center gap-3 rounded-3xl bg-slate-50 p-6 text-slate-700">
+                    <LoaderCircle className="h-5 w-5 animate-spin" />
+                    {t("accounts.qrPreparing")}
+                  </div>
+                ) : null}
+                {visibleQr ? (
+                  <div className="mx-auto max-w-sm rounded-3xl border border-slate-200 bg-white p-5">
+                    <img alt={t("accounts.qrAlt")} className="mx-auto h-72 w-72" src={`https://api.qrserver.com/v1/create-qr-code/?size=288x288&data=${encodeURIComponent(visibleQr)}`} />
+                    <p className="mt-4 text-sm text-slate-600">{t("accounts.qrInstructions")}</p>
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {modalError || session?.lastError ? (
+              <div className="mt-6 rounded-2xl bg-rose-50 px-5 py-4 text-sm text-rose-700">
+                {localizeError(modalError || session?.lastError || undefined, "accounts.connectionFailedRetry")}
+              </div>
+            ) : null}
+            <button className={lightButton + " mt-5 w-full"} type="button" onClick={() => setModal(null)}>
+              {t("accounts.cancelConnection")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </main>
+  );
 }

@@ -42,7 +42,7 @@ const settings = [
 export function AdminShell({ children, role, permissions }: { children: React.ReactNode; role: string; permissions: string[] }) {
   const router = useRouter();
   const path = usePathname();
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<any>();
   const [open, setOpen] = useState(true);
@@ -84,7 +84,7 @@ export function AdminShell({ children, role, permissions }: { children: React.Re
           className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-xs font-semibold text-white/75 transition hover:bg-white/10 hover:text-white"
         >
           <ArrowLeft className="size-4" />
-          Panele dön
+          {t("admin.exit")}
         </button>
       </div>
       <nav className="space-y-1">
@@ -120,7 +120,7 @@ export function AdminShell({ children, role, permissions }: { children: React.Re
       </nav>
     </aside>
     <section>
-      <header className="sticky top-0 z-30 border-b bg-white/90 p-4 backdrop-blur"><div className="relative mx-auto max-w-5xl"><label className="flex items-center gap-2 rounded-xl border bg-white px-4"><Search className="size-4 text-slate-400" /><input value={q} onChange={(event) => void search(event.target.value)} placeholder={locale === "tr" ? "Şirket, kullanıcı, fatura, kampanya veya destek talebi ara..." : "Search companies, users, invoices, campaigns or support tickets..."} className="w-full py-3 text-sm outline-none" /></label>{results && <div className="absolute inset-x-0 top-14 rounded-2xl border bg-white p-4 shadow-2xl"><SearchGroup title={getAdminMenuLabel("companies", locale)} rows={results.companies} /><SearchGroup title={getAdminMenuLabel("users", locale)} rows={results.users} /><SearchGroup title={getAdminMenuLabel("campaigns", locale)} rows={results.campaigns} /><SearchGroup title={getAdminMenuLabel("support", locale)} rows={results.tickets} /></div>}</div></header>
+      <header className="sticky top-0 z-30 border-b bg-white/90 p-4 backdrop-blur"><div className="relative mx-auto max-w-5xl"><label className="flex items-center gap-2 rounded-xl border bg-white px-4"><Search className="size-4 text-slate-400" /><input value={q} onChange={(event) => void search(event.target.value)} placeholder={t("admin.searchPlaceholder")} className="w-full py-3 text-sm outline-none" /></label>{results && <div className="absolute inset-x-0 top-14 rounded-2xl border bg-white p-4 shadow-2xl"><SearchGroup title={getAdminMenuLabel("companies", locale)} rows={results.companies} /><SearchGroup title={getAdminMenuLabel("users", locale)} rows={results.users} /><SearchGroup title={getAdminMenuLabel("campaigns", locale)} rows={results.campaigns} /><SearchGroup title={getAdminMenuLabel("support", locale)} rows={results.tickets} /></div>}</div></header>
       <main className="mx-auto max-w-[1600px] p-5 md:p-8">{children}</main>
     </section>
   </div>;

@@ -17,7 +17,7 @@ const manuallyDisconnected = new Set<string>();
 const sessionModes = new Map<string, "QR" | "PAIRING">();
 const sessionRestarts = new Map<string, Promise<WASocket>>();
 const SOCKET_INITIALIZATION_TIMEOUT_MS = Number(process.env.WHATSAPP_SOCKET_INITIALIZATION_TIMEOUT_MS || 30_000);
-const PAIRING_SOCKET_BOOTSTRAP_MS = Number(process.env.WHATSAPP_PAIRING_SOCKET_BOOTSTRAP_MS || 1_500);
+const PAIRING_SOCKET_BOOTSTRAP_MS = Number(process.env.WHATSAPP_PAIRING_SOCKET_BOOTSTRAP_MS || 3_000);
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -103,6 +103,15 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     await clearWhatsAppSession(accountId);
   }
 
+  private async hasActivePairingCode(accountId: string) {
+    const account = await prisma.whatsAppAccount.findUnique({
+      where: { id: accountId },
+      select: { pairingCode: true, pairingCodeExpiresAt: true },
+    });
+
+    return Boolean(account?.pairingCode && account.pairingCodeExpiresAt && account.pairingCodeExpiresAt > new Date());
+  }
+
   async requestPairingCode(accountId: string, phoneNumber: string): Promise<{ code: string; expiresAt: Date }> {
     const normalized = normalizeWhatsAppPhoneNumber(phoneNumber);
     logger.info("whatsapp.pairing.requested", { accountId, phoneNumber: maskPhoneNumber(normalized) });
@@ -115,11 +124,61 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     });
 
     try {
-      const { socket, registered, initialized } = await this.startSession(accountId, "PAIRING");
-      if (registered) throw new Error("Pairing requires a clean unregistered auth state.");
-      void initialized.catch((error) => logger.warn("whatsapp.pairing.initialization_deferred_failed", { accountId, reason: errorMessage(error) }));
-      await sleep(PAIRING_SOCKET_BOOTSTRAP_MS);
-      const code = await socket.requestPairingCode(normalized);
+      let session = await this.startSession(accountId, "PAIRING");
+      if (session.registered) throw new Error("Pairing requires a clean unregistered auth state.");
+
+      const waitForPairingBootstrap = async (attempt: number) => {
+        const readiness = session.initialized
+          .then(() => true)
+          .catch((error) => {
+            logger.warn("whatsapp.pairing.initialization_deferred_failed", {
+              accountId,
+              attempt,
+              reason: errorMessage(error),
+            });
+            return false;
+          });
+        const ready = await Promise.race([readiness, sleep(PAIRING_SOCKET_BOOTSTRAP_MS).then(() => false)]);
+        if (!ready) logger.warn("whatsapp.pairing.socket_bootstrap_wait_timeout", { accountId, attempt });
+      };
+
+      const requestFromActiveSocket = async (attempt: number) => {
+        await waitForPairingBootstrap(attempt);
+        const activeSocket = sockets.get(accountId) ?? session.socket;
+        if (activeSocket !== session.socket) logger.info("whatsapp.pairing.socket_replaced", { accountId, attempt });
+        logger.info("whatsapp.pairing.provider_request", {
+          accountId,
+          attempt,
+          phoneNumber: maskPhoneNumber(normalized),
+        });
+        return activeSocket.requestPairingCode(normalized);
+      };
+
+      let code: string;
+      try {
+        code = await requestFromActiveSocket(1);
+      } catch (requestError) {
+        logger.warn("whatsapp.pairing.provider_request_retry", {
+          accountId,
+          reason: errorMessage(requestError),
+        });
+        await this.clearTemporaryAuth(accountId);
+        await prisma.whatsAppAccount.updateMany({
+          where: { id: accountId, archivedAt: null },
+          data: {
+            status: "PENDING_PAIRING",
+            phoneNumber: normalized,
+            qrCode: null,
+            qrExpiresAt: null,
+            pairingCode: null,
+            pairingCodeExpiresAt: null,
+            lastError: null,
+          },
+        });
+        session = await this.startSession(accountId, "PAIRING");
+        if (session.registered) throw new Error("Pairing requires a clean unregistered auth state.");
+        code = await requestFromActiveSocket(2);
+      }
       const expiresAt = new Date(Date.now() + 5 * 60_000);
       await prisma.whatsAppAccount.update({
         where: { id: accountId },

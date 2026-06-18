@@ -14,8 +14,8 @@ type SupportTicket = {
 };
 
 const field =
-  "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-100";
-const panel = "rounded-3xl border border-slate-200 bg-white p-6 shadow-sm";
+  "w-full rounded-2xl border bg-input px-4 py-3 text-sm text-input-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary";
+const panel = "rounded-3xl border bg-card p-6 shadow-[var(--shadow-soft)]";
 
 export function SupportStablePage() {
   const [tickets, setTickets] = useState<SupportTicket[] | null>(null);
@@ -57,9 +57,9 @@ export function SupportStablePage() {
   return (
     <>
       <header className="mb-7">
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-600">Destek</p>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-950">Destek Merkezi</h1>
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">Destek</p>
+        <h1 className="mt-2 text-3xl font-semibold">Destek Merkezi</h1>
+        <p className="mt-2 text-sm text-muted">
           Teknik, ödeme ve WhatsApp bağlantı sorunlarını Logivya ekibine iletin.
         </p>
       </header>
@@ -89,12 +89,12 @@ export function SupportStablePage() {
         />
         <button
           disabled={submitting}
-          className="inline-flex items-center justify-center rounded-2xl bg-orange-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-700 disabled:bg-slate-300 disabled:text-slate-700"
+          className="inline-flex items-center justify-center rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:brightness-95 disabled:opacity-60"
         >
           <Plus className="me-2 size-4" />
           {submitting ? "Gönderiliyor..." : "Talep oluştur"}
         </button>
-        {status ? <p className="self-center text-sm font-medium text-slate-600">{status}</p> : null}
+        {status ? <p className="self-center text-sm font-medium text-muted">{status}</p> : null}
       </form>
 
       {!tickets ? (
@@ -105,16 +105,16 @@ export function SupportStablePage() {
             <article key={ticket.id} className={panel}>
               <div className="flex justify-between gap-4">
                 <div>
-                  <h3 className="font-semibold text-slate-950">{ticket.subject}</h3>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <h3 className="font-semibold">{ticket.subject}</h3>
+                  <p className="mt-1 text-xs text-muted">
                     {ticket.type} · {ticket.createdBy?.name || ticket.createdBy?.email || "Kullanıcı"}
                   </p>
                 </div>
-                <span className="h-fit rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
+                <span className="h-fit rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground">
                   {ticket.status}
                 </span>
               </div>
-              <p className="mt-4 text-sm text-slate-600">{ticket.messages?.[0]?.message}</p>
+              <p className="mt-4 text-sm text-muted">{ticket.messages?.[0]?.message}</p>
             </article>
           ))}
         </div>
