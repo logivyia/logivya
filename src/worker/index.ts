@@ -62,13 +62,13 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
     logger.info("whatsapp.job.received", { workerId, jobId: job.id, action, accountId });
     const account=await prisma.whatsAppAccount.findUnique({where:{id:accountId},select:{status:true,archivedAt:true,updatedAt:true}});
     if(!account||account.archivedAt)return;
-    if(["connect","reconnect"].includes(action)&&account.updatedAt<new Date(Date.now()-10*60_000)&&["PENDING_QR","QR_READY","CONNECTING"].includes(account.status)){
-      await prisma.whatsAppAccount.update({where:{id:accountId},data:{status:"FAILED",lastError:"QR kod süresi doldu. Yeni QR oluşturun.",qrCode:null,qrExpiresAt:null}});
+    if(action==="connect"&&account.updatedAt<new Date(Date.now()-10*60_000)&&["PENDING_QR","QR_READY"].includes(account.status)){
+      await prisma.whatsAppAccount.update({where:{id:accountId},data:{status:"FAILED",lastError:"WHATSAPP_QR_EXPIRED",qrCode:null,qrExpiresAt:null}});
       return;
     }
     if(["connect","reconnect"].includes(action)&&account.status==="ERROR")return;
-    if (action === "connect") return provider.createSession(accountId);if(action==="pairing"){if(!phoneNumber)throw new Error("Invalid phone number.");return provider.requestPairingCode(accountId,phoneNumber)}if (action === "sync") return provider.syncGroups(accountId);if (action === "disconnect") return provider.disconnect(accountId);return provider.reconnect(accountId)}
-  catch(error){await prisma.whatsAppAccount.update({where:{id:accountId},data:{status:"FAILED",lastError:action==="pairing"?pairingUserMessage(error):"Bağlantı başarısız oldu. Yeni kod veya QR ile tekrar deneyin."}});logger.error("whatsapp.job.failed",error,{jobId:job.id,accountId,action});throw error}
+    if (action === "connect") return provider.createFreshQrSession(accountId);if(action==="pairing"){if(!phoneNumber)throw new Error("Invalid phone number.");return provider.requestPairingCode(accountId,phoneNumber)}if (action === "sync") return provider.syncGroups(accountId);if (action === "disconnect") return provider.disconnect(accountId);return provider.reconnect(accountId)}
+  catch(error){const hasCredentials=await hasWhatsAppCredentials(accountId).catch(()=>false);const status=action==="pairing"||action==="connect"?"FAILED":hasCredentials?"DISCONNECTED":"RECONNECT_REQUIRED";const lastError=action==="pairing"?pairingUserMessage(error):action==="connect"?"WHATSAPP_QR_FAILED":hasCredentials?"WHATSAPP_TRANSIENT_DISCONNECT":"WHATSAPP_CREDENTIALS_MISSING";await prisma.whatsAppAccount.update({where:{id:accountId},data:{status,lastError,qrCode:null,qrExpiresAt:null}});logger.error("whatsapp.job.failed",error,{jobId:job.id,accountId,action,status,lastError});throw error}
 }, { connection, concurrency: 5 }));
 
 registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
@@ -141,7 +141,7 @@ async function recoverSessions() {
     if (!(await hasWhatsAppCredentials(account.id))) {
       await prisma.whatsAppAccount.updateMany({
         where: { id: account.id, archivedAt: null, status: { in: ["CONNECTED", "CONNECTING", "DISCONNECTED", "RECONNECT_REQUIRED"] } },
-        data: { status: "RECONNECT_REQUIRED", lastError: "WhatsApp bağlantısını QR kod veya telefon koduyla yeniden kurun." },
+        data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_CREDENTIALS_MISSING" },
       });
       continue;
     }

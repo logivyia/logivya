@@ -26,8 +26,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await enforceWhatsAppRateLimit("qr-account", id);
     await resetAccountForConnection(id, AccountStatus.PENDING_QR);
     logger.info("whatsapp.connect.requested", { companyId: company.id, userId: user.id, accountId: id, mode: "QR_REGENERATE" });
-    const job = await enqueueWhatsAppJob("reconnect", { action: "reconnect", accountId: id }, { jobId: `regenerate-${id}-${Date.now()}` });
-    logger.info("whatsapp.connect.job.enqueued", { accountId: id, jobId: job.id, action: "reconnect", mode: "QR_REGENERATE" });
+    const job = await enqueueWhatsAppJob("connect", { action: "connect", accountId: id }, { jobId: `regenerate-${id}-${Date.now()}` });
+    logger.info("whatsapp.connect.job.enqueued", { accountId: id, jobId: job.id, action: "connect", mode: "QR_REGENERATE" });
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.qr.regenerated", entityType: "WhatsAppAccount", entityId: id });
     try {
       const ready = await waitForAccountQr(id);

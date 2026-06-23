@@ -13,7 +13,7 @@ import { writeAuditLog } from "@/server/security/audit";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
 import { findReusableWhatsAppAccount, findSingleSlotWhatsAppAccount } from "@/server/whatsapp/reusable-account";
-import { assertWhatsAppWorkerReachable, waitForPairingCode } from "@/server/whatsapp/worker-health";
+import { assertWhatsAppWorkerReachable, isWhatsAppWaitTimeout, waitForPairingCode } from "@/server/whatsapp/worker-health";
 
 const schema = z.object({ phoneNumber: z.string().min(7).max(30) });
 
@@ -44,7 +44,14 @@ export async function POST(request: Request) {
     const refreshed = await prisma.whatsAppAccount.findUniqueOrThrow({ where: { id: accountId }, include: { _count: { select: { groups: true, contacts: true } } } });
     return mobileSuccess({ account: serializeMobileAccount({ ...refreshed, pairingCode: ready.pairingCode, pairingCodeExpiresAt: ready.pairingCodeExpiresAt }) }, { status: 201 });
   } catch (error) {
-    if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "FAILED", lastError: "MOBILE_PAIRING_FAILED" } });
+    if (accountId && isWhatsAppWaitTimeout(error)) {
+      const pending = await prisma.whatsAppAccount.findUniqueOrThrow({
+        where: { id: accountId },
+        include: { _count: { select: { groups: true, contacts: true } } },
+      });
+      return mobileSuccess({ account: serializeMobileAccount(pending) }, { status: 202 });
+    }
+    if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId, status: { in: ["PENDING_PAIRING", "PAIRING_CODE_READY", "CONNECTING"] } }, data: { lastError: "MOBILE_PAIRING_FAILED" } });
     return mobileSafeError(error, "Telefon kodu oluşturulamadı.");
   }
 }

@@ -46,8 +46,8 @@ export async function POST(request: Request) {
     }
 
     accountId = account.id;
-    const job = await enqueueWhatsAppJob("reconnect", { action: "reconnect", accountId }, { jobId: `qr-${accountId}-${Date.now()}` });
-    logger.info("whatsapp.connect.job.enqueued", { accountId, jobId: job.id, action: "reconnect", mode: "QR" });
+    const job = await enqueueWhatsAppJob("connect", { action: "connect", accountId }, { jobId: `qr-${accountId}-${Date.now()}` });
+    logger.info("whatsapp.connect.job.enqueued", { accountId, jobId: job.id, action: "connect", mode: "QR" });
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.qr.requested", entityType: "WhatsAppAccount", entityId: accountId });
     try {
       const ready = await waitForAccountQr(accountId);
@@ -71,7 +71,12 @@ export async function POST(request: Request) {
     const status = whatsappRequestErrorStatus(error);
     const message = whatsappUserMessage(error, "qr");
     logger.error("whatsapp.connect.request_failed", error, { accountId, status, message });
-    if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "FAILED", lastError: whatsappLastErrorCode(error) } });
+    if (accountId && status >= 500) {
+      await prisma.whatsAppAccount.updateMany({
+        where: { id: accountId, status: { in: ["PENDING_QR", "QR_READY", "CONNECTING"] } },
+        data: { lastError: whatsappLastErrorCode(error) },
+      });
+    }
     return NextResponse.json({ error: status === 401 ? "UNAUTHORIZED" : message, accountId }, { status });
   }
 }
