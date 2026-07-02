@@ -129,10 +129,17 @@ async function checkWorkerHeartbeat() {
     redis = await createHealthRedis();
     const value = await withTimeout(redis.get(WORKER_HEARTBEAT_KEY), "worker heartbeat get", 6_000);
     if (!value) return { status: "missing", fresh: false };
-    const heartbeat = JSON.parse(value) as { workerId?: string; timestamp?: string };
+    const heartbeat = JSON.parse(value) as { workerId?: string; timestamp?: string; releaseMarker?: string; sourceCommit?: string | null };
     const timestamp = heartbeat.timestamp ? new Date(heartbeat.timestamp).getTime() : 0;
     const fresh = Number.isFinite(timestamp) && Date.now() - timestamp <= 60_000;
-    return { status: fresh ? "healthy" : "stale", fresh, workerId: heartbeat.workerId ?? null, timestamp: heartbeat.timestamp ?? null };
+    return {
+      status: fresh ? "healthy" : "stale",
+      fresh,
+      workerId: heartbeat.workerId ?? null,
+      timestamp: heartbeat.timestamp ?? null,
+      releaseMarker: heartbeat.releaseMarker ?? null,
+      sourceCommit: heartbeat.sourceCommit ?? null,
+    };
   } catch (error) {
     return { status: "unhealthy", fresh: false, error: safeError(error) };
   } finally {

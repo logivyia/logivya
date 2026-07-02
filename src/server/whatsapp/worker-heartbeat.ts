@@ -2,6 +2,7 @@ import Redis from "ioredis";
 import { redisConnectionOptions } from "@/server/queues/client";
 
 const HEARTBEAT_KEY = "logivya:whatsapp-worker:heartbeat";
+const WORKER_RELEASE_MARKER = "WHATSAPP_REDIS_READY_QR_WORKER_FIX";
 export const WORKER_HEARTBEAT_TTL_SECONDS = Number(process.env.WORKER_HEARTBEAT_TTL_SECONDS || 90);
 export const WORKER_HEARTBEAT_FRESH_MS = Number(process.env.WORKER_HEARTBEAT_FRESH_MS || 60_000);
 let redis: Redis | null = null;
@@ -23,14 +24,24 @@ async function ensureConnected(instance: Redis) {
 export async function writeWorkerHeartbeat(workerId: string) {
   const instance = client();
   await ensureConnected(instance);
-  await instance.set(HEARTBEAT_KEY, JSON.stringify({ workerId, timestamp: new Date().toISOString() }), "EX", WORKER_HEARTBEAT_TTL_SECONDS);
+  await instance.set(
+    HEARTBEAT_KEY,
+    JSON.stringify({
+      workerId,
+      timestamp: new Date().toISOString(),
+      releaseMarker: WORKER_RELEASE_MARKER,
+      sourceCommit: process.env.RENDER_GIT_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT || null,
+    }),
+    "EX",
+    WORKER_HEARTBEAT_TTL_SECONDS,
+  );
 }
 
 export async function readWorkerHeartbeat() {
   const instance = client();
   await ensureConnected(instance);
   const value = await instance.get(HEARTBEAT_KEY);
-  return value ? JSON.parse(value) as { workerId: string; timestamp: string } : null;
+  return value ? JSON.parse(value) as { workerId: string; timestamp: string; releaseMarker?: string; sourceCommit?: string | null } : null;
 }
 
 export function isWorkerHeartbeatFresh(heartbeat: { workerId: string; timestamp: string } | null) {
