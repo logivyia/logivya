@@ -14,17 +14,17 @@ const REUSABLE_STATUSES: AccountStatus[] = [
   "ERROR",
 ];
 
-export function findReusableWhatsAppAccount(companyId: string) {
+export function findReusableWhatsAppAccount(companyId: string, userId: string) {
   return prisma.whatsAppAccount.findFirst({
-    where: { companyId, archivedAt: null, status: { in: REUSABLE_STATUSES } },
+    where: { companyId, userId, archivedAt: null, status: { in: REUSABLE_STATUSES } },
     orderBy: { updatedAt: "desc" },
   });
 }
 
-export async function findSingleSlotWhatsAppAccount(companyId: string, accountLimit: number) {
+export async function findSingleSlotWhatsAppAccount(companyId: string, userId: string, accountLimit?: number) {
   if (accountLimit !== 1) return null;
   return prisma.whatsAppAccount.findFirst({
-    where: { companyId, archivedAt: null, status: { in: REUSABLE_STATUSES } },
+    where: { companyId, userId, archivedAt: null, status: { in: REUSABLE_STATUSES } },
     orderBy: { updatedAt: "desc" },
   });
 }

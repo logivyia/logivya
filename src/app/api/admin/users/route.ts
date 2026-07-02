@@ -4,7 +4,7 @@ import { prisma } from "@/server/db";
 
 export async function GET(request: Request) {
   try {
-    await requirePlatformAdmin("users:manage", request);
+    await requirePlatformAdmin("admin.users.read", request);
     const params = new URL(request.url).searchParams;
     const page = Math.max(1, Number(params.get("page") || 1));
     const query = params.get("q") || "";

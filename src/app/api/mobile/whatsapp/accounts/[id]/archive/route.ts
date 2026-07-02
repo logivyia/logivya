@@ -11,7 +11,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     requirePermission(membership.role, "archive_accounts");
     const { id } = await params;
     const account = await prisma.whatsAppAccount.updateMany({
-      where: { id, companyId: company.id },
+      where: { id, companyId: company.id, userId: user.id },
       data: { archivedAt: new Date(), status: "ARCHIVED" },
     });
     if (!account.count) return mobileError("NOT_FOUND", "WhatsApp hesabı bulunamadı.", { status: 404 });

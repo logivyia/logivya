@@ -5,20 +5,22 @@ import { prisma } from "@/server/db";
 import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { writeAuditLog } from "@/server/security/audit";
 import { assertWhatsAppWorkerReachable, isWhatsAppWaitTimeout, waitForAccountQr } from "@/server/whatsapp/worker-health";
-import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
+import { whatsappLastErrorCode, whatsappUserMessage } from "@/server/whatsapp/user-errors";
 import { logger } from "@/server/observability/logger";
 import { AccountStatus } from "@prisma/client";
 import { resetAccountForConnection } from "@/lib/whatsapp/account-status-machine";
-import { assertSameOrigin, enforceWhatsAppRateLimit } from "@/server/whatsapp/request-guards";
+import { assertSameOrigin, enforceWhatsAppRateLimit, whatsappRequestErrorStatus } from "@/server/whatsapp/request-guards";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  let accountId: string | undefined;
   try {
     assertSameOrigin(request);
     const { company, membership, user } = await requireApiSession();
     requirePermission(membership.role, "connect_accounts");
     await assertWhatsAppWorkerReachable();
     const { id } = await params;
-    const account = await prisma.whatsAppAccount.findFirst({ where: { id, companyId: company.id, archivedAt: null } });
+    accountId = id;
+    const account = await prisma.whatsAppAccount.findFirst({ where: { id, companyId: company.id, userId: user.id, archivedAt: null } });
     if (!account) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
     if (account.status === "CONNECTED") {
       return NextResponse.json({ ok: true, alreadyConnected: true, accountId: account.id, status: account.status, message: "WhatsApp hesabınız zaten bağlı." });
@@ -48,6 +50,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }, { status: 202 });
     }
   } catch (error) {
-    return NextResponse.json({ error: whatsappUserMessage(error, "qr") }, { status: 503 });
+    const status = whatsappRequestErrorStatus(error);
+    const message = whatsappUserMessage(error, "qr");
+    logger.error("whatsapp.regenerate_qr.request_failed", error, { accountId, status, message });
+    if (accountId && status >= 500) {
+      await prisma.whatsAppAccount.updateMany({
+        where: { id: accountId, status: { in: ["PENDING_QR", "QR_READY", "CONNECTING"] } },
+        data: { lastError: whatsappLastErrorCode(error) },
+      });
+    }
+    return NextResponse.json({ error: status === 401 ? "UNAUTHORIZED" : message, accountId }, { status });
   }
 }

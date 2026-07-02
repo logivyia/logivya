@@ -1,1 +1,7 @@
-import { AdminListPage } from "@/components/operations-pages";import { requirePlatformAdmin } from "@/server/auth/platform-admin";export default async function Page(){await requirePlatformAdmin();return <AdminListPage title="Destek Talepleri" endpoint="/api/admin/support/tickets" kind="tickets"/>}
+import { AdminSupportPage } from "@/components/admin-support-page";
+import { requirePlatformAdmin } from "@/server/auth/platform-admin";
+
+export default async function Page() {
+  await requirePlatformAdmin();
+  return <AdminSupportPage />;
+}

@@ -15,11 +15,21 @@ import { assertSameOrigin } from "@/server/whatsapp/request-guards";
 const schema = z.object({ label: z.string().min(2).max(80).optional() });
 export async function GET(request: Request) {
   try {
-    const { company } = await requireApiSession();
+    const { company, user } = await requireApiSession();
     await cleanupStuckWhatsAppAccounts(company.id);
-    const includeArchived = new URL(request.url).searchParams.get("archived") === "true";
-    const accounts = await prisma.whatsAppAccount.findMany({ where: { companyId: company.id, ...(includeArchived ? {} : { archivedAt: null }) }, include: { _count: { select: { groups: true, contacts: true, recipients: true } } }, orderBy: { createdAt: "desc" }, take: 100 });
-    return NextResponse.json({ accounts });
+    const archivedParam = new URL(request.url).searchParams.get("archived");
+    const includeArchived = archivedParam === "true" || archivedParam === "1";
+    const accounts = await prisma.whatsAppAccount.findMany({ where: { companyId: company.id, userId: user.id, ...(includeArchived ? {} : { archivedAt: null }) }, include: { _count: { select: { groups: true, contacts: true, recipients: true } } }, orderBy: { createdAt: "desc" }, take: 100 });
+    return NextResponse.json({
+      ok: true,
+      accounts: accounts.map((account) => ({
+        ...account,
+        lastError: account.lastError ? whatsappUserMessage(account.lastError, "connection") : null,
+        groupCount: account._count.groups,
+        contactCount: account._count.contacts,
+        recipientCount: account._count.recipients,
+      })),
+    });
   } catch { return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 }); }
 }
 export async function POST(request: Request) {
@@ -33,7 +43,7 @@ export async function POST(request: Request) {
     await assertWhatsAppWorkerReachable();
     const access=await subscriptionAccess.canConnectWhatsAppAccount(company.id);
     if(!access.allowed)return NextResponse.json({error:access.reason,limit:access.limit},{status:403});
-    const account = await prisma.whatsAppAccount.create({ data: { companyId: company.id, label: parsed.data.label || null, provider: "baileys", status: AccountStatus.CREATED } });
+    const account = await prisma.whatsAppAccount.create({ data: { companyId: company.id, userId: user.id, label: parsed.data.label || null, provider: "baileys", status: AccountStatus.CREATED } });
     try {
       await enqueueWhatsAppJob("connect", { action: "connect", accountId: account.id }, { jobId: `connect-${account.id}` });
     } catch (error) {
@@ -41,6 +51,6 @@ export async function POST(request: Request) {
       throw error;
     }
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.account.created", entityType: "WhatsAppAccount", entityId: account.id, after: { label: account.label } });
-    return NextResponse.json({ account }, { status: 201 });
+    return NextResponse.json({ ok: true, account }, { status: 201 });
   } catch (error) { return NextResponse.json({ error: whatsappUserMessage(error, "qr") }, { status: 503 }); }
 }

@@ -1,10 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
+import { hasPermission, PERMISSIONS } from "@/server/auth/permissions";
 import { prisma } from "@/server/db";
 import { hashPassword } from "@/server/security/passwords";
 import { createMobileSession, parseMobilePlatform } from "@/server/mobile/auth";
 import { clientIp, enforceMobileRateLimit } from "@/server/mobile/rate-limit";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
+import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
 import { writeAuditLog } from "@/server/security/audit";
 
 const passwordSchema = z.string().min(12).max(128).regex(/[A-Z]/).regex(/[a-z]/).regex(/\d/).regex(/[^A-Za-z0-9]/);
@@ -30,7 +32,7 @@ export async function POST(request: Request) {
     const ipAddress = clientIp(request);
     enforceMobileRateLimit(`mobile-register:${ipAddress}`, 8, 60 * 60_000);
     const input = parsed.data;
-    const email = input.email.toLowerCase();
+    const email = input.email.trim().toLowerCase();
     const phone = input.phone.replace(/\D/g, "");
     const duplicate = await prisma.user.findFirst({ where: { OR: [{ email }, { phone }] } });
     if (duplicate) return mobileError("ACCOUNT_EXISTS", "Bu e-posta veya telefonla kayıtlı hesap var.", { status: 409 });
@@ -94,11 +96,16 @@ export async function POST(request: Request) {
       userAgent,
     });
     await writeAuditLog(request, { companyId: result.company.id, userId: result.user.id, action: "mobile.workspace.registered", entityType: "Company", entityId: result.company.id });
+    const isPlatformAdmin = isAuthorizedLogivyaPlatformAdmin({ email: result.user.email });
+
     return mobileSuccess({
       tokens,
-      user: { id: result.user.id, name: result.user.name, email: result.user.email, phone: result.user.phone },
+      user: { id: result.user.id, name: result.user.name, email: result.user.email, phone: result.user.phone, role: result.membership.role, isPlatformAdmin },
       company: { id: result.company.id, name: result.company.name },
       role: result.membership.role,
+      isAdmin: isPlatformAdmin,
+      isPlatformAdmin,
+      permissions: PERMISSIONS.filter((permission) => hasPermission(result.membership.role, permission)),
     }, { status: 201 });
   } catch (error) {
     return mobileSafeError(error, "Kayıt tamamlanamadı.");

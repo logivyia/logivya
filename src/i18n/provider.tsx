@@ -32,6 +32,15 @@ function readCookieLocale() {
   return normalizeLocale(match ? decodeURIComponent(match[1]) : null);
 }
 
+function readableMissingTranslation(key: string) {
+  const lastSegment = key.split(".").filter(Boolean).at(-1) ?? key;
+  return lastSegment
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[._-]+/g, " ")
+    .trim()
+    .replace(/^./, (value) => value.toLocaleUpperCase("tr-TR"));
+}
+
 export function I18nProvider({ children, initialLocale = fallbackLocale }: { children: React.ReactNode; initialLocale?: Locale }) {
   const safeInitialLocale = normalizeLocale(initialLocale) ?? fallbackLocale;
   const [locale, setLocaleState] = useState<Locale>(safeInitialLocale);
@@ -59,7 +68,7 @@ export function I18nProvider({ children, initialLocale = fallbackLocale }: { chi
     if (!template && process.env.NODE_ENV === "development") {
       console.warn(`[i18n] missing translation key: ${key}`);
     }
-    const safeTemplate = template ?? key.replace(/[._-]+/g, " ");
+    const safeTemplate = template ?? readableMissingTranslation(key);
     return Object.entries(variables).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), safeTemplate);
   }, [dictionary, fallback]);
   const value = useMemo(() => ({ locale, direction: rtlLocales.includes(locale) ? "rtl" as const : "ltr" as const, localeNames, setLocale: loadLocale, t }), [locale, loadLocale, t]);

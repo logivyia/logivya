@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect,@next/next/no-img-element */
 import { useCallback, useEffect, useState } from "react";
-import { Archive, CheckCircle2, LoaderCircle, Plus, RefreshCw, Smartphone, Trash2, X } from "lucide-react";
+import { Archive, LoaderCircle, MessageCircle, Plus, RefreshCw, Trash2, X } from "lucide-react";
 
 import { useI18n } from "@/i18n/provider";
 import { getWhatsAppStatusLabel } from "@/lib/i18n/status-labels";
@@ -17,8 +17,6 @@ type Account = {
   createdAt?: string | null;
   updatedAt?: string | null;
   groupCount?: number;
-  contactCount?: number;
-  lastSyncAt?: string | null;
   qrCode?: string | null;
   pairingCode?: string | null;
   pairingCodeExpiresAt?: string | null;
@@ -36,7 +34,7 @@ type Session = {
 };
 
 const buttonBase = "inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition disabled:cursor-not-allowed";
-const lightButton = `${buttonBase} border border-slate-200 bg-white text-slate-900 hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-500`;
+const lightButton = `${buttonBase} border bg-card text-card-foreground hover:bg-secondary disabled:bg-secondary disabled:text-muted`;
 const orangeButton = `${buttonBase} bg-orange-500 text-white shadow-lg shadow-orange-500/20 hover:bg-orange-600 disabled:bg-orange-200 disabled:text-white`;
 
 const countryOptions = [
@@ -52,13 +50,6 @@ function defaultCountryCode(locale: string) {
   if (locale === "de") return "49";
   if (locale === "az") return "994";
   return "90";
-}
-
-function dateLocale(locale: string) {
-  if (locale === "ro") return "ro-RO";
-  if (locale === "de") return "de-DE";
-  if (locale === "en") return "en-US";
-  return "tr-TR";
 }
 
 function isConnected(status?: string | null) {
@@ -81,6 +72,25 @@ function normalizePhone(countryCode: string, phone: string) {
   return `${cc}${digits}`;
 }
 
+function userFacingWhatsAppError(message?: string | null) {
+  if (!message) return "";
+  const normalized = message.trim().toUpperCase().replace(/\s+/g, "_");
+  const mapped: Record<string, string> = {
+    WHATSAPP_CREDENTIALS_MISSING: "WhatsApp hesabınızı yeniden bağlamanız gerekiyor.",
+    AUTH_REQUIRED: "WhatsApp hesabınızı yeniden bağlamanız gerekiyor.",
+    WHATSAPP_LOGGED_OUT: "WhatsApp oturumu kapatıldı. Lütfen hesabı yeniden bağlayın.",
+    LOGGED_OUT: "WhatsApp oturumu kapatıldı. Lütfen hesabı yeniden bağlayın.",
+    WHATSAPP_TRANSIENT_DISCONNECT: "Yeniden bağlantı deneniyor.",
+    WHATSAPP_RECONNECT_REQUIRED: "Yeniden bağlantı deneniyor.",
+    WHATSAPP_CONNECTION_FAILED: "WhatsApp bağlantısı geçici olarak kesildi.",
+    WHATSAPP_QR_FAILED: "WhatsApp bağlantısı geçici olarak kesildi.",
+    MOBILE_QR_FAILED: "WhatsApp bağlantısı geçici olarak kesildi.",
+  };
+  if (mapped[normalized]) return mapped[normalized];
+  if (/^[A-Z0-9_]+$/.test(normalized) && normalized.includes("WHATSAPP")) return "WhatsApp bağlantısı geçici olarak kesildi.";
+  return message;
+}
+
 export function AccountsStablePage() {
   const { locale, t } = useI18n();
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -97,8 +107,9 @@ export function AccountsStablePage() {
 
   const localizeError = useCallback(
     (message: string | undefined, fallbackKey: string) => {
-      if (!message) return t(fallbackKey);
-      return /^[a-z0-9_.-]+$/i.test(message) ? t(message) : message;
+      const safeMessage = userFacingWhatsAppError(message);
+      if (!safeMessage) return t(fallbackKey);
+      return /^[a-z0-9_.-]+$/i.test(safeMessage) ? t(safeMessage) : safeMessage;
     },
     [t],
   );
@@ -126,11 +137,20 @@ export function AccountsStablePage() {
     if (!modal?.accountId || isConnected(session?.status)) return;
     const timer = window.setInterval(async () => {
       try {
-        const res = await fetch(`/api/accounts/${modal.accountId}/connection-status`, { cache: "no-store" });
+        const res = await fetch(`/api/accounts/whatsapp/${modal.accountId}/status`, { cache: "no-store" });
         const value = await res.json().catch(() => ({}));
         if (!res.ok || !value.ok) throw new Error(value.error || "accounts.statusUnavailable");
-        if (value.session) setSession(value.session);
-        if (isConnected(value.account?.status) || isConnected(value.session?.status)) {
+        setSession({
+          id: value.accountId || modal.accountId,
+          accountId: value.accountId || modal.accountId,
+          status: value.status,
+          qrCode: value.qrCode,
+          qrExpiresAt: value.qrExpiresAt,
+          pairingCode: value.pairingCode,
+          pairingCodeExpiresAt: value.pairingCodeExpiresAt,
+          lastError: value.lastError,
+        });
+        if (isConnected(value.status)) {
           setModalError("");
           void load();
         }
@@ -142,11 +162,22 @@ export function AccountsStablePage() {
   }, [load, localizeError, modal?.accountId, session?.status]);
 
   async function request(accountId: string, action: string, body?: unknown) {
-    const res = await fetch(`/api/accounts/${accountId}/${action}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body ?? {}),
-    });
+    const init: RequestInit = { method: "POST", headers: { "Content-Type": "application/json" } };
+    let url = `/api/accounts/${accountId}/${action}`;
+    if (action === "archive" || action === "restore") {
+      url = `/api/accounts/${accountId}/action`;
+      init.body = JSON.stringify({ action });
+    } else if (action === "sync-groups") {
+      url = `/api/accounts/${accountId}/sync`;
+      init.body = JSON.stringify(body ?? {});
+    } else if (action === "delete") {
+      url = `/api/accounts/${accountId}`;
+      init.method = "DELETE";
+      delete (init.headers as Record<string, string>)["Content-Type"];
+    } else {
+      init.body = JSON.stringify(body ?? {});
+    }
+    const res = await fetch(url, init);
     const value = await res.json().catch(() => ({}));
     if (!res.ok || !value.ok) throw new Error(value.error || "accounts.actionFailed");
     return value;
@@ -176,20 +207,24 @@ export function AccountsStablePage() {
     setModalError("");
     try {
       let accountId = modal?.accountId;
-      if (!accountId) {
-        const res = await fetch("/api/accounts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ label: label || t("accounts.defaultLabel") }),
-        });
-        const value = await res.json().catch(() => ({}));
-        if (!res.ok || !value.ok) throw new Error(value.error || "accounts.actionFailed");
-        accountId = value.account?.id;
-        setModal({ accountId, mode: "qr" });
-      }
+      const res = await fetch(accountId ? `/api/accounts/whatsapp/${accountId}/regenerate-qr` : "/api/accounts/whatsapp/create-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: label || t("accounts.defaultLabel") }),
+      });
+      const value = await res.json().catch(() => ({}));
+      if (!res.ok || !value.ok) throw new Error(value.error || "accounts.actionFailed");
+      accountId = value.accountId || accountId;
       if (!accountId) throw new Error("accounts.actionFailed");
-      const value = await request(accountId, "connect", { method: "qr" });
-      setSession(value.session);
+      setModal({ accountId, mode: "qr" });
+      setSession({
+        id: accountId,
+        accountId,
+        status: value.status,
+        qrCode: value.qrCode || value.qr,
+        qrExpiresAt: value.qrExpiresAt || value.expiresAt,
+        lastError: value.error,
+      });
       void load();
     } catch (err) {
       setModalError(localizeError(err instanceof Error ? err.message : undefined, "accounts.qrFailedRetry"));
@@ -205,20 +240,24 @@ export function AccountsStablePage() {
     }
     try {
       let accountId = modal?.accountId;
-      if (!accountId) {
-        const res = await fetch("/api/accounts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ label: label || t("accounts.defaultLabel"), phoneNumber: normalized }),
-        });
-        const value = await res.json().catch(() => ({}));
-        if (!res.ok || !value.ok) throw new Error(value.error || "accounts.actionFailed");
-        accountId = value.account?.id;
-        setModal({ accountId, mode: "phone" });
-      }
+      const res = await fetch(accountId ? `/api/accounts/${accountId}/pairing-code` : "/api/accounts/whatsapp/create-pairing-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: label || t("accounts.defaultLabel"), phoneNumber: normalized }),
+      });
+      const value = await res.json().catch(() => ({}));
+      if (!res.ok || !value.ok) throw new Error(value.error || "accounts.actionFailed");
+      accountId = value.accountId || accountId;
       if (!accountId) throw new Error("accounts.actionFailed");
-      const value = await request(accountId, "pairing-code", { phoneNumber: normalized });
-      setSession(value.session);
+      setModal({ accountId, mode: "phone" });
+      setSession({
+        id: accountId,
+        accountId,
+        status: value.status,
+        pairingCode: value.pairingCode,
+        pairingCodeExpiresAt: value.pairingCodeExpiresAt || value.expiresAt,
+        lastError: value.error,
+      });
       void load();
     } catch (err) {
       setModalError(localizeError(err instanceof Error ? err.message : undefined, "accounts.connectionFailedRetry"));
@@ -253,8 +292,8 @@ export function AccountsStablePage() {
       <section className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.45em] text-orange-500">{t("accounts.eyebrow")}</p>
-          <h1 className="mt-4 text-4xl font-black text-slate-950">{t("accounts.title")}</h1>
-          <p className="mt-3 text-lg text-slate-600">{t("accounts.description")}</p>
+          <h1 className="mt-4 text-4xl font-black text-foreground">{t("accounts.title")}</h1>
+          <p className="mt-3 text-lg text-muted">{t("accounts.description")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button className={lightButton} type="button" onClick={() => setArchived((value) => !value)}>
@@ -269,62 +308,37 @@ export function AccountsStablePage() {
       {error ? <div className="rounded-2xl bg-rose-50 px-5 py-4 text-sm text-rose-700">{error}</div> : null}
 
       {loading ? (
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 text-slate-600">{t("common.loading")}</div>
+        <div className="rounded-3xl border bg-card p-8 text-muted">{t("common.loading")}</div>
       ) : accounts.length === 0 ? (
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 text-slate-600">{t("accounts.empty")}</div>
+        <div className="rounded-3xl border bg-card p-8 text-muted">{t("accounts.empty")}</div>
       ) : (
         <section className="grid gap-6 xl:grid-cols-3">
           {accounts.map((account) => (
-            <article key={account.id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60">
+            <article key={account.id} className="rounded-3xl border bg-card p-6 text-card-foreground shadow-[var(--shadow-soft)]">
               <div className="flex items-start justify-between gap-3">
-                <Smartphone className="h-8 w-8 text-orange-500" />
+                <MessageCircle className="h-8 w-8 text-orange-500" />
                 <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusTone(account.status)}`}>
                   {getWhatsAppStatusLabel(account.status, locale)}
                 </span>
               </div>
-              <h2 className="mt-7 text-xl font-black text-slate-950">{account.displayName || t("accounts.defaultLabel")}</h2>
-              <p className="mt-1 text-sm text-slate-500">{account.phoneNumber || t("accounts.phoneWaiting")}</p>
-              {account.lastError ? <p className="mt-4 rounded-2xl bg-rose-50 p-3 text-sm text-rose-700">{localizeError(account.lastError, "accounts.connectionFailedRetry")}</p> : null}
-              <dl className="mt-6 grid grid-cols-3 gap-3 text-center">
-                <div>
-                  <dt className="text-2xl font-black text-slate-950">{account.groupCount ?? 0}</dt>
-                  <dd className="text-xs text-slate-500">{t("common.group")}</dd>
-                </div>
-                <div>
-                  <dt className="text-2xl font-black text-slate-950">{account.contactCount ?? 0}</dt>
-                  <dd className="text-xs text-slate-500">{t("accounts.people")}</dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-black text-slate-950">
-                    {account.lastSyncAt ? new Date(account.lastSyncAt).toLocaleDateString(dateLocale(locale)) : "-"}
-                  </dt>
-                  <dd className="text-xs text-slate-500">{t("accounts.sync")}</dd>
-                </div>
+              <h2 className="mt-7 truncate text-xl font-black text-card-foreground">{account.phoneNumber || t("accounts.phoneWaiting")}</h2>
+              <dl className="mt-7 border-y py-5 text-center">
+                <dt className="text-3xl font-black text-card-foreground">{account.groupCount ?? 0}</dt>
+                <dd className="mt-1 text-sm font-semibold text-muted">{t("accounts.connectedGroups")}</dd>
               </dl>
-              <div className="mt-7 grid grid-cols-2 gap-3">
-                {!isConnected(account.status) ? (
-                  <button className={orangeButton} disabled={workingId === account.id} type="button" onClick={() => void openExisting(account, "qr")}>
-                    <RefreshCw className="h-4 w-4" /> {t("accounts.reconnect")}
-                  </button>
-                ) : (
-                  <button className={lightButton} disabled={workingId === account.id} type="button" onClick={() => void openExisting(account, "qr")}>
-                    <CheckCircle2 className="h-4 w-4" /> {t("accounts.checkConnection")}
-                  </button>
-                )}
-                {account.archivedAt ? (
-                  <button className={lightButton} disabled={workingId === account.id} type="button" onClick={() => void action(account, "restore")}>
-                    {t("accounts.restore")}
-                  </button>
-                ) : (
-                  <button className={lightButton} disabled={workingId === account.id} type="button" onClick={() => void action(account, "sync")}>
-                    {t("accounts.syncGroups")}
-                  </button>
-                )}
+              <div className="mt-7 grid gap-3 sm:grid-cols-3">
+                <button className={orangeButton} disabled={workingId === account.id} type="button" onClick={() => void openExisting(account, "qr")}>
+                  <RefreshCw className="h-4 w-4" /> {t("accounts.reconnect")}
+                </button>
                 {!account.archivedAt ? (
                   <button className={lightButton} disabled={workingId === account.id} type="button" onClick={() => void action(account, "archive")}>
                     <Archive className="h-4 w-4" /> {t("accounts.archive")}
                   </button>
-                ) : null}
+                ) : (
+                  <button className={lightButton} disabled={workingId === account.id} type="button" onClick={() => void action(account, "restore")}>
+                    <Archive className="h-4 w-4" /> {t("accounts.restore")}
+                  </button>
+                )}
                 <button className={lightButton} disabled={workingId === account.id} type="button" onClick={() => void action(account, "delete")}>
                   <Trash2 className="h-4 w-4" /> {t("accounts.delete")}
                 </button>
@@ -406,7 +420,7 @@ export function AccountsStablePage() {
                 ) : null}
                 {visibleQr ? (
                   <div className="mx-auto max-w-sm rounded-3xl border border-slate-200 bg-white p-5">
-                    <img alt={t("accounts.qrAlt")} className="mx-auto h-72 w-72" src={`https://api.qrserver.com/v1/create-qr-code/?size=288x288&data=${encodeURIComponent(visibleQr)}`} />
+                    <img alt={t("accounts.qrAlt")} className="mx-auto h-72 w-72" src={visibleQr} />
                     <p className="mt-4 text-sm text-slate-600">{t("accounts.qrInstructions")}</p>
                   </div>
                 ) : null}

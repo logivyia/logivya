@@ -17,11 +17,18 @@ export async function POST(request: Request) {
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
 
-    const where = { id: { in: parsed.data.ids }, companyId: company.id };
+    const where = { id: { in: parsed.data.ids }, companyId: company.id, createdById: user.id };
+    const deletedAt = new Date();
     const data = parsed.data.action === "delete"
-      ? { deletedAt: new Date(), status: "DELETED" as const }
+      ? { deletedAt, platformDeletedAt: deletedAt, status: "DELETED" as const }
       : { status: "CANCELED" as const };
     const result = await prisma.messageCampaign.updateMany({ where, data });
+    if (parsed.data.action === "delete" && result.count) {
+      await prisma.messageRecipient.updateMany({
+        where: { campaignId: { in: parsed.data.ids }, campaign: { companyId: company.id, createdById: user.id } },
+        data: { platformDeletedAt: deletedAt },
+      });
+    }
     await writeAuditLog(request, {
       companyId: company.id,
       userId: user.id,

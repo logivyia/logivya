@@ -10,7 +10,7 @@ const checks: Array<[string, string, string[]]> = [
   ["expiry", "src/app/api/cron/subscriptions/expire/route.ts", ["endsAt", "EXPIRED"]],
   ["dashboard metrics", "src/app/api/admin/dashboard/route.ts", ["pendingSubscriptionRequests", "expiringInSevenDays", "monthlyConfirmedPaymentTotal"]],
   ["metadata", "src/app/layout.tsx", ["/favicon.ico?v=3", "applicationName: \"Logivya\""]],
-  ["brand logo", "src/components/brand-logo.tsx", ["/logivya/logo-v3.jpeg"]],
+  ["brand logo", "src/components/brand-logo.tsx", ["/logivya/logo-transparent-v5.png"]],
 ];
 
 async function main() {
@@ -30,6 +30,7 @@ async function main() {
     "public/android-chrome-512x512.png",
     "public/logivya/logo.jpeg",
     "public/logivya/logo-v3.jpeg",
+    "public/logivya/logo-transparent-v5.png",
     "public/faciocoin/faciocoin-feather-4k.png",
     "public/faciocoin/faciocoin-feather.svg",
   ]) {

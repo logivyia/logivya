@@ -45,7 +45,7 @@ export async function GET(request: Request) {
         _sum: { amount: true },
       }),
       prisma.whatsAppAccount.count({ where: { archivedAt: null } }),
-      prisma.whatsAppAccount.count({ where: { status: "CONNECTED", archivedAt: null } }),
+      prisma.whatsAppAccount.count({ where: { status: { in: ["CONNECTED", "CONNECTING", "DISCONNECTED", "RECONNECT_REQUIRED"] }, archivedAt: null, NOT: { lastError: { in: ["WHATSAPP_LOGGED_OUT", "WHATSAPP_CREDENTIALS_MISSING"] } } } }),
       prisma.messageCampaign.count({ where: { deletedAt: null } }),
       prisma.messageRecipient.count({ where: { status: "SENT" } }),
       prisma.securityEvent.findMany({ where: { severity: { in: ["HIGH", "CRITICAL"] } }, orderBy: { createdAt: "desc" }, take: 5 }),

@@ -1,15 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
 import { requireApiSession } from "@/server/auth/session";
-import { prisma } from "@/server/db";
-import { campaignQueue, messageQueue } from "@/server/queues/client";
-import { SCHEDULED_MESSAGE_JOB_OPTIONS } from "@/server/queues/contracts";
-import { requirePermission } from "@/server/auth/permissions";
-import { writeAuditLog } from "@/server/security/audit";
-import { nextRecurringRunAt, recurringJobId, type RecurringRule } from "@/server/queues/recurring";
-import { subscriptionAccess } from "@/server/billing/subscription-access";
-import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
+import { createMessageDeliveryCampaign, isMessageDeliveryError } from "@/server/messages/delivery-pipeline";
 
 const schema = z.object({
   title: z.string().min(1).max(120),
@@ -18,55 +10,45 @@ const schema = z.object({
   categoryIds: z.array(z.string()).default([]),
   scheduleType: z.enum(["SEND_NOW", "SCHEDULED", "RECURRING"]).default("SEND_NOW"),
   scheduledAt: z.coerce.date().optional(),
-  recurringRule: z.object({frequency:z.enum(["DAILY","WEEKLY","MONTHLY"]),interval:z.number().int().min(1).max(365).default(1)}).optional(),
-}).superRefine((value,ctx)=>{if(!value.groupIds.length&&!value.categoryIds.length)ctx.addIssue({code:"custom",message:"validation.required",path:["groupIds"]});if(value.scheduleType==="SCHEDULED"&&!value.scheduledAt)ctx.addIssue({code:"custom",message:"validation.required",path:["scheduledAt"]});if(value.scheduleType==="RECURRING"&&!value.recurringRule)ctx.addIssue({code:"custom",message:"validation.required",path:["recurringRule"]})});
+  recurringRule: z.object({
+    frequency: z.enum(["DAILY", "WEEKLY", "MONTHLY"]),
+    interval: z.number().int().min(1).max(365).default(1),
+  }).optional(),
+}).superRefine((value, ctx) => {
+  if (!value.groupIds.length && !value.categoryIds.length) {
+    ctx.addIssue({ code: "custom", message: "validation.required", path: ["groupIds"] });
+  }
+  if (value.scheduleType === "SCHEDULED" && !value.scheduledAt) {
+    ctx.addIssue({ code: "custom", message: "validation.required", path: ["scheduledAt"] });
+  }
+  if (value.scheduleType === "RECURRING" && !value.recurringRule) {
+    ctx.addIssue({ code: "custom", message: "validation.required", path: ["recurringRule"] });
+  }
+});
+
 export async function POST(request: Request) {
   try {
     const { company, user, membership } = await requireApiSession();
-    requirePermission(membership.role, "send_messages");
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
-    if (parsed.data.scheduleType === "SCHEDULED" && parsed.data.scheduledAt && parsed.data.scheduledAt.getTime() <= Date.now()) return NextResponse.json({ error: "composer.scheduleFuture" }, { status: 400 });
-    if (parsed.data.scheduleType!=="SEND_NOW") requirePermission(membership.role,"schedule_messages");
-    const categoryGroups=parsed.data.categoryIds.length?await prisma.categoryGroup.findMany({where:{categoryId:{in:parsed.data.categoryIds},category:{companyId:company.id,archivedAt:null}},select:{groupId:true}}):[];
-    const requestedIds=[...new Set([...parsed.data.groupIds,...categoryGroups.map(item=>item.groupId)])];
-    const groups = await resolveSendableWhatsAppGroups(company.id, requestedIds);
-    if (!groups.length) return NextResponse.json({ error: "WhatsApp hesabı bağlı değil. Lütfen hesabı yeniden bağlayın." }, { status: 400 });
-    const access=await subscriptionAccess.canSendMessage(company.id,groups.length);
-    if(!access.allowed){await writeAuditLog(request,{companyId:company.id,userId:user.id,action:"subscription.access_blocked",entityType:"MessageCampaign",after:{reason:access.reason,limit:access.limit,used:access.used}});return NextResponse.json({error:access.reason,limit:access.limit,used:access.used},{status:403})}
-    if(parsed.data.scheduleType==="SCHEDULED"&&!await subscriptionAccess.canUseScheduledMessages(company.id))return NextResponse.json({error:"subscription.featureUnavailable"},{status:403});
-    if(parsed.data.scheduleType==="RECURRING"&&!await subscriptionAccess.canUseRecurringMessages(company.id))return NextResponse.json({error:"subscription.featureUnavailable"},{status:403});
-    const campaign = await prisma.messageCampaign.create({
-      data: {
-        companyId: company.id, createdById: user.id, title: parsed.data.title, content: parsed.data.content, type: "WHATSAPP_GROUP", status: "QUEUED", scheduleType: parsed.data.scheduleType, scheduledAt: parsed.data.scheduledAt, recurringRule: parsed.data.recurringRule as Prisma.InputJsonValue | undefined, totalRecipients: groups.length,
-        recipients: { create: groups.map((group) => ({ accountId: group.accountId, groupId: group.id, recipientName: group.name, recipientExternalId: group.externalGroupId })) },
-      },
-      include: { recipients: true },
-    });
-    if(parsed.data.scheduleType==="RECURRING"){
-      const queue = campaignQueue();
-      const nextRunAt = nextRecurringRunAt(parsed.data.recurringRule as RecurringRule);
-      try {
-        await queue.add("recurring-run", { companyId: company.id, templateCampaignId: campaign.id }, { jobId: recurringJobId(campaign.id, nextRunAt), delay: Math.max(0, nextRunAt - Date.now()) });
-      } finally {
-        await queue.close().catch(() => undefined);
-      }
-    }else{
-      const queue = messageQueue();
-      try {
-        const baseDelay=parsed.data.scheduleType==="SCHEDULED"&&parsed.data.scheduledAt?Math.max(0,parsed.data.scheduledAt.getTime()-Date.now()):0;
-        for (const [index, recipient] of campaign.recipients.entries()) {
-          await queue.add("send-recipient", { companyId: company.id, campaignId: campaign.id, recipientId: recipient.id }, {
-            jobId:`recipient-${recipient.id}`,
-            delay:baseDelay+index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000),
-            ...(parsed.data.scheduleType === "SCHEDULED" ? SCHEDULED_MESSAGE_JOB_OPTIONS : {}),
-          });
-        }
-      } finally {
-        await queue.close().catch(() => undefined);
-      }
+
+    const { campaign, correlationId } = await createMessageDeliveryCampaign(
+      request,
+      { companyId: company.id, userId: user.id, role: membership.role },
+      { ...parsed.data, source: "web" },
+    );
+
+    return NextResponse.json({ campaign, correlationId }, { status: 201 });
+  } catch (error) {
+    if (isMessageDeliveryError(error)) {
+      return NextResponse.json(
+        { error: error.userMessage, code: error.code, details: error.details ?? null, correlationId: error.correlationId },
+        { status: error.status },
+      );
     }
-    await writeAuditLog(request,{companyId:company.id,userId:user.id,action:"campaign.created",entityType:"MessageCampaign",entityId:campaign.id,after:{scheduleType:campaign.scheduleType,totalRecipients:campaign.totalRecipients}});
-    return NextResponse.json({ campaign }, { status: 201 });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "errors.generic" }, { status: 503 }); }
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+    return NextResponse.json({ error: error instanceof Error ? error.message : "errors.generic" }, { status: 503 });
+  }
 }

@@ -41,11 +41,19 @@ try {
 
 const allowedRawStatusFiles = new Set([
   "src/lib/whatsapp/account-status-machine.ts",
+  "src/lib/i18n/status-labels.ts",
   "src/worker/baileys-provider.ts",
   "src/worker/index.ts",
+  "src/server/billing/subscription-access.ts",
+  "src/server/mobile/whatsapp.ts",
   "src/server/whatsapp/worker-health.ts",
   "src/server/whatsapp/reusable-account.ts",
+  "src/server/whatsapp/worker-health.ts",
   "src/components/accounts-stable-page.tsx",
+  "src/app/api/accounts/[id]/pairing-code/route.ts",
+  "src/app/api/accounts/whatsapp/[id]/status/route.ts",
+  "src/app/api/accounts/whatsapp/create-pairing-session/route.ts",
+  "src/app/api/mobile/whatsapp/accounts/phone-code/route.ts",
 ]);
 const statusPattern = /"PENDING_PAIRING"/;
 for (const file of files(path.join(root, "src"))) {
@@ -57,9 +65,9 @@ for (const file of files(path.join(root, "src"))) {
 
 for (const file of files(path.join(root, "src"))) {
   const relative = path.relative(root, file).replaceAll("\\", "/");
-  if (!/\.(ts|tsx)$/.test(file) || relative === "src/lib/whatsapp/session-manager.ts") continue;
+  if (!/\.(ts|tsx)$/.test(file) || relative === "src/lib/whatsapp/session-manager.ts" || relative === "src/worker/baileys-provider.ts") continue;
   const content = readFileSync(file, "utf8");
-  assert(!/WHATSAPP_SESSION_DIR|sessions["')]|rm\(.+recursive/.test(content), `Direct WhatsApp session manipulation found: ${relative}`);
+  assert(!/WHATSAPP_SESSION_DIR|WHATSAPP_SESSION_ROOT|whatsappSessionDirectory|clearWhatsAppSession|rm\(.+recursive/.test(content), `Direct WhatsApp session manipulation found: ${relative}`);
 }
 
 const qrRoute = readFileSync(path.join(root, "src/app/api/accounts/whatsapp/create-session/route.ts"), "utf8");

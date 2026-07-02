@@ -7,8 +7,8 @@ import { useI18n } from "@/i18n/provider";
 import { getInvoiceStatusLabel, getPaymentStatusLabel, getSubscriptionStatusLabel } from "@/lib/i18n/status-labels";
 
 type Data = {
-  subscription?: { id: string; status: string; billingPeriod: string; startsAt?: string; endsAt?: string; trialEndsAt?: string; currentPeriodEndsAt?: string; cancelAtPeriodEnd: boolean; plan: { name: string; slug: string; description?: string; maxWhatsappAccounts: number; maxTeamUsers: number } };
-  plans: Array<{ id: string; name: string; slug: string; description?: string; monthlyPrice: string; yearlyPrice: string; maxWhatsappAccounts: number; maxTeamUsers: number; isPopular: boolean }>;
+  subscription?: { id: string; status: string; billingPeriod: string; startsAt?: string; endsAt?: string; trialEndsAt?: string; currentPeriodEndsAt?: string; cancelAtPeriodEnd: boolean; plan: { name: string; slug: string; description?: string } };
+  plans: Array<{ id: string; name: string; slug: string; description?: string; monthlyPrice: string; yearlyPrice: string; isPopular: boolean }>;
   payments: Array<{ id: string; status: string; amount: string; currency: string; paidAt?: string; paymentMethod: string }>;
   invoices: Array<{ id: string; status: string; totalAmount: string; currency: string; createdAt: string; pdfUrl?: string }>;
   events: Array<{ id: string; type: string; message: string; createdAt: string }>;
@@ -16,6 +16,7 @@ type Data = {
 
 const panel = "rounded-2xl border bg-card p-6 shadow-[0_18px_60px_rgba(0,0,0,.06)]";
 const button = "rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50";
+const DAY_MS = 86_400_000;
 
 function periodLabel(value: string | undefined, isTr: boolean) {
   const labels: Record<string, string> = isTr
@@ -29,6 +30,19 @@ function paymentMethodLabel(value: string, isTr: boolean) {
     ? { MANUAL_BANK_TRANSFER: "Banka transferi", MANUAL: "Manuel", FREE_PROMO: "Ücretsiz / Promo", OTHER: "Diğer", STRIPE: "Stripe", PAYTR: "PayTR", IYZICO: "Iyzico" }
     : { MANUAL_BANK_TRANSFER: "Bank transfer", MANUAL: "Manual", FREE_PROMO: "Free / Promo", OTHER: "Other", STRIPE: "Stripe", PAYTR: "PayTR", IYZICO: "Iyzico" };
   return labels[value] ?? (isTr ? "Ödeme yöntemi" : "Payment method");
+}
+
+function formatDate(value: string | undefined, locale: string) {
+  return value ? new Date(value).toLocaleDateString(locale) : "-";
+}
+
+function remainingDays(value: string | undefined) {
+  if (!value) return "-";
+  return String(Math.max(0, Math.ceil((new Date(value).getTime() - Date.now()) / DAY_MS)));
+}
+
+function latestDate(...dates: Array<string | undefined>) {
+  return dates.filter((date): date is string => Boolean(date)).sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0];
 }
 
 export function BillingSubscriptionsPage() {
@@ -70,6 +84,7 @@ export function BillingSubscriptionsPage() {
 
   if (!data) return <LoaderCircle className="size-7 animate-spin text-primary" />;
   const sub = data.subscription;
+  const subscriptionEnd = latestDate(sub?.currentPeriodEndsAt, sub?.endsAt, sub?.trialEndsAt);
 
   return (
     <>
@@ -87,7 +102,11 @@ export function BillingSubscriptionsPage() {
             <p className="text-xs text-muted">{isTr ? "Aktif paket" : "Active plan"}</p>
             <h3 className="mt-1 text-2xl font-semibold">{sub?.plan.name || "-"}</h3>
             <p className="mt-2 text-sm text-muted">{sub ? getSubscriptionStatusLabel(sub.status, locale) : "-"} · {periodLabel(sub?.billingPeriod, isTr)}</p>
-            <p className="mt-1 text-xs text-muted">{isTr ? "Bitiş" : "Ends"}: {sub?.currentPeriodEndsAt ? new Date(sub.currentPeriodEndsAt).toLocaleDateString(dateLocale) : "-"}</p>
+            <div className="mt-4 grid gap-3 text-sm text-muted sm:grid-cols-3">
+              <span>{isTr ? "Kalan gün" : "Remaining days"}: {remainingDays(subscriptionEnd)}</span>
+              <span>{isTr ? "Başlangıç" : "Start"}: {formatDate(sub?.startsAt, dateLocale)}</span>
+              <span>{isTr ? "Bitiş" : "End"}: {formatDate(subscriptionEnd, dateLocale)}</span>
+            </div>
           </div>
           <button className={button} onClick={() => void mutate(sub?.cancelAtPeriodEnd ? "reactivate" : "cancel")}>{sub?.cancelAtPeriodEnd ? (isTr ? "Aboneliği yeniden etkinleştir" : "Reactivate subscription") : isTr ? "Dönem sonunda iptal et" : "Cancel at period end"}</button>
         </div>
@@ -102,7 +121,6 @@ export function BillingSubscriptionsPage() {
             <p className="mt-2 text-sm text-muted">{plan.description}</p>
             <p className="mt-4 text-2xl font-bold">{plan.slug === "enterprise" ? (isTr ? "Teklif Alınız" : "Contact sales") : `${Number(plan.monthlyPrice)} TL / ${isTr ? "Ay" : "Month"}`}</p>
             <p className="text-xs text-muted">{Number(plan.yearlyPrice) > 0 ? `${Number(plan.yearlyPrice)} TL / ${isTr ? "Yıl" : "Year"}` : isTr ? "3 Gün" : "3 Days"}</p>
-            <p className="mt-4 text-xs text-muted">{plan.maxWhatsappAccounts > 100000 ? (isTr ? "Sınırsız" : "Unlimited") : plan.maxWhatsappAccounts} {isTr ? "hesap" : "accounts"} · {plan.maxTeamUsers > 100000 ? (isTr ? "Sınırsız" : "Unlimited") : plan.maxTeamUsers} {isTr ? "kullanıcı" : "users"}</p>
             {plan.slug !== "trial" && <button onClick={() => void request(plan.slug, plan.slug === "enterprise" ? "CUSTOM" : "MONTHLY")} className={`${button} mt-5 w-full`}>{plan.slug === "enterprise" ? (isTr ? "Teklif Al" : "Contact sales") : isTr ? "Paketi Seç" : "Select plan"}</button>}
           </article>
         ))}

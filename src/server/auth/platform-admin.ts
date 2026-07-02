@@ -4,6 +4,8 @@ import type { PlatformAdminRole } from "@prisma/client";
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
 import { hasAdminPermission, isCriticalAdminPermission, normalizeAdminPermission } from "@/server/auth/admin-permissions";
+import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
+import { requireMobileAuth, type MobileAuthContext } from "@/server/mobile/auth";
 import { assertAdminCsrf, enforceAdminRateLimit } from "@/server/security/admin-request";
 
 const ADMIN_SESSION_MAX_MS = 8 * 60 * 60_000;
@@ -18,6 +20,32 @@ type PlatformAdminAccessRecord = {
   requiresMfa: boolean;
   lastElevatedAt: Date | null;
 };
+
+type WebAdminAuthContext = Awaited<ReturnType<typeof requireApiSession>> & {
+  authSource: "web";
+  sessionCreatedAt: Date;
+};
+
+type MobileAdminAuthContext = MobileAuthContext & {
+  authSource: "mobile";
+  sessionCreatedAt: Date;
+};
+
+type PlatformAdminAuthContext = WebAdminAuthContext | MobileAdminAuthContext;
+
+function hasBearerToken(request?: Request) {
+  return /^Bearer\s+/i.test(request?.headers.get("authorization") || "");
+}
+
+async function readPlatformAdminAuthContext(request?: Request): Promise<PlatformAdminAuthContext> {
+  if (!request || !hasBearerToken(request)) {
+    const context = await requireApiSession();
+    return { ...context, authSource: "web", sessionCreatedAt: context.session.createdAt };
+  }
+
+  const context = await requireMobileAuth(request);
+  return { ...context, authSource: "mobile", sessionCreatedAt: context.sessionCreatedAt };
+}
 
 async function readPlatformAdminAccessRecord(userId: string): Promise<PlatformAdminAccessRecord | null> {
   const record = await prisma.platformAdmin.findUnique({
@@ -56,7 +84,19 @@ async function readPlatformAdminAccessRecord(userId: string): Promise<PlatformAd
   };
 }
 
-async function writeAdminAccessDeniedEvent(context: Awaited<ReturnType<typeof requireApiSession>>, permission: string, request?: Request) {
+function createOwnerPlatformAdminRecord(userId: string, lastElevatedAt: Date): PlatformAdminAccessRecord {
+  return {
+    id: "logivya-platform-owner",
+    userId,
+    role: "SUPER_ADMIN",
+    isActive: true,
+    permissions: [],
+    requiresMfa: false,
+    lastElevatedAt,
+  };
+}
+
+async function writeAdminAccessDeniedEvent(context: PlatformAdminAuthContext, permission: string, request?: Request) {
   await prisma.securityEvent.create({
     data: {
       userId: context.user.id,
@@ -74,28 +114,31 @@ async function writeAdminAccessDeniedEvent(context: Awaited<ReturnType<typeof re
 }
 
 export async function requirePlatformAdmin(permission = "admin.dashboard.read", request?: Request) {
-  let context: Awaited<ReturnType<typeof requireApiSession>>;
+  let context: PlatformAdminAuthContext;
   try {
-    context = await requireApiSession();
+    context = await readPlatformAdminAuthContext(request);
   } catch (error) {
     if (!request) redirect("/login?next=/admin");
     throw error;
   }
 
-  const record = await readPlatformAdminAccessRecord(context.user.id);
+  const storedRecord = await readPlatformAdminAccessRecord(context.user.id);
+  const record = isAuthorizedLogivyaPlatformAdmin({ email: context.user.email })
+    ? (storedRecord ?? createOwnerPlatformAdminRecord(context.user.id, context.sessionCreatedAt))
+    : storedRecord;
 
-  if (!record?.isActive || !hasAdminPermission(record.role, record.permissions, permission)) {
+  if (!isAuthorizedLogivyaPlatformAdmin({ email: context.user.email }) || !record || !hasAdminPermission(record.role, record.permissions, permission)) {
     await writeAdminAccessDeniedEvent(context, permission, request);
     if (!request) redirect("/dashboard");
     throw new Error("FORBIDDEN");
   }
-  if (context.session.createdAt < new Date(Date.now() - ADMIN_SESSION_MAX_MS)) {
+  if (context.sessionCreatedAt < new Date(Date.now() - ADMIN_SESSION_MAX_MS)) {
     if (!request) redirect("/login?next=/admin");
     throw new Error("UNAUTHORIZED");
   }
 
   if (request) {
-    assertAdminCsrf(request);
+    if (context.authSource === "web") assertAdminCsrf(request);
     await enforceAdminRateLimit(request, context.user.id, normalizeAdminPermission(permission));
     if (isCriticalAdminPermission(permission) && (!record.lastElevatedAt || record.lastElevatedAt < new Date(Date.now() - RECENT_AUTH_MAX_MS))) {
       throw new Error("ADMIN_RECENT_AUTH_REQUIRED");
@@ -113,6 +156,10 @@ export async function requirePlatformAdmin(permission = "admin.dashboard.read", 
   }
 
   return { ...context, platformAdmin: record };
+}
+
+export async function requireSuperAdmin(request?: Request) {
+  return requirePlatformAdmin("platform:read", request);
 }
 
 export async function requireCriticalAdminAction(request:Request,permission:string,reason?:string){

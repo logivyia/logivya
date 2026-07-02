@@ -35,6 +35,13 @@ function remainingDays(endDate?: string, now = Date.now()) {
   return Math.max(0, Math.ceil((timestamp - now) / 86_400_000));
 }
 
+function latestSubscriptionEnd(subscription?: ShellSubscription) {
+  if (!subscription) return undefined;
+  return [subscription.currentPeriodEndsAt, subscription.endsAt, subscription.trialEndsAt]
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0];
+}
+
 function localizedSubscriptionBanner(
   subscription: ShellSubscription | undefined,
   locale: ReturnType<typeof useI18n>["locale"],
@@ -43,12 +50,13 @@ function localizedSubscriptionBanner(
 ) {
   if (!subscription) return { text: t("subscription.noPackage"), isPositive: false };
   const status = subscription.status;
+  const endDate = latestSubscriptionEnd(subscription);
   if (status === "TRIAL" || status === "TRIALING") {
-    const days = remainingDays(subscription.trialEndsAt || subscription.currentPeriodEndsAt || subscription.endsAt, now);
+    const days = remainingDays(endDate, now);
     return { text: t("subscription.trialActive", { days }), isPositive: true };
   }
   if (status === "ACTIVE") {
-    const days = remainingDays(subscription.currentPeriodEndsAt || subscription.endsAt || subscription.trialEndsAt, now);
+    const days = remainingDays(endDate, now);
     return { text: t("subscription.activePlan", { plan: subscription.planName, days }), isPositive: true };
   }
   if (status === "SUSPENDED") return { text: t("subscription.suspended"), isPositive: false };
@@ -69,8 +77,9 @@ export function AppShell({ children, userName, subscription, isPlatformAdmin=fal
   const [currentTime]=useState(()=>Date.now());
   const [settingsOpen,setSettingsOpen]=useState(pathname.startsWith("/settings"));
   useEffect(()=>{void fetch("/api/notifications").then(r=>r.json()).then(value=>{setNoticeItems(value.notifications||[]);setUnread(value.unread||0)})},[]);
-  const trialDays=remainingDays(subscription?.trialEndsAt||subscription?.currentPeriodEndsAt||subscription?.endsAt,currentTime);
-  const periodDays=remainingDays(subscription?.currentPeriodEndsAt||subscription?.endsAt||subscription?.trialEndsAt,currentTime);
+  const subscriptionEndDate=latestSubscriptionEnd(subscription);
+  const trialDays=remainingDays(subscriptionEndDate,currentTime);
+  const periodDays=remainingDays(subscriptionEndDate,currentTime);
   const banner=localizedSubscriptionBanner(subscription,locale,t,currentTime);
   if(pathname.startsWith("/admin"))return <>{children}</>;
 
@@ -86,7 +95,7 @@ export function AppShell({ children, userName, subscription, isPlatformAdmin=fal
       <LanguageSelector />
       <button className="rounded-xl border bg-card p-2" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={t("common.toggleTheme")}>{theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}</button>
       <div className="relative"><button className="relative rounded-xl border bg-card p-2" onClick={() => setNotifications(!notifications)}><Bell className="size-4" />{unread>0&&<span className="absolute end-1 top-1 grid size-4 place-items-center rounded-full bg-primary text-[8px] font-bold text-white">{Math.min(unread,9)}</span>}</button>{notifications && <div className="panel absolute end-0 top-12 max-h-96 w-80 overflow-auto rounded-2xl p-3"><div className="flex items-center justify-between p-2"><b className="text-sm">{t("notifications.title")}</b><button onClick={async()=>{await fetch("/api/notifications",{method:"POST"});setUnread(0);setNoticeItems(items=>items.map(item=>({...item,isRead:true})))}} className="text-xs text-primary">{t("notifications.markAll")}</button></div>{noticeItems.length?noticeItems.map(item=><Notice key={item.id} title={item.title} text={item.message} unread={!item.isRead}/>):<p className="p-4 text-xs text-muted">{t("notifications.empty")}</p>}</div>}</div>
-      <button title={t("auth.logout")} onClick={async()=>{await fetch("/api/auth/logout",{method:"POST"});location.href="/login";}} className="ms-1 inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white"><span>{userName.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase()}</span><LogOut className="size-3.5"/></button>
+      <button title={t("auth.logout")} onClick={async()=>{localStorage.removeItem("logivya.selectedGroupIds");await fetch("/api/auth/logout",{method:"POST"});location.href="/login";}} className="ms-1 inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white"><span>{userName.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase()}</span><LogOut className="size-3.5"/></button>
     </div></header><div className={cn("border-b px-4 py-2 text-center text-xs font-medium md:px-8",banner.isPositive?"bg-success-soft text-success-foreground":"bg-danger-soft text-danger-foreground")}>{banner.text}</div><main className="mx-auto max-w-[1600px] p-4 md:p-8">{children}</main></div>
   </div>;
 }

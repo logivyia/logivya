@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   const input = parsed.data;
   const fullName = input.name.trim();
-  const normalizedEmail = input.email.toLowerCase();
+  const normalizedEmail = input.email.trim().toLowerCase();
   const normalizedPhone = input.phone.replace(/\D/g, "");
   const defaultCompanyName = fullName ? `${fullName} Şirketi` : "Yeni Şirket";
   const ipAddress = clientIp(request);

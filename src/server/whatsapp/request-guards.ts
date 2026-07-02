@@ -8,6 +8,34 @@ function client() {
   return redis;
 }
 
+async function readyClient() {
+  const redisClient = client();
+  if (redisClient.status === "ready") return redisClient;
+  if (redisClient.status === "end") throw new Error("WHATSAPP_RATE_LIMIT_UNAVAILABLE");
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error("WHATSAPP_RATE_LIMIT_UNAVAILABLE"));
+    }, 3_000);
+    const cleanup = () => {
+      clearTimeout(timeout);
+      redisClient.off("ready", onReady);
+      redisClient.off("error", onError);
+    };
+    const onReady = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error: unknown) => {
+      cleanup();
+      reject(error);
+    };
+    redisClient.once("ready", onReady);
+    redisClient.once("error", onError);
+  });
+  return redisClient;
+}
+
 export function assertSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
   if (!origin) return;
@@ -16,8 +44,9 @@ export function assertSameOrigin(request: Request) {
 
 export async function enforceWhatsAppRateLimit(scope: string, subject: string, max = 5, windowSeconds = 600) {
   const key = `logivya:whatsapp-limit:${scope}:${createHash("sha256").update(subject).digest("hex")}`;
-  const count = await client().incr(key);
-  if (count === 1) await client().expire(key, windowSeconds);
+  const redisClient = await readyClient();
+  const count = await redisClient.incr(key);
+  if (count === 1) await redisClient.expire(key, windowSeconds);
   if (count > max) throw new Error("WHATSAPP_RATE_LIMITED");
 }
 

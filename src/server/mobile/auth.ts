@@ -21,6 +21,7 @@ export type MobileAuthContext = {
   company: Company;
   membership: CompanyUser;
   sessionId: string;
+  sessionCreatedAt: Date;
   deviceId: string;
   platform: MobilePlatform;
 };
@@ -55,6 +56,7 @@ function safeEqual(a: string, b: string) {
 
 export function createAccessToken(input: { userId: string; companyId: string; sessionId: string; role: string }) {
   const now = Math.floor(Date.now() / 1000);
+  const accessTokenExpiresAt = new Date((now + ACCESS_TOKEN_SECONDS) * 1000).toISOString();
   const payload: AccessPayload = {
     typ: "mobile_access",
     sub: input.userId,
@@ -65,7 +67,7 @@ export function createAccessToken(input: { userId: string; companyId: string; se
     exp: now + ACCESS_TOKEN_SECONDS,
   };
   const body = `${encodeJson({ alg: "HS256", typ: "JWT" })}.${encodeJson(payload)}`;
-  return { accessToken: `${body}.${sign(body)}`, expiresIn: ACCESS_TOKEN_SECONDS };
+  return { accessToken: `${body}.${sign(body)}`, accessTokenExpiresAt, expiresIn: ACCESS_TOKEN_SECONDS };
 }
 
 export function verifyAccessToken(token: string): AccessPayload {
@@ -111,7 +113,13 @@ export async function createMobileSession(input: {
     },
   });
   const access = createAccessToken({ userId: input.userId, companyId: input.companyId, sessionId: session.id, role: input.role });
-  return { ...access, refreshToken: refresh.token, refreshExpiresAt: refresh.expiresAt, tokenType: "Bearer" as const };
+  return {
+    ...access,
+    refreshToken: refresh.token,
+    refreshTokenExpiresAt: refresh.expiresAt.toISOString(),
+    refreshExpiresAt: refresh.expiresAt,
+    tokenType: "Bearer" as const,
+  };
 }
 
 export async function rotateRefreshToken(refreshToken: string, request: Request) {
@@ -144,7 +152,13 @@ export async function rotateRefreshToken(refreshToken: string, request: Request)
     data: { refreshTokenHash: refresh.tokenHash, expiresAt: refresh.expiresAt, lastUsedAt: new Date() },
   });
   const access = createAccessToken({ userId: existing.userId, companyId: existing.companyId, sessionId: session.id, role: membership.role });
-  return { ...access, refreshToken: refresh.token, refreshExpiresAt: refresh.expiresAt, tokenType: "Bearer" as const };
+  return {
+    ...access,
+    refreshToken: refresh.token,
+    refreshTokenExpiresAt: refresh.expiresAt.toISOString(),
+    refreshExpiresAt: refresh.expiresAt,
+    tokenType: "Bearer" as const,
+  };
 }
 
 export async function revokeRefreshToken(refreshToken: string) {
@@ -170,5 +184,5 @@ export async function requireMobileAuth(request: Request): Promise<MobileAuthCon
   });
   if (!membership || membership.status !== "ACTIVE") throw new Error("UNAUTHORIZED");
   await prisma.mobileDeviceSession.update({ where: { id: session.id }, data: { lastUsedAt: new Date(), userAgent: request.headers.get("user-agent") } });
-  return { user: session.user, company: session.company, membership, sessionId: session.id, deviceId: session.deviceId, platform: session.platform };
+  return { user: session.user, company: session.company, membership, sessionId: session.id, sessionCreatedAt: session.createdAt, deviceId: session.deviceId, platform: session.platform };
 }

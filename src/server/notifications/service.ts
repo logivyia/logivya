@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { LOGIVYA_PLATFORM_OWNER_EMAIL } from "@/server/auth/platform-owner";
 import { prisma } from "@/server/db";
 
 export const NOTIFICATION_TYPES = {
@@ -142,11 +143,11 @@ export async function notifyCompanyUsers(input: Omit<CreateNotificationInput, "u
 }
 
 export async function notifyPlatformAdmins(input: Omit<CreateNotificationInput, "userId">) {
-  const admins = await prisma.platformAdmin.findMany({
-    where: { isActive: true },
-    select: { userId: true }
+  const owner = await prisma.user.findUnique({
+    where: { email: LOGIVYA_PLATFORM_OWNER_EMAIL },
+    select: { id: true }
   });
-  return createNotificationsForUsers({ ...input, userIds: admins.map((admin) => admin.userId) });
+  return createNotificationsForUsers({ ...input, userIds: owner ? [owner.id] : [] });
 }
 
 async function sendPushToUser(input: {

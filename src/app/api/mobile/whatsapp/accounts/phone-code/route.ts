@@ -27,16 +27,23 @@ export async function POST(request: Request) {
     const phoneNumber = normalizeWhatsAppPhoneNumber(parsed.data.phoneNumber);
     enforceMobileRateLimit(`mobile-wa-phone:${company.id}:${phoneNumber}`, 8, 60 * 60_000);
     await cleanupStuckWhatsAppAccounts(company.id);
+    const connected = await prisma.whatsAppAccount.findFirst({
+      where: { companyId: company.id, userId: user.id, archivedAt: null, status: "CONNECTED" },
+      include: { _count: { select: { groups: true, contacts: true } } },
+    });
+    if (connected) {
+      return mobileSuccess({ account: serializeMobileAccount(connected) });
+    }
     await assertWhatsAppWorkerReachable();
-    let account = await findReusableWhatsAppAccount(company.id);
+    let account = await findReusableWhatsAppAccount(company.id, user.id);
     if (!account) {
       const access = await subscriptionAccess.canConnectWhatsAppAccount(company.id);
-      if (!access.allowed) account = await findSingleSlotWhatsAppAccount(company.id, access.limit);
-      if (!account && !access.allowed) return mobileError("SUBSCRIPTION_LOCKED", "WhatsApp hesap limitinize ulaştınız.", { status: 403, details: { reason: access.reason, limit: access.limit } });
+      if (!access.allowed) account = await findSingleSlotWhatsAppAccount(company.id, user.id, access.limit);
+      if (!account && !access.allowed) return mobileError("SUBSCRIPTION_LOCKED", "Aboneliğiniz aktif değil. WhatsApp hesabı bağlamak için aboneliğinizi yenileyin.", { status: 403, details: { reason: access.reason, limit: access.limit } });
     }
     account = account
       ? await resetAccountForConnection(account.id, AccountStatus.PENDING_PAIRING, { phoneNumber })
-      : await prisma.whatsAppAccount.create({ data: { companyId: company.id, phoneNumber, provider: process.env.WHATSAPP_PROVIDER || "baileys", status: AccountStatus.PENDING_PAIRING } });
+      : await prisma.whatsAppAccount.create({ data: { companyId: company.id, userId: user.id, phoneNumber, provider: process.env.WHATSAPP_PROVIDER || "baileys", status: AccountStatus.PENDING_PAIRING } });
     accountId = account.id;
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "mobile.whatsapp.pairing.requested", entityType: "WhatsAppAccount", entityId: accountId, after: { phoneNumber } });
     await enqueueWhatsAppJob("pairing", { action: "pairing", accountId, phoneNumber }, { jobId: `mobile-pairing-${accountId}-${Date.now()}` });

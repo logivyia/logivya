@@ -5,10 +5,10 @@ import { serializeMobileAccount } from "@/server/mobile/whatsapp";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { company } = await requireMobileAuth(request);
+    const { company, user } = await requireMobileAuth(request);
     const { id } = await params;
     const account = await prisma.whatsAppAccount.findFirst({
-      where: { id, companyId: company.id },
+      where: { id, companyId: company.id, userId: user.id },
       include: { _count: { select: { groups: true, contacts: true } } },
     });
     if (!account) return mobileError("NOT_FOUND", "WhatsApp hesabı bulunamadı.", { status: 404 });

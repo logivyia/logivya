@@ -9,6 +9,8 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    ".local-android/**",
+    ".tools/**",
     "apps/mobile/**",
     "out/**",
     "build/**",

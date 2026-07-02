@@ -1,35 +1,55 @@
+import type { Plan, Subscription } from "@prisma/client";
 import { prisma } from "@/server/db";
 
 export const INACTIVE_SUBSCRIPTION_MESSAGE =
   "Aboneliginiz aktif degil. Mesaj gondermek veya yeni WhatsApp hesabi baglamak icin paketinizi yenileyin.";
 
-const BILLABLE_WHATSAPP_ACCOUNT_STATUSES = [
-  "CONNECTED",
-  "PENDING_QR",
-  "PENDING_PAIRING",
-  "QR_READY",
-  "PAIRING_CODE_READY",
-  "CONNECTING",
-  "DISCONNECTED",
-  "RECONNECT_REQUIRED",
-] as const;
+const ACTIVE_SUBSCRIPTION_STATUSES = ["ACTIVE", "TRIALING"] as const;
+
+type SubscriptionWithPlan = Subscription & { plan: Plan };
+
+function newestDate(...dates: Array<Date | null | undefined>) {
+  return dates.filter((date): date is Date => Boolean(date)).sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
+}
+
+function oldestDate(...dates: Array<Date | null | undefined>) {
+  return dates.filter((date): date is Date => Boolean(date)).sort((left, right) => left.getTime() - right.getTime())[0] ?? null;
+}
+
+function subscriptionEndDate(subscription: SubscriptionWithPlan) {
+  return newestDate(subscription.currentPeriodEndsAt, subscription.endsAt, subscription.trialEndsAt);
+}
+
+function subscriptionStartDate(subscription: SubscriptionWithPlan) {
+  return oldestDate(subscription.currentPeriodStartsAt, subscription.startsAt, subscription.trialStartsAt);
+}
+
+function isSubscriptionValid(subscription: SubscriptionWithPlan, now = new Date()) {
+  if (!(ACTIVE_SUBSCRIPTION_STATUSES as readonly string[]).includes(subscription.status)) return false;
+  const startsAt = subscriptionStartDate(subscription);
+  if (startsAt && startsAt > now) return false;
+  const endsAt = subscriptionEndDate(subscription);
+  return !endsAt || endsAt > now;
+}
 
 export class SubscriptionAccessService {
   async getCurrent(companyId: string) {
-    const subscription = await prisma.subscription.findFirst({
+    const subscriptions = await prisma.subscription.findMany({
       where: { companyId },
       include: { plan: true },
       orderBy: { createdAt: "desc" },
+      take: 20,
     });
-    if (!subscription) return null;
+    if (!subscriptions.length) return null;
 
     const now = new Date();
-    const valid =
-      ["ACTIVE", "TRIALING"].includes(subscription.status) &&
-      (!subscription.currentPeriodEndsAt || subscription.currentPeriodEndsAt > now) &&
-      (!subscription.trialEndsAt || subscription.trialEndsAt > now);
+    const ranked = subscriptions.map((subscription) => ({
+      subscription,
+      plan: subscription.plan,
+      valid: isSubscriptionValid(subscription, now),
+    }));
 
-    return { subscription, plan: subscription.plan, valid };
+    return ranked.find((item) => item.valid) ?? ranked[0];
   }
 
   async requireActive(companyId: string) {
@@ -41,64 +61,24 @@ export class SubscriptionAccessService {
   async canConnectWhatsAppAccount(companyId: string) {
     const current = await this.getCurrent(companyId);
     if (!current?.valid) return { allowed: false, reason: "subscription.inactive", limit: 0 };
-
-    const count = await prisma.whatsAppAccount.count({
-      where: {
-        companyId,
-        archivedAt: null,
-        status: { in: [...BILLABLE_WHATSAPP_ACCOUNT_STATUSES] },
-      },
-    });
-
-    return {
-      allowed: count < current.plan.maxWhatsappAccounts,
-      reason: count >= current.plan.maxWhatsappAccounts ? "accounts.planLimit" : undefined,
-      limit: current.plan.maxWhatsappAccounts,
-      used: count,
-    };
+    return { allowed: true, reason: undefined, limit: undefined, used: 0 };
   }
 
   async canSendMessage(companyId: string, requestedRecipients = 0) {
     const current = await this.getCurrent(companyId);
-    if (!current?.valid) return { allowed: false, reason: "subscription.inactive" };
+    if (!current?.valid) return { allowed: false, reason: "subscription.inactive", limit: undefined, used: 0 };
 
-    const now = new Date();
-    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const [daily, monthly] = await Promise.all([
-      prisma.messageRecipient.count({ where: { campaign: { companyId }, createdAt: { gte: dayStart } } }),
-      prisma.messageRecipient.count({ where: { campaign: { companyId }, createdAt: { gte: monthStart } } }),
-    ]);
-
-    if (daily + requestedRecipients > current.plan.maxMessagesPerDay) {
-      return {
-        allowed: false,
-        reason: "subscription.dailyMessageLimit",
-        limit: current.plan.maxMessagesPerDay,
-        used: daily,
-      };
-    }
-
-    if (monthly + requestedRecipients > current.plan.maxMessagesPerMonth) {
-      return {
-        allowed: false,
-        reason: "subscription.monthlyMessageLimit",
-        limit: current.plan.maxMessagesPerMonth,
-        used: monthly,
-      };
-    }
-
-    return { allowed: true, limit: current.plan.maxMessagesPerMonth, used: monthly };
+    return { allowed: true, limit: undefined, used: requestedRecipients };
   }
 
   async canUseScheduledMessages(companyId: string) {
     const current = await this.getCurrent(companyId);
-    return Boolean(current?.valid && current.plan.hasScheduledMessages);
+    return Boolean(current?.valid);
   }
 
   async canUseRecurringMessages(companyId: string) {
     const current = await this.getCurrent(companyId);
-    return Boolean(current?.valid && current.plan.hasRecurringMessages);
+    return Boolean(current?.valid);
   }
 
   async canInviteUser(companyId: string) {

@@ -12,6 +12,22 @@ export const MODERN_ACCOUNT_STATUSES = [
   AccountStatus.ARCHIVED,
 ] as const;
 
+export const RECOVERABLE_ACCOUNT_STATUSES = [
+  AccountStatus.CONNECTED,
+  AccountStatus.CONNECTING,
+  AccountStatus.DISCONNECTED,
+  AccountStatus.RECONNECT_REQUIRED,
+] as const;
+
+export function isRecoverableWhatsAppStatus(status: AccountStatus, lastError?: string | null) {
+  if (lastError === "WHATSAPP_LOGGED_OUT" || lastError === "WHATSAPP_CREDENTIALS_MISSING") return false;
+  return (RECOVERABLE_ACCOUNT_STATUSES as readonly AccountStatus[]).includes(status);
+}
+
+export function requiresFreshWhatsAppPairing(status: AccountStatus, lastError?: string | null) {
+  return lastError === "WHATSAPP_LOGGED_OUT" || lastError === "WHATSAPP_CREDENTIALS_MISSING" || ([AccountStatus.FAILED, AccountStatus.ERROR] as readonly AccountStatus[]).includes(status);
+}
+
 const transitions: Record<AccountStatus, readonly AccountStatus[]> = {
   CREATED: [AccountStatus.PENDING_QR, AccountStatus.PENDING_PAIRING, AccountStatus.ARCHIVED],
   NEW: [AccountStatus.CREATED, AccountStatus.PENDING_QR, AccountStatus.PENDING_PAIRING, AccountStatus.ARCHIVED],
@@ -20,12 +36,12 @@ const transitions: Record<AccountStatus, readonly AccountStatus[]> = {
   QR_READY: [AccountStatus.CREATED, AccountStatus.CONNECTING, AccountStatus.FAILED, AccountStatus.ARCHIVED],
   PAIRING_CODE_READY: [AccountStatus.CREATED, AccountStatus.CONNECTING, AccountStatus.FAILED, AccountStatus.RECONNECT_REQUIRED, AccountStatus.ARCHIVED],
   CONNECTING: [AccountStatus.CREATED, AccountStatus.CONNECTED, AccountStatus.FAILED, AccountStatus.RECONNECT_REQUIRED, AccountStatus.ARCHIVED],
-  CONNECTED: [AccountStatus.DISCONNECTED, AccountStatus.RECONNECT_REQUIRED, AccountStatus.ARCHIVED],
-  RECONNECT_REQUIRED: [AccountStatus.CREATED, AccountStatus.ARCHIVED],
-  FAILED: [AccountStatus.CREATED, AccountStatus.ARCHIVED],
-  DISCONNECTED: [AccountStatus.CREATED, AccountStatus.ARCHIVED],
+  CONNECTED: [AccountStatus.CONNECTING, AccountStatus.DISCONNECTED, AccountStatus.RECONNECT_REQUIRED, AccountStatus.FAILED, AccountStatus.ARCHIVED],
+  RECONNECT_REQUIRED: [AccountStatus.CREATED, AccountStatus.CONNECTING, AccountStatus.CONNECTED, AccountStatus.DISCONNECTED, AccountStatus.FAILED, AccountStatus.ARCHIVED],
+  FAILED: [AccountStatus.CREATED, AccountStatus.CONNECTING, AccountStatus.CONNECTED, AccountStatus.ARCHIVED],
+  DISCONNECTED: [AccountStatus.CREATED, AccountStatus.CONNECTING, AccountStatus.CONNECTED, AccountStatus.RECONNECT_REQUIRED, AccountStatus.FAILED, AccountStatus.ARCHIVED],
   ARCHIVED: [AccountStatus.DISCONNECTED],
-  ERROR: [AccountStatus.CREATED, AccountStatus.FAILED, AccountStatus.ARCHIVED],
+  ERROR: [AccountStatus.CREATED, AccountStatus.CONNECTING, AccountStatus.CONNECTED, AccountStatus.FAILED, AccountStatus.ARCHIVED],
 };
 
 export function assertValidTransition(from: AccountStatus, to: AccountStatus) {
@@ -54,7 +70,7 @@ export async function cleanupStaleAccountStates(companyId?: string) {
   return prisma.whatsAppAccount.updateMany({
     where: {
       ...(companyId ? { companyId } : {}), archivedAt: null,
-      status: { in: [AccountStatus.PENDING_QR, AccountStatus.PENDING_PAIRING, AccountStatus.QR_READY, AccountStatus.PAIRING_CODE_READY, AccountStatus.CONNECTING] },
+      status: { in: [AccountStatus.PENDING_QR, AccountStatus.PENDING_PAIRING, AccountStatus.QR_READY, AccountStatus.PAIRING_CODE_READY] },
       updatedAt: { lt: new Date(Date.now() - 10 * 60_000) },
     },
     data: {

@@ -10,7 +10,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { company, membership, user } = await requireApiSession();
     requirePermission(membership.role, "archive_accounts");
     const { id } = await params;
-    const account = await prisma.whatsAppAccount.findFirst({ where: { id, companyId: company.id }, include: { _count: { select: { recipients: true } } } });
+    const account = await prisma.whatsAppAccount.findFirst({ where: { id, companyId: company.id, userId: user.id }, include: { _count: { select: { recipients: true } } } });
     if (!account) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
     if (account._count.recipients) await prisma.whatsAppAccount.update({ where: { id }, data: { status: "ARCHIVED", archivedAt: new Date(), qrCode: null, qrExpiresAt: null } });
     else await prisma.whatsAppAccount.delete({ where: { id } });

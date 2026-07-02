@@ -12,19 +12,24 @@ function operationForAccount(status: string, phoneNumber: string | null) {
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { company } = await requireApiSession();
+    const { company, user } = await requireApiSession();
     const { id } = await params;
     const account = await prisma.whatsAppAccount.findFirst({
-      where: { id, companyId: company.id },
+      where: { id, companyId: company.id, userId: user.id },
       include: { _count: { select: { groups: true, contacts: true } } },
     });
     if (!account) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
+    const qrSession = account.qrCode && account.qrExpiresAt && account.qrExpiresAt > new Date()
+      ? null
+      : await prisma.whatsAppSession.findUnique({ where: { accountId: account.id } });
+    const sessionQrCode = qrSession?.qrCode && qrSession.expiresAt && qrSession.expiresAt > new Date() ? qrSession.qrCode : null;
+    const sessionQrExpiresAt = sessionQrCode ? qrSession?.expiresAt : null;
     return NextResponse.json({
       ok: true,
       accountId: account.id,
-      status: account.status,
-      qrCode: account.qrCode,
-      qrExpiresAt: account.qrExpiresAt,
+      status: sessionQrCode ? "QR_READY" : account.status,
+      qrCode: account.qrCode ?? sessionQrCode,
+      qrExpiresAt: account.qrExpiresAt ?? sessionQrExpiresAt,
       pairingCode: account.pairingCode,
       pairingCodeExpiresAt: account.pairingCodeExpiresAt,
       phoneNumber: account.phoneNumber,

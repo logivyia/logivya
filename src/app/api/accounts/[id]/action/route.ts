@@ -8,6 +8,7 @@ import { writeAuditLog } from "@/server/security/audit";
 import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
 import { AccountStatus } from "@prisma/client";
 import { assertSameOrigin, enforceWhatsAppRateLimit } from "@/server/whatsapp/request-guards";
+import { hasWhatsAppCredentials } from "@/lib/whatsapp/session-manager";
 import { transitionAccountStatus } from "@/lib/whatsapp/account-status-machine";
 
 const schema = z.object({ action: z.enum(["sync", "disconnect", "reconnect", "archive", "restore"]) });
@@ -18,7 +19,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { id } = await params;
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
-    const account = await prisma.whatsAppAccount.findFirst({ where: { id, companyId: company.id } });
+    const account = await prisma.whatsAppAccount.findFirst({ where: { id, companyId: company.id, userId: user.id } });
     if (!account) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
     const permission = ["archive", "restore"].includes(parsed.data.action) ? "archive_accounts" : parsed.data.action === "disconnect" ? "disconnect_accounts" : "manage_accounts";
     requirePermission(membership.role, permission);
@@ -31,7 +32,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     } else {
       if (parsed.data.action === "reconnect") {
         await enforceWhatsAppRateLimit("reconnect-account", id);
-        await transitionAccountStatus(id, AccountStatus.CREATED, { qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null });
+        if (await hasWhatsAppCredentials(id)) {
+          await prisma.whatsAppAccount.update({
+            where: { id },
+            data: { status: AccountStatus.CONNECTING, qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null },
+          });
+        } else {
+          await transitionAccountStatus(id, AccountStatus.CREATED, { qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null });
+        }
       }
       await enqueueWhatsAppJob(parsed.data.action, { action: parsed.data.action, accountId: id }, { jobId: `${parsed.data.action}-${id}-${Date.now()}` });
     }

@@ -4,11 +4,11 @@ import { requireSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
 
 export default async function Page() {
-  const { company } = await requireSession();
+  const { company, user } = await requireSession();
   const locale = await getServerLocale();
   const isTr = locale === "tr";
   const accounts = await prisma.whatsAppAccount.findMany({
-    where: { companyId: company.id, archivedAt: null },
+    where: { companyId: company.id, userId: user.id, archivedAt: null },
     include: { _count: { select: { groups: true, recipients: true } } },
     orderBy: { createdAt: "desc" },
   });

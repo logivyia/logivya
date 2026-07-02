@@ -17,7 +17,16 @@ export function whatsappUserMessage(error: unknown, operation: "qr" | "pairing" 
   const message = error instanceof Error ? error.message : String(error);
 
   if (message === "WHATSAPP_RECONNECT_REQUIRED") {
-    return "WhatsApp baglantisini QR kod veya telefon koduyla yeniden kurun.";
+    return "WhatsApp baglantisi toparlaniyor. Mesaj kuyruga alindiysa otomatik gonderilecek; sorun surerse baglanti durumunu yenileyin.";
+  }
+  if (message === "WHATSAPP_CREDENTIALS_MISSING" || message === "AUTH_REQUIRED") {
+    return "WhatsApp hesabinizi yeniden baglamaniz gerekiyor.";
+  }
+  if (message === "WHATSAPP_LOGGED_OUT" || message === "LOGGED_OUT") {
+    return "WhatsApp oturumu kapatildi. Lutfen hesabi yeniden baglayin.";
+  }
+  if (message === "WHATSAPP_TRANSIENT_DISCONNECT" || message === "WHATSAPP_CONNECTION_FAILED" || message === "WHATSAPP_QR_FAILED" || message === "MOBILE_QR_FAILED") {
+    return "WhatsApp baglantisi gecici olarak kesildi. Lutfen yeniden baglanmayi deneyin.";
   }
   if (message === "INVALID_WHATSAPP_PHONE") {
     return "Gecerli bir telefon numarasi girin. Turkiye icin 0552... veya +90552... kullanabilirsiniz.";
@@ -29,7 +38,7 @@ export function whatsappUserMessage(error: unknown, operation: "qr" | "pairing" 
     return "WhatsApp baglanti korumasi su anda hazir degil. Lutfen kisa sure sonra tekrar deneyin.";
   }
   if (message === "accounts.planLimit") {
-    return "WhatsApp hesap limitinize ulastiniz. Eski basarisiz denemeyi temizleyip tekrar deneyin veya paketinizi yukseltin.";
+    return "WhatsApp baglantisi baslatilamadi. Eski basarisiz denemeyi temizleyip tekrar deneyin.";
   }
   if (message === "subscription.inactive") {
     return "Aboneliginiz aktif degil. WhatsApp hesabi baglamak icin paketinizi yenileyin.";

@@ -26,7 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     logger.info("whatsapp.pairing.requested", { companyId: company.id, userId: user.id, accountId: id, phoneNumber: `${phoneNumber.slice(0, 3)}****${phoneNumber.slice(-2)}` });
     await enforceWhatsAppRateLimit("pairing-phone", phoneNumber);
     await assertWhatsAppWorkerReachable();
-    const account = await prisma.whatsAppAccount.findFirst({ where: { id, companyId: company.id, archivedAt: null } });
+    const account = await prisma.whatsAppAccount.findFirst({ where: { id, companyId: company.id, userId: user.id, archivedAt: null } });
     if (!account) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
     if (account.status === "CONNECTED") {
       return NextResponse.json({ ok: true, alreadyConnected: true, accountId: account.id, status: account.status, message: "WhatsApp hesabınız zaten bağlı." });

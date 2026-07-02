@@ -14,6 +14,23 @@ type Campaign = {
   sentCount: number;
   failedCount: number;
   createdAt: string;
+  deleteForEveryone?: DeleteForEveryoneState;
+};
+
+type DeleteForEveryoneState = {
+  status: string;
+  eligible: boolean;
+  expiresAt: string | null;
+  progress: {
+    sentTargets: number;
+    keyedTargets: number;
+    eligibleTargets: number;
+    deleted: number;
+    failed: number;
+    pending: number;
+    processing: number;
+    expired: number;
+  };
 };
 
 const ghost =
@@ -30,6 +47,34 @@ async function post(url: string, body: unknown = {}) {
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || result.message || "errors.generic");
   return result;
+}
+
+function canDeleteForEveryone(state?: DeleteForEveryoneState) {
+  if (!state) return false;
+  if (["DELETE_PENDING", "DELETE_PROCESSING", "DELETED_FOR_EVERYONE"].includes(state.status)) return false;
+  return state.eligible && state.progress.eligibleTargets > 0;
+}
+
+function deleteForEveryoneTitle(state: DeleteForEveryoneState | undefined, t: (key: string, params?: Record<string, string | number>) => string) {
+  if (!state) return t("history.deleteEveryoneUnavailable");
+  if (state.status === "DELETE_PENDING" || state.status === "DELETE_PROCESSING") return t("history.deleteEveryoneInProgress");
+  if (state.status === "DELETED_FOR_EVERYONE") return t("history.deletedForEveryone");
+  if (!state.eligible) return t("history.deleteEveryoneExpired");
+  return t("history.deleteEveryone");
+}
+
+function deleteForEveryoneSummary(state: DeleteForEveryoneState, t: (key: string, params?: Record<string, string | number>) => string) {
+  const progress = state.progress;
+  if (state.status === "NOT_REQUESTED" && !progress.deleted && !progress.failed && !progress.expired) {
+    return state.eligible ? t("history.deleteEveryoneAvailable") : t("history.deleteEveryoneExpired");
+  }
+  return t("history.deleteEveryoneProgress", {
+    deleted: progress.deleted,
+    pending: progress.pending + progress.processing,
+    failed: progress.failed,
+    expired: progress.expired,
+    total: progress.keyedTargets || progress.sentTargets,
+  });
 }
 
 export function MessageHistoryStablePage() {
@@ -53,8 +98,14 @@ export function MessageHistoryStablePage() {
     void load();
   }, [load]);
 
-  async function mutate(id: string, action: "archive" | "delete") {
-    if (!confirm(action === "archive" ? t("history.archiveConfirm") : t("history.deleteConfirm"))) return;
+  async function mutate(id: string, action: "archive" | "delete-for-me" | "platform-delete") {
+    const confirmKey =
+      action === "archive"
+        ? "history.archiveConfirm"
+        : action === "delete-for-me"
+          ? "history.deleteForMeConfirm"
+          : "history.platformDeleteConfirm";
+    if (!confirm(t(confirmKey))) return;
     await post(`/api/messages/campaigns/${id}/${action}`);
     void load();
   }
@@ -74,15 +125,15 @@ export function MessageHistoryStablePage() {
 
   async function deleteEveryone(id: string) {
     if (!confirm(t("history.deleteEveryoneConfirm"))) return;
-    const response = await fetch(`/api/messages/campaigns/${id}/delete-everyone`, { method: "POST" });
-    const result = await response.json();
-    setStatus(
-      result.message ||
-        t("history.deleteEveryoneResult", {
-          deleted: result.deleted || 0,
-          failed: result.failed || 0,
-        }),
-    );
+    try {
+      const result = await post(`/api/messages/campaigns/${id}/delete-everyone`);
+      setStatus(result.message || t("history.deleteEveryoneStarted"));
+      void load();
+    } catch (error) {
+      const key = error instanceof Error ? error.message : "errors.generic";
+      setStatus(t(key));
+      void load();
+    }
   }
 
   const allSelected = campaigns.length > 0 && selected.length === campaigns.length;
@@ -181,20 +232,29 @@ export function MessageHistoryStablePage() {
                                 {t("history.archive")}
                               </button>
                               <button
-                                disabled
-                                title={t("history.deleteEveryoneUnavailable")}
+                                disabled={!canDeleteForEveryone(campaign.deleteForEveryone)}
+                                title={deleteForEveryoneTitle(campaign.deleteForEveryone, t)}
                                 onClick={() => void deleteEveryone(campaign.id)}
                                 className={ghost}
                               >
                                 {t("history.deleteEveryone")}
                               </button>
-                              <button onClick={() => void mutate(campaign.id, "delete")} className={danger}>
+                              <button onClick={() => void mutate(campaign.id, "delete-for-me")} className={ghost}>
                                 <Trash2 className="size-4" />
-                                {t("history.delete")}
+                                {t("history.deleteForMe")}
+                              </button>
+                              <button onClick={() => void mutate(campaign.id, "platform-delete")} className={danger}>
+                                <Trash2 className="size-4" />
+                                {t("history.platformDelete")}
                               </button>
                             </>
                           )}
                         </div>
+                        {campaign.deleteForEveryone && (
+                          <p className="mt-2 text-xs text-muted">
+                            {deleteForEveryoneSummary(campaign.deleteForEveryone, t)}
+                          </p>
+                        )}
                       </td>
                     </tr>
                   ))}

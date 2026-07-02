@@ -11,7 +11,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     requirePermission(membership.role, "disconnect_accounts");
     const { id } = await params;
     const account = await prisma.whatsAppAccount.findFirst({
-      where: { id, companyId: company.id },
+      where: { id, companyId: company.id, userId: user.id },
       select: { id: true, label: true, phoneNumber: true }
     });
     if (!account) return mobileError("NOT_FOUND", "WhatsApp hesabı bulunamadı.", { status: 404 });

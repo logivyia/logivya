@@ -4,9 +4,9 @@ import { verifyEmailProviderConnection } from "@/lib/email/send-email";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { logger } from "@/server/observability/logger";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    await requirePlatformAdmin("platform:read");
+    await requirePlatformAdmin("platform:read", request);
     const status = getEmailProviderStatus();
     const connection = await verifyEmailProviderConnection();
 

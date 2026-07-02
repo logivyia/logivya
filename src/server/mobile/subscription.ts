@@ -7,16 +7,17 @@ export function remainingDaysUntil(date?: Date | null) {
   return Math.max(0, Math.ceil((date.getTime() - Date.now()) / DAY_MS));
 }
 
+function latestDate(...dates: Array<Date | null | undefined>) {
+  return dates.filter((date): date is Date => Boolean(date)).sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
+}
+
 export function serializePlanLimits(plan?: Plan | null) {
   if (!plan) return null;
   return {
     maxWhatsappAccounts: plan.maxWhatsappAccounts,
     maxTeamUsers: plan.maxTeamUsers,
-    maxGroups: plan.maxGroups,
-    maxMessagesPerDay: plan.maxMessagesPerDay,
-    maxMessagesPerMonth: plan.maxMessagesPerMonth,
-    hasScheduledMessages: plan.hasScheduledMessages,
-    hasRecurringMessages: plan.hasRecurringMessages,
+    hasScheduledMessages: true,
+    hasRecurringMessages: true,
     advancedReportingEnabled: plan.advancedReportingEnabled,
     hasNoBranding: plan.hasNoBranding,
     hasCrm: plan.hasCrm,
@@ -40,7 +41,7 @@ export function serializeSubscription(subscription?: (Subscription & { plan: Pla
       upgradeRequired: true,
     };
   }
-  const end = subscription.currentPeriodEndsAt ?? subscription.endsAt ?? subscription.trialEndsAt;
+  const end = latestDate(subscription.currentPeriodEndsAt, subscription.endsAt, subscription.trialEndsAt);
   const remainingDays = remainingDaysUntil(end) ?? 0;
   const isTrial = subscription.status === "TRIALING";
   const isExpired = remainingDays <= 0 || ["EXPIRED", "CANCELED", "SUSPENDED", "PAST_DUE"].includes(subscription.status);

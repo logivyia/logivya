@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Archive, LoaderCircle, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { CategoryColorPicker } from "@/components/category-color-picker";
 import { useI18n } from "@/i18n/provider";
 
 type Group = { id: string; name: string; account: { label: string } };
@@ -104,10 +105,13 @@ export function CategoriesManagementPage() {
           <span className="mb-2 block text-xs font-medium">{t("categories.name")}</span>
           <input required name="name" defaultValue={category?.name} className="w-full rounded-xl border bg-input p-3 text-input-foreground placeholder:text-muted-foreground" />
         </label>
-        <label>
-          <span className="mb-2 block text-xs font-medium">{t("categories.color")}</span>
-          <input name="color" type="color" defaultValue={category?.color || "#f97316"} />
-        </label>
+        <CategoryColorPicker
+          key={category?.id ?? "new-category-color"}
+          defaultValue={category?.color}
+          label={t("categories.chooseColor")}
+          changeLabel={t("categories.changeColor")}
+          selectedLabel={t("categories.selectedColor")}
+        />
         <div>
           <p className="mb-2 text-xs font-medium">{t("categories.assignedGroups")}</p>
           <div className="grid max-h-64 gap-2 overflow-auto sm:grid-cols-2">

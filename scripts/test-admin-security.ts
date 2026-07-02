@@ -28,7 +28,10 @@ function routeFiles(directory: string): string[] {
 
 for (const route of routeFiles("src/app/api/admin")) {
   const source = readFileSync(route, "utf8");
-  assert(source.includes("requirePlatformAdmin") || source.includes("requireCriticalAdminAction"), `Unguarded admin API: ${route}`);
+  assert(
+    source.includes("requirePlatformAdmin") || source.includes("requireCriticalAdminAction") || source.includes("requireSupportSuperAdmin"),
+    `Unguarded admin API: ${route}`,
+  );
 }
 
 const schema = readFileSync("prisma/schema.prisma", "utf8");

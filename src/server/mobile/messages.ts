@@ -1,72 +1,67 @@
-import { Prisma } from "@prisma/client";
-import { requirePermission } from "@/server/auth/permissions";
-import { subscriptionAccess } from "@/server/billing/subscription-access";
-import { prisma } from "@/server/db";
-import { messageQueue } from "@/server/queues/client";
-import { SCHEDULED_MESSAGE_JOB_OPTIONS } from "@/server/queues/contracts";
-import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
-import { createNotification, NOTIFICATION_TYPES } from "@/server/notifications/service";
-import { writeAuditLog } from "@/server/security/audit";
+import { createMessageDeliveryCampaign } from "@/server/messages/delivery-pipeline";
 import type { MobileAuthContext } from "@/server/mobile/auth";
+import { createNotification, NOTIFICATION_TYPES } from "@/server/notifications/service";
+import type { RecurringRule } from "@/server/queues/recurring";
 
-export async function createMobileMessageCampaign(request: Request, context: MobileAuthContext, input: {
-  title: string;
-  content: string;
-  groupIds: string[];
-  categoryIds: string[];
-  scheduledAt?: Date;
-}) {
-  requirePermission(context.membership.role, input.scheduledAt ? "schedule_messages" : "send_messages");
-  const categoryGroups = input.categoryIds.length
-    ? await prisma.categoryGroup.findMany({ where: { categoryId: { in: input.categoryIds }, category: { companyId: context.company.id, archivedAt: null } }, select: { groupId: true } })
-    : [];
-  const requestedIds = [...new Set([...input.groupIds, ...categoryGroups.map((item) => item.groupId)])];
-  const groups = await resolveSendableWhatsAppGroups(context.company.id, requestedIds);
-  if (!groups.length) throw new Error("NO_SENDABLE_GROUPS");
-  const access = await subscriptionAccess.canSendMessage(context.company.id, groups.length);
-  if (!access.allowed) throw new Error("SUBSCRIPTION_LOCKED");
-  if (input.scheduledAt && !(await subscriptionAccess.canUseScheduledMessages(context.company.id))) throw new Error("SUBSCRIPTION_LOCKED");
-  const campaign = await prisma.messageCampaign.create({
-    data: {
+export async function createMobileMessageCampaign(
+  request: Request,
+  context: MobileAuthContext,
+  input: {
+    title: string;
+    content: string;
+    groupIds: string[];
+    categoryIds: string[];
+    scheduleType?: "SEND_NOW" | "SCHEDULED" | "RECURRING";
+    scheduledAt?: Date;
+    recurringRule?: RecurringRule;
+  },
+) {
+  const scheduleType = input.scheduleType ?? (input.scheduledAt ? "SCHEDULED" : "SEND_NOW");
+  const result = await createMessageDeliveryCampaign(
+    request,
+    {
       companyId: context.company.id,
-      createdById: context.user.id,
-      title: input.title,
-      content: input.content,
-      type: "WHATSAPP_GROUP",
-      status: "QUEUED",
-      scheduleType: input.scheduledAt ? "SCHEDULED" : "SEND_NOW",
-      scheduledAt: input.scheduledAt,
-      totalRecipients: groups.length,
-      contentJson: { source: "mobile" } as Prisma.InputJsonValue,
-      recipients: {
-        create: groups.map((group) => ({ accountId: group.accountId, groupId: group.id, recipientName: group.name, recipientExternalId: group.externalGroupId })),
-      },
+      userId: context.user.id,
+      role: context.membership.role,
     },
-    include: { recipients: true },
-  });
-  const baseDelay = input.scheduledAt ? Math.max(0, input.scheduledAt.getTime() - Date.now()) : 0;
-  const queue = messageQueue();
-  try {
-    for (const [index, recipient] of campaign.recipients.entries()) {
-      await queue.add("send-recipient", { companyId: context.company.id, campaignId: campaign.id, recipientId: recipient.id }, {
-        jobId: `mobile-recipient-${recipient.id}`,
-        delay: baseDelay + index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000),
-        ...(input.scheduledAt ? SCHEDULED_MESSAGE_JOB_OPTIONS : {}),
-      });
-    }
-  } finally {
-    await queue.close().catch(() => undefined);
-  }
-  await writeAuditLog(request, { companyId: context.company.id, userId: context.user.id, action: input.scheduledAt ? "mobile.message.scheduled" : "mobile.message.sent", entityType: "MessageCampaign", entityId: campaign.id, after: { totalRecipients: groups.length } });
-  if (input.scheduledAt) {
+    {
+      ...input,
+      scheduleType,
+      source: "mobile",
+    },
+  );
+
+  if (scheduleType === "SCHEDULED" && input.scheduledAt) {
     await createNotification({
       companyId: context.company.id,
       userId: context.user.id,
       type: NOTIFICATION_TYPES.CAMPAIGN_SCHEDULED_STARTED,
-      title: "Kampanya zamanlandı",
-      message: `${campaign.title} kampanyası planlanan zamanda gönderilmek üzere sıraya alındı.`,
-      payload: { campaignId: campaign.id, scheduledAt: input.scheduledAt.toISOString(), totalRecipients: groups.length }
+      title: "Kampanya zamanlandi",
+      message: `${result.campaign.title} kampanyasi planlanan zamanda gonderilmek uzere siraya alindi.`,
+      payload: {
+        campaignId: result.campaign.id,
+        scheduledAt: input.scheduledAt.toISOString(),
+        totalRecipients: result.campaign.totalRecipients,
+        correlationId: result.correlationId,
+      },
     });
   }
-  return campaign;
+
+  if (scheduleType === "RECURRING") {
+    await createNotification({
+      companyId: context.company.id,
+      userId: context.user.id,
+      type: NOTIFICATION_TYPES.CAMPAIGN_SCHEDULED_STARTED,
+      title: "Tekrarlayan kampanya hazir",
+      message: `${result.campaign.title} kampanyasi tekrarli gonderim icin siraya alindi.`,
+      payload: {
+        campaignId: result.campaign.id,
+        recurringRule: input.recurringRule,
+        totalRecipients: result.campaign.totalRecipients,
+        correlationId: result.correlationId,
+      },
+    });
+  }
+
+  return result;
 }

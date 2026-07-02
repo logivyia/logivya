@@ -8,7 +8,7 @@ export async function DELETE(request:Request,{params}:{params:Promise<{id:string
   try {
     const {id}=await params,{company,membership,user}=await requireApiSession();
     requirePermission(membership.role,"archive_accounts");
-    const account=await prisma.whatsAppAccount.findFirst({where:{id,companyId:company.id},include:{_count:{select:{recipients:true}}}});
+    const account=await prisma.whatsAppAccount.findFirst({where:{id,companyId:company.id,userId:user.id},include:{_count:{select:{recipients:true}}}});
     if(!account)return NextResponse.json({error:"NOT_FOUND"},{status:404});
     if(account._count.recipients>0){
       await prisma.whatsAppAccount.update({where:{id},data:{archivedAt:new Date(),status:"ARCHIVED"}});

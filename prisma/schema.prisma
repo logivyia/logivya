@@ -98,6 +98,25 @@ enum RecipientStatus {
   SKIPPED
 }
 
+enum CampaignDeleteForEveryoneStatus {
+  NOT_REQUESTED
+  DELETE_PENDING
+  DELETE_PROCESSING
+  PARTIALLY_DELETED
+  DELETED_FOR_EVERYONE
+  DELETE_FAILED
+  DELETE_EXPIRED
+}
+
+enum DeleteForEveryoneStatus {
+  NOT_REQUESTED
+  PENDING
+  PROCESSING
+  DELETED
+  FAILED
+  EXPIRED
+}
+
 enum ChannelType {
   WHATSAPP
   TELEGRAM
@@ -421,6 +440,9 @@ model User {
   referralCodes                  ReferralCode[]
   referredSignups                ReferralSignup[]          @relation("ReferredUser")
   emailDeliveries                EmailDeliveryLog[]
+  messageVisibilityRecords       UserMessageVisibility[]
+  whatsAppAccounts               WhatsAppAccount[]
+  whatsAppGroups                 WhatsAppGroup[]
   platformAdmin                  PlatformAdmin?
   adminAccessLogs                AdminAccessLog[]
   adminSessionEvents             AdminSessionEvent[]
@@ -435,6 +457,9 @@ model Company {
   id                 String                    @id @default(cuid())
   name               String
   address            String?
+  city               String?
+  district           String?
+  postalCode         String?
   taxOffice          String?
   taxNumber          String?
   phone              String?
@@ -588,6 +613,7 @@ model Subscription {
 
 model WhatsAppAccount {
   id                  String             @id @default(cuid())
+  userId              String?
   companyId           String
   label               String?
   phoneNumber         String?
@@ -598,6 +624,19 @@ model WhatsAppAccount {
   lastConnectedAt     DateTime?
   lastDisconnectedAt  DateTime?
   lastSyncedAt        DateTime?
+  lastHeartbeatAt     DateTime?
+  lastPingAt          DateTime?
+  lastPongAt          DateTime?
+  lastMessageAt       DateTime?
+  lastGroupSyncAt     DateTime?
+  lastConnectionLatencyMs Int?
+  batteryState        String?
+  healthScore         Int                @default(0)
+  recoveryLevel       Int                @default(0)
+  sessionRestoredAt   DateTime?
+  sessionSnapshotAt   DateTime?
+  reconnectRetryCount Int                @default(0)
+  deviceId            String?
   syncIntervalMinutes Int                @default(120)
   archivedAt          DateTime?
   lastError           String?
@@ -605,6 +644,7 @@ model WhatsAppAccount {
   qrExpiresAt         DateTime?
   pairingCode         String?
   pairingCodeExpiresAt DateTime?
+  user                User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
   company             Company            @relation(fields: [companyId], references: [id])
   sessions            WhatsAppSession[]
   groups              WhatsAppGroup[]
@@ -613,18 +653,24 @@ model WhatsAppAccount {
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
+  @@index([userId])
   @@index([companyId, status])
+  @@index([userId, companyId, status])
   @@index([companyId, createdAt])
   @@index([companyId, archivedAt])
+  @@index([userId, archivedAt])
 }
 
 model WhatsAppSession {
   id                   String          @id @default(cuid())
-  accountId            String
+  accountId            String          @unique
   qrCode               String?
   status               AccountStatus
   sessionDataEncrypted String?
   expiresAt            DateTime?
+  lastHeartbeatAt      DateTime?
+  snapshotReason       String?
+  restoreCount         Int             @default(0)
   account              WhatsAppAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
@@ -634,6 +680,7 @@ model WhatsAppSession {
 
 model WhatsAppGroup {
   id               String             @id @default(cuid())
+  userId           String?
   companyId        String
   accountId        String
   externalGroupId  String
@@ -643,6 +690,7 @@ model WhatsAppGroup {
   canSend          Boolean            @default(true)
   isArchived       Boolean            @default(false)
   lastSyncedAt     DateTime
+  user             User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
   company          Company            @relation(fields: [companyId], references: [id])
   account          WhatsAppAccount    @relation(fields: [accountId], references: [id])
   categories       CategoryGroup[]
@@ -651,6 +699,12 @@ model WhatsAppGroup {
   updatedAt        DateTime           @updatedAt
 
   @@unique([accountId, externalGroupId])
+  @@index([userId])
+  @@index([companyId])
+  @@index([accountId])
+  @@index([externalGroupId])
+  @@index([companyId, accountId])
+  @@index([userId, accountId])
   @@index([companyId, isArchived])
 }
 
@@ -719,9 +773,15 @@ model MessageCampaign {
   failedCount     Int                @default(0)
   canceledCount   Int                @default(0)
   deletedAt       DateTime?
+  platformDeletedAt DateTime?
+  deleteForEveryoneStatus      CampaignDeleteForEveryoneStatus @default(NOT_REQUESTED)
+  deleteForEveryoneRequestedAt DateTime?
+  deleteForEveryoneCompletedAt DateTime?
+  deleteForEveryoneError       String?
   company         Company            @relation(fields: [companyId], references: [id])
   createdBy       User               @relation(fields: [createdById], references: [id])
   recipients      MessageRecipient[]
+  visibilityRecords UserMessageVisibility[]
   channelMessages ChannelMessage[]
   metric          CampaignMetric?
   createdAt       DateTime           @default(now())
@@ -741,6 +801,16 @@ model MessageRecipient {
   recipientName       String
   recipientExternalId String
   status              RecipientStatus @default(PENDING)
+  externalMessageId   String?
+  messageKeyJson      Json?
+  messageKeyFromMe    Boolean?
+  messageKeyParticipant String?
+  deleteForEveryoneStatus      DeleteForEveryoneStatus @default(NOT_REQUESTED)
+  deleteForEveryoneAttemptedAt DateTime?
+  deleteForEveryoneCompletedAt DateTime?
+  deleteForEveryoneError       String?
+  deletedForMeAt      DateTime?
+  platformDeletedAt   DateTime?
   errorMessage        String?
   sentAt              DateTime?
   failedAt            DateTime?
@@ -749,9 +819,28 @@ model MessageRecipient {
   group               WhatsAppGroup?  @relation(fields: [groupId], references: [id])
   contact             Contact?        @relation(fields: [contactId], references: [id])
   createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
   @@index([campaignId, status])
   @@index([accountId, status])
+  @@index([accountId, recipientExternalId])
+  @@index([deleteForEveryoneStatus])
+  @@index([sentAt])
+}
+
+model UserMessageVisibility {
+  id             String          @id @default(cuid())
+  userId         String
+  campaignId     String
+  deletedForMeAt DateTime?
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign       MessageCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([userId, campaignId])
+  @@index([campaignId])
+  @@index([userId, deletedForMeAt])
 }
 
 model MediaFile {
@@ -1734,10 +1823,16 @@ model IncidentLog {
 model SupportTicket {
   id                String                @id @default(cuid())
   companyId         String
+  tenantId          String
   createdById       String
+  userId            String
   assignedToAdminId String?
   subject           String
+  title             String
   type              String
+  category          String
+  description       String                @default("")
+  source            String                @default("WEB")
   status            SupportTicketStatus   @default(OPEN)
   priority          SupportTicketPriority @default(MEDIUM)
   lastMessageAt     DateTime              @default(now())
@@ -1750,6 +1845,15 @@ model SupportTicket {
   updatedAt         DateTime              @updatedAt
 
   @@index([companyId, status, lastMessageAt])
+  @@index([companyId, createdAt])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status, createdAt])
+  @@index([createdById, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([type, createdAt])
+  @@index([category, createdAt])
+  @@index([source, createdAt])
   @@index([status, priority, lastMessageAt])
 }
 

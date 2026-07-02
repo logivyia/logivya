@@ -4,9 +4,9 @@ import { prisma } from "@/server/db";
 import { messageQueue } from "@/server/queues/client";
 import { getCachedQueueHealth } from "@/server/queues/health";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    await requirePlatformAdmin();
+    await requirePlatformAdmin("admin.dashboard.read", request);
     const started = Date.now();
     await prisma.$queryRaw`SELECT 1`;
     const queue = await getCachedQueueHealth("logivya-message", messageQueue, ["waiting", "active", "delayed", "failed", "paused"]);

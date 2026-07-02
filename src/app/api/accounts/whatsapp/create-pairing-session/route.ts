@@ -28,23 +28,23 @@ export async function POST(request: Request) {
     logger.info("whatsapp.pairing.requested", { companyId: company.id, userId: user.id, phoneNumber: `${phoneNumber.slice(0, 3)}****${phoneNumber.slice(-2)}` });
     await enforceWhatsAppRateLimit("pairing-phone", phoneNumber);
     await cleanupStuckWhatsAppAccounts(company.id);
-    const connected = await prisma.whatsAppAccount.findFirst({ where: { companyId: company.id, archivedAt: null, status: "CONNECTED" } });
+    const connected = await prisma.whatsAppAccount.findFirst({ where: { companyId: company.id, userId: user.id, archivedAt: null, status: "CONNECTED" } });
     if (connected) {
       return NextResponse.json({ ok: true, alreadyConnected: true, accountId: connected.id, status: connected.status, message: "WhatsApp hesabınız zaten bağlı." });
     }
     await assertWhatsAppWorkerReachable();
 
-    let account = await findReusableWhatsAppAccount(company.id);
+    let account = await findReusableWhatsAppAccount(company.id, user.id);
     if (!account) {
       const access = await subscriptionAccess.canConnectWhatsAppAccount(company.id);
-      if (!access.allowed) account = await findSingleSlotWhatsAppAccount(company.id, access.limit);
-      if (!account && !access.allowed) return NextResponse.json({ error: whatsappUserMessage(new Error(access.reason || "accounts.planLimit"), "pairing"), reason: access.reason, limit: access.limit }, { status: 403 });
+      if (!access.allowed) account = await findSingleSlotWhatsAppAccount(company.id, user.id, access.limit);
+      if (!account && !access.allowed) return NextResponse.json({ error: whatsappUserMessage(new Error(access.reason || "subscription.inactive"), "pairing"), reason: access.reason, limit: access.limit }, { status: 403 });
     }
     if (account) {
       account = await resetAccountForConnection(account.id, AccountStatus.PENDING_PAIRING, { phoneNumber });
     } else {
       account = await prisma.whatsAppAccount.create({
-        data: { companyId: company.id, label: null, phoneNumber, provider: process.env.WHATSAPP_PROVIDER || "baileys", status: AccountStatus.CREATED },
+        data: { companyId: company.id, userId: user.id, label: null, phoneNumber, provider: process.env.WHATSAPP_PROVIDER || "baileys", status: AccountStatus.CREATED },
       });
       account = await resetAccountForConnection(account.id, AccountStatus.PENDING_PAIRING, { phoneNumber });
     }

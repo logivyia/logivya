@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { prisma } from "@/server/db";
 
-export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requirePlatformAdmin();
+    await requirePlatformAdmin("admin.companies.read", request);
     const { id } = await params;
     const company = await prisma.company.findUnique({
       where: { id },
