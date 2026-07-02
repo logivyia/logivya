@@ -69,6 +69,7 @@ assertIncludes(provider, "whatsapp.qr.error_after_ready_ignored", "QR mode must 
 assertIncludes(provider, "whatsapp.pairing.stale_socket_close_ignored", "phone pairing must ignore stale socket closes after a newer code request");
 assertIncludes(provider, "whatsapp.pairing.connection_closed_after_code_preserved", "phone pairing must preserve active code after transient socket closes");
 assertIncludes(provider, "whatsapp.pairing.error_after_code_ignored", "phone pairing must not overwrite PAIRING_CODE_READY after late handler errors");
+assertIncludes(provider, "preservePairingCode ? \"PAIRING_CODE_READY\"", "phone pairing retries must not hide an active pairing code");
 assertIncludes(sessionManager, "snapshotHasRegisteredCredentials", "session snapshots must distinguish partial pairing credentials from registered sessions");
 assertIncludes(sessionManager, "registered ? AccountStatus.CONNECTED : AccountStatus.PENDING_PAIRING", "partial pairing credentials must not be stored as connected sessions");
 assertIncludes(workerHealth, "whatsAppSession.findUnique", "QR wait must fall back to worker session QR");

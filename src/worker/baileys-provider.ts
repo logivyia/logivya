@@ -388,9 +388,10 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       });
       throw new Error("WHATSAPP_RECONNECT_REQUIRED");
     }
+    const preservePairingCode = mode === "PAIR_PHONE" && !state.creds.registered && await this.hasActivePairingCode(accountId);
     const activated = await prisma.whatsAppAccount.updateMany({
       where: { id: accountId, archivedAt: null },
-      data: { status: state.creds.registered ? "CONNECTING" : mode === "PAIR_PHONE" ? "PENDING_PAIRING" : "PENDING_QR", lastError: null },
+      data: { status: state.creds.registered ? "CONNECTING" : preservePairingCode ? "PAIRING_CODE_READY" : mode === "PAIR_PHONE" ? "PENDING_PAIRING" : "PENDING_QR", lastError: null },
     });
     if (!activated.count) {
       throw new Error("WhatsApp account no longer exists");
