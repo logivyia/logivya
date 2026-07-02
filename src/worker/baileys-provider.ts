@@ -35,6 +35,7 @@ const PAIRING_SOCKET_BOOTSTRAP_MS = Number(process.env.WHATSAPP_PAIRING_SOCKET_B
 const HEARTBEAT_INTERVAL_MS = Number(process.env.WHATSAPP_HEARTBEAT_INTERVAL_MS || 30_000);
 const QR_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_QR_TRANSIENT_RETRY_LIMIT || 3);
 const PAIRING_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_PAIRING_TRANSIENT_RETRY_LIMIT || 5);
+const PAIRING_PRESERVED_CODE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const RECONNECT_BACKOFF_MS = [5_000, 10_000, 20_000, 40_000, 60_000, 120_000] as const;
 
 function sleep(ms: number) {
@@ -239,12 +240,18 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       maxAttempts: PAIRING_TRANSIENT_RETRY_LIMIT,
       reason,
     });
-    await auditAccount(accountId, "whatsapp.pairing.code_preserved", { code, attempt: nextAttempt, reason }).catch((error) =>
-      logger.warn("whatsapp.pairing.preserve_audit_failed", { accountId, reason: errorMessage(error) }),
-    );
+    const shouldAudit = nextAttempt <= PAIRING_TRANSIENT_RETRY_LIMIT || nextAttempt % 6 === 0;
+    if (shouldAudit) {
+      await auditAccount(accountId, "whatsapp.pairing.code_preserved", { code, attempt: nextAttempt, reason }).catch((error) =>
+        logger.warn("whatsapp.pairing.preserve_audit_failed", { accountId, reason: errorMessage(error) }),
+      );
+    }
 
-    if (nextAttempt <= PAIRING_TRANSIENT_RETRY_LIMIT) {
-      const delay = Math.min(1_000 * nextAttempt, 5_000);
+    const msUntilExpiry = account.pairingCodeExpiresAt.getTime() - Date.now();
+    if (msUntilExpiry > 2_000) {
+      const fastRetryDelay = Math.min(1_000 * nextAttempt, 5_000);
+      const steadyRetryDelay = Math.min(PAIRING_PRESERVED_CODE_RETRY_MS, msUntilExpiry - 1_000);
+      const delay = nextAttempt <= PAIRING_TRANSIENT_RETRY_LIMIT ? fastRetryDelay : steadyRetryDelay;
       setTimeout(() => {
         if (sockets.has(accountId)) return;
         void this.startSession(accountId, "PAIR_PHONE")
@@ -252,7 +259,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           .catch((error) => logger.error("whatsapp.pairing.preserved_code_reconnect_failed", error, { accountId, attempt: nextAttempt }));
       }, delay);
     } else {
-      logger.warn("whatsapp.pairing.preserved_code_retry_limit_reached", { accountId, code, attempts: nextAttempt });
+      logger.warn("whatsapp.pairing.preserved_code_expiring_without_retry", { accountId, code, attempts: nextAttempt });
     }
     return true;
   }

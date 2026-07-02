@@ -42,8 +42,8 @@ export async function ensureWhatsAppSessionRoot() {
 
 export async function hasWhatsAppCredentials(accountId: string) {
   try {
-    await access(path.join(whatsappSessionDirectory(accountId), "creds.json"));
-    return true;
+    const value = JSON.parse(await readFile(path.join(whatsappSessionDirectory(accountId), "creds.json"), "utf8")) as { registered?: unknown };
+    return value.registered === true;
   } catch {
     return false;
   }
@@ -81,6 +81,17 @@ function assertSafeRelativeSessionPath(relativePath: string) {
   return normalized;
 }
 
+function snapshotHasRegisteredCredentials(snapshot: SessionSnapshot) {
+  const creds = snapshot.files.find((file) => file.relativePath === "creds.json");
+  if (!creds) return false;
+  try {
+    const value = JSON.parse(Buffer.from(creds.data, "base64").toString("utf8")) as { registered?: unknown };
+    return value.registered === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function backupWhatsAppSessionToDatabase(accountId: string, reason = "snapshot") {
   try {
     const directory = whatsappSessionDirectory(accountId);
@@ -92,13 +103,14 @@ export async function backupWhatsAppSessionToDatabase(accountId: string, reason 
       data: (await readFile(path.join(directory, relativePath))).toString("base64"),
     })));
     const snapshot: SessionSnapshot = { version: 1, files };
+    const registered = snapshotHasRegisteredCredentials(snapshot);
     const sessionDataEncrypted = serializeEncryptedField(encryptSensitiveField(JSON.stringify(snapshot), sessionKeyring()));
 
     await prisma.whatsAppSession.upsert({
       where: { accountId },
       update: {
         sessionDataEncrypted,
-        status: AccountStatus.CONNECTED,
+        status: registered ? AccountStatus.CONNECTED : AccountStatus.PENDING_PAIRING,
         qrCode: null,
         expiresAt: null,
         lastHeartbeatAt: new Date(),
@@ -107,7 +119,7 @@ export async function backupWhatsAppSessionToDatabase(accountId: string, reason 
       create: {
         accountId,
         sessionDataEncrypted,
-        status: AccountStatus.CONNECTED,
+        status: registered ? AccountStatus.CONNECTED : AccountStatus.PENDING_PAIRING,
         lastHeartbeatAt: new Date(),
         snapshotReason: reason,
       },
@@ -138,6 +150,7 @@ export async function restoreWhatsAppSessionFromDatabase(accountId: string) {
 
   const snapshot = JSON.parse(decryptSensitiveField(parseEncryptedField(session.sessionDataEncrypted), sessionKeyring())) as SessionSnapshot;
   if (snapshot.version !== 1 || !Array.isArray(snapshot.files)) throw new Error("INVALID_WHATSAPP_SESSION_SNAPSHOT");
+  if (!snapshotHasRegisteredCredentials(snapshot)) return false;
 
   const directory = whatsappSessionDirectory(accountId);
   await mkdir(directory, { recursive: true });
@@ -163,10 +176,22 @@ export async function restoreWhatsAppSessionFromDatabase(accountId: string) {
 
 export async function hasRestorableWhatsAppCredentials(accountId: string) {
   if (await hasWhatsAppCredentials(accountId)) return true;
-  return Boolean(await prisma.whatsAppSession.findFirst({
+  const sessions = await prisma.whatsAppSession.findMany({
     where: { accountId, sessionDataEncrypted: { not: null } },
-    select: { id: true },
-  }));
+    select: { sessionDataEncrypted: true },
+    orderBy: { updatedAt: "desc" },
+    take: 3,
+  });
+  for (const session of sessions) {
+    if (!session.sessionDataEncrypted) continue;
+    try {
+      const snapshot = JSON.parse(decryptSensitiveField(parseEncryptedField(session.sessionDataEncrypted), sessionKeyring())) as SessionSnapshot;
+      if (snapshot.version === 1 && Array.isArray(snapshot.files) && snapshotHasRegisteredCredentials(snapshot)) return true;
+    } catch (error) {
+      logger.warn("session.snapshot.restorable_check_failed", { accountId, reason: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return false;
 }
 
 export async function clearWhatsAppSession(accountId: string) {

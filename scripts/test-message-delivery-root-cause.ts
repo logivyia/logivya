@@ -26,6 +26,7 @@ const subscriptionAccess = read("src/server/billing/subscription-access.ts");
 const sendableGroups = read("src/server/whatsapp/sendable-groups.ts");
 const worker = read("src/worker/index.ts");
 const provider = read("src/worker/baileys-provider.ts");
+const sessionManager = read("src/lib/whatsapp/session-manager.ts");
 const workerHealth = read("src/server/whatsapp/worker-health.ts");
 const accountsStablePage = read("src/components/accounts-stable-page.tsx");
 const whatsAppRequestGuards = read("src/server/whatsapp/request-guards.ts");
@@ -68,6 +69,8 @@ assertIncludes(provider, "whatsapp.qr.error_after_ready_ignored", "QR mode must 
 assertIncludes(provider, "whatsapp.pairing.stale_socket_close_ignored", "phone pairing must ignore stale socket closes after a newer code request");
 assertIncludes(provider, "whatsapp.pairing.connection_closed_after_code_preserved", "phone pairing must preserve active code after transient socket closes");
 assertIncludes(provider, "whatsapp.pairing.error_after_code_ignored", "phone pairing must not overwrite PAIRING_CODE_READY after late handler errors");
+assertIncludes(sessionManager, "snapshotHasRegisteredCredentials", "session snapshots must distinguish partial pairing credentials from registered sessions");
+assertIncludes(sessionManager, "registered ? AccountStatus.CONNECTED : AccountStatus.PENDING_PAIRING", "partial pairing credentials must not be stored as connected sessions");
 assertIncludes(workerHealth, "whatsAppSession.findUnique", "QR wait must fall back to worker session QR");
 assertIncludes(accountsStablePage, "/api/accounts/whatsapp/${modal.accountId}/status", "accounts modal must poll the scoped WhatsApp status route");
 assertIncludes(accountsStablePage, "src={visibleQr}", "accounts modal must render backend QR image directly");
