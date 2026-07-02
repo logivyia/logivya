@@ -29,10 +29,12 @@ const sessionRestarts = new Map<string, Promise<WASocket>>();
 const heartbeatTimers = new Map<string, ReturnType<typeof setInterval>>();
 const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const qrTransientRetries = new Map<string, number>();
+const pairingTransientRetries = new Map<string, number>();
 const SOCKET_INITIALIZATION_TIMEOUT_MS = Number(process.env.WHATSAPP_SOCKET_INITIALIZATION_TIMEOUT_MS || 30_000);
 const PAIRING_SOCKET_BOOTSTRAP_MS = Number(process.env.WHATSAPP_PAIRING_SOCKET_BOOTSTRAP_MS || 3_000);
 const HEARTBEAT_INTERVAL_MS = Number(process.env.WHATSAPP_HEARTBEAT_INTERVAL_MS || 30_000);
 const QR_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_QR_TRANSIENT_RETRY_LIMIT || 3);
+const PAIRING_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_PAIRING_TRANSIENT_RETRY_LIMIT || 5);
 const RECONNECT_BACKOFF_MS = [5_000, 10_000, 20_000, 40_000, 60_000, 120_000] as const;
 
 function sleep(ms: number) {
@@ -212,8 +214,52 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     return Boolean(account?.pairingCode && account.pairingCodeExpiresAt && account.pairingCodeExpiresAt > new Date());
   }
 
+  private async preserveActivePairingCode(accountId: string, reason: string, code?: number) {
+    const account = await prisma.whatsAppAccount.findUnique({
+      where: { id: accountId },
+      select: { archivedAt: true, pairingCode: true, pairingCodeExpiresAt: true },
+    });
+    if (!account || account.archivedAt || !account.pairingCode || !account.pairingCodeExpiresAt || account.pairingCodeExpiresAt <= new Date()) return false;
+
+    const nextAttempt = (pairingTransientRetries.get(accountId) ?? 0) + 1;
+    pairingTransientRetries.set(accountId, nextAttempt);
+    await prisma.whatsAppAccount.updateMany({
+      where: { id: accountId, archivedAt: null },
+      data: {
+        status: "PAIRING_CODE_READY",
+        lastError: null,
+        recoveryLevel: Math.min(nextAttempt, 5),
+        healthScore: 35,
+      },
+    });
+    logger.warn("whatsapp.pairing.connection_closed_after_code_preserved", {
+      accountId,
+      code,
+      attempt: nextAttempt,
+      maxAttempts: PAIRING_TRANSIENT_RETRY_LIMIT,
+      reason,
+    });
+    await auditAccount(accountId, "whatsapp.pairing.code_preserved", { code, attempt: nextAttempt, reason }).catch((error) =>
+      logger.warn("whatsapp.pairing.preserve_audit_failed", { accountId, reason: errorMessage(error) }),
+    );
+
+    if (nextAttempt <= PAIRING_TRANSIENT_RETRY_LIMIT) {
+      const delay = Math.min(1_000 * nextAttempt, 5_000);
+      setTimeout(() => {
+        if (sockets.has(accountId)) return;
+        void this.startSession(accountId, "PAIR_PHONE")
+          .then(({ initialized: nextInitialized }) => nextInitialized)
+          .catch((error) => logger.error("whatsapp.pairing.preserved_code_reconnect_failed", error, { accountId, attempt: nextAttempt }));
+      }, delay);
+    } else {
+      logger.warn("whatsapp.pairing.preserved_code_retry_limit_reached", { accountId, code, attempts: nextAttempt });
+    }
+    return true;
+  }
+
   async requestPairingCode(accountId: string, phoneNumber: string): Promise<{ code: string; expiresAt: Date }> {
     const normalized = normalizeWhatsAppPhoneNumber(phoneNumber);
+    pairingTransientRetries.delete(accountId);
     logger.info("whatsapp.pairing.requested", { accountId, phoneNumber: maskPhoneNumber(normalized) });
     logger.info("whatsapp.pairing.request_started", { accountId, phoneNumber: maskPhoneNumber(normalized) });
     await this.clearTemporaryAuth(accountId);
@@ -393,10 +439,11 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           logger.warn("whatsapp.qr.ignored_for_restore", { accountId, mode: currentMode });
         }
         if (connection === "connecting") {
-          await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null, status: { in: ["PENDING_PAIRING", "PAIRING_CODE_READY", "PENDING_QR"] } }, data: { status: "CONNECTING" } });
+          await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null, status: { in: ["PENDING_PAIRING", "PENDING_QR"] } }, data: { status: "CONNECTING" } });
           if (currentMode === "PAIR_PHONE") settleInitialized();
         }
         if (connection === "open") {
+          pairingTransientRetries.delete(accountId);
           const phoneNumber = socket.user?.id?.split(":")[0] || socket.user?.id?.split("@")[0];
           const deviceId = socket.user?.id ?? null;
           const updated = await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "CONNECTED", phoneNumber, displayName: socket.user?.name, deviceId, lastConnectedAt: new Date(), lastHeartbeatAt: new Date(), lastPongAt: new Date(), reconnectRetryCount: 0, recoveryLevel: 0, healthScore: 95, qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null } });
@@ -468,6 +515,10 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           }
           if (!initializedSettled) settleInitialized(closeError);
           if (currentMode === "PAIR_PHONE") {
+            if (replacedByNewSocket) {
+              logger.warn("whatsapp.pairing.stale_socket_close_ignored", { accountId, code });
+              return;
+            }
             if (code === DisconnectReason.restartRequired) {
               await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "CONNECTING", pairingCode: null, pairingCodeExpiresAt: null, lastError: null } });
               setTimeout(() => {
@@ -478,6 +529,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
               return;
             }
             const reason = lastDisconnect?.error instanceof Error ? lastDisconnect.error.message : "WhatsApp pairing connection closed";
+            if (!state.creds.registered && await this.preserveActivePairingCode(accountId, reason, code)) return;
             logger.error("whatsapp.pairing.connection_closed", lastDisconnect?.error, { accountId, code });
             await clearWhatsAppSession(accountId);
             await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "FAILED", pairingCode: null, pairingCodeExpiresAt: null, lastError: pairingUserMessage(lastDisconnect?.error) } });
@@ -534,6 +586,11 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
               if (!initializedSettled) settleInitialized();
               return;
             }
+          }
+          if (modeAtFailure === "PAIR_PHONE" && await this.preserveActivePairingCode(accountId, errorMessage(error))) {
+            logger.warn("whatsapp.pairing.error_after_code_ignored", { accountId, mode: modeAtFailure, reason: errorMessage(error) });
+            if (!initializedSettled) settleInitialized();
+            return;
           }
           await prisma.whatsAppAccount.updateMany({
           where: { id: accountId, archivedAt: null, status: { in: ["PENDING_QR", "QR_READY", "PENDING_PAIRING", "PAIRING_CODE_READY", "CONNECTING"] } },
