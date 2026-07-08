@@ -62,7 +62,15 @@ export async function resetAccountForConnection(accountId: string, target: typeo
   if (account.archivedAt || account.status === AccountStatus.ARCHIVED || account.status === AccountStatus.CONNECTED) throw new Error("WHATSAPP_ACCOUNT_NOT_RECONNECTABLE");
   if (account.status !== AccountStatus.CREATED) await transitionAccountStatus(accountId, AccountStatus.CREATED);
   return transitionAccountStatus(accountId, target, {
-    qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null, ...data,
+    qrCode: null,
+    qrExpiresAt: null,
+    pairingCode: null,
+    pairingCodeExpiresAt: null,
+    lastError: null,
+    reconnectRetryCount: 0,
+    recoveryLevel: 0,
+    healthScore: target === AccountStatus.PENDING_PAIRING ? 35 : 25,
+    ...data,
   });
 }
 
