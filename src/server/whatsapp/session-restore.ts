@@ -8,6 +8,7 @@ import { hasRestorableWhatsAppCredentials } from "@/lib/whatsapp/session-manager
 import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
 import { enqueueWhatsAppJob } from "@/server/queues/producer";
+import { hasActivePhonePairing } from "@/server/whatsapp/pairing-guard";
 
 const FATAL_SESSION_ERRORS = new Set(["WHATSAPP_LOGGED_OUT"]);
 const RESTORE_CANDIDATE_STATUSES = new Set<AccountStatus>([
@@ -32,6 +33,8 @@ export type WhatsAppRestoreAccount = {
   updatedAt: Date;
   lastHeartbeatAt?: Date | null;
   sessionSnapshotAt?: Date | null;
+  pairingCode?: string | null;
+  pairingCodeExpiresAt?: Date | null;
 };
 
 type RestoreContext = {
@@ -67,6 +70,7 @@ function baseLog(account: WhatsAppRestoreAccount, context: RestoreContext, sourc
 
 function shouldAttemptRestore(account: WhatsAppRestoreAccount) {
   if (account.archivedAt) return false;
+  if (hasActivePhonePairing(account)) return false;
   if (isFatalWhatsAppSessionError(account.lastError)) return false;
   if (account.lastError === "WHATSAPP_CREDENTIALS_MISSING" && !account.sessionSnapshotAt && !account.phoneNumber) return false;
   if (!RESTORE_CANDIDATE_STATUSES.has(account.status)) return false;

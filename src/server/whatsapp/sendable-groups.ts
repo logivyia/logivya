@@ -3,6 +3,7 @@ import { isRecoverableWhatsAppStatus } from "@/lib/whatsapp/account-status-machi
 import { hasRestorableWhatsAppCredentials } from "@/lib/whatsapp/session-manager";
 import { logger } from "@/server/observability/logger";
 import { enqueueWhatsAppJob } from "@/server/queues/producer";
+import { isPhonePairingActive } from "@/server/whatsapp/pairing-guard";
 
 type SendableGroupScope = {
   userId: string;
@@ -11,6 +12,10 @@ type SendableGroupScope = {
 
 async function requestConnectionSelfHeal(accountIds: string[], reason: string) {
   await Promise.all([...new Set(accountIds)].map(async (accountId) => {
+    if (await isPhonePairingActive(accountId)) {
+      logger.warn("whatsapp.v3.self_heal_skipped_active_pairing", { accountId, reason });
+      return;
+    }
     const hasCredentials = await hasRestorableWhatsAppCredentials(accountId).catch(() => false);
     if (!hasCredentials) return;
     await prisma.whatsAppAccount.updateMany({

@@ -126,6 +126,29 @@ export async function backupWhatsAppSessionToDatabase(accountId: string, reason 
     })));
     const snapshot: SessionSnapshot = { version: 1, files };
     const registered = snapshotHasRegisteredCredentials(snapshot);
+    if (!registered) {
+      await prisma.whatsAppSession.upsert({
+        where: { accountId },
+        update: {
+          sessionDataEncrypted: null,
+          status: AccountStatus.PENDING_PAIRING,
+          qrCode: null,
+          expiresAt: null,
+          lastHeartbeatAt: new Date(),
+          snapshotReason: reason,
+        },
+        create: {
+          accountId,
+          sessionDataEncrypted: null,
+          status: AccountStatus.PENDING_PAIRING,
+          lastHeartbeatAt: new Date(),
+          snapshotReason: reason,
+        },
+      });
+      await clearStaleSessionSnapshotMetadata(accountId, "snapshot_not_registered");
+      logger.warn("WA_SESSION_SNAPSHOT_SAVE_SKIPPED", { accountId, reason, cause: "credentials_not_registered", fileCount: files.length, durationMs: Date.now() - startedAt });
+      return false;
+    }
     const sessionDataEncrypted = serializeEncryptedField(encryptSensitiveField(JSON.stringify(snapshot), sessionKeyring()));
 
     await prisma.whatsAppSession.upsert({

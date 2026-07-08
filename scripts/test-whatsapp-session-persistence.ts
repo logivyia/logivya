@@ -27,6 +27,17 @@ assert(sessionManager.includes("WA_RESTORE_SUCCESS"), "Session restore must emit
 assert(sessionManager.includes("WA_RESTORE_FAILED"), "Session restore must emit a failure marker.");
 assert(sessionManager.includes("WA_SESSION_SNAPSHOT_STALE_METADATA_CLEARED"), "Missing session snapshots must self-heal stale account metadata.");
 assert(sessionManager.includes("OR: [{ sessionSnapshotAt: { not: null } }, { sessionRestoredAt: { not: null } }]"), "Stale snapshot self-healing must not write on every restore probe.");
+assert(sessionManager.includes("credentials_not_registered"), "Unregistered pairing credentials must not be persisted as restorable session snapshots.");
+
+const pairingGuard = read("src/server/whatsapp/pairing-guard.ts");
+for (const marker of [
+  "hasActivePhonePairing",
+  "PAIRING_CODE_READY",
+  "PENDING_PAIRING",
+  "WHATSAPP_PHONE_PAIRING_GUARD_MS",
+]) {
+  assert(pairingGuard.includes(marker), `Phone pairing guard is missing marker: ${marker}`);
+}
 
 const provider = read("src/worker/baileys-provider.ts");
 assert(provider.includes("STABLE WHATSAPP/MESSAGE CORE"), "Baileys provider must carry the stable-core warning.");
@@ -46,6 +57,8 @@ assert(provider.indexOf("const loggedOut = code === DisconnectReason.loggedOut")
 assert(provider.includes("markTransientConnectionLoss"), "Transient disconnect must remain recoverable through the self-healing path.");
 assert(provider.includes("status: \"CONNECTING\"") && provider.includes("lastError: \"WHATSAPP_TRANSIENT_DISCONNECT\""), "Transient disconnect must not become a fresh-pairing requirement.");
 assert(provider.includes("intentionallyStoppedSockets = new WeakSet"), "Intentional socket stops must be tracked per socket instance, not per account.");
+assert(provider.includes("whatsapp.reconnect.skipped_active_pairing"), "Reconnect must not interrupt an active phone pairing code.");
+assert(provider.includes("WHATSAPP_PAIRING_IN_PROGRESS"), "Message/reconnect recovery must treat active phone pairing as recoverable in-progress state.");
 for (const marker of [
   "WA_PAIRING_START",
   "WA_PAIRING_CODE_GENERATED",
@@ -88,6 +101,8 @@ assert(worker.includes("WHATSAPP_SESSION_RECOVERY_INTERVAL_MS"), "Worker must pe
 assert(worker.includes("restoreWhatsAppSessionFromDatabase(account.id)"), "Worker startup recovery must restore DB-backed WhatsApp sessions.");
 assert(worker.includes("hasRestorableWhatsAppCredentials(accountId)"), "Worker failures must distinguish restorable sessions from true auth loss.");
 assert(worker.includes("whatsapp.session.recovery_skipped_no_restorable_credentials"), "Worker must not silently convert read-side missing credentials into auth-required state.");
+assert(worker.includes("whatsapp.worker.reconnect.skipped_active_pairing"), "Worker must skip stale reconnect jobs while phone pairing is active.");
+assert(worker.includes("whatsapp.worker.reconnect.skipped_stale_connected_job"), "Worker must skip reconnect jobs that were queued before a newer successful connection state.");
 
 const restoreHelper = read("src/server/whatsapp/session-restore.ts");
 assert(restoreHelper.includes("STABLE WHATSAPP/MESSAGE CORE"), "On-demand restore helper must carry the stable-core warning.");
@@ -104,6 +119,7 @@ for (const marker of [
   "status: AccountStatus.CONNECTING",
   "lastError: null",
   "enqueueWhatsAppJob",
+  "hasActivePhonePairing",
 ]) {
   assert(restoreHelper.includes(marker), `On-demand restore helper is missing marker: ${marker}`);
 }

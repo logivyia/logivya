@@ -8,8 +8,9 @@ import { writeAuditLog } from "@/server/security/audit";
 import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
 import { AccountStatus } from "@prisma/client";
 import { assertSameOrigin, enforceWhatsAppRateLimit } from "@/server/whatsapp/request-guards";
-import { hasWhatsAppCredentials } from "@/lib/whatsapp/session-manager";
+import { hasRestorableWhatsAppCredentials } from "@/lib/whatsapp/session-manager";
 import { transitionAccountStatus } from "@/lib/whatsapp/account-status-machine";
+import { hasActivePhonePairing } from "@/server/whatsapp/pairing-guard";
 
 const schema = z.object({ action: z.enum(["sync", "disconnect", "reconnect", "archive", "restore"]) });
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -30,18 +31,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     } else if (parsed.data.action === "restore") {
       await transitionAccountStatus(id, AccountStatus.DISCONNECTED, { archivedAt: null, lastError: null });
     } else {
+      let queuedAction: "sync" | "disconnect" | "reconnect" | "connect" = parsed.data.action;
       if (parsed.data.action === "reconnect") {
         await enforceWhatsAppRateLimit("reconnect-account", id);
-        if (await hasWhatsAppCredentials(id)) {
+        if (hasActivePhonePairing(account)) {
+          await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.reconnect.skipped_active_pairing", entityType: "WhatsAppAccount", entityId: id, before: { status: account.status }, after: { requestedAction: parsed.data.action } });
+          return NextResponse.json({ ok: true, skipped: "active_phone_pairing" });
+        }
+        if (await hasRestorableWhatsAppCredentials(id)) {
           await prisma.whatsAppAccount.update({
             where: { id },
             data: { status: AccountStatus.CONNECTING, qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null },
           });
         } else {
           await transitionAccountStatus(id, AccountStatus.CREATED, { qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null });
+          queuedAction = "connect";
         }
       }
-      await enqueueWhatsAppJob(parsed.data.action, { action: parsed.data.action, accountId: id }, { jobId: `${parsed.data.action}-${id}-${Date.now()}` });
+      await enqueueWhatsAppJob(queuedAction, { action: queuedAction, accountId: id }, { jobId: `${queuedAction}-${id}-${Date.now()}` });
     }
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: parsed.data.action === "reconnect" ? "whatsapp.reconnect.requested" : `whatsapp.account.${parsed.data.action}`, entityType: "WhatsAppAccount", entityId: id, before: { status: account.status }, after: { requestedAction: parsed.data.action } });
     return NextResponse.json({ ok: true });

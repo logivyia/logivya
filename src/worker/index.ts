@@ -11,6 +11,7 @@ import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { withWhatsAppAccountLock } from "@/server/whatsapp/account-lock";
 import { writeWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
+import { hasActivePhonePairing } from "@/server/whatsapp/pairing-guard";
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
 import { createNotification, NOTIFICATION_TYPES } from "@/server/notifications/service";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
@@ -43,7 +44,7 @@ process.on("unhandledRejection", (reason) => {
 
 function isRecoverableWhatsAppSendError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
-  return /WHATSAPP_RECONNECT_REQUIRED|WHATSAPP_TRANSIENT_DISCONNECT|WHATSAPP_RESTORING_CONNECTION|WHATSAPP_RETRYING_CONNECTION|WHATSAPP_SESSION_CONNECTION_TIMEOUT|WHATSAPP_ACCOUNT_LOCK_TIMEOUT|Connection Closed|Timed Out|restart|disconnected|socket/i.test(message);
+  return /WHATSAPP_PAIRING_IN_PROGRESS|WHATSAPP_RECONNECT_REQUIRED|WHATSAPP_TRANSIENT_DISCONNECT|WHATSAPP_RESTORING_CONNECTION|WHATSAPP_RETRYING_CONNECTION|WHATSAPP_SESSION_CONNECTION_TIMEOUT|WHATSAPP_ACCOUNT_LOCK_TIMEOUT|Connection Closed|Timed Out|restart|disconnected|socket/i.test(message);
 }
 
 function isExplicitWhatsAppAuthFailure(error: unknown) {
@@ -153,9 +154,17 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
       logger.info("whatsapp.job.received", { workerId, jobId: job.id, action, accountId });
       const account = await prisma.whatsAppAccount.findUnique({
         where: { id: accountId },
-        select: { status: true, archivedAt: true, updatedAt: true },
+        select: { status: true, archivedAt: true, updatedAt: true, pairingCode: true, pairingCodeExpiresAt: true },
       });
       if (!account || account.archivedAt) return;
+      if (action === "reconnect" && hasActivePhonePairing(account)) {
+        logger.warn("whatsapp.worker.reconnect.skipped_active_pairing", { workerId, jobId: job.id, accountId, status: account.status });
+        return;
+      }
+      if (action === "reconnect" && account.status === "CONNECTED" && typeof job.timestamp === "number" && account.updatedAt.getTime() > job.timestamp + 1_000) {
+        logger.warn("whatsapp.worker.reconnect.skipped_stale_connected_job", { workerId, jobId: job.id, accountId, accountUpdatedAt: account.updatedAt.toISOString(), jobTimestamp: job.timestamp });
+        return;
+      }
       if (action === "connect" && account.updatedAt < new Date(Date.now() - 10 * 60_000) && ["PENDING_QR", "QR_READY"].includes(account.status)) {
         await prisma.whatsAppAccount.update({
           where: { id: accountId },
@@ -173,6 +182,14 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
       if (action === "disconnect") return provider.disconnect(accountId);
       return provider.reconnect(accountId);
     } catch (error) {
+      const guardedAccount = await prisma.whatsAppAccount.findUnique({
+        where: { id: accountId },
+        select: { status: true, pairingCode: true, pairingCodeExpiresAt: true, updatedAt: true },
+      }).catch(() => null);
+      if (action === "reconnect" && guardedAccount && hasActivePhonePairing(guardedAccount)) {
+        logger.warn("whatsapp.worker.reconnect.failure_skipped_active_pairing", { workerId, jobId: job.id, accountId, status: guardedAccount.status });
+        return;
+      }
       const hasCredentials = await hasRestorableWhatsAppCredentials(accountId).catch(() => false);
       const explicitAuthFailure = isExplicitWhatsAppAuthFailure(error);
       const status = action === "pairing" || action === "connect" ? "FAILED" : explicitAuthFailure ? "RECONNECT_REQUIRED" : "CONNECTING";
@@ -518,10 +535,13 @@ async function recoverSessions() {
         { sessions: { some: { sessionDataEncrypted: { not: null } } } },
       ],
     },
-    select: { id: true, pairingCode: true, status: true },
+    select: { id: true, pairingCode: true, pairingCodeExpiresAt: true, status: true, updatedAt: true },
   });
   for (const account of recoverableAccounts) {
-    if (account.pairingCode) continue;
+    if (hasActivePhonePairing(account)) {
+      logger.warn("whatsapp.session.recovery_skipped_active_pairing", { workerId, accountId: account.id, status: account.status });
+      continue;
+    }
     if (!(await hasRestorableWhatsAppCredentials(account.id))) {
       logger.warn("whatsapp.session.recovery_skipped_no_restorable_credentials", {
         workerId,

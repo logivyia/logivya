@@ -9,6 +9,7 @@ import QRCode from "qrcode";
 import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
 import { computeWhatsAppHealthScore } from "@/server/whatsapp/connection-health";
+import { hasActivePhonePairing, isPhonePairingActive } from "@/server/whatsapp/pairing-guard";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
 import {
@@ -92,19 +93,30 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     if (reconnectTimers.has(accountId)) return;
     void prisma.whatsAppAccount.findUnique({
       where: { id: accountId },
-      select: { reconnectRetryCount: true, archivedAt: true, lastError: true },
+      select: { status: true, pairingCode: true, pairingCodeExpiresAt: true, updatedAt: true, reconnectRetryCount: true, archivedAt: true, lastError: true },
     }).then((account) => {
       if (!account || account.archivedAt || account.lastError === "WHATSAPP_LOGGED_OUT") return;
+      if (hasActivePhonePairing(account)) {
+        logger.warn("whatsapp.session.reconnect_skipped_active_pairing", { accountId, reason, status: account.status });
+        return;
+      }
       const attempt = Math.max(0, account.reconnectRetryCount);
       const baseDelay = RECONNECT_BACKOFF_MS[Math.min(attempt, RECONNECT_BACKOFF_MS.length - 1)];
       const delay = baseDelay + Math.floor(Math.random() * Math.min(baseDelay, 5_000));
       logger.warn("whatsapp.session.reconnect_scheduled", { accountId, attempt: attempt + 1, delayMs: delay, reason });
       const timer = setTimeout(() => {
         reconnectTimers.delete(accountId);
-        void prisma.whatsAppAccount.updateMany({
-          where: { id: accountId, archivedAt: null },
-          data: { status: "CONNECTING", reconnectRetryCount: { increment: 1 }, lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
-        }).then(() => this.ensureConnectedSocket(accountId))
+        void isPhonePairingActive(accountId)
+          .then((activePairing) => {
+            if (activePairing) {
+              logger.warn("whatsapp.session.auto_reconnect_skipped_active_pairing", { accountId, attempt: attempt + 1, reason });
+              return null;
+            }
+            return prisma.whatsAppAccount.updateMany({
+              where: { id: accountId, archivedAt: null },
+              data: { status: "CONNECTING", reconnectRetryCount: { increment: 1 }, lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
+            }).then(() => this.ensureConnectedSocket(accountId));
+          })
           .catch((error) => {
             logger.error("whatsapp.session.auto_reconnect_failed", error, { accountId, attempt: attempt + 1 });
             this.scheduleReconnect(accountId, errorMessage(error));
@@ -116,6 +128,10 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
   }
 
   private async markTransientConnectionLoss(accountId: string, reason: string, recoveryLevel = 2) {
+    if (await isPhonePairingActive(accountId)) {
+      logger.warn("whatsapp.connection.transient_loss_skipped_active_pairing", { accountId, reason, recoveryLevel });
+      return;
+    }
     await prisma.whatsAppAccount.updateMany({
       where: { id: accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
       data: {
@@ -158,6 +174,10 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       select: { status: true, lastError: true, phoneNumber: true, lastConnectedAt: true, sessionSnapshotAt: true, recoveryLevel: true, archivedAt: true },
     });
     if (!account || account.archivedAt) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
+    if (await isPhonePairingActive(accountId)) {
+      logger.warn("whatsapp.session.missing_credentials_skipped_active_pairing", { accountId, reason, status: account.status });
+      throw new Error("WHATSAPP_PAIRING_IN_PROGRESS");
+    }
 
     if (this.shouldRetryMissingCredentials(account)) {
       const recoveryLevel = Math.min(MISSING_CREDENTIALS_GRACE_ATTEMPTS, Math.max(0, account.recoveryLevel ?? 0) + 1);
@@ -221,6 +241,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
   private async ensureConnectedSocket(accountId: string) {
     const activeSocket = sockets.get(accountId);
     if (activeSocket?.user) return activeSocket;
+    if (await isPhonePairingActive(accountId)) throw new Error("WHATSAPP_PAIRING_IN_PROGRESS");
 
     const existingRestart = sessionRestarts.get(accountId);
     if (existingRestart) return existingRestart;
@@ -745,6 +766,11 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
   }
 
   async reconnect(accountId: string) {
+    if (await isPhonePairingActive(accountId)) {
+      logger.warn("whatsapp.reconnect.skipped_active_pairing", { accountId });
+      await auditAccount(accountId, "whatsapp.reconnect.skipped_active_pairing");
+      return;
+    }
     const hasCredentials = await hasRestorableWhatsAppCredentials(accountId);
     if (hasCredentials) {
       await this.stopSocket(accountId, "Recover existing WhatsApp session");
