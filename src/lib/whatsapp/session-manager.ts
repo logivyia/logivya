@@ -1,4 +1,5 @@
 /**
+ * STABLE WHATSAPP/MESSAGE CORE - DO NOT MODIFY WITHOUT EXPLICIT APPROVAL.
  * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
  * Session files may only be manipulated through this module.
  */
@@ -92,11 +93,32 @@ function snapshotHasRegisteredCredentials(snapshot: SessionSnapshot) {
   }
 }
 
+async function clearStaleSessionSnapshotMetadata(accountId: string, reason: string) {
+  await prisma.whatsAppAccount.updateMany({
+    where: {
+      id: accountId,
+      archivedAt: null,
+      OR: [{ sessionSnapshotAt: { not: null } }, { sessionRestoredAt: { not: null } }],
+    },
+    data: { sessionSnapshotAt: null, sessionRestoredAt: null },
+  }).catch((error) => logger.warn("session.snapshot.stale_metadata_clear_failed", {
+    accountId,
+    reason,
+    message: error instanceof Error ? error.message : String(error),
+  }));
+  logger.warn("WA_SESSION_SNAPSHOT_STALE_METADATA_CLEARED", { accountId, reason });
+}
+
 export async function backupWhatsAppSessionToDatabase(accountId: string, reason = "snapshot") {
+  const startedAt = Date.now();
+  logger.info("WA_SESSION_SNAPSHOT_SAVE_START", { accountId, reason });
   try {
     const directory = whatsappSessionDirectory(accountId);
     const relativeFiles = await listSessionFiles(directory);
-    if (!relativeFiles.includes("creds.json")) return false;
+    if (!relativeFiles.includes("creds.json")) {
+      logger.warn("WA_SESSION_SNAPSHOT_SAVE_SKIPPED", { accountId, reason, cause: "creds_json_missing", durationMs: Date.now() - startedAt });
+      return false;
+    }
 
     const files = await Promise.all(relativeFiles.map(async (relativePath) => ({
       relativePath: assertSafeRelativeSessionPath(relativePath),
@@ -129,9 +151,17 @@ export async function backupWhatsAppSessionToDatabase(accountId: string, reason 
       data: { sessionSnapshotAt: new Date() },
     });
     logger.info("session.snapshot.saved", { accountId, reason });
+    logger.info("WA_SESSION_SNAPSHOT_SAVE_SUCCESS", {
+      accountId,
+      reason,
+      registered,
+      fileCount: files.length,
+      durationMs: Date.now() - startedAt,
+    });
     return true;
   } catch (error) {
     logger.error("session.snapshot.failed", error, { accountId, reason });
+    logger.error("WA_SESSION_SNAPSHOT_SAVE_FAILED", error, { accountId, reason, durationMs: Date.now() - startedAt });
     await prisma.whatsAppAccount.updateMany({
       where: { id: accountId, archivedAt: null },
       data: { lastError: "WHATSAPP_SESSION_SNAPSHOT_FAILED", recoveryLevel: 1, healthScore: 65 },
@@ -141,16 +171,29 @@ export async function backupWhatsAppSessionToDatabase(accountId: string, reason 
 }
 
 export async function restoreWhatsAppSessionFromDatabase(accountId: string) {
-  if (await hasWhatsAppCredentials(accountId)) return true;
+  const startedAt = Date.now();
+  logger.info("WA_RESTORE_START", { accountId, source: "database_snapshot" });
+  if (await hasWhatsAppCredentials(accountId)) {
+    logger.info("WA_RESTORE_SUCCESS", { accountId, source: "local_filesystem", durationMs: Date.now() - startedAt });
+    return true;
+  }
   const session = await prisma.whatsAppSession.findFirst({
     where: { accountId, sessionDataEncrypted: { not: null } },
     orderBy: { updatedAt: "desc" },
   });
-  if (!session?.sessionDataEncrypted) return false;
+  if (!session?.sessionDataEncrypted) {
+    logger.warn("WA_RESTORE_FAILED", { accountId, reason: "snapshot_missing", durationMs: Date.now() - startedAt });
+    await clearStaleSessionSnapshotMetadata(accountId, "restore_snapshot_missing");
+    return false;
+  }
 
   const snapshot = JSON.parse(decryptSensitiveField(parseEncryptedField(session.sessionDataEncrypted), sessionKeyring())) as SessionSnapshot;
   if (snapshot.version !== 1 || !Array.isArray(snapshot.files)) throw new Error("INVALID_WHATSAPP_SESSION_SNAPSHOT");
-  if (!snapshotHasRegisteredCredentials(snapshot)) return false;
+  if (!snapshotHasRegisteredCredentials(snapshot)) {
+    logger.warn("WA_RESTORE_FAILED", { accountId, reason: "snapshot_not_registered", durationMs: Date.now() - startedAt });
+    await clearStaleSessionSnapshotMetadata(accountId, "restore_snapshot_not_registered");
+    return false;
+  }
 
   const directory = whatsappSessionDirectory(accountId);
   await mkdir(directory, { recursive: true });
@@ -170,6 +213,9 @@ export async function restoreWhatsAppSessionFromDatabase(accountId: string) {
       data: { sessionRestoredAt: new Date(), recoveryLevel: 3 },
     });
     logger.info("session.restore.db.success", { accountId });
+    logger.info("WA_RESTORE_SUCCESS", { accountId, source: "database_snapshot", durationMs: Date.now() - startedAt });
+  } else {
+    logger.warn("WA_RESTORE_FAILED", { accountId, reason: "restored_credentials_not_registered", durationMs: Date.now() - startedAt });
   }
   return restored;
 }
@@ -182,6 +228,7 @@ export async function hasRestorableWhatsAppCredentials(accountId: string) {
     orderBy: { updatedAt: "desc" },
     take: 3,
   });
+  if (!sessions.length) await clearStaleSessionSnapshotMetadata(accountId, "restorable_check_snapshot_missing");
   for (const session of sessions) {
     if (!session.sessionDataEncrypted) continue;
     try {
@@ -197,4 +244,14 @@ export async function hasRestorableWhatsAppCredentials(accountId: string) {
 export async function clearWhatsAppSession(accountId: string) {
   await rm(whatsappSessionDirectory(accountId), { recursive: true, force: true });
   await prisma.whatsAppSession.deleteMany({ where: { accountId } });
+  await prisma.whatsAppAccount.updateMany({
+    where: { id: accountId, archivedAt: null },
+    data: {
+      sessionSnapshotAt: null,
+      sessionRestoredAt: null,
+      lastHeartbeatAt: null,
+      lastPingAt: null,
+      lastPongAt: null,
+    },
+  });
 }

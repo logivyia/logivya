@@ -2,15 +2,14 @@ import { NextResponse } from "next/server";
 import { requirePermission } from "@/server/auth/permissions";
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
-import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { writeAuditLog } from "@/server/security/audit";
+import { requestPhonePairingCode } from "@/server/whatsapp/pairing-code-flow";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { whatsappLastErrorCode } from "@/server/whatsapp/user-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
-import { assertWhatsAppWorkerReachable, isWhatsAppWaitTimeout, waitForPairingCode } from "@/server/whatsapp/worker-health";
+import { assertWhatsAppWorkerReachable, isWhatsAppWaitTimeout } from "@/server/whatsapp/worker-health";
 import { logger } from "@/server/observability/logger";
 import { AccountStatus } from "@prisma/client";
-import { resetAccountForConnection } from "@/lib/whatsapp/account-status-machine";
 import { assertSameOrigin, enforceWhatsAppRateLimit } from "@/server/whatsapp/request-guards";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -32,12 +31,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ ok: true, alreadyConnected: true, accountId: account.id, status: account.status, message: "WhatsApp hesabınız zaten bağlı." });
     }
     accountId = id;
-    await resetAccountForConnection(id, AccountStatus.PENDING_PAIRING, { phoneNumber });
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.pairing.requested", entityType: "WhatsAppAccount", entityId: id, after: { phoneNumber: `${phoneNumber.slice(0, 3)}****${phoneNumber.slice(-2)}` } });
-    const job = await enqueueWhatsAppJob("pairing", { action: "pairing", accountId: id, phoneNumber }, { jobId: `pairing-${id}-${Date.now()}` });
-    logger.info("whatsapp.connect.job.enqueued", { accountId: id, jobId: job.id, action: "pairing", mode: "PHONE_CODE" });
     try {
-      const ready = await waitForPairingCode(id);
+      const { ready } = await requestPhonePairingCode({ accountId: id, phoneNumber, source: "web", companyId: company.id, userId: user.id });
+      if (!ready) return NextResponse.json({ ok: true, alreadyConnected: true, accountId: id, status: "CONNECTED", message: "WhatsApp hesabÄ±nÄ±z zaten baÄŸlÄ±." });
       return NextResponse.json({ ok: true, accountId: id, status: ready.status, pairingCode: ready.pairingCode, expiresAt: ready.pairingCodeExpiresAt, pairingCodeExpiresAt: ready.pairingCodeExpiresAt });
     } catch (waitError) {
       if (!isWhatsAppWaitTimeout(waitError)) throw waitError;

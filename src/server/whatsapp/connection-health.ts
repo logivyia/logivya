@@ -17,7 +17,7 @@ function ageMs(value?: Date | string | null) {
 }
 
 export function isHardWhatsAppDisconnect(lastError?: string | null) {
-  return lastError === "WHATSAPP_LOGGED_OUT" || lastError === "WHATSAPP_CREDENTIALS_MISSING";
+  return lastError === "WHATSAPP_LOGGED_OUT";
 }
 
 export function computeWhatsAppHealthScore(input: WhatsAppConnectionHealthInput) {

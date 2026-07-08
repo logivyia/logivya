@@ -14,7 +14,7 @@ async function requestConnectionSelfHeal(accountIds: string[], reason: string) {
     const hasCredentials = await hasRestorableWhatsAppCredentials(accountId).catch(() => false);
     if (!hasCredentials) return;
     await prisma.whatsAppAccount.updateMany({
-      where: { id: accountId, archivedAt: null, lastError: { notIn: ["WHATSAPP_LOGGED_OUT", "WHATSAPP_CREDENTIALS_MISSING"] } },
+      where: { id: accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
       data: { status: "CONNECTING", lastError: "WHATSAPP_TRANSIENT_DISCONNECT", recoveryLevel: 2 },
     });
     await enqueueWhatsAppJob("reconnect", { action: "reconnect", accountId }, { jobId: `v3-reconnect-${accountId}`, removeOnComplete: 50, removeOnFail: 100 })
@@ -65,5 +65,5 @@ export async function resolveSendableWhatsAppGroups(companyId: string, requested
 
   return activeGroups.length
     ? activeGroups
-    : candidateGroups.filter((group) => group.account.lastError !== "WHATSAPP_LOGGED_OUT" && group.account.lastError !== "WHATSAPP_CREDENTIALS_MISSING");
+    : candidateGroups.filter((group) => group.account.lastError !== "WHATSAPP_LOGGED_OUT");
 }

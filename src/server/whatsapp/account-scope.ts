@@ -1,11 +1,14 @@
 import { AccountStatus, type Prisma } from "@prisma/client";
 import { isRecoverableWhatsAppStatus, RECOVERABLE_ACCOUNT_STATUSES } from "@/lib/whatsapp/account-status-machine";
+import { hasRestorableWhatsAppCredentials } from "@/lib/whatsapp/session-manager";
 import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
 import { enqueueWhatsAppJob } from "@/server/queues/producer";
+import { requestWhatsAppSessionRestoreIfNeeded } from "@/server/whatsapp/session-restore";
 
-const FATAL_LAST_ERRORS = ["WHATSAPP_LOGGED_OUT", "WHATSAPP_CREDENTIALS_MISSING"];
+const FATAL_LAST_ERRORS = ["WHATSAPP_LOGGED_OUT"];
 const GROUP_SYNC_STALE_MS = 5 * 60_000;
+const RESTORABLE_STATUSES = [...RECOVERABLE_ACCOUNT_STATUSES, AccountStatus.FAILED, AccountStatus.ERROR] as const;
 
 type AccountScope = {
   companyId: string;
@@ -32,7 +35,7 @@ function recoverableAccountWhere(scope: AccountScope, accountId?: string): Prism
     ...ownedWhatsAppAccountWhere(scope),
     ...(accountId ? { id: accountId } : {}),
     archivedAt: null,
-    status: { in: [...RECOVERABLE_ACCOUNT_STATUSES] },
+    status: { in: [...RESTORABLE_STATUSES] },
     OR: [{ lastError: null }, { lastError: { notIn: FATAL_LAST_ERRORS } }],
   };
 }
@@ -50,7 +53,40 @@ export async function resolveCurrentWhatsAppAccount(scope: AccountScope, options
       { updatedAt: "desc" },
     ],
   });
-  return account && isRecoverableWhatsAppStatus(account.status, account.lastError) ? account : null;
+  if (!account) return null;
+  if (isRecoverableWhatsAppStatus(account.status, account.lastError)) {
+    if (!options.requireConnected) {
+      await requestWhatsAppSessionRestoreIfNeeded(account, scope, "account-scope").catch((error) =>
+        logger.warn("whatsapp.account_scope.restore_enqueue_failed", {
+          companyId: scope.companyId,
+          userId: scope.userId,
+          whatsappAccountId: account.id,
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+    return account;
+  }
+  if (options.requireConnected) return null;
+  const restorable = await hasRestorableWhatsAppCredentials(account.id).catch((error) => {
+    logger.warn("whatsapp.account_scope.restorable_check_failed", {
+      companyId: scope.companyId,
+      userId: scope.userId,
+      whatsappAccountId: account.id,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  });
+  if (!restorable) return null;
+  await requestWhatsAppSessionRestoreIfNeeded(account, scope, "account-scope").catch((error) =>
+    logger.warn("whatsapp.account_scope.restore_enqueue_failed", {
+      companyId: scope.companyId,
+      userId: scope.userId,
+      whatsappAccountId: account.id,
+      message: error instanceof Error ? error.message : String(error),
+    }),
+  );
+  return account;
 }
 
 export async function requireOwnedWhatsAppAccount(scope: AccountScope, accountId: string) {

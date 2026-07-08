@@ -3,17 +3,16 @@ import { requirePermission } from "@/server/auth/permissions";
 import { requireApiSession } from "@/server/auth/session";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { prisma } from "@/server/db";
-import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { writeAuditLog } from "@/server/security/audit";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
+import { requestPhonePairingCode } from "@/server/whatsapp/pairing-code-flow";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { whatsappLastErrorCode, whatsappUserMessage } from "@/server/whatsapp/user-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
 import { findReusableWhatsAppAccount, findSingleSlotWhatsAppAccount } from "@/server/whatsapp/reusable-account";
-import { assertWhatsAppWorkerReachable, isWhatsAppWaitTimeout, waitForPairingCode } from "@/server/whatsapp/worker-health";
+import { assertWhatsAppWorkerReachable, isWhatsAppWaitTimeout } from "@/server/whatsapp/worker-health";
 import { logger } from "@/server/observability/logger";
 import { AccountStatus } from "@prisma/client";
-import { resetAccountForConnection } from "@/lib/whatsapp/account-status-machine";
 import { assertSameOrigin, enforceWhatsAppRateLimit, whatsappRequestErrorStatus } from "@/server/whatsapp/request-guards";
 
 export async function POST(request: Request) {
@@ -40,21 +39,17 @@ export async function POST(request: Request) {
       if (!access.allowed) account = await findSingleSlotWhatsAppAccount(company.id, user.id, access.limit);
       if (!account && !access.allowed) return NextResponse.json({ error: whatsappUserMessage(new Error(access.reason || "subscription.inactive"), "pairing"), reason: access.reason, limit: access.limit }, { status: 403 });
     }
-    if (account) {
-      account = await resetAccountForConnection(account.id, AccountStatus.PENDING_PAIRING, { phoneNumber });
-    } else {
+    if (!account) {
       account = await prisma.whatsAppAccount.create({
         data: { companyId: company.id, userId: user.id, label: null, phoneNumber, provider: process.env.WHATSAPP_PROVIDER || "baileys", status: AccountStatus.CREATED },
       });
-      account = await resetAccountForConnection(account.id, AccountStatus.PENDING_PAIRING, { phoneNumber });
     }
 
     accountId = account.id;
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.pairing.requested", entityType: "WhatsAppAccount", entityId: accountId, after: { phoneNumber: `${phoneNumber.slice(0, 3)}****${phoneNumber.slice(-2)}` } });
-    const job = await enqueueWhatsAppJob("pairing", { action: "pairing", accountId, phoneNumber }, { jobId: `pairing-${accountId}-${Date.now()}` });
-    logger.info("whatsapp.connect.job.enqueued", { accountId, jobId: job.id, action: "pairing", mode: "PHONE_CODE" });
     try {
-      const ready = await waitForPairingCode(accountId);
+      const { ready } = await requestPhonePairingCode({ accountId, phoneNumber, source: "web", companyId: company.id, userId: user.id });
+      if (!ready) return NextResponse.json({ ok: true, alreadyConnected: true, accountId, status: "CONNECTED", message: "WhatsApp hesabÄ±nÄ±z zaten baÄŸlÄ±." });
       return NextResponse.json({ ok: true, accountId, status: ready.status, pairingCode: ready.pairingCode, expiresAt: ready.pairingCodeExpiresAt, pairingCodeExpiresAt: ready.pairingCodeExpiresAt }, { status: 201 });
     } catch (waitError) {
       if (!isWhatsAppWaitTimeout(waitError)) throw waitError;

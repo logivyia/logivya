@@ -8,6 +8,7 @@ import { nextRecurringRunAt, recurringJobId, type RecurringRule } from "@/server
 import { campaignQueue, deadLetterQueue, messageQueue, redisConnectionOptions, whatsappQueue } from "@/server/queues/client";
 import { logger } from "@/server/observability/logger";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
+import { withWhatsAppAccountLock } from "@/server/whatsapp/account-lock";
 import { writeWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
@@ -19,6 +20,7 @@ import { isDeleteWindowOpen, parseStoredMessageKey, updateCampaignDeleteAggregat
 import type { MessageRecipientJobPayload } from "@/server/messages/delivery-pipeline";
 import type { DeleteForEveryoneJob } from "@/server/queues/contracts";
 /**
+ * STABLE WHATSAPP/MESSAGE CORE - DO NOT MODIFY WITHOUT EXPLICIT APPROVAL.
  * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
  * Do not modify without running the full WhatsApp regression test suite.
  */
@@ -41,7 +43,12 @@ process.on("unhandledRejection", (reason) => {
 
 function isRecoverableWhatsAppSendError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
-  return /WHATSAPP_RECONNECT_REQUIRED|WHATSAPP_SESSION_CONNECTION_TIMEOUT|Connection Closed|Timed Out|restart|disconnected|socket/i.test(message);
+  return /WHATSAPP_RECONNECT_REQUIRED|WHATSAPP_TRANSIENT_DISCONNECT|WHATSAPP_RESTORING_CONNECTION|WHATSAPP_RETRYING_CONNECTION|WHATSAPP_SESSION_CONNECTION_TIMEOUT|WHATSAPP_ACCOUNT_LOCK_TIMEOUT|Connection Closed|Timed Out|restart|disconnected|socket/i.test(message);
+}
+
+function isExplicitWhatsAppAuthFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /WHATSAPP_LOGGED_OUT|LOGGED_OUT|AUTH_REQUIRED|WHATSAPP_CREDENTIALS_MISSING/i.test(message);
 }
 
 function registerWorker(name: string, worker: Worker) {
@@ -140,18 +147,50 @@ registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign, async (job) => {
 
 registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
   const { action, accountId, phoneNumber } = job.data as { action: "connect" | "pairing" | "sync" | "disconnect" | "reconnect"; accountId: string; phoneNumber?: string };
-  try{
-    logger.info("whatsapp.worker.job.received", { workerId, jobId: job.id, action, accountId });
-    logger.info("whatsapp.job.received", { workerId, jobId: job.id, action, accountId });
-    const account=await prisma.whatsAppAccount.findUnique({where:{id:accountId},select:{status:true,archivedAt:true,updatedAt:true}});
-    if(!account||account.archivedAt)return;
-    if(action==="connect"&&account.updatedAt<new Date(Date.now()-10*60_000)&&["PENDING_QR","QR_READY"].includes(account.status)){
-      await prisma.whatsAppAccount.update({where:{id:accountId},data:{status:"FAILED",lastError:"WHATSAPP_QR_EXPIRED",qrCode:null,qrExpiresAt:null}});
-      return;
+  return withWhatsAppAccountLock(accountId, `worker:${action}`, async () => {
+    try {
+      logger.info("whatsapp.worker.job.received", { workerId, jobId: job.id, action, accountId });
+      logger.info("whatsapp.job.received", { workerId, jobId: job.id, action, accountId });
+      const account = await prisma.whatsAppAccount.findUnique({
+        where: { id: accountId },
+        select: { status: true, archivedAt: true, updatedAt: true },
+      });
+      if (!account || account.archivedAt) return;
+      if (action === "connect" && account.updatedAt < new Date(Date.now() - 10 * 60_000) && ["PENDING_QR", "QR_READY"].includes(account.status)) {
+        await prisma.whatsAppAccount.update({
+          where: { id: accountId },
+          data: { status: "FAILED", lastError: "WHATSAPP_QR_EXPIRED", qrCode: null, qrExpiresAt: null },
+        });
+        return;
+      }
+      if (["connect", "reconnect"].includes(action) && account.status === "ERROR") return;
+      if (action === "connect") return provider.createFreshQrSession(accountId);
+      if (action === "pairing") {
+        if (!phoneNumber) throw new Error("Invalid phone number.");
+        return provider.requestPairingCode(accountId, phoneNumber);
+      }
+      if (action === "sync") return provider.syncGroups(accountId);
+      if (action === "disconnect") return provider.disconnect(accountId);
+      return provider.reconnect(accountId);
+    } catch (error) {
+      const hasCredentials = await hasRestorableWhatsAppCredentials(accountId).catch(() => false);
+      const explicitAuthFailure = isExplicitWhatsAppAuthFailure(error);
+      const status = action === "pairing" || action === "connect" ? "FAILED" : explicitAuthFailure ? "RECONNECT_REQUIRED" : "CONNECTING";
+      const lastError = action === "pairing"
+        ? pairingUserMessage(error)
+        : action === "connect"
+          ? "WHATSAPP_QR_FAILED"
+          : explicitAuthFailure
+            ? error instanceof Error && /LOGGED_OUT|WHATSAPP_LOGGED_OUT/i.test(error.message) ? "WHATSAPP_LOGGED_OUT" : "WHATSAPP_CREDENTIALS_MISSING"
+            : "WHATSAPP_TRANSIENT_DISCONNECT";
+      await prisma.whatsAppAccount.update({
+        where: { id: accountId },
+        data: { status, lastError, qrCode: null, qrExpiresAt: null, recoveryLevel: explicitAuthFailure ? 5 : hasCredentials ? 2 : 3 },
+      });
+      logger.error("whatsapp.job.failed", error, { jobId: job.id, accountId, action, status, lastError });
+      throw error;
     }
-    if(["connect","reconnect"].includes(action)&&account.status==="ERROR")return;
-    if (action === "connect") return provider.createFreshQrSession(accountId);if(action==="pairing"){if(!phoneNumber)throw new Error("Invalid phone number.");return provider.requestPairingCode(accountId,phoneNumber)}if (action === "sync") return provider.syncGroups(accountId);if (action === "disconnect") return provider.disconnect(accountId);return provider.reconnect(accountId)}
-  catch(error){const hasCredentials=await hasRestorableWhatsAppCredentials(accountId).catch(()=>false);const status=action==="pairing"||action==="connect"?"FAILED":hasCredentials?"DISCONNECTED":"RECONNECT_REQUIRED";const lastError=action==="pairing"?pairingUserMessage(error):action==="connect"?"WHATSAPP_QR_FAILED":hasCredentials?"WHATSAPP_TRANSIENT_DISCONNECT":"WHATSAPP_CREDENTIALS_MISSING";await prisma.whatsAppAccount.update({where:{id:accountId},data:{status,lastError,qrCode:null,qrExpiresAt:null}});logger.error("whatsapp.job.failed",error,{jobId:job.id,accountId,action,status,lastError});throw error}
+  }, { ttlMs: 180_000, timeoutMs: 45_000, correlationId: String(job.id ?? "") });
 }, { connection, concurrency: 5 }));
 
 registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
@@ -228,14 +267,19 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
     }
     logger.info("message.send.attempt", { ...baseLog, accountId: target.accountId, groupId: target.id, groupExternalId: target.externalGroupId });
     const sendResult = await traceMessageStage("worker.baileys.send", { ...baseLog, accountId: target.accountId, groupId: target.id, groupExternalId: target.externalGroupId }, async () =>
-      provider.sendGroupMessage({
-        accountId: target.accountId,
-        groupExternalId: target.externalGroupId,
-        content: recipient.campaign.content,
-        correlationId,
-        campaignId: recipient.campaignId,
-        recipientId: recipient.id,
-      }),
+      withWhatsAppAccountLock(
+        target.accountId,
+        "message-send",
+        () => provider.sendGroupMessage({
+          accountId: target.accountId,
+          groupExternalId: target.externalGroupId,
+          content: recipient.campaign.content,
+          correlationId,
+          campaignId: recipient.campaignId,
+          recipientId: recipient.id,
+        }),
+        { ttlMs: 180_000, timeoutMs: 45_000, correlationId },
+      ),
     );
     const sentAt = new Date();
     const messageKeyJson = JSON.parse(JSON.stringify(sendResult.messageKey)) as Prisma.InputJsonValue;
@@ -270,7 +314,7 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
         data: { status: "PENDING", failedAt: null, errorMessage: finalAttempt ? "WHATSAPP_RESTORING_CONNECTION" : "WHATSAPP_RETRYING_CONNECTION" },
       });
       await prisma.whatsAppAccount.updateMany({
-        where: { id: recipient.accountId, archivedAt: null, lastError: { notIn: ["WHATSAPP_LOGGED_OUT", "WHATSAPP_CREDENTIALS_MISSING"] } },
+        where: { id: recipient.accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
         data: { status: "CONNECTING", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
       });
       const reconnectQueue = whatsappQueue();
@@ -414,14 +458,19 @@ async function processDeleteForEveryoneJob(job: Job<DeleteForEveryoneJob>) {
     return;
   }
   try {
-    await provider.deleteGroupMessage({
-      accountId: recipient.accountId,
-      groupExternalId: recipient.recipientExternalId,
-      messageKey,
-      campaignId: recipient.campaignId,
-      recipientId: recipient.id,
-      correlationId: jobData.correlationId,
-    });
+    await withWhatsAppAccountLock(
+      recipient.accountId,
+      "message-delete-for-everyone",
+      () => provider.deleteGroupMessage({
+        accountId: recipient.accountId,
+        groupExternalId: recipient.recipientExternalId,
+        messageKey,
+        campaignId: recipient.campaignId,
+        recipientId: recipient.id,
+        correlationId: jobData.correlationId,
+      }),
+      { ttlMs: 120_000, timeoutMs: 45_000, correlationId: jobData.correlationId },
+    );
     await prisma.messageRecipient.update({
       where: { id: recipient.id },
       data: { deleteForEveryoneStatus: "DELETED", deleteForEveryoneCompletedAt: new Date(), deleteForEveryoneError: null },
@@ -439,6 +488,20 @@ async function processDeleteForEveryoneJob(job: Job<DeleteForEveryoneJob>) {
         deleteForEveryoneError: recoverable && !finalAttempt ? "WHATSAPP_DELETE_RETRYING" : errorMessage,
       },
     });
+    if (recoverable) {
+      await prisma.whatsAppAccount.updateMany({
+        where: { id: recipient.accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
+        data: { status: "CONNECTING", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
+      });
+      const reconnectQueue = whatsappQueue();
+      try {
+        await reconnectQueue.add("reconnect", { action: "reconnect", accountId: recipient.accountId }, { jobId: `delete-reconnect-${recipient.accountId}`, removeOnComplete: 50, removeOnFail: 100 });
+      } catch (queueError) {
+        logger.error("message.delete.reconnect.enqueue_failed", queueError, baseLog);
+      } finally {
+        await reconnectQueue.close().catch(() => undefined);
+      }
+    }
     logger.error("message.delete.failed", error, { ...baseLog, recoverable, finalAttempt });
     if (recoverable && !finalAttempt) throw error;
   } finally {
@@ -455,14 +518,19 @@ async function recoverSessions() {
         { sessions: { some: { sessionDataEncrypted: { not: null } } } },
       ],
     },
-    select: { id: true, pairingCode: true },
+    select: { id: true, pairingCode: true, status: true },
   });
   for (const account of recoverableAccounts) {
     if (account.pairingCode) continue;
     if (!(await hasRestorableWhatsAppCredentials(account.id))) {
+      logger.warn("whatsapp.session.recovery_skipped_no_restorable_credentials", {
+        workerId,
+        accountId: account.id,
+        status: account.status,
+      });
       await prisma.whatsAppAccount.updateMany({
-        where: { id: account.id, archivedAt: null, status: { in: ["CONNECTED", "CONNECTING", "DISCONNECTED", "RECONNECT_REQUIRED"] } },
-        data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_CREDENTIALS_MISSING" },
+        where: { id: account.id, archivedAt: null, status: { in: ["CONNECTED", "CONNECTING", "DISCONNECTED"] } },
+        data: { status: "DISCONNECTED", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
       });
       continue;
     }
@@ -471,6 +539,10 @@ async function recoverSessions() {
   }
 }
 void recoverSessions().catch((error) => console.error("WhatsApp session recovery bootstrap failed", error));
+setInterval(
+  () => void recoverSessions().catch((error) => logger.error("whatsapp.session.periodic_recovery_failed", error, { workerId })),
+  Number(process.env.WHATSAPP_SESSION_RECOVERY_INTERVAL_MS || 180_000),
+).unref();
 
 async function cleanupStuckSessions() {
   const result = await cleanupStuckWhatsAppAccounts();

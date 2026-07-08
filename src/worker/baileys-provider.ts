@@ -1,4 +1,5 @@
 /**
+ * STABLE WHATSAPP/MESSAGE CORE - DO NOT MODIFY WITHOUT EXPLICIT APPROVAL.
  * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
  * Do not modify without running the full WhatsApp regression test suite.
  */
@@ -23,7 +24,7 @@ import type { DeleteGroupMessageInput, DeleteResult, GroupResult, SendGroupMessa
 type SessionMode = "PAIR_QR" | "PAIR_PHONE" | "RESTORE" | "RECONNECT";
 
 const sockets = new Map<string, WASocket>();
-const manuallyDisconnected = new Set<string>();
+const intentionallyStoppedSockets = new WeakSet<WASocket>();
 const sessionModes = new Map<string, SessionMode>();
 const sessionRestarts = new Map<string, Promise<WASocket>>();
 const heartbeatTimers = new Map<string, ReturnType<typeof setInterval>>();
@@ -36,6 +37,7 @@ const HEARTBEAT_INTERVAL_MS = Number(process.env.WHATSAPP_HEARTBEAT_INTERVAL_MS 
 const QR_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_QR_TRANSIENT_RETRY_LIMIT || 3);
 const PAIRING_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_PAIRING_TRANSIENT_RETRY_LIMIT || 5);
 const PAIRING_PRESERVED_CODE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
+const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
 const RECONNECT_BACKOFF_MS = [5_000, 10_000, 20_000, 40_000, 60_000, 120_000] as const;
 
 function sleep(ms: number) {
@@ -51,6 +53,15 @@ function maskPhoneNumber(phoneNumber?: string | null) {
   const digits = phoneNumber.replace(/\D/g, "");
   if (digits.length <= 4) return "****";
   return `${digits.slice(0, 3)}****${digits.slice(-2)}`;
+}
+
+function disconnectCode(error: unknown) {
+  return (error as { output?: { statusCode?: number } } | undefined)?.output?.statusCode;
+}
+
+function isLoggedOutError(error: unknown) {
+  const message = errorMessage(error).toLowerCase();
+  return disconnectCode(error) === DisconnectReason.loggedOut || message.includes("logged out") || message.includes("whatsapp_logged_out");
 }
 
 async function auditAccount(accountId: string, action: string, metadata: Record<string, unknown> = {}) {
@@ -83,7 +94,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       where: { id: accountId },
       select: { reconnectRetryCount: true, archivedAt: true, lastError: true },
     }).then((account) => {
-      if (!account || account.archivedAt || account.lastError === "WHATSAPP_LOGGED_OUT" || account.lastError === "WHATSAPP_CREDENTIALS_MISSING") return;
+      if (!account || account.archivedAt || account.lastError === "WHATSAPP_LOGGED_OUT") return;
       const attempt = Math.max(0, account.reconnectRetryCount);
       const baseDelay = RECONNECT_BACKOFF_MS[Math.min(attempt, RECONNECT_BACKOFF_MS.length - 1)];
       const delay = baseDelay + Math.floor(Math.random() * Math.min(baseDelay, 5_000));
@@ -104,11 +115,77 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     }).catch((error) => logger.error("whatsapp.session.reconnect_schedule_failed", error, { accountId }));
   }
 
+  private async markTransientConnectionLoss(accountId: string, reason: string, recoveryLevel = 2) {
+    await prisma.whatsAppAccount.updateMany({
+      where: { id: accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
+      data: {
+        status: "CONNECTING",
+        lastError: "WHATSAPP_TRANSIENT_DISCONNECT",
+        recoveryLevel,
+        healthScore: 65,
+        qrCode: null,
+        qrExpiresAt: null,
+        pairingCode: null,
+        pairingCodeExpiresAt: null,
+      },
+    });
+    await prisma.whatsAppSession.updateMany({ where: { accountId }, data: { status: "CONNECTING", qrCode: null, expiresAt: null } }).catch(() => undefined);
+    logger.warn("whatsapp.connection.transient_loss", { accountId, reason, recoveryLevel });
+  }
+
+  private async markFreshPairingRequired(accountId: string, reason: string) {
+    await prisma.whatsAppAccount.updateMany({
+      where: { id: accountId, archivedAt: null },
+      data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_CREDENTIALS_MISSING", recoveryLevel: 5, healthScore: 0 },
+    });
+    logger.error("whatsapp.session.fresh_pairing_required", new Error(reason), { accountId, reason });
+  }
+
+  private shouldRetryMissingCredentials(account: { status: string; lastError: string | null; phoneNumber: string | null; lastConnectedAt: Date | null; sessionSnapshotAt: Date | null; recoveryLevel: number | null }) {
+    if (account.lastError === "WHATSAPP_LOGGED_OUT") return false;
+    const wasLinked = Boolean(
+      account.phoneNumber ||
+      account.lastConnectedAt ||
+      account.sessionSnapshotAt ||
+      ["CONNECTED", "CONNECTING", "DISCONNECTED", "RECONNECT_REQUIRED"].includes(account.status),
+    );
+    return wasLinked && Math.max(0, account.recoveryLevel ?? 0) < MISSING_CREDENTIALS_GRACE_ATTEMPTS;
+  }
+
+  private async handleMissingCredentials(accountId: string, reason: string): Promise<never> {
+    const account = await prisma.whatsAppAccount.findUnique({
+      where: { id: accountId },
+      select: { status: true, lastError: true, phoneNumber: true, lastConnectedAt: true, sessionSnapshotAt: true, recoveryLevel: true, archivedAt: true },
+    });
+    if (!account || account.archivedAt) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
+
+    if (this.shouldRetryMissingCredentials(account)) {
+      const recoveryLevel = Math.min(MISSING_CREDENTIALS_GRACE_ATTEMPTS, Math.max(0, account.recoveryLevel ?? 0) + 1);
+      await this.markTransientConnectionLoss(accountId, reason, recoveryLevel);
+      this.scheduleReconnect(accountId, reason);
+      throw new Error("WHATSAPP_RECONNECT_REQUIRED");
+    }
+
+    await this.markFreshPairingRequired(accountId, reason);
+    throw new Error("WHATSAPP_RECONNECT_REQUIRED");
+  }
+
+  private async keepAliveSocket(accountId: string, socket: WASocket) {
+    if (sockets.get(accountId) !== socket || !socket.user) return false;
+    try {
+      await socket.sendPresenceUpdate("available");
+      return sockets.get(accountId) === socket && Boolean(socket.user);
+    } catch (error) {
+      logger.warn("whatsapp.keepalive.failed", { accountId, reason: errorMessage(error) });
+      return false;
+    }
+  }
+
   private startHeartbeat(accountId: string, socket: WASocket) {
     this.stopHeartbeat(accountId);
     const beat = async () => {
       const now = new Date();
-      const healthy = sockets.get(accountId) === socket && Boolean(socket.user);
+      const healthy = await this.keepAliveSocket(accountId, socket);
       const groupCount = await prisma.whatsAppGroup.count({ where: { accountId, isArchived: false } }).catch(() => 0);
       const healthScore = computeWhatsAppHealthScore({
         status: healthy ? "CONNECTED" : "DISCONNECTED",
@@ -131,6 +208,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       if (!healthy) {
         logger.warn("whatsapp.heartbeat_fail", { accountId });
         this.stopHeartbeat(accountId);
+        await this.markTransientConnectionLoss(accountId, "heartbeat_fail", 1);
         this.scheduleReconnect(accountId, "heartbeat_fail");
       }
     };
@@ -150,16 +228,12 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     const restart = (async () => {
       const account = await prisma.whatsAppAccount.findUnique({
         where: { id: accountId },
-        select: { id: true, archivedAt: true, status: true, lastError: true },
+        select: { id: true, archivedAt: true, status: true, lastError: true, phoneNumber: true, lastConnectedAt: true, sessionSnapshotAt: true, recoveryLevel: true },
       });
       if (!account || account.archivedAt) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
 
       if (!(await hasRestorableWhatsAppCredentials(accountId))) {
-        await prisma.whatsAppAccount.updateMany({
-          where: { id: accountId, archivedAt: null },
-          data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_CREDENTIALS_MISSING" },
-        });
-        throw new Error("WHATSAPP_RECONNECT_REQUIRED");
+        await this.handleMissingCredentials(accountId, "ensure_connected_socket_missing_credentials");
       }
       await restoreWhatsAppSessionFromDatabase(accountId);
 
@@ -194,7 +268,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     reconnectTimers.delete(accountId);
     const socket = sockets.get(accountId);
     if (socket) {
-      manuallyDisconnected.add(accountId);
+      intentionallyStoppedSockets.add(socket);
       socket.end(new Error(reason));
       sockets.delete(accountId);
     }
@@ -269,6 +343,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     pairingTransientRetries.delete(accountId);
     logger.info("whatsapp.pairing.requested", { accountId, phoneNumber: maskPhoneNumber(normalized) });
     logger.info("whatsapp.pairing.request_started", { accountId, phoneNumber: maskPhoneNumber(normalized) });
+    logger.info("WA_PAIRING_START", { accountId, phoneNumber: maskPhoneNumber(normalized), source: "worker" });
     await this.clearTemporaryAuth(accountId);
     sessionModes.set(accountId, "PAIR_PHONE");
     await prisma.whatsAppAccount.update({
@@ -339,6 +414,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       });
       logger.info("whatsapp.pairing.ready", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
       logger.info("whatsapp.pairing.code_generated", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
+      logger.info("WA_PAIRING_CODE_GENERATED", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
       await auditAccount(accountId, "whatsapp.pairing.code_generated", { phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
       return { code, expiresAt };
     } catch (error) {
@@ -371,7 +447,6 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
   }
 
   private async startSession(accountId: string, mode: SessionMode) {
-    manuallyDisconnected.delete(accountId);
     sessionModes.set(accountId, mode);
     await ensureWhatsAppSessionRoot();
     await restoreWhatsAppSessionFromDatabase(accountId);
@@ -382,11 +457,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     const { version } = await fetchLatestBaileysVersion();
     if (!state.creds.registered && mode !== "PAIR_QR" && mode !== "PAIR_PHONE") {
       logger.warn("whatsapp.restore.credentials_missing", { accountId, mode });
-      await prisma.whatsAppAccount.updateMany({
-        where: { id: accountId, archivedAt: null },
-        data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_CREDENTIALS_MISSING", recoveryLevel: 5, healthScore: 0 },
-      });
-      throw new Error("WHATSAPP_RECONNECT_REQUIRED");
+      await this.handleMissingCredentials(accountId, `start_session_missing_credentials:${mode}`);
     }
     const preservePairingCode = mode === "PAIR_PHONE" && !state.creds.registered && await this.hasActivePairingCode(accountId);
     const activated = await prisma.whatsAppAccount.updateMany({
@@ -418,11 +489,26 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
 
     socket.ev.on("creds.update", async () => {
       await saveCreds();
+      logger.info("WA_PAIRING_CREDS_RECEIVED", {
+        accountId,
+        mode: sessionModes.get(accountId) || mode,
+        registered: state.creds.registered,
+      });
       await backupWhatsAppSessionToDatabase(accountId, "creds.update").catch((error) => logger.error("whatsapp.session.backup_failed", error, { accountId }));
     });
     socket.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
       try {
         const currentMode = sessionModes.get(accountId) || mode;
+        if (currentMode === "PAIR_PHONE" || currentMode === "PAIR_QR") {
+          logger.info("WA_PAIRING_CONNECTION_UPDATE", {
+            accountId,
+            mode: currentMode,
+            connection: connection ?? null,
+            hasQr: Boolean(qr),
+            code: disconnectCode(lastDisconnect?.error) ?? null,
+            registered: state.creds.registered,
+          });
+        }
         if (qr && currentMode === "PAIR_QR") {
           logger.info("whatsapp.qr.received", { accountId });
           const qrCode = await QRCode.toDataURL(qr, { width: 360, margin: 2 });
@@ -462,15 +548,16 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           logger.info("SESSION_CREATED", { accountId, mode: currentMode });
           logger.info("whatsapp.connected", { accountId, mode: currentMode, phoneNumber: maskPhoneNumber(phoneNumber) });
           logger.info("whatsapp.connection.open", { accountId, mode: currentMode, phoneNumber: maskPhoneNumber(phoneNumber) });
+          logger.info("WA_ACCOUNT_CONNECTED", { accountId, mode: currentMode, phoneNumber: maskPhoneNumber(phoneNumber) });
           await auditAccount(accountId, "whatsapp.connected", { phoneNumber: maskPhoneNumber(phoneNumber), mode: currentMode });
           settleInitialized();
           await this.syncGroups(accountId);
         }
         if (connection === "close") {
           this.stopHeartbeat(accountId);
-          const code = (lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output?.statusCode;
+          const code = disconnectCode(lastDisconnect?.error);
           const loggedOut = code === DisconnectReason.loggedOut;
-          const intentional = manuallyDisconnected.delete(accountId);
+          const intentional = intentionallyStoppedSockets.has(socket);
           const replacedByNewSocket = Boolean(sockets.get(accountId) && sockets.get(accountId) !== socket);
           const closeError = lastDisconnect?.error instanceof Error ? lastDisconnect.error : new Error("WhatsApp socket closed before initialization.");
           if (sockets.get(accountId) === socket) sockets.delete(accountId);
@@ -537,42 +624,29 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
               return;
             }
             const reason = lastDisconnect?.error instanceof Error ? lastDisconnect.error.message : "WhatsApp pairing connection closed";
-            if (!state.creds.registered && await this.preserveActivePairingCode(accountId, reason, code)) return;
+            if (!state.creds.registered && await this.preserveActivePairingCode(accountId, reason, code)) {
+              logger.warn("WA_PAIRING_FAILED_RECOVERABLE", { accountId, mode: currentMode, reason, code });
+              return;
+            }
             logger.error("whatsapp.pairing.connection_closed", lastDisconnect?.error, { accountId, code });
             await clearWhatsAppSession(accountId);
             await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "FAILED", pairingCode: null, pairingCodeExpiresAt: null, lastError: pairingUserMessage(lastDisconnect?.error) } });
             await auditAccount(accountId, "whatsapp.pairing.failed", { reason, code });
+            logger.error("WA_PAIRING_FAILED_AUTH", lastDisconnect?.error, { accountId, mode: currentMode, reason, code });
             return;
           }
-          const updated = await prisma.whatsAppAccount.updateMany({
-            where: { id: accountId, archivedAt: null },
-            data: {
-              status: loggedOut ? "RECONNECT_REQUIRED" : state.creds.registered ? "DISCONNECTED" : "RECONNECT_REQUIRED",
-              lastDisconnectedAt: new Date(),
-              recoveryLevel: loggedOut ? 5 : state.creds.registered ? 1 : 4,
-              healthScore: loggedOut ? 0 : state.creds.registered ? 55 : 20,
-              lastError: loggedOut ? "WHATSAPP_LOGGED_OUT" : state.creds.registered ? "WHATSAPP_TRANSIENT_DISCONNECT" : "WHATSAPP_CREDENTIALS_MISSING",
-            },
-          });
           if (loggedOut) {
             await clearWhatsAppSession(accountId);
-            await prisma.whatsAppAccount.updateMany({
+            const updated = await prisma.whatsAppAccount.updateMany({
               where: { id: accountId, archivedAt: null },
-              data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_LOGGED_OUT", recoveryLevel: 5, healthScore: 0 },
+              data: { status: "RECONNECT_REQUIRED", lastDisconnectedAt: new Date(), lastError: "WHATSAPP_LOGGED_OUT", recoveryLevel: 5, healthScore: 0 },
             });
-          } else if (state.creds.registered) {
-            await prisma.whatsAppAccount.updateMany({
-              where: { id: accountId, archivedAt: null },
-              data: { status: "DISCONNECTED", lastError: "WHATSAPP_TRANSIENT_DISCONNECT", recoveryLevel: 1 },
-            });
+            await auditAccount(accountId, "whatsapp.logged_out", { code, loggedOut, mode: currentMode, recoverable: false });
+            if (!updated.count) logger.warn("whatsapp.logged_out.account_missing", { accountId, code, mode: currentMode });
           } else {
-            await prisma.whatsAppAccount.updateMany({
-              where: { id: accountId, archivedAt: null },
-              data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_CREDENTIALS_MISSING", recoveryLevel: 5, healthScore: 0 },
-            });
-          }
-          await auditAccount(accountId, loggedOut ? "whatsapp.logged_out" : "whatsapp.disconnected", { code, loggedOut, mode: currentMode, recoverable: state.creds.registered && !loggedOut });
-          if (updated.count && !loggedOut && state.creds.registered) {
+            await this.markTransientConnectionLoss(accountId, `connection_close:${code ?? "unknown"}`, state.creds.registered ? 1 : 2);
+            await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { lastDisconnectedAt: new Date() } });
+            await auditAccount(accountId, "whatsapp.disconnected", { code, loggedOut, mode: currentMode, recoverable: true });
             this.scheduleReconnect(accountId, `connection_close:${code ?? "unknown"}`);
           }
         }
@@ -597,18 +671,33 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           }
           if (modeAtFailure === "PAIR_PHONE" && await this.preserveActivePairingCode(accountId, errorMessage(error))) {
             logger.warn("whatsapp.pairing.error_after_code_ignored", { accountId, mode: modeAtFailure, reason: errorMessage(error) });
+            logger.warn("WA_PAIRING_FAILED_RECOVERABLE", { accountId, mode: modeAtFailure, reason: errorMessage(error) });
             if (!initializedSettled) settleInitialized();
             return;
           }
-          await prisma.whatsAppAccount.updateMany({
-          where: { id: accountId, archivedAt: null, status: { in: ["PENDING_QR", "QR_READY", "PENDING_PAIRING", "PAIRING_CODE_READY", "CONNECTING"] } },
-          data: {
-            status: modeAtFailure === "PAIR_QR" || modeAtFailure === "PAIR_PHONE" ? "FAILED" : restorable ? "DISCONNECTED" : "RECONNECT_REQUIRED",
-            lastError: modeAtFailure === "PAIR_PHONE" ? pairingUserMessage(error) : restorable ? "WHATSAPP_TRANSIENT_DISCONNECT" : "WHATSAPP_CREDENTIALS_MISSING",
-          },
-        });
+          if (modeAtFailure === "PAIR_QR" || modeAtFailure === "PAIR_PHONE") {
+            await prisma.whatsAppAccount.updateMany({
+              where: { id: accountId, archivedAt: null, status: { in: ["PENDING_QR", "QR_READY", "PENDING_PAIRING", "PAIRING_CODE_READY", "CONNECTING"] } },
+              data: {
+                status: "FAILED",
+                lastError: modeAtFailure === "PAIR_PHONE" ? pairingUserMessage(error) : restorable ? "WHATSAPP_TRANSIENT_DISCONNECT" : "WHATSAPP_QR_FAILED",
+              },
+            });
+          } else if (isLoggedOutError(error)) {
+            await clearWhatsAppSession(accountId);
+            await prisma.whatsAppAccount.updateMany({
+              where: { id: accountId, archivedAt: null },
+              data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_LOGGED_OUT", recoveryLevel: 5, healthScore: 0 },
+            });
+          } else {
+            await this.markTransientConnectionLoss(accountId, `connection_update_failed:${errorMessage(error)}`, restorable ? 2 : 3);
+            this.scheduleReconnect(accountId, `connection_update_failed:${errorMessage(error)}`);
+          }
         logger.error("whatsapp.connection.failed", error, { accountId, mode: modeAtFailure, reason: errorMessage(error) });
         logger.error("whatsapp.connection.update_failed", error, { accountId, mode: modeAtFailure });
+        if (modeAtFailure === "PAIR_PHONE" || modeAtFailure === "PAIR_QR") {
+          logger.error("WA_PAIRING_FAILED_AUTH", error, { accountId, mode: modeAtFailure, reason: errorMessage(error) });
+        }
         if (!initializedSettled) settleInitialized(error);
       }
     });
@@ -669,15 +758,12 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       await initialized;
       return;
     }
-    await prisma.whatsAppAccount.updateMany({
-      where: { id: accountId, archivedAt: null },
-      data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_CREDENTIALS_MISSING", recoveryLevel: 5, healthScore: 0 },
-    });
-    await auditAccount(accountId, "whatsapp.session.auth_required");
+    await this.handleMissingCredentials(accountId, "manual_reconnect_missing_credentials");
   }
 
   async syncGroups(accountId: string): Promise<GroupResult[]> {
     const startedAt = Date.now();
+    logger.info("WA_GROUP_SYNC_START", { accountId });
     const socket = await this.ensureConnectedSocket(accountId);
     const metadata = await socket.groupFetchAllParticipating();
     const groups = Object.values(metadata).map((group) => ({ externalId: group.id, name: group.subject, description: group.desc, participantCount: group.participants.length, canSend: !group.announce }));
@@ -759,6 +845,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       duration: Date.now() - startedAt,
       source: "baileys-provider",
     });
+    logger.info("WA_GROUP_SYNC_SUCCESS", { accountId, count: groups.length, durationMs: Date.now() - startedAt });
     await auditAccount(accountId, "whatsapp.groups.synced", { count: groups.length });
     return groups;
   }
@@ -767,15 +854,23 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     const account = await prisma.whatsAppAccount.findUnique({ where: { id: input.accountId } });
     if (!account || account.archivedAt) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
     if (!input.groupExternalId) throw new Error("Missing external group ID.");
-    const hasCredentials = await hasRestorableWhatsAppCredentials(input.accountId);
-    if (!hasCredentials || account.lastError === "WHATSAPP_LOGGED_OUT" || account.lastError === "WHATSAPP_CREDENTIALS_MISSING") {
+    if (account.lastError === "WHATSAPP_LOGGED_OUT") {
       await prisma.whatsAppAccount.updateMany({
         where: { id: input.accountId, archivedAt: null },
-        data: { status: "RECONNECT_REQUIRED", lastError: hasCredentials ? "WHATSAPP_LOGGED_OUT" : "WHATSAPP_CREDENTIALS_MISSING", recoveryLevel: 5, healthScore: 0 },
+        data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_LOGGED_OUT", recoveryLevel: 5, healthScore: 0 },
       });
       throw new Error("WHATSAPP_RECONNECT_REQUIRED");
     }
-    await restoreWhatsAppSessionFromDatabase(input.accountId);
+    if (account.lastError === "WHATSAPP_CREDENTIALS_MISSING") {
+      const hasLiveSocket = Boolean(sockets.get(input.accountId)?.user);
+      const hasCredentials = hasLiveSocket || await hasRestorableWhatsAppCredentials(input.accountId);
+      if (!hasCredentials) await this.handleMissingCredentials(input.accountId, "message_send_missing_credentials");
+      await prisma.whatsAppAccount.updateMany({
+        where: { id: input.accountId, archivedAt: null },
+        data: { status: "CONNECTING", lastError: null, recoveryLevel: 2, healthScore: 65 },
+      });
+    }
+    if (!sockets.get(input.accountId)?.user) await restoreWhatsAppSessionFromDatabase(input.accountId);
     if (["RECONNECT_REQUIRED", "DISCONNECTED", "FAILED", "ERROR"].includes(account.status)) {
       await prisma.whatsAppAccount.updateMany({ where: { id: input.accountId, archivedAt: null }, data: { status: "CONNECTING", lastError: null, recoveryLevel: 2 } });
     }
@@ -793,7 +888,17 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       result = await socket.sendMessage(input.groupExternalId, { text: input.content });
     } catch (error) {
       logger.error("message.baileys.send.failed", error, logContext);
-      throw error;
+      if (isLoggedOutError(error)) {
+        await clearWhatsAppSession(input.accountId);
+        await prisma.whatsAppAccount.updateMany({
+          where: { id: input.accountId, archivedAt: null },
+          data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_LOGGED_OUT", recoveryLevel: 5, healthScore: 0 },
+        });
+        throw new Error("WHATSAPP_LOGGED_OUT");
+      }
+      await this.markTransientConnectionLoss(input.accountId, `message_send_failed:${errorMessage(error)}`);
+      this.scheduleReconnect(input.accountId, `message_send_failed:${errorMessage(error)}`);
+      throw new Error("WHATSAPP_RECONNECT_REQUIRED");
     }
     if (!result?.key.id) {
       const error = new Error("WhatsApp did not return a message id");
@@ -815,15 +920,23 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     if (!account || account.archivedAt) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
     if (!input.groupExternalId) throw new Error("Missing external group ID.");
     if (!input.messageKey?.id) throw new Error("WHATSAPP_MESSAGE_KEY_MISSING");
-    const hasCredentials = await hasRestorableWhatsAppCredentials(input.accountId);
-    if (!hasCredentials || account.lastError === "WHATSAPP_LOGGED_OUT" || account.lastError === "WHATSAPP_CREDENTIALS_MISSING") {
+    if (account.lastError === "WHATSAPP_LOGGED_OUT") {
       await prisma.whatsAppAccount.updateMany({
         where: { id: input.accountId, archivedAt: null },
-        data: { status: "RECONNECT_REQUIRED", lastError: hasCredentials ? "WHATSAPP_LOGGED_OUT" : "WHATSAPP_CREDENTIALS_MISSING", recoveryLevel: 5, healthScore: 0 },
+        data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_LOGGED_OUT", recoveryLevel: 5, healthScore: 0 },
       });
       throw new Error("WHATSAPP_RECONNECT_REQUIRED");
     }
-    await restoreWhatsAppSessionFromDatabase(input.accountId);
+    if (account.lastError === "WHATSAPP_CREDENTIALS_MISSING") {
+      const hasLiveSocket = Boolean(sockets.get(input.accountId)?.user);
+      const hasCredentials = hasLiveSocket || await hasRestorableWhatsAppCredentials(input.accountId);
+      if (!hasCredentials) await this.handleMissingCredentials(input.accountId, "message_delete_missing_credentials");
+      await prisma.whatsAppAccount.updateMany({
+        where: { id: input.accountId, archivedAt: null },
+        data: { status: "CONNECTING", lastError: null, recoveryLevel: 2, healthScore: 65 },
+      });
+    }
+    if (!sockets.get(input.accountId)?.user) await restoreWhatsAppSessionFromDatabase(input.accountId);
     if (["RECONNECT_REQUIRED", "DISCONNECTED", "FAILED", "ERROR"].includes(account.status)) {
       await prisma.whatsAppAccount.updateMany({ where: { id: input.accountId, archivedAt: null }, data: { status: "CONNECTING", lastError: null, recoveryLevel: 2 } });
     }
@@ -854,7 +967,17 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       return { ok: true, externalMessageId: result?.key?.id ?? null };
     } catch (error) {
       logger.error("message.baileys.delete.failed", error, logContext);
-      throw error;
+      if (isLoggedOutError(error)) {
+        await clearWhatsAppSession(input.accountId);
+        await prisma.whatsAppAccount.updateMany({
+          where: { id: input.accountId, archivedAt: null },
+          data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_LOGGED_OUT", recoveryLevel: 5, healthScore: 0 },
+        });
+        throw new Error("WHATSAPP_LOGGED_OUT");
+      }
+      await this.markTransientConnectionLoss(input.accountId, `message_delete_failed:${errorMessage(error)}`);
+      this.scheduleReconnect(input.accountId, `message_delete_failed:${errorMessage(error)}`);
+      throw new Error("WHATSAPP_RECONNECT_REQUIRED");
     }
   }
 }

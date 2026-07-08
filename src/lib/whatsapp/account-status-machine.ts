@@ -20,12 +20,12 @@ export const RECOVERABLE_ACCOUNT_STATUSES = [
 ] as const;
 
 export function isRecoverableWhatsAppStatus(status: AccountStatus, lastError?: string | null) {
-  if (lastError === "WHATSAPP_LOGGED_OUT" || lastError === "WHATSAPP_CREDENTIALS_MISSING") return false;
+  if (lastError === "WHATSAPP_LOGGED_OUT") return false;
   return (RECOVERABLE_ACCOUNT_STATUSES as readonly AccountStatus[]).includes(status);
 }
 
 export function requiresFreshWhatsAppPairing(status: AccountStatus, lastError?: string | null) {
-  return lastError === "WHATSAPP_LOGGED_OUT" || lastError === "WHATSAPP_CREDENTIALS_MISSING" || ([AccountStatus.FAILED, AccountStatus.ERROR] as readonly AccountStatus[]).includes(status);
+  return lastError === "WHATSAPP_LOGGED_OUT" || ([AccountStatus.FAILED, AccountStatus.ERROR] as readonly AccountStatus[]).includes(status);
 }
 
 const transitions: Record<AccountStatus, readonly AccountStatus[]> = {
