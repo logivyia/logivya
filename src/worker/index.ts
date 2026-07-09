@@ -151,7 +151,7 @@ registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign, async (job) => {
 }, { connection, concurrency: 2 }));
 
 registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
-  const { action, accountId, phoneNumber, preserveRetryCounter } = job.data as { action: "connect" | "pairing" | "sync" | "disconnect" | "reconnect"; accountId: string; phoneNumber?: string; preserveRetryCounter?: boolean };
+  const { action, accountId, phoneNumber, preserveRetryCounter } = job.data as { action: "connect" | "pairing" | "pairing-refresh" | "sync" | "disconnect" | "reconnect"; accountId: string; phoneNumber?: string; preserveRetryCounter?: boolean };
   return withWhatsAppAccountLock(accountId, `worker:${action}`, async () => {
     try {
       logger.info("whatsapp.worker.job.received", { workerId, jobId: job.id, action, accountId });
@@ -181,6 +181,10 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
       if (action === "pairing") {
         if (!phoneNumber) throw new Error("Invalid phone number.");
         return await provider.requestPairingCode(accountId, phoneNumber, { preserveRetryCounter });
+      }
+      if (action === "pairing-refresh") {
+        if (!phoneNumber) throw new Error("Invalid phone number.");
+        return await provider.refreshPairingCode(accountId, phoneNumber);
       }
       if (action === "sync") return await provider.syncGroups(accountId);
       if (action === "disconnect") return await provider.disconnect(accountId);

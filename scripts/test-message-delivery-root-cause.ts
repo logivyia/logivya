@@ -28,6 +28,7 @@ const worker = read("src/worker/index.ts");
 const provider = read("src/worker/baileys-provider.ts");
 const sessionManager = read("src/lib/whatsapp/session-manager.ts");
 const workerHealth = read("src/server/whatsapp/worker-health.ts");
+const pairingFlow = read("src/server/whatsapp/pairing-code-flow.ts");
 const accountsStablePage = read("src/components/accounts-stable-page.tsx");
 const whatsAppRequestGuards = read("src/server/whatsapp/request-guards.ts");
 const webCampaignRoute = read("src/app/api/campaigns/route.ts");
@@ -69,6 +70,8 @@ assertIncludes(provider, "whatsapp.qr.error_after_ready_ignored", "QR mode must 
 assertIncludes(provider, "whatsapp.pairing.stale_socket_close_ignored", "phone pairing must ignore stale socket closes after a newer code request");
 assertIncludes(provider, "whatsapp.pairing.same_code_refresh_scheduled", "phone pairing must refresh the same visible code after socket closes");
 assertIncludes(provider, "activeSocket.requestPairingCode(phoneNumber, pairingCode)", "phone pairing refresh must re-register the same visible code with Baileys");
+assertIncludes(provider, "async refreshPairingCode", "phone pairing reuse must have worker-side socket refresh");
+assertIncludes(provider, "whatsapp.pairing.refresh_fallback_new_code", "phone pairing refresh must fall back to a new clean code when the old code cannot be re-registered");
 assertIncludes(provider, "whatsapp.pairing.registered_close_reconnect", "phone pairing must reconnect instead of clearing newly registered credentials");
 assertIncludes(provider, "whatsapp.pairing.error_after_code_ignored", "phone pairing must not overwrite PAIRING_CODE_READY after late handler errors");
 assertIncludes(provider, "preservePairingCode ? \"PAIRING_CODE_READY\"", "phone pairing retries must not hide an active pairing code");
@@ -87,6 +90,10 @@ assertIncludes(worker, "MESSAGE_JOB_TENANT_MISMATCH", "worker tenant protection"
 assertIncludes(worker, "MESSAGE_JOB_OWNERSHIP_MISMATCH", "worker user/account ownership protection");
 assertIncludes(worker, "message.recurring.group_resolution_failed", "recurring ownership revalidation");
 assertIncludes(worker, "WHATSAPP_RESTORING_CONNECTION", "worker recoverable retry");
+assertIncludes(worker, 'action === "pairing-refresh"', "worker must support live refresh of reused pairing codes");
+assertIncludes(pairingFlow, "refreshRequestedAt", "pairing flow must wait for worker refresh before returning reused codes");
+assertIncludes(pairingFlow, 'action: "pairing-refresh"', "pairing flow must enqueue refresh jobs for reused pairing codes");
+assertIncludes(workerHealth, "updatedAfter", "pairing wait must not return pre-refresh stale codes");
 
 assertIncludes(mobileQrRoute, 'status: "CONNECTED"', "mobile QR connected-account reuse");
 assertIncludes(mobilePhoneCodeRoute, 'status: "CONNECTED"', "mobile phone-code connected-account reuse");

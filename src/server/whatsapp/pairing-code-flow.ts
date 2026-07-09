@@ -82,13 +82,30 @@ export async function requestPhonePairingCode(input: RequestPhonePairingCodeInpu
       }
 
       if (hasReusableCode(existing, input.phoneNumber)) {
+        const refreshRequestedAt = new Date();
+        await prisma.whatsAppAccount.updateMany({
+          where: { id: input.accountId, archivedAt: null },
+          data: {
+            status: AccountStatus.CONNECTING,
+            lastError: null,
+            recoveryLevel: 1,
+            healthScore: 45,
+          },
+        });
+        const job = await enqueueWhatsAppJob(
+          "pairing",
+          { action: "pairing-refresh", accountId: input.accountId, phoneNumber: input.phoneNumber, preserveRetryCounter: true },
+          { jobId: `pairing-refresh-${input.accountId}-${Math.floor(refreshRequestedAt.getTime() / 1_000)}` },
+        );
         logger.info("WA_PAIRING_CODE_REUSED", {
           ...baseLog,
           status: existing.status,
           expiresAt: existing.pairingCodeExpiresAt?.toISOString(),
+          jobId: job.id,
+          refreshRequestedAt: refreshRequestedAt.toISOString(),
           durationMs: Date.now() - startedAt,
         });
-        return { reused: true, alreadyConnected: false };
+        return { reused: true, alreadyConnected: false, refreshRequestedAt };
       }
 
       if (hasInFlightPairing(existing, input.phoneNumber)) {
@@ -98,7 +115,7 @@ export async function requestPhonePairingCode(input: RequestPhonePairingCodeInpu
           updatedAt: existing.updatedAt.toISOString(),
           durationMs: Date.now() - startedAt,
         });
-        return { reused: true, alreadyConnected: false };
+        return { reused: true, alreadyConnected: false, refreshRequestedAt: null };
       }
 
       await resetAccountForConnection(input.accountId, AccountStatus.PENDING_PAIRING, { phoneNumber: input.phoneNumber });
@@ -113,14 +130,14 @@ export async function requestPhonePairingCode(input: RequestPhonePairingCodeInpu
         jobId: job.id,
         durationMs: Date.now() - startedAt,
       });
-      return { reused: false, alreadyConnected: false };
+      return { reused: false, alreadyConnected: false, refreshRequestedAt: null };
     },
     { ttlMs: 30_000, timeoutMs: 12_000, correlationId: input.correlationId },
   );
 
   if (decision.alreadyConnected) return { ...decision, ready: null };
 
-  const ready = await waitForPairingCode(input.accountId);
+  const ready = await waitForPairingCode(input.accountId, decision.refreshRequestedAt ? { updatedAfter: decision.refreshRequestedAt } : {});
   logger.info("WA_PAIRING_CODE_READY_RETURNED", {
     ...baseLog,
     reused: decision.reused,

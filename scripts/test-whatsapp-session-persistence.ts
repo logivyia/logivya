@@ -89,6 +89,8 @@ for (const marker of [
   "PAIRING_IN_FLIGHT_MS",
   "WA_PAIRING_CODE_REUSED",
   "WA_PAIRING_IN_FLIGHT_REUSED",
+  "pairing-refresh",
+  "refreshRequestedAt",
 ]) {
   assert(pairingFlow.includes(marker), `Pairing code flow is missing idempotency marker: ${marker}`);
 }
@@ -105,6 +107,7 @@ assert(pairingFlow.includes("canExposePhonePairingCode(account, phoneNumber, PAI
 const workerHealth = read("src/server/whatsapp/worker-health.ts");
 assert(workerHealth.includes("canExposePhonePairingCode(account)"), "Pairing wait loop must only return display-safe phone pairing codes.");
 assert(workerHealth.includes("PAIRING_CODE_STABILITY_MS") && workerHealth.includes("stableAccount.pairingCode === firstCode"), "Pairing wait loop must verify a code remains stable before returning it to users.");
+assert(workerHealth.includes("updatedAfter") && workerHealth.includes("stableAccount.updatedAt.getTime() > options.updatedAfter.getTime()"), "Pairing wait loop must wait for worker-side refresh before returning a reused code.");
 for (const route of [
   "src/app/api/accounts/whatsapp/create-pairing-session/route.ts",
   "src/app/api/accounts/[id]/pairing-code/route.ts",
@@ -126,6 +129,7 @@ assert(worker.includes("whatsapp.worker.reconnect.skipped_active_pairing"), "Wor
 assert(worker.includes("whatsapp.worker.reconnect.skipped_stale_connected_job"), "Worker must skip reconnect jobs that were queued before a newer successful connection state.");
 assert(worker.includes("whatsapp.worker.pairing_retry_scheduled"), "Worker must not mark recoverable phone pairing socket closes as failed.");
 assert(worker.includes("return await provider.requestPairingCode"), "Worker must await pairing provider calls so retry-scheduled errors are caught instead of retried by BullMQ.");
+assert(worker.includes('action === "pairing-refresh"') && worker.includes("return await provider.refreshPairingCode"), "Worker must re-register reused phone pairing codes on a live socket before API returns them.");
 
 const restoreHelper = read("src/server/whatsapp/session-restore.ts");
 assert(restoreHelper.includes("STABLE WHATSAPP/MESSAGE CORE"), "On-demand restore helper must carry the stable-core warning.");

@@ -4,7 +4,7 @@ import { logger } from "@/server/observability/logger";
 
 type WhatsAppConnectionJob =
   | { action: "connect" | "reconnect" | "sync" | "disconnect"; accountId: string }
-  | { action: "pairing"; accountId: string; phoneNumber: string; preserveRetryCounter?: boolean };
+  | { action: "pairing" | "pairing-refresh"; accountId: string; phoneNumber: string; preserveRetryCounter?: boolean };
 
 export async function enqueueWhatsAppJob(name: string, data: WhatsAppConnectionJob, options?: JobsOptions) {
   const queue = whatsappQueue();

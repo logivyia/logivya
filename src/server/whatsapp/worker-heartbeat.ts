@@ -2,7 +2,7 @@ import Redis from "ioredis";
 import { redisConnectionOptions } from "@/server/queues/client";
 
 const HEARTBEAT_KEY = "logivya:whatsapp-worker:heartbeat";
-const WORKER_RELEASE_MARKER = "WHATSAPP_PHONE_PAIRING_SAME_CODE_REFRESH_V114";
+const WORKER_RELEASE_MARKER = "WHATSAPP_PHONE_PAIRING_REUSE_SOCKET_REFRESH_V115";
 export const WORKER_HEARTBEAT_TTL_SECONDS = Number(process.env.WORKER_HEARTBEAT_TTL_SECONDS || 90);
 export const WORKER_HEARTBEAT_FRESH_MS = Number(process.env.WORKER_HEARTBEAT_FRESH_MS || 60_000);
 let redis: Redis | null = null;

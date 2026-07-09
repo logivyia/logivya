@@ -43,6 +43,7 @@ const QR_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_QR_TRANSIENT_RETRY_
 const PAIRING_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_PAIRING_TRANSIENT_RETRY_LIMIT || 5);
 const PAIRING_REGISTERED_RECONNECT_LIMIT = Number(process.env.WHATSAPP_PAIRING_REGISTERED_RECONNECT_LIMIT || 3);
 const PAIRING_CODE_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_TTL_MS || 5 * 60_000);
+const PAIRING_CODE_REFRESH_MIN_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_MIN_TTL_MS || 30_000);
 const PHONE_PAIRING_QR_REF_TIMEOUT_MS = Number(process.env.WHATSAPP_PHONE_PAIRING_QR_REF_TIMEOUT_MS || 60_000);
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
@@ -628,6 +629,36 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "FAILED", pairingCode: null, pairingCodeExpiresAt: null, lastError: message } });
       await auditAccount(accountId, "whatsapp.pairing.failed", { reason: error instanceof Error ? error.message : String(error) });
       throw error;
+    }
+  }
+
+  async refreshPairingCode(accountId: string, phoneNumber: string): Promise<{ code: string; expiresAt: Date }> {
+    const normalized = normalizeWhatsAppPhoneNumber(phoneNumber);
+    const account = await prisma.whatsAppAccount.findUnique({
+      where: { id: accountId },
+      select: { archivedAt: true, phoneNumber: true, pairingCode: true, pairingCodeExpiresAt: true },
+    });
+    if (
+      !account ||
+      account.archivedAt ||
+      account.phoneNumber !== normalized ||
+      !account.pairingCode ||
+      !account.pairingCodeExpiresAt ||
+      account.pairingCodeExpiresAt.getTime() - Date.now() <= PAIRING_CODE_REFRESH_MIN_TTL_MS
+    ) {
+      logger.warn("whatsapp.pairing.refresh_fallback_new_code", { accountId, phoneNumber: maskPhoneNumber(normalized), reason: "missing_or_expiring_code" });
+      return this.requestPairingCode(accountId, normalized, { preserveRetryCounter: true });
+    }
+
+    try {
+      await this.refreshPairingCodeSocket(accountId, normalized, account.pairingCode, account.pairingCodeExpiresAt, 0);
+      return { code: account.pairingCode, expiresAt: account.pairingCodeExpiresAt };
+    } catch (error) {
+      logger.warn("whatsapp.pairing.refresh_fallback_new_code", { accountId, phoneNumber: maskPhoneNumber(normalized), reason: errorMessage(error) });
+      await auditAccount(accountId, "whatsapp.pairing.refresh_fallback_new_code", { reason: errorMessage(error) }).catch((auditError) =>
+        logger.warn("whatsapp.pairing.refresh_fallback_audit_failed", { accountId, reason: errorMessage(auditError) }),
+      );
+      return this.requestPairingCode(accountId, normalized, { preserveRetryCounter: true });
     }
   }
 

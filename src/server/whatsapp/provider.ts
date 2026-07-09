@@ -13,6 +13,7 @@ export interface WhatsAppProvider {
   createFreshQrSession(accountId: string): Promise<SessionResult>;
   requestQrCode(accountId:string):Promise<{qr:string;expiresAt:Date}>;
   requestPairingCode(accountId: string, phoneNumber: string, options?: RequestPairingCodeOptions): Promise<{code:string;expiresAt:Date}>;
+  refreshPairingCode(accountId: string, phoneNumber: string): Promise<{code:string;expiresAt:Date}>;
   getQr(accountId: string): Promise<string | null>;
   disconnect(accountId: string): Promise<void>;
   reconnect(accountId: string): Promise<void>;

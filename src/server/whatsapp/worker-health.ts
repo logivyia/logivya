@@ -87,13 +87,17 @@ export async function waitForAccountQr(accountId: string) {
   throw new Error(WHATSAPP_QR_WAIT_TIMEOUT);
 }
 
-export async function waitForPairingCode(accountId: string) {
+export async function waitForPairingCode(accountId: string, options: { updatedAfter?: Date } = {}) {
   const { prisma } = await import("@/server/db");
   const attempts = Number(process.env.WHATSAPP_PAIRING_WAIT_ATTEMPTS || 60);
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId } });
     if (!account) throw new Error("NOT_FOUND");
     if (["ERROR", "FAILED"].includes(account.status)) throw new Error(account.lastError || "WhatsApp pairing code generation failed.");
+    if (options.updatedAfter && account.updatedAt.getTime() <= options.updatedAfter.getTime()) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      continue;
+    }
     if (canExposePhonePairingCode(account)) {
       if (PAIRING_CODE_STABILITY_MS <= 0) return account;
       const firstCode = account.pairingCode;
@@ -104,6 +108,7 @@ export async function waitForPairingCode(accountId: string) {
         stableAccount &&
         stableAccount.pairingCode === firstCode &&
         stableAccount.updatedAt.getTime() === firstUpdatedAt &&
+        (!options.updatedAfter || stableAccount.updatedAt.getTime() > options.updatedAfter.getTime()) &&
         canExposePhonePairingCode(stableAccount)
       ) {
         return stableAccount;
