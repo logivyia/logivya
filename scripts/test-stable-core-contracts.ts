@@ -73,6 +73,9 @@ for (const marker of [
   "WHATSAPP_TRANSIENT_DISCONNECT",
   "MESSAGE_JOB_TENANT_MISMATCH",
   "MESSAGE_JOB_OWNERSHIP_MISMATCH",
+  "assertLocalWorkerDoesNotConsumeProductionQueues",
+  "LOCAL_WORKER_PRODUCTION_TARGET_BLOCKED",
+  "ALLOW_LOCAL_PRODUCTION_WORKER",
 ]) {
   assert(worker.includes(marker), `Worker stable-core contract is missing marker: ${marker}`);
 }

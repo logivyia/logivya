@@ -28,10 +28,48 @@ import type { DeleteForEveryoneJob } from "@/server/queues/contracts";
 import os from "node:os";
 import { hasRestorableWhatsAppCredentials, restoreWhatsAppSessionFromDatabase } from "@/lib/whatsapp/session-manager";
 
+const workerId = process.env.WORKER_ID || `${os.hostname()}-${process.pid}`;
 if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required");
+
+function hostnameFromConnectionString(value: string | undefined) {
+  if (!value) return null;
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function isLocalHost(hostname: string | null) {
+  return Boolean(hostname && ["localhost", "127.0.0.1", "::1"].includes(hostname));
+}
+
+function isRemoteConnectionString(value: string | undefined) {
+  const hostname = hostnameFromConnectionString(value);
+  return Boolean(hostname && !isLocalHost(hostname));
+}
+
+function assertLocalWorkerDoesNotConsumeProductionQueues() {
+  const localWorker = /(^|[-_])local([-_]|$)/i.test(workerId);
+  if (!localWorker) return;
+  const remoteTargets = [
+    isRemoteConnectionString(process.env.REDIS_URL) ? "REDIS_URL" : null,
+    isRemoteConnectionString(process.env.DATABASE_URL) ? "DATABASE_URL" : null,
+  ].filter((target): target is string => Boolean(target));
+  if (!remoteTargets.length) return;
+  if (process.env.ALLOW_LOCAL_PRODUCTION_WORKER === "1") {
+    logger.warn("worker.local_production_guard.overridden", { workerId, remoteTargets });
+    return;
+  }
+  const error = new Error("LOCAL_WORKER_PRODUCTION_TARGET_BLOCKED");
+  logger.error("worker.local_production_guard.blocked", error, { workerId, remoteTargets });
+  throw error;
+}
+
+assertLocalWorkerDoesNotConsumeProductionQueues();
+
 const connection = redisConnectionOptions();
 const provider = new BaileysWhatsAppProvider();
-const workerId = process.env.WORKER_ID || `${os.hostname()}-${process.pid}`;
 const workers: Worker[] = [];
 
 process.on("uncaughtException", (error) => {
