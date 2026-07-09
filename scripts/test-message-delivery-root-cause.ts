@@ -93,7 +93,9 @@ assertIncludes(worker, "WHATSAPP_RESTORING_CONNECTION", "worker recoverable retr
 assertIncludes(worker, 'action === "pairing-refresh"', "worker must support live refresh of reused pairing codes");
 assertIncludes(pairingFlow, "refreshRequestedAt", "pairing flow must wait for worker refresh before returning reused codes");
 assertIncludes(pairingFlow, 'action: "pairing-refresh"', "pairing flow must enqueue refresh jobs for reused pairing codes");
+assertIncludes(pairingFlow, "hasExpiringPairingCode", "pairing flow must not return nearly expired in-flight codes");
 assertIncludes(workerHealth, "updatedAfter", "pairing wait must not return pre-refresh stale codes");
+assertIncludes(workerHealth, "PAIRING_CODE_MIN_TTL_MS", "pairing wait must require enough remaining pairing code TTL");
 
 assertIncludes(mobileQrRoute, 'status: "CONNECTED"', "mobile QR connected-account reuse");
 assertIncludes(mobilePhoneCodeRoute, 'status: "CONNECTED"', "mobile phone-code connected-account reuse");

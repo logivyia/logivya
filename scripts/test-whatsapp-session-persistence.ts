@@ -87,6 +87,7 @@ for (const marker of [
   "PAIRING_CODE_MIN_TTL_MS",
   "PAIRING_CODE_STABILITY_MS",
   "PAIRING_IN_FLIGHT_MS",
+  "hasExpiringPairingCode",
   "WA_PAIRING_CODE_REUSED",
   "WA_PAIRING_IN_FLIGHT_REUSED",
   "pairing-refresh",
@@ -105,7 +106,7 @@ for (const marker of [
 }
 assert(pairingFlow.includes("canExposePhonePairingCode(account, phoneNumber, PAIRING_CODE_MIN_TTL_MS)") && pairingFlow.includes("Date.now() - account.updatedAt.getTime() >= PAIRING_CODE_STABILITY_MS"), "Pairing flow must not reuse stale or just-invalidated codes from disconnected or failed accounts.");
 const workerHealth = read("src/server/whatsapp/worker-health.ts");
-assert(workerHealth.includes("canExposePhonePairingCode(account)"), "Pairing wait loop must only return display-safe phone pairing codes.");
+assert(workerHealth.includes("canExposePhonePairingCode(account, undefined, PAIRING_CODE_MIN_TTL_MS)"), "Pairing wait loop must only return display-safe phone pairing codes with enough remaining TTL.");
 assert(workerHealth.includes("PAIRING_CODE_STABILITY_MS") && workerHealth.includes("stableAccount.pairingCode === firstCode"), "Pairing wait loop must verify a code remains stable before returning it to users.");
 assert(workerHealth.includes("updatedAfter") && workerHealth.includes("stableAccount.updatedAt.getTime() > options.updatedAfter.getTime()"), "Pairing wait loop must wait for worker-side refresh before returning a reused code.");
 for (const route of [

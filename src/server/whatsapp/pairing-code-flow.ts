@@ -46,12 +46,17 @@ function hasReusableCode(account: Pick<WhatsAppAccount, "status" | "phoneNumber"
   return canExposePhonePairingCode(account, phoneNumber, PAIRING_CODE_MIN_TTL_MS) && Date.now() - account.updatedAt.getTime() >= PAIRING_CODE_STABILITY_MS;
 }
 
-function hasInFlightPairing(account: Pick<WhatsAppAccount, "phoneNumber" | "status" | "updatedAt" | "lastError">, phoneNumber: string) {
+function hasExpiringPairingCode(account: Pick<WhatsAppAccount, "pairingCode" | "pairingCodeExpiresAt">) {
+  return Boolean(account.pairingCode && account.pairingCodeExpiresAt && account.pairingCodeExpiresAt.getTime() - Date.now() <= PAIRING_CODE_MIN_TTL_MS);
+}
+
+function hasInFlightPairing(account: Pick<WhatsAppAccount, "phoneNumber" | "status" | "updatedAt" | "lastError" | "pairingCode" | "pairingCodeExpiresAt">, phoneNumber: string) {
   return Boolean(
     samePhone(account, phoneNumber) &&
       ACTIVE_PAIRING_STATUSES.has(account.status) &&
       Date.now() - account.updatedAt.getTime() < PAIRING_IN_FLIGHT_MS &&
-      !account.lastError,
+      !account.lastError &&
+      !hasExpiringPairingCode(account),
   );
 }
 

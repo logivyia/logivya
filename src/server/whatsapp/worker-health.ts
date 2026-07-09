@@ -6,6 +6,7 @@ import { logger } from "@/server/observability/logger";
 import { canExposePhonePairingCode } from "@/server/whatsapp/pairing-code-state";
 
 const PAIRING_CODE_STABILITY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_STABILITY_MS || 3_500);
+const PAIRING_CODE_MIN_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_MIN_TTL_MS || 30_000);
 
 function isRedisQuotaOrTransientHeartbeatError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -98,7 +99,7 @@ export async function waitForPairingCode(accountId: string, options: { updatedAf
       await new Promise((resolve) => setTimeout(resolve, 500));
       continue;
     }
-    if (canExposePhonePairingCode(account)) {
+    if (canExposePhonePairingCode(account, undefined, PAIRING_CODE_MIN_TTL_MS)) {
       if (PAIRING_CODE_STABILITY_MS <= 0) return account;
       const firstCode = account.pairingCode;
       const firstUpdatedAt = account.updatedAt.getTime();
@@ -109,7 +110,7 @@ export async function waitForPairingCode(accountId: string, options: { updatedAf
         stableAccount.pairingCode === firstCode &&
         stableAccount.updatedAt.getTime() === firstUpdatedAt &&
         (!options.updatedAfter || stableAccount.updatedAt.getTime() > options.updatedAfter.getTime()) &&
-        canExposePhonePairingCode(stableAccount)
+        canExposePhonePairingCode(stableAccount, undefined, PAIRING_CODE_MIN_TTL_MS)
       ) {
         return stableAccount;
       }
