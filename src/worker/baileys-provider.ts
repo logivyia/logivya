@@ -118,6 +118,14 @@ function isLoggedOutError(error: unknown) {
   return disconnectCode(error) === DisconnectReason.loggedOut || message.includes("logged out") || message.includes("whatsapp_logged_out");
 }
 
+function canRefreshSamePairingCodeAfterClose(reason: string, code?: number) {
+  const message = reason.toLowerCase();
+  if (code === DisconnectReason.loggedOut || code === 401) return false;
+  if (/connection failure|logged out|unauthorized|forbidden|auth|required|invalid|bad session/.test(message)) return false;
+  if (code === DisconnectReason.connectionClosed || code === DisconnectReason.timedOut) return true;
+  return /connection terminated by server|connection closed|timed out|socket closed before pairing code request|qr refs attempts ended/.test(message);
+}
+
 async function auditAccount(accountId: string, action: string, metadata: Record<string, unknown> = {}) {
   const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId }, select: { companyId: true } });
   if (!account) return;
@@ -453,6 +461,13 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       select: { archivedAt: true, phoneNumber: true, pairingCode: true, pairingCodeExpiresAt: true },
     });
     if (!account || account.archivedAt || !account.phoneNumber || !account.pairingCode || !account.pairingCodeExpiresAt || account.pairingCodeExpiresAt <= new Date()) return false;
+    if (!canRefreshSamePairingCodeAfterClose(reason, code)) {
+      logger.warn("whatsapp.pairing.same_code_refresh_skipped_rejected_auth", { accountId, code, reason });
+      await auditAccount(accountId, "whatsapp.pairing.same_code_refresh_skipped_rejected_auth", { code, reason }).catch((error) =>
+        logger.warn("whatsapp.pairing.refresh_skip_audit_failed", { accountId, reason: errorMessage(error) }),
+      );
+      return false;
+    }
     const phoneNumber = account.phoneNumber;
     const pairingCode = account.pairingCode;
     const expiresAt = account.pairingCodeExpiresAt;
