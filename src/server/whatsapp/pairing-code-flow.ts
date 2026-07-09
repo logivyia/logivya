@@ -9,6 +9,7 @@ import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
 import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { withWhatsAppAccountLock } from "@/server/whatsapp/account-lock";
+import { canExposePhonePairingCode } from "@/server/whatsapp/pairing-code-state";
 import { waitForPairingCode } from "@/server/whatsapp/worker-health";
 
 const ACTIVE_PAIRING_STATUSES = new Set<AccountStatus>([
@@ -17,6 +18,7 @@ const ACTIVE_PAIRING_STATUSES = new Set<AccountStatus>([
   AccountStatus.CONNECTING,
 ]);
 const PAIRING_CODE_MIN_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_MIN_TTL_MS || 30_000);
+const PAIRING_CODE_STABILITY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_STABILITY_MS || 3_500);
 const PAIRING_IN_FLIGHT_MS = Number(process.env.WHATSAPP_PAIRING_IN_FLIGHT_MS || 90_000);
 
 type PairingRequestSource = "web" | "mobile";
@@ -40,13 +42,8 @@ function samePhone(account: Pick<WhatsAppAccount, "phoneNumber">, phoneNumber: s
   return account.phoneNumber === phoneNumber;
 }
 
-function hasReusableCode(account: Pick<WhatsAppAccount, "phoneNumber" | "pairingCode" | "pairingCodeExpiresAt">, phoneNumber: string) {
-  return Boolean(
-    samePhone(account, phoneNumber) &&
-      account.pairingCode &&
-      account.pairingCodeExpiresAt &&
-      account.pairingCodeExpiresAt.getTime() - Date.now() > PAIRING_CODE_MIN_TTL_MS,
-  );
+function hasReusableCode(account: Pick<WhatsAppAccount, "status" | "phoneNumber" | "pairingCode" | "pairingCodeExpiresAt" | "lastError" | "updatedAt">, phoneNumber: string) {
+  return canExposePhonePairingCode(account, phoneNumber, PAIRING_CODE_MIN_TTL_MS) && Date.now() - account.updatedAt.getTime() >= PAIRING_CODE_STABILITY_MS;
 }
 
 function hasInFlightPairing(account: Pick<WhatsAppAccount, "phoneNumber" | "status" | "updatedAt" | "lastError">, phoneNumber: string) {

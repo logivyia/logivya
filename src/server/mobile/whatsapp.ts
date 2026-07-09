@@ -1,8 +1,12 @@
 import { AccountStatus } from "@prisma/client";
 import { computeWhatsAppHealthScore, healthLabel } from "@/server/whatsapp/connection-health";
+import { visiblePhonePairingCode } from "@/server/whatsapp/pairing-code-state";
 
 export function mobileWhatsAppStatus(status: AccountStatus, lastError?: string | null) {
-  if (lastError === "WHATSAPP_LOGGED_OUT" || lastError === "WHATSAPP_CREDENTIALS_MISSING") return "AUTH_REQUIRED";
+  if (lastError === "WHATSAPP_LOGGED_OUT") return "AUTH_REQUIRED";
+  if (lastError === "WHATSAPP_CREDENTIALS_MISSING" && !["CONNECTED", "CONNECTING", "DISCONNECTED", "RECONNECT_REQUIRED"].includes(status)) return "AUTH_REQUIRED";
+  if (lastError === "WHATSAPP_CREDENTIALS_MISSING") return "RECONNECTING";
+  if (lastError === "WHATSAPP_TRANSIENT_DISCONNECT" || lastError === "WHATSAPP_RECONNECT_REQUIRED") return "RECONNECTING";
   if (status === "CONNECTED") return "CONNECTED";
   if (status === "CONNECTING") return "RECONNECTING";
   if (status === "DISCONNECTED") return "DEGRADED";
@@ -42,6 +46,7 @@ export function serializeMobileAccount(account: {
   pairingCodeExpiresAt?: Date | null;
   _count?: { groups: number; contacts: number };
 }) {
+  const safePairingCode = visiblePhonePairingCode(account);
   const healthScore = account.healthScore ?? computeWhatsAppHealthScore({
     status: account.status,
     lastError: account.lastError,
@@ -79,7 +84,7 @@ export function serializeMobileAccount(account: {
     lastError: null,
     qrCode: account.qrCode,
     qrExpiresAt: account.qrExpiresAt,
-    pairingCode: account.pairingCode,
-    pairingCodeExpiresAt: account.pairingCodeExpiresAt,
+    pairingCode: safePairingCode.pairingCode,
+    pairingCodeExpiresAt: safePairingCode.pairingCodeExpiresAt,
   };
 }

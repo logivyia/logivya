@@ -10,6 +10,7 @@ import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
 import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { computeWhatsAppHealthScore } from "@/server/whatsapp/connection-health";
+import { canExposePhonePairingCode } from "@/server/whatsapp/pairing-code-state";
 import { hasActivePhonePairing, isPhonePairingActive } from "@/server/whatsapp/pairing-guard";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
@@ -34,13 +35,15 @@ const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const qrTransientRetries = new Map<string, number>();
 const pairingTransientRetries = new Map<string, number>();
 const pairingRegisteredReconnects = new Map<string, number>();
+const pairingRetryScheduledAt = new Map<string, number>();
 const SOCKET_INITIALIZATION_TIMEOUT_MS = Number(process.env.WHATSAPP_SOCKET_INITIALIZATION_TIMEOUT_MS || 30_000);
-const PAIRING_SOCKET_BOOTSTRAP_MS = Number(process.env.WHATSAPP_PAIRING_SOCKET_BOOTSTRAP_MS || 3_000);
+const PAIRING_SOCKET_BOOTSTRAP_MS = Number(process.env.WHATSAPP_PAIRING_SOCKET_BOOTSTRAP_MS || 5_000);
 const HEARTBEAT_INTERVAL_MS = Number(process.env.WHATSAPP_HEARTBEAT_INTERVAL_MS || 30_000);
 const QR_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_QR_TRANSIENT_RETRY_LIMIT || 3);
 const PAIRING_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_PAIRING_TRANSIENT_RETRY_LIMIT || 5);
 const PAIRING_REGISTERED_RECONNECT_LIMIT = Number(process.env.WHATSAPP_PAIRING_REGISTERED_RECONNECT_LIMIT || 3);
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
+const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
 const RECONNECT_BACKOFF_MS = [5_000, 10_000, 20_000, 40_000, 60_000, 120_000] as const;
 
@@ -307,10 +310,10 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
   private async hasActivePairingCode(accountId: string) {
     const account = await prisma.whatsAppAccount.findUnique({
       where: { id: accountId },
-      select: { pairingCode: true, pairingCodeExpiresAt: true },
+      select: { status: true, phoneNumber: true, pairingCode: true, pairingCodeExpiresAt: true, lastError: true },
     });
 
-    return Boolean(account?.pairingCode && account.pairingCodeExpiresAt && account.pairingCodeExpiresAt > new Date());
+    return account ? canExposePhonePairingCode(account) : false;
   }
 
   private async reissuePairingCodeAfterSocketClose(accountId: string, reason: string, code?: number) {
@@ -363,6 +366,74 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     return true;
   }
 
+  private hasRecentPairingRetryScheduled(accountId: string) {
+    const scheduledAt = pairingRetryScheduledAt.get(accountId);
+    return Boolean(scheduledAt && Date.now() - scheduledAt < Math.max(PAIRING_CODE_REISSUE_RETRY_MS, 5_000));
+  }
+
+  private async schedulePairingCodeRequestRetry(accountId: string, phoneNumber: string | null | undefined, reason: string, code?: number) {
+    if (this.hasRecentPairingRetryScheduled(accountId)) {
+      logger.warn("whatsapp.pairing.retry_already_scheduled", { accountId, reason, code });
+      return true;
+    }
+
+    const account = await prisma.whatsAppAccount.findUnique({
+      where: { id: accountId },
+      select: { archivedAt: true, phoneNumber: true },
+    });
+    const resolvedPhoneNumber = phoneNumber || account?.phoneNumber;
+    if (!account || account.archivedAt || !resolvedPhoneNumber) return false;
+
+    const nextAttempt = (pairingTransientRetries.get(accountId) ?? 0) + 1;
+    pairingTransientRetries.set(accountId, nextAttempt);
+    const shouldRetry = nextAttempt <= PAIRING_TRANSIENT_RETRY_LIMIT;
+
+    await this.clearTemporaryAuth(accountId);
+    await prisma.whatsAppAccount.updateMany({
+      where: { id: accountId, archivedAt: null },
+      data: {
+        status: shouldRetry ? "PENDING_PAIRING" : "FAILED",
+        phoneNumber: resolvedPhoneNumber,
+        pairingCode: null,
+        pairingCodeExpiresAt: null,
+        lastError: shouldRetry ? null : pairingUserMessage(reason),
+        recoveryLevel: Math.min(nextAttempt, 5),
+        healthScore: shouldRetry ? 35 : 0,
+      },
+    });
+
+    if (!shouldRetry) {
+      logger.warn("whatsapp.pairing.retry_limit_reached", { accountId, code, attempts: nextAttempt, reason });
+      await auditAccount(accountId, "whatsapp.pairing.failed", { reason, code, attempts: nextAttempt }).catch((error) =>
+        logger.warn("whatsapp.pairing.failed_audit_failed", { accountId, reason: errorMessage(error) }),
+      );
+      return false;
+    }
+
+    const delay = Math.min(1_000 * nextAttempt, PAIRING_CODE_REISSUE_RETRY_MS, 5_000);
+    pairingRetryScheduledAt.set(accountId, Date.now());
+    logger.warn("whatsapp.pairing.code_request_retry_scheduled", {
+      accountId,
+      code,
+      attempt: nextAttempt,
+      maxAttempts: PAIRING_TRANSIENT_RETRY_LIMIT,
+      delayMs: delay,
+      reason,
+    });
+    await auditAccount(accountId, "whatsapp.pairing.retry_scheduled", { code, attempt: nextAttempt, reason, delayMs: delay }).catch((error) =>
+      logger.warn("whatsapp.pairing.retry_audit_failed", { accountId, reason: errorMessage(error) }),
+    );
+    setTimeout(() => {
+      pairingRetryScheduledAt.delete(accountId);
+      void enqueueWhatsAppJob(
+        "pairing",
+        { action: "pairing", accountId, phoneNumber: resolvedPhoneNumber, preserveRetryCounter: true },
+        { jobId: `pairing-retry-${accountId}-${nextAttempt}-${Math.floor(Date.now() / 1_000)}` },
+      ).catch((error) => logger.error("whatsapp.pairing.retry_enqueue_failed", error, { accountId, attempt: nextAttempt }));
+    }, delay);
+    return true;
+  }
+
   private async recoverRegisteredPairingClose(accountId: string, reason: string, code?: number) {
     const nextAttempt = (pairingRegisteredReconnects.get(accountId) ?? 0) + 1;
     pairingRegisteredReconnects.set(accountId, nextAttempt);
@@ -405,6 +476,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     if (!options.preserveRetryCounter) {
       pairingTransientRetries.delete(accountId);
       pairingRegisteredReconnects.delete(accountId);
+      pairingRetryScheduledAt.delete(accountId);
     }
     logger.info("whatsapp.pairing.requested", { accountId, phoneNumber: maskPhoneNumber(normalized) });
     logger.info("whatsapp.pairing.request_started", { accountId, phoneNumber: maskPhoneNumber(normalized) });
@@ -429,9 +501,13 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
               attempt,
               reason: errorMessage(error),
             });
-            return false;
+            return "failed" as const;
           });
         const ready = await Promise.race([readiness, sleep(PAIRING_SOCKET_BOOTSTRAP_MS).then(() => false)]);
+        if (ready === "failed") {
+          if (this.hasRecentPairingRetryScheduled(accountId)) throw new Error(PAIRING_RETRY_SCHEDULED_ERROR);
+          throw new Error("WhatsApp socket closed before pairing code request.");
+        }
         if (!ready) logger.warn("whatsapp.pairing.socket_bootstrap_wait_timeout", { accountId, attempt });
       };
 
@@ -455,6 +531,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           accountId,
           reason: errorMessage(requestError),
         });
+        if (this.hasRecentPairingRetryScheduled(accountId)) throw requestError;
         await this.clearTemporaryAuth(accountId);
         await prisma.whatsAppAccount.updateMany({
           where: { id: accountId, archivedAt: null },
@@ -477,12 +554,17 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         where: { id: accountId },
         data: { status: "PAIRING_CODE_READY", phoneNumber: normalized, pairingCode: code, pairingCodeExpiresAt: expiresAt, lastError: null },
       });
+      pairingRetryScheduledAt.delete(accountId);
       logger.info("whatsapp.pairing.ready", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
       logger.info("whatsapp.pairing.code_generated", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
       logger.info("WA_PAIRING_CODE_GENERATED", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
       await auditAccount(accountId, "whatsapp.pairing.code_generated", { phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
       return { code, expiresAt };
     } catch (error) {
+      if (!isLoggedOutError(error) && await this.schedulePairingCodeRequestRetry(accountId, normalized, errorMessage(error))) {
+        logger.warn("whatsapp.pairing.retry_scheduled_after_request_failure", { accountId, phoneNumber: maskPhoneNumber(normalized), reason: errorMessage(error) });
+        throw new Error(PAIRING_RETRY_SCHEDULED_ERROR);
+      }
       logger.error("whatsapp.connection.failed", error, { accountId, mode: "PAIR_PHONE", phoneNumber: maskPhoneNumber(normalized), reason: errorMessage(error) });
       logger.error("whatsapp.pairing.failed", error, { accountId, phoneNumber: maskPhoneNumber(normalized) });
       await this.clearTemporaryAuth(accountId);
@@ -605,7 +687,6 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         }
         if (connection === "connecting") {
           await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null, status: { in: ["PENDING_PAIRING", "PENDING_QR"] } }, data: { status: "CONNECTING" } });
-          if (currentMode === "PAIR_PHONE") settleInitialized();
         }
         if (connection === "open") {
           pairingTransientRetries.delete(accountId);
@@ -680,7 +761,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
             if (!initializedSettled) settleInitialized(closeError);
             return;
           }
-          if (!initializedSettled) settleInitialized(closeError);
+          if (currentMode !== "PAIR_PHONE" && !initializedSettled) settleInitialized(closeError);
           if (currentMode === "PAIR_PHONE") {
             if (replacedByNewSocket) {
               logger.warn("whatsapp.pairing.stale_socket_close_ignored", { accountId, code });
@@ -702,6 +783,12 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
             }
             if (!state.creds.registered && await this.reissuePairingCodeAfterSocketClose(accountId, reason, code)) {
               logger.warn("WA_PAIRING_FAILED_RECOVERABLE", { accountId, mode: currentMode, reason, code });
+              if (!initializedSettled) settleInitialized();
+              return;
+            }
+            if (!state.creds.registered && await this.schedulePairingCodeRequestRetry(accountId, null, reason, code)) {
+              logger.warn("WA_PAIRING_RETRY_SCHEDULED_RECOVERABLE", { accountId, mode: currentMode, reason, code });
+              if (!initializedSettled) settleInitialized();
               return;
             }
             logger.error("whatsapp.pairing.connection_closed", lastDisconnect?.error, { accountId, code });
@@ -709,6 +796,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
             await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "FAILED", pairingCode: null, pairingCodeExpiresAt: null, lastError: pairingUserMessage(lastDisconnect?.error) } });
             await auditAccount(accountId, "whatsapp.pairing.failed", { reason, code });
             logger.error("WA_PAIRING_FAILED_AUTH", lastDisconnect?.error, { accountId, mode: currentMode, reason, code });
+            if (!initializedSettled) settleInitialized(closeError);
             return;
           }
           if (loggedOut) {
@@ -754,6 +842,12 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           if (modeAtFailure === "PAIR_PHONE" && await this.reissuePairingCodeAfterSocketClose(accountId, errorMessage(error))) {
             logger.warn("whatsapp.pairing.error_after_code_ignored", { accountId, mode: modeAtFailure, reason: errorMessage(error) });
             logger.warn("WA_PAIRING_FAILED_RECOVERABLE", { accountId, mode: modeAtFailure, reason: errorMessage(error) });
+            if (!initializedSettled) settleInitialized();
+            return;
+          }
+          if (modeAtFailure === "PAIR_PHONE" && !isLoggedOutError(error) && await this.schedulePairingCodeRequestRetry(accountId, null, errorMessage(error))) {
+            logger.warn("whatsapp.pairing.error_retry_scheduled", { accountId, mode: modeAtFailure, reason: errorMessage(error) });
+            logger.warn("WA_PAIRING_RETRY_SCHEDULED_RECOVERABLE", { accountId, mode: modeAtFailure, reason: errorMessage(error) });
             if (!initializedSettled) settleInitialized();
             return;
           }

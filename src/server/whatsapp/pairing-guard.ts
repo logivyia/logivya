@@ -7,6 +7,7 @@ type PairingGuardAccount = {
   status: AccountStatus | string;
   pairingCode?: string | null;
   pairingCodeExpiresAt?: Date | null;
+  lastError?: string | null;
   updatedAt: Date;
 };
 
@@ -17,6 +18,8 @@ const ACTIVE_PHONE_PAIRING_STATUSES = new Set<string>([
 
 export function hasActivePhonePairing(account: PairingGuardAccount) {
   if (!ACTIVE_PHONE_PAIRING_STATUSES.has(account.status)) return false;
+  if (account.lastError) return false;
+  if (account.status === AccountStatus.PAIRING_CODE_READY) return Boolean(account.pairingCode && account.pairingCodeExpiresAt && account.pairingCodeExpiresAt.getTime() > Date.now());
   if (account.pairingCode && account.pairingCodeExpiresAt && account.pairingCodeExpiresAt.getTime() > Date.now()) return true;
   return account.status === AccountStatus.PENDING_PAIRING && Date.now() - account.updatedAt.getTime() < PHONE_PAIRING_GUARD_MS;
 }
@@ -24,7 +27,7 @@ export function hasActivePhonePairing(account: PairingGuardAccount) {
 export async function isPhonePairingActive(accountId: string) {
   const account = await prisma.whatsAppAccount.findUnique({
     where: { id: accountId },
-    select: { status: true, pairingCode: true, pairingCodeExpiresAt: true, updatedAt: true },
+    select: { status: true, pairingCode: true, pairingCodeExpiresAt: true, lastError: true, updatedAt: true },
   });
   return account ? hasActivePhonePairing(account) : false;
 }

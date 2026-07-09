@@ -3,6 +3,9 @@ export const WHATSAPP_QR_WAIT_TIMEOUT = "WHATSAPP_QR_WAIT_TIMEOUT";
 export const WHATSAPP_PAIRING_WAIT_TIMEOUT = "WHATSAPP_PAIRING_WAIT_TIMEOUT";
 import { isWorkerHeartbeatFresh, readWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
 import { logger } from "@/server/observability/logger";
+import { canExposePhonePairingCode } from "@/server/whatsapp/pairing-code-state";
+
+const PAIRING_CODE_STABILITY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_STABILITY_MS || 3_500);
 
 function isRedisQuotaOrTransientHeartbeatError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -91,7 +94,22 @@ export async function waitForPairingCode(accountId: string) {
     const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId } });
     if (!account) throw new Error("NOT_FOUND");
     if (["ERROR", "FAILED"].includes(account.status)) throw new Error(account.lastError || "WhatsApp pairing code generation failed.");
-    if (account.pairingCode && account.pairingCodeExpiresAt && account.pairingCodeExpiresAt > new Date()) return account;
+    if (canExposePhonePairingCode(account)) {
+      if (PAIRING_CODE_STABILITY_MS <= 0) return account;
+      const firstCode = account.pairingCode;
+      const firstUpdatedAt = account.updatedAt.getTime();
+      await new Promise((resolve) => setTimeout(resolve, PAIRING_CODE_STABILITY_MS));
+      const stableAccount = await prisma.whatsAppAccount.findUnique({ where: { id: accountId } });
+      if (
+        stableAccount &&
+        stableAccount.pairingCode === firstCode &&
+        stableAccount.updatedAt.getTime() === firstUpdatedAt &&
+        canExposePhonePairingCode(stableAccount)
+      ) {
+        return stableAccount;
+      }
+      continue;
+    }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error(WHATSAPP_PAIRING_WAIT_TIMEOUT);

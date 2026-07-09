@@ -6,6 +6,7 @@ import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/security/audit";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { requestPhonePairingCode } from "@/server/whatsapp/pairing-code-flow";
+import { visiblePhonePairingCode } from "@/server/whatsapp/pairing-code-state";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { whatsappLastErrorCode, whatsappUserMessage } from "@/server/whatsapp/user-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
@@ -54,14 +55,15 @@ export async function POST(request: Request) {
     } catch (waitError) {
       if (!isWhatsAppWaitTimeout(waitError)) throw waitError;
       const pending = await prisma.whatsAppAccount.findUnique({ where: { id: accountId } });
+      const safePairingCode = pending ? visiblePhonePairingCode(pending) : { pairingCode: null, pairingCodeExpiresAt: null };
       return NextResponse.json({
         ok: true,
         pending: true,
         accountId,
         status: pending?.status || AccountStatus.PENDING_PAIRING,
-        pairingCode: pending?.pairingCode || null,
-        expiresAt: pending?.pairingCodeExpiresAt || null,
-        pairingCodeExpiresAt: pending?.pairingCodeExpiresAt || null,
+        pairingCode: safePairingCode.pairingCode,
+        expiresAt: safePairingCode.pairingCodeExpiresAt,
+        pairingCodeExpiresAt: safePairingCode.pairingCodeExpiresAt,
         message: "Telefon kodu hazırlanıyor. Lütfen birkaç saniye bekleyin.",
       }, { status: 202 });
     }

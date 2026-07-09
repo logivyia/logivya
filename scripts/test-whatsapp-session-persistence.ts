@@ -59,11 +59,14 @@ assert(provider.includes("status: \"CONNECTING\"") && provider.includes("lastErr
 assert(provider.includes("intentionallyStoppedSockets = new WeakSet"), "Intentional socket stops must be tracked per socket instance, not per account.");
 assert(provider.includes("whatsapp.reconnect.skipped_active_pairing"), "Reconnect must not interrupt an active phone pairing code.");
 assert(provider.includes("WHATSAPP_PAIRING_IN_PROGRESS"), "Message/reconnect recovery must treat active phone pairing as recoverable in-progress state.");
+assert(!provider.includes('if (currentMode === "PAIR_PHONE") settleInitialized();'), "Phone pairing must not request a code immediately on the connecting event.");
 for (const marker of [
   "WA_PAIRING_START",
   "WA_PAIRING_CODE_GENERATED",
   "WA_PAIRING_CONNECTION_UPDATE",
   "WA_PAIRING_CREDS_RECEIVED",
+  "WHATSAPP_PAIRING_RETRY_SCHEDULED",
+  "whatsapp.pairing.code_request_retry_scheduled",
   "WA_ACCOUNT_CONNECTED",
   "WA_GROUP_SYNC_START",
   "WA_GROUP_SYNC_SUCCESS",
@@ -78,12 +81,26 @@ for (const marker of [
   "hasReusableCode",
   "hasInFlightPairing",
   "PAIRING_CODE_MIN_TTL_MS",
+  "PAIRING_CODE_STABILITY_MS",
   "PAIRING_IN_FLIGHT_MS",
   "WA_PAIRING_CODE_REUSED",
   "WA_PAIRING_IN_FLIGHT_REUSED",
 ]) {
   assert(pairingFlow.includes(marker), `Pairing code flow is missing idempotency marker: ${marker}`);
 }
+const pairingCodeState = read("src/server/whatsapp/pairing-code-state.ts");
+for (const marker of [
+  "canExposePhonePairingCode",
+  "AccountStatus.PAIRING_CODE_READY",
+  "account.lastError",
+  "visiblePhonePairingCode",
+]) {
+  assert(pairingCodeState.includes(marker), `Pairing code state helper is missing stale-code guard marker: ${marker}`);
+}
+assert(pairingFlow.includes("canExposePhonePairingCode(account, phoneNumber, PAIRING_CODE_MIN_TTL_MS)") && pairingFlow.includes("Date.now() - account.updatedAt.getTime() >= PAIRING_CODE_STABILITY_MS"), "Pairing flow must not reuse stale or just-invalidated codes from disconnected or failed accounts.");
+const workerHealth = read("src/server/whatsapp/worker-health.ts");
+assert(workerHealth.includes("canExposePhonePairingCode(account)"), "Pairing wait loop must only return display-safe phone pairing codes.");
+assert(workerHealth.includes("PAIRING_CODE_STABILITY_MS") && workerHealth.includes("stableAccount.pairingCode === firstCode"), "Pairing wait loop must verify a code remains stable before returning it to users.");
 for (const route of [
   "src/app/api/accounts/whatsapp/create-pairing-session/route.ts",
   "src/app/api/accounts/[id]/pairing-code/route.ts",
@@ -103,6 +120,8 @@ assert(worker.includes("hasRestorableWhatsAppCredentials(accountId)"), "Worker f
 assert(worker.includes("whatsapp.session.recovery_skipped_no_restorable_credentials"), "Worker must not silently convert read-side missing credentials into auth-required state.");
 assert(worker.includes("whatsapp.worker.reconnect.skipped_active_pairing"), "Worker must skip stale reconnect jobs while phone pairing is active.");
 assert(worker.includes("whatsapp.worker.reconnect.skipped_stale_connected_job"), "Worker must skip reconnect jobs that were queued before a newer successful connection state.");
+assert(worker.includes("whatsapp.worker.pairing_retry_scheduled"), "Worker must not mark recoverable phone pairing socket closes as failed.");
+assert(worker.includes("return await provider.requestPairingCode"), "Worker must await pairing provider calls so retry-scheduled errors are caught instead of retried by BullMQ.");
 
 const restoreHelper = read("src/server/whatsapp/session-restore.ts");
 assert(restoreHelper.includes("STABLE WHATSAPP/MESSAGE CORE"), "On-demand restore helper must carry the stable-core warning.");
@@ -142,6 +161,7 @@ for (const route of [
 const webStatusRoute = read("src/app/api/accounts/whatsapp/[id]/status/route.ts");
 assert(webStatusRoute.includes("canShowQr"), "Web status route must not show stale QR while a restorable session is being restored.");
 assert(webStatusRoute.includes("[\"PENDING_QR\", \"QR_READY\"].includes(account.status)"), "QR display must be limited to QR pairing states.");
+assert(webStatusRoute.includes("visiblePhonePairingCode"), "Web status route must not expose stale phone pairing codes.");
 
 for (const logoutRoute of ["src/app/api/auth/logout/route.ts", "src/app/api/mobile/auth/logout/route.ts"]) {
   const source = read(logoutRoute);
@@ -152,5 +172,6 @@ for (const logoutRoute of ["src/app/api/auth/logout/route.ts", "src/app/api/mobi
 const mobileStatus = read("src/server/mobile/whatsapp.ts");
 assert(mobileStatus.includes("WHATSAPP_TRANSIENT_DISCONNECT"), "Mobile status serialization must treat transient disconnect as reconnecting.");
 assert(mobileStatus.includes("return \"RECONNECTING\""), "Mobile status serialization must expose reconnecting state.");
+assert(mobileStatus.includes("visiblePhonePairingCode"), "Mobile status serialization must not expose stale phone pairing codes.");
 
 console.log("WhatsApp session persistence regression guard passed.");

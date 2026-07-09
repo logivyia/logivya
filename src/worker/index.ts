@@ -52,6 +52,10 @@ function isExplicitWhatsAppAuthFailure(error: unknown) {
   return /WHATSAPP_LOGGED_OUT|LOGGED_OUT|AUTH_REQUIRED|WHATSAPP_CREDENTIALS_MISSING/i.test(message);
 }
 
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function registerWorker(name: string, worker: Worker) {
   workers.push(worker);
   logger.info("worker.queue.registered", { workerId, queue: name });
@@ -173,15 +177,19 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
         return;
       }
       if (["connect", "reconnect"].includes(action) && account.status === "ERROR") return;
-      if (action === "connect") return provider.createFreshQrSession(accountId);
+      if (action === "connect") return await provider.createFreshQrSession(accountId);
       if (action === "pairing") {
         if (!phoneNumber) throw new Error("Invalid phone number.");
-        return provider.requestPairingCode(accountId, phoneNumber, { preserveRetryCounter });
+        return await provider.requestPairingCode(accountId, phoneNumber, { preserveRetryCounter });
       }
-      if (action === "sync") return provider.syncGroups(accountId);
-      if (action === "disconnect") return provider.disconnect(accountId);
-      return provider.reconnect(accountId);
+      if (action === "sync") return await provider.syncGroups(accountId);
+      if (action === "disconnect") return await provider.disconnect(accountId);
+      return await provider.reconnect(accountId);
     } catch (error) {
+      if (action === "pairing" && errorMessage(error).includes("WHATSAPP_PAIRING_RETRY_SCHEDULED")) {
+        logger.warn("whatsapp.worker.pairing_retry_scheduled", { workerId, jobId: job.id, accountId, action });
+        return;
+      }
       const guardedAccount = await prisma.whatsAppAccount.findUnique({
         where: { id: accountId },
         select: { status: true, pairingCode: true, pairingCodeExpiresAt: true, updatedAt: true },
