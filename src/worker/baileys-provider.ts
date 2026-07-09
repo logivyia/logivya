@@ -42,7 +42,8 @@ const HEARTBEAT_INTERVAL_MS = Number(process.env.WHATSAPP_HEARTBEAT_INTERVAL_MS 
 const QR_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_QR_TRANSIENT_RETRY_LIMIT || 3);
 const PAIRING_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_PAIRING_TRANSIENT_RETRY_LIMIT || 5);
 const PAIRING_REGISTERED_RECONNECT_LIMIT = Number(process.env.WHATSAPP_PAIRING_REGISTERED_RECONNECT_LIMIT || 3);
-const PAIRING_CODE_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_TTL_MS || 120_000);
+const PAIRING_CODE_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_TTL_MS || 5 * 60_000);
+const PHONE_PAIRING_QR_REF_TIMEOUT_MS = Number(process.env.WHATSAPP_PHONE_PAIRING_QR_REF_TIMEOUT_MS || 60_000);
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -556,10 +557,10 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         data: { status: "PAIRING_CODE_READY", phoneNumber: normalized, pairingCode: code, pairingCodeExpiresAt: expiresAt, lastError: null },
       });
       pairingRetryScheduledAt.delete(accountId);
-      logger.info("whatsapp.pairing.ready", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
-      logger.info("whatsapp.pairing.code_generated", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
-      logger.info("WA_PAIRING_CODE_GENERATED", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
-      await auditAccount(accountId, "whatsapp.pairing.code_generated", { phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString() });
+      logger.info("whatsapp.pairing.ready", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString(), qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS });
+      logger.info("whatsapp.pairing.code_generated", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString(), qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS });
+      logger.info("WA_PAIRING_CODE_GENERATED", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString(), qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS });
+      await auditAccount(accountId, "whatsapp.pairing.code_generated", { phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString(), qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS });
       return { code, expiresAt };
     } catch (error) {
       if (!isLoggedOutError(error) && await this.schedulePairingCodeRequestRetry(accountId, normalized, errorMessage(error))) {
@@ -616,9 +617,16 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       throw new Error("WhatsApp account no longer exists");
     }
 
-    logger.info("whatsapp.baileys.start", { accountId, mode, registered: state.creds.registered, sessionDirectory: directory });
-    logger.info("whatsapp.session.starting", { accountId, mode, registered: state.creds.registered });
-    const socket = makeWASocket({ auth: state, version, printQRInTerminal: false, markOnlineOnConnect: false, syncFullHistory: false });
+    logger.info("whatsapp.baileys.start", { accountId, mode, registered: state.creds.registered, sessionDirectory: directory, qrTimeoutMs: mode === "PAIR_PHONE" ? PHONE_PAIRING_QR_REF_TIMEOUT_MS : undefined });
+    logger.info("whatsapp.session.starting", { accountId, mode, registered: state.creds.registered, qrTimeoutMs: mode === "PAIR_PHONE" ? PHONE_PAIRING_QR_REF_TIMEOUT_MS : undefined });
+    const socket = makeWASocket({
+      auth: state,
+      version,
+      printQRInTerminal: false,
+      markOnlineOnConnect: false,
+      syncFullHistory: false,
+      ...(mode === "PAIR_PHONE" ? { qrTimeout: PHONE_PAIRING_QR_REF_TIMEOUT_MS } : {}),
+    });
     sockets.set(accountId, socket);
 
     let initializedSettled = false;

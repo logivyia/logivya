@@ -68,6 +68,8 @@ for (const marker of [
   "WHATSAPP_PAIRING_RETRY_SCHEDULED",
   "whatsapp.pairing.code_request_retry_scheduled",
   "PAIRING_CODE_TTL_MS",
+  "PHONE_PAIRING_QR_REF_TIMEOUT_MS",
+  "qrTimeout: PHONE_PAIRING_QR_REF_TIMEOUT_MS",
   "WA_ACCOUNT_CONNECTED",
   "WA_GROUP_SYNC_START",
   "WA_GROUP_SYNC_SUCCESS",
