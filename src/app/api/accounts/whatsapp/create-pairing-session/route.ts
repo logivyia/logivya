@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     try {
       const { ready } = await requestPhonePairingCode({ accountId, phoneNumber, source: "web", companyId: company.id, userId: user.id });
       if (!ready) return NextResponse.json({ ok: true, alreadyConnected: true, accountId, status: "CONNECTED", message: "WhatsApp hesabÄ±nÄ±z zaten baÄŸlÄ±." });
-      return NextResponse.json({ ok: true, accountId, status: ready.status, pairingCode: ready.pairingCode, expiresAt: ready.pairingCodeExpiresAt, pairingCodeExpiresAt: ready.pairingCodeExpiresAt }, { status: 201 });
+      return NextResponse.json({ ok: true, accountId, status: AccountStatus.PAIRING_CODE_READY, pairingCode: ready.pairingCode, expiresAt: ready.pairingCodeExpiresAt, pairingCodeExpiresAt: ready.pairingCodeExpiresAt }, { status: 201 });
     } catch (waitError) {
       if (!isWhatsAppWaitTimeout(waitError)) throw waitError;
       const pending = await prisma.whatsAppAccount.findUnique({ where: { id: accountId } });
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
         ok: true,
         pending: true,
         accountId,
-        status: pending?.status || AccountStatus.PENDING_PAIRING,
+        status: safePairingCode.pairingCode ? AccountStatus.PAIRING_CODE_READY : pending?.status || AccountStatus.PENDING_PAIRING,
         pairingCode: safePairingCode.pairingCode,
         expiresAt: safePairingCode.pairingCodeExpiresAt,
         pairingCodeExpiresAt: safePairingCode.pairingCodeExpiresAt,

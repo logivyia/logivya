@@ -39,12 +39,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       : canShowQr ? await prisma.whatsAppSession.findUnique({ where: { accountId: account.id } }) : null;
     const sessionQrCode = qrSession?.qrCode && qrSession.expiresAt && qrSession.expiresAt > new Date() ? qrSession.qrCode : null;
     const sessionQrExpiresAt = sessionQrCode ? qrSession?.expiresAt : null;
-    const safeLastError = userFacingLastError(account.status, account.lastError);
     const safePairingCode = visiblePhonePairingCode(account);
+    const displayStatus = safePairingCode.pairingCode ? "PAIRING_CODE_READY" : sessionQrCode ? "QR_READY" : account.status;
+    const safeLastError = safePairingCode.pairingCode ? null : userFacingLastError(account.status, account.lastError);
     return NextResponse.json({
       ok: true,
       accountId: account.id,
-      status: sessionQrCode ? "QR_READY" : account.status,
+      status: displayStatus,
       qrCode: account.qrCode ?? sessionQrCode,
       qrExpiresAt: account.qrExpiresAt ?? sessionQrExpiresAt,
       pairingCode: safePairingCode.pairingCode,
@@ -55,8 +56,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       connectedAt: account.lastConnectedAt,
       groupCount: account._count.groups,
       contactCount: account._count.contacts,
-      lastError: safeLastError ? whatsappUserMessage(safeLastError, operationForAccount(account.status, account.phoneNumber)) : null,
-      failureReasonSafe: safeLastError ? whatsappUserMessage(safeLastError, operationForAccount(account.status, account.phoneNumber)) : null,
+      lastError: safeLastError ? whatsappUserMessage(safeLastError, operationForAccount(displayStatus, account.phoneNumber)) : null,
+      failureReasonSafe: safeLastError ? whatsappUserMessage(safeLastError, operationForAccount(displayStatus, account.phoneNumber)) : null,
       lastSyncedAt: account.lastSyncedAt,
       lastSyncAt: account.lastSyncedAt,
       pairingExpiresAt: safePairingCode.pairingCodeExpiresAt,

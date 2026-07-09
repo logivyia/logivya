@@ -158,7 +158,7 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
       logger.info("whatsapp.job.received", { workerId, jobId: job.id, action, accountId });
       const account = await prisma.whatsAppAccount.findUnique({
         where: { id: accountId },
-        select: { status: true, archivedAt: true, updatedAt: true, pairingCode: true, pairingCodeExpiresAt: true },
+        select: { status: true, archivedAt: true, updatedAt: true, pairingCode: true, pairingCodeExpiresAt: true, lastError: true },
       });
       if (!account || account.archivedAt) return;
       if (action === "reconnect" && hasActivePhonePairing(account)) {
@@ -192,7 +192,7 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
       }
       const guardedAccount = await prisma.whatsAppAccount.findUnique({
         where: { id: accountId },
-        select: { status: true, pairingCode: true, pairingCodeExpiresAt: true, updatedAt: true },
+        select: { status: true, pairingCode: true, pairingCodeExpiresAt: true, updatedAt: true, lastError: true },
       }).catch(() => null);
       if (action === "reconnect" && guardedAccount && hasActivePhonePairing(guardedAccount)) {
         logger.warn("whatsapp.worker.reconnect.failure_skipped_active_pairing", { workerId, jobId: job.id, accountId, status: guardedAccount.status });
@@ -543,7 +543,7 @@ async function recoverSessions() {
         { sessions: { some: { sessionDataEncrypted: { not: null } } } },
       ],
     },
-    select: { id: true, pairingCode: true, pairingCodeExpiresAt: true, status: true, updatedAt: true },
+    select: { id: true, pairingCode: true, pairingCodeExpiresAt: true, status: true, updatedAt: true, lastError: true },
   });
   for (const account of recoverableAccounts) {
     if (hasActivePhonePairing(account)) {

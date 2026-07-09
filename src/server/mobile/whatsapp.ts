@@ -47,6 +47,7 @@ export function serializeMobileAccount(account: {
   _count?: { groups: number; contacts: number };
 }) {
   const safePairingCode = visiblePhonePairingCode(account);
+  const displayStatus = safePairingCode.pairingCode ? "PENDING_PHONE_CODE" : mobileWhatsAppStatus(account.status, account.lastError);
   const healthScore = account.healthScore ?? computeWhatsAppHealthScore({
     status: account.status,
     lastError: account.lastError,
@@ -61,7 +62,7 @@ export function serializeMobileAccount(account: {
     label: account.label,
     phoneNumber: account.phoneNumber,
     displayName: account.displayName,
-    status: mobileWhatsAppStatus(account.status, account.lastError),
+    status: displayStatus,
     rawStatus: account.status,
     groupCount: account._count?.groups ?? 0,
     contactCount: account._count?.contacts ?? 0,
