@@ -3,7 +3,7 @@
  * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
  * Do not modify without running the full WhatsApp regression test suite.
  */
-import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, fetchLatestWaWebVersion, useMultiFileAuthState, type WAMessageKey, type WASocket } from "@whiskeysockets/baileys";
+import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, fetchLatestWaWebVersion, getPlatformId, useMultiFileAuthState, type WAMessageKey, type WASocket } from "@whiskeysockets/baileys";
 import { Prisma } from "@prisma/client";
 import QRCode from "qrcode";
 import { prisma } from "@/server/db";
@@ -57,7 +57,10 @@ const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
 const RECONNECT_BACKOFF_MS = [5_000, 10_000, 20_000, 40_000, 60_000, 120_000] as const;
 const WHATSAPP_PAIRING_COUNTRY_CODE = (process.env.WHATSAPP_PAIRING_COUNTRY_CODE || process.env.WHATSAPP_COUNTRY_CODE || "TR").toUpperCase();
-const WHATSAPP_BROWSER = Browsers.macOS(process.env.WHATSAPP_PAIRING_BROWSER_NAME || "Desktop");
+const WHATSAPP_PAIRING_BROWSER_NAME = process.env.WHATSAPP_PAIRING_BROWSER_NAME || "Chrome";
+const WHATSAPP_BROWSER = Browsers.macOS(WHATSAPP_PAIRING_BROWSER_NAME);
+const WHATSAPP_COMPANION_PLATFORM_ID = getPlatformId(WHATSAPP_BROWSER[1]);
+const WHATSAPP_COMPANION_PLATFORM_DISPLAY = `${WHATSAPP_BROWSER[1]} (${WHATSAPP_BROWSER[0]})`;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -406,6 +409,8 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS,
       browser: WHATSAPP_BROWSER,
       countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
+      companionPlatformId: WHATSAPP_COMPANION_PLATFORM_ID,
+      companionPlatformDisplay: WHATSAPP_COMPANION_PLATFORM_DISPLAY,
     };
     logger.warn("whatsapp.pairing.same_code_refreshed", { accountId, ...refreshMetadata });
     await auditAccount(accountId, "whatsapp.pairing.code_refreshed", refreshMetadata).catch((error) =>
@@ -618,6 +623,8 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           phoneNumber: maskPhoneNumber(normalized),
           browser: WHATSAPP_BROWSER,
           countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
+          companionPlatformId: WHATSAPP_COMPANION_PLATFORM_ID,
+          companionPlatformDisplay: WHATSAPP_COMPANION_PLATFORM_DISPLAY,
         });
         return activeSocket.requestPairingCode(normalized);
       };
@@ -660,6 +667,8 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS,
         browser: WHATSAPP_BROWSER,
         countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
+        companionPlatformId: WHATSAPP_COMPANION_PLATFORM_ID,
+        companionPlatformDisplay: WHATSAPP_COMPANION_PLATFORM_DISPLAY,
       };
       logger.info("whatsapp.pairing.ready", { accountId, ...pairingMetadata });
       logger.info("whatsapp.pairing.code_generated", { accountId, ...pairingMetadata });
@@ -760,6 +769,8 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       qrTimeoutMs: mode === "PAIR_PHONE" ? PHONE_PAIRING_QR_REF_TIMEOUT_MS : undefined,
       browser: WHATSAPP_BROWSER,
       countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
+      companionPlatformId: WHATSAPP_COMPANION_PLATFORM_ID,
+      companionPlatformDisplay: WHATSAPP_COMPANION_PLATFORM_DISPLAY,
       waVersion: version,
       waVersionSource: versionInfo.source,
       waVersionIsLatest: versionInfo.isLatest,
@@ -772,6 +783,8 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       qrTimeoutMs: mode === "PAIR_PHONE" ? PHONE_PAIRING_QR_REF_TIMEOUT_MS : undefined,
       browser: WHATSAPP_BROWSER,
       countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
+      companionPlatformId: WHATSAPP_COMPANION_PLATFORM_ID,
+      companionPlatformDisplay: WHATSAPP_COMPANION_PLATFORM_DISPLAY,
       waVersion: version,
       waVersionSource: versionInfo.source,
       waVersionIsLatest: versionInfo.isLatest,
