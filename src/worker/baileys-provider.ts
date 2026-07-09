@@ -42,6 +42,7 @@ const HEARTBEAT_INTERVAL_MS = Number(process.env.WHATSAPP_HEARTBEAT_INTERVAL_MS 
 const QR_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_QR_TRANSIENT_RETRY_LIMIT || 3);
 const PAIRING_TRANSIENT_RETRY_LIMIT = Number(process.env.WHATSAPP_PAIRING_TRANSIENT_RETRY_LIMIT || 5);
 const PAIRING_REGISTERED_RECONNECT_LIMIT = Number(process.env.WHATSAPP_PAIRING_REGISTERED_RECONNECT_LIMIT || 3);
+const PAIRING_CODE_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_TTL_MS || 120_000);
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -549,7 +550,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         if (session.registered) throw new Error("Pairing requires a clean unregistered auth state.");
         code = await requestFromActiveSocket(2);
       }
-      const expiresAt = new Date(Date.now() + 5 * 60_000);
+      const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_MS);
       await prisma.whatsAppAccount.update({
         where: { id: accountId },
         data: { status: "PAIRING_CODE_READY", phoneNumber: normalized, pairingCode: code, pairingCodeExpiresAt: expiresAt, lastError: null },

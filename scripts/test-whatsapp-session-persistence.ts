@@ -67,6 +67,7 @@ for (const marker of [
   "WA_PAIRING_CREDS_RECEIVED",
   "WHATSAPP_PAIRING_RETRY_SCHEDULED",
   "whatsapp.pairing.code_request_retry_scheduled",
+  "PAIRING_CODE_TTL_MS",
   "WA_ACCOUNT_CONNECTED",
   "WA_GROUP_SYNC_START",
   "WA_GROUP_SYNC_SUCCESS",
