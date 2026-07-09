@@ -85,6 +85,7 @@ for (const marker of [
   "hasReusableCode",
   "hasInFlightPairing",
   "PAIRING_CODE_MIN_TTL_MS",
+  "120_000",
   "PAIRING_CODE_STABILITY_MS",
   "PAIRING_IN_FLIGHT_MS",
   "hasExpiringPairingCode",

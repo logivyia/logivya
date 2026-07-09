@@ -6,7 +6,7 @@ import { logger } from "@/server/observability/logger";
 import { canExposePhonePairingCode } from "@/server/whatsapp/pairing-code-state";
 
 const PAIRING_CODE_STABILITY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_STABILITY_MS || 3_500);
-const PAIRING_CODE_MIN_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_MIN_TTL_MS || 30_000);
+const PAIRING_CODE_MIN_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_MIN_TTL_MS || 120_000);
 
 function isRedisQuotaOrTransientHeartbeatError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
