@@ -67,7 +67,8 @@ assertIncludes(provider, "whatsapp.qr.connection_closed_after_ready", "QR mode m
 assertIncludes(provider, "whatsapp.qr.transient_close_retry_scheduled", "QR mode must retry transient socket closes before failing");
 assertIncludes(provider, "whatsapp.qr.error_after_ready_ignored", "QR mode must preserve QR_READY after late handler errors");
 assertIncludes(provider, "whatsapp.pairing.stale_socket_close_ignored", "phone pairing must ignore stale socket closes after a newer code request");
-assertIncludes(provider, "whatsapp.pairing.connection_closed_after_code_preserved", "phone pairing must preserve active code after transient socket closes");
+assertIncludes(provider, "whatsapp.pairing.code_invalidated_after_socket_close", "phone pairing must invalidate codes tied to closed sockets");
+assertIncludes(provider, "whatsapp.pairing.registered_close_reconnect", "phone pairing must reconnect instead of clearing newly registered credentials");
 assertIncludes(provider, "whatsapp.pairing.error_after_code_ignored", "phone pairing must not overwrite PAIRING_CODE_READY after late handler errors");
 assertIncludes(provider, "preservePairingCode ? \"PAIRING_CODE_READY\"", "phone pairing retries must not hide an active pairing code");
 assertIncludes(sessionManager, "snapshotHasRegisteredCredentials", "session snapshots must distinguish partial pairing credentials from registered sessions");
