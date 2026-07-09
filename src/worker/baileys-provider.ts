@@ -318,52 +318,106 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     return account ? canExposePhonePairingCode(account) : false;
   }
 
-  private async reissuePairingCodeAfterSocketClose(accountId: string, reason: string, code?: number) {
+  private async refreshPairingCodeSocket(accountId: string, phoneNumber: string, pairingCode: string, expiresAt: Date, attempt: number) {
+    if (expiresAt.getTime() - Date.now() <= 10_000) {
+      logger.warn("whatsapp.pairing.same_code_refresh_skipped_expiring", { accountId, attempt });
+      return;
+    }
+
+    await this.clearTemporaryAuth(accountId);
+    await prisma.whatsAppAccount.updateMany({
+      where: { id: accountId, archivedAt: null },
+      data: {
+        status: "PAIRING_CODE_READY",
+        phoneNumber,
+        pairingCode,
+        pairingCodeExpiresAt: expiresAt,
+        lastError: null,
+        recoveryLevel: Math.min(attempt, 5),
+        healthScore: 40,
+      },
+    });
+
+    const session = await this.startSession(accountId, "PAIR_PHONE");
+    if (session.registered) return;
+    const readiness = session.initialized
+      .then(() => true)
+      .catch((error) => {
+        logger.warn("whatsapp.pairing.same_code_refresh_initialization_deferred_failed", {
+          accountId,
+          attempt,
+          reason: errorMessage(error),
+        });
+        return false;
+      });
+    const ready = await Promise.race([readiness, sleep(PAIRING_SOCKET_BOOTSTRAP_MS).then(() => false)]);
+    if (!ready) logger.warn("whatsapp.pairing.same_code_refresh_bootstrap_wait_timeout", { accountId, attempt });
+    const activeSocket = sockets.get(accountId) ?? session.socket;
+    await activeSocket.requestPairingCode(phoneNumber, pairingCode);
+    await prisma.whatsAppAccount.updateMany({
+      where: { id: accountId, archivedAt: null },
+      data: {
+        status: "PAIRING_CODE_READY",
+        phoneNumber,
+        pairingCode,
+        pairingCodeExpiresAt: expiresAt,
+        lastError: null,
+        recoveryLevel: Math.min(attempt, 5),
+        healthScore: 45,
+      },
+    });
+    logger.warn("whatsapp.pairing.same_code_refreshed", { accountId, attempt, expiresAt: expiresAt.toISOString(), qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS });
+    await auditAccount(accountId, "whatsapp.pairing.code_refreshed", { attempt, expiresAt: expiresAt.toISOString(), qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS }).catch((error) =>
+      logger.warn("whatsapp.pairing.refresh_audit_failed", { accountId, reason: errorMessage(error) }),
+    );
+  }
+
+  private async refreshPairingCodeAfterSocketClose(accountId: string, reason: string, code?: number) {
     const account = await prisma.whatsAppAccount.findUnique({
       where: { id: accountId },
       select: { archivedAt: true, phoneNumber: true, pairingCode: true, pairingCodeExpiresAt: true },
     });
     if (!account || account.archivedAt || !account.phoneNumber || !account.pairingCode || !account.pairingCodeExpiresAt || account.pairingCodeExpiresAt <= new Date()) return false;
     const phoneNumber = account.phoneNumber;
+    const pairingCode = account.pairingCode;
+    const expiresAt = account.pairingCodeExpiresAt;
 
     const nextAttempt = (pairingTransientRetries.get(accountId) ?? 0) + 1;
     pairingTransientRetries.set(accountId, nextAttempt);
-    const shouldReissue = nextAttempt <= PAIRING_TRANSIENT_RETRY_LIMIT;
+    const shouldRefresh = nextAttempt <= PAIRING_TRANSIENT_RETRY_LIMIT;
     await prisma.whatsAppAccount.updateMany({
       where: { id: accountId, archivedAt: null },
       data: {
-        status: shouldReissue ? "PENDING_PAIRING" : "FAILED",
-        pairingCode: null,
-        pairingCodeExpiresAt: null,
-        lastError: shouldReissue ? null : pairingUserMessage(reason),
+        status: shouldRefresh ? "PAIRING_CODE_READY" : "FAILED",
+        pairingCode: shouldRefresh ? pairingCode : null,
+        pairingCodeExpiresAt: shouldRefresh ? expiresAt : null,
+        lastError: shouldRefresh ? null : pairingUserMessage(reason),
         recoveryLevel: Math.min(nextAttempt, 5),
-        healthScore: shouldReissue ? 35 : 0,
+        healthScore: shouldRefresh ? 35 : 0,
       },
     });
-    logger.warn("whatsapp.pairing.code_invalidated_after_socket_close", {
+    logger.warn("whatsapp.pairing.same_code_refresh_scheduled", {
       accountId,
       code,
       attempt: nextAttempt,
       maxAttempts: PAIRING_TRANSIENT_RETRY_LIMIT,
       reason,
-      reissue: shouldReissue,
+      refresh: shouldRefresh,
+      expiresAt: expiresAt.toISOString(),
     });
-    await auditAccount(accountId, "whatsapp.pairing.code_invalidated", { code, attempt: nextAttempt, reason, reissue: shouldReissue }).catch((error) =>
-      logger.warn("whatsapp.pairing.invalidate_audit_failed", { accountId, reason: errorMessage(error) }),
+    await auditAccount(accountId, "whatsapp.pairing.code_refresh_scheduled", { code, attempt: nextAttempt, reason, refresh: shouldRefresh, expiresAt: expiresAt.toISOString() }).catch((error) =>
+      logger.warn("whatsapp.pairing.refresh_schedule_audit_failed", { accountId, reason: errorMessage(error) }),
     );
 
-    if (shouldReissue) {
+    if (shouldRefresh) {
       const fastRetryDelay = Math.min(1_000 * nextAttempt, 5_000);
       const delay = Math.min(fastRetryDelay, PAIRING_CODE_REISSUE_RETRY_MS);
       setTimeout(() => {
-        void enqueueWhatsAppJob(
-          "pairing",
-          { action: "pairing", accountId, phoneNumber, preserveRetryCounter: true },
-          { jobId: `pairing-reissue-${accountId}-${Math.floor(Date.now() / 1_000)}` },
-        ).catch((error) => logger.error("whatsapp.pairing.code_reissue_enqueue_failed", error, { accountId, attempt: nextAttempt }));
+        void this.refreshPairingCodeSocket(accountId, phoneNumber, pairingCode, expiresAt, nextAttempt)
+          .catch((error) => logger.error("whatsapp.pairing.same_code_refresh_failed", error, { accountId, attempt: nextAttempt }));
       }, delay);
     } else {
-      logger.warn("whatsapp.pairing.code_reissue_limit_reached", { accountId, code, attempts: nextAttempt });
+      logger.warn("whatsapp.pairing.same_code_refresh_limit_reached", { accountId, code, attempts: nextAttempt });
     }
     return true;
   }
@@ -790,7 +844,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
               logger.warn("WA_PAIRING_REGISTERED_CLOSE_RECOVERABLE", { accountId, mode: currentMode, reason, code });
               return;
             }
-            if (!state.creds.registered && await this.reissuePairingCodeAfterSocketClose(accountId, reason, code)) {
+            if (!state.creds.registered && await this.refreshPairingCodeAfterSocketClose(accountId, reason, code)) {
               logger.warn("WA_PAIRING_FAILED_RECOVERABLE", { accountId, mode: currentMode, reason, code });
               if (!initializedSettled) settleInitialized();
               return;
@@ -848,7 +902,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
             if (!initializedSettled) settleInitialized();
             return;
           }
-          if (modeAtFailure === "PAIR_PHONE" && await this.reissuePairingCodeAfterSocketClose(accountId, errorMessage(error))) {
+          if (modeAtFailure === "PAIR_PHONE" && await this.refreshPairingCodeAfterSocketClose(accountId, errorMessage(error))) {
             logger.warn("whatsapp.pairing.error_after_code_ignored", { accountId, mode: modeAtFailure, reason: errorMessage(error) });
             logger.warn("WA_PAIRING_FAILED_RECOVERABLE", { accountId, mode: modeAtFailure, reason: errorMessage(error) });
             if (!initializedSettled) settleInitialized();

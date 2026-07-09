@@ -70,6 +70,7 @@ for (const marker of [
   "PAIRING_CODE_TTL_MS",
   "PHONE_PAIRING_QR_REF_TIMEOUT_MS",
   "qrTimeout: PHONE_PAIRING_QR_REF_TIMEOUT_MS",
+  "whatsapp.pairing.same_code_refreshed",
   "WA_ACCOUNT_CONNECTED",
   "WA_GROUP_SYNC_START",
   "WA_GROUP_SYNC_SUCCESS",
