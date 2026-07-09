@@ -70,8 +70,10 @@ assertIncludes(provider, "whatsapp.qr.error_after_ready_ignored", "QR mode must 
 assertIncludes(provider, "whatsapp.pairing.stale_socket_close_ignored", "phone pairing must ignore stale socket closes after a newer code request");
 assertIncludes(provider, "whatsapp.pairing.same_code_refresh_scheduled", "phone pairing must refresh the same visible code after socket closes");
 assertIncludes(provider, "activeSocket.requestPairingCode(phoneNumber, pairingCode)", "phone pairing refresh must re-register the same visible code with Baileys");
-assertIncludes(provider, "Browsers.macOS", "phone pairing must identify as a desktop linked-device client");
+assertIncludes(provider, "Browsers.ubuntu", "phone pairing must use Baileys' canonical WEB_BROWSER identity by default");
 assertIncludes(provider, 'WHATSAPP_PAIRING_BROWSER_NAME || "Chrome"', "phone pairing must use a canonical Chrome browser identity by default");
+assertIncludes(provider, 'WHATSAPP_PAIRING_BROWSER_OS || "ubuntu"', "phone pairing must default to the Baileys Ubuntu web browser tuple");
+assertIncludes(provider, "resolveWhatsAppBrowser", "phone pairing must centralize browser identity resolution");
 assertIncludes(provider, "WHATSAPP_COMPANION_PLATFORM_ID", "phone pairing must compute the canonical Baileys companion platform id");
 assertIncludes(provider, "companionPlatformDisplay", "phone pairing must log the visible companion platform display");
 assertIncludes(provider, "fetchLatestWaWebVersion", "phone pairing must prefer the live WhatsApp Web client revision");
