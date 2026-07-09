@@ -11,7 +11,7 @@ import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { withWhatsAppAccountLock } from "@/server/whatsapp/account-lock";
 import { writeWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
-import { hasActivePhonePairing } from "@/server/whatsapp/pairing-guard";
+import { hasActivePhonePairing, isPhonePairingActive } from "@/server/whatsapp/pairing-guard";
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
 import { createNotification, NOTIFICATION_TYPES } from "@/server/notifications/service";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
@@ -161,8 +161,8 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
         select: { status: true, archivedAt: true, updatedAt: true, pairingCode: true, pairingCodeExpiresAt: true, lastError: true },
       });
       if (!account || account.archivedAt) return;
-      if (action === "reconnect" && hasActivePhonePairing(account)) {
-        logger.warn("whatsapp.worker.reconnect.skipped_active_pairing", { workerId, jobId: job.id, accountId, status: account.status });
+      if ((action === "reconnect" || action === "sync") && hasActivePhonePairing(account)) {
+        logger.warn("whatsapp.worker.reconnect.skipped_active_pairing", { workerId, jobId: job.id, accountId, action, status: account.status });
         return;
       }
       if (action === "reconnect" && account.status === "CONNECTED" && typeof job.timestamp === "number" && account.updatedAt.getTime() > job.timestamp + 1_000) {
@@ -194,8 +194,8 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
         where: { id: accountId },
         select: { status: true, pairingCode: true, pairingCodeExpiresAt: true, updatedAt: true, lastError: true },
       }).catch(() => null);
-      if (action === "reconnect" && guardedAccount && hasActivePhonePairing(guardedAccount)) {
-        logger.warn("whatsapp.worker.reconnect.failure_skipped_active_pairing", { workerId, jobId: job.id, accountId, status: guardedAccount.status });
+      if ((action === "reconnect" || action === "sync") && guardedAccount && hasActivePhonePairing(guardedAccount)) {
+        logger.warn("whatsapp.worker.reconnect.failure_skipped_active_pairing", { workerId, jobId: job.id, accountId, action, status: guardedAccount.status });
         return;
       }
       const hasCredentials = await hasRestorableWhatsAppCredentials(accountId).catch(() => false);
@@ -338,17 +338,22 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
         where: { id: recipient.id },
         data: { status: "PENDING", failedAt: null, errorMessage: finalAttempt ? "WHATSAPP_RESTORING_CONNECTION" : "WHATSAPP_RETRYING_CONNECTION" },
       });
-      await prisma.whatsAppAccount.updateMany({
-        where: { id: recipient.accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
-        data: { status: "CONNECTING", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
-      });
-      const reconnectQueue = whatsappQueue();
-      try {
-        await reconnectQueue.add("reconnect", { action: "reconnect", accountId: recipient.accountId }, { jobId: `send-reconnect-${recipient.accountId}`, removeOnComplete: 50, removeOnFail: 100 });
-      } catch (queueError) {
-        logger.error("message.reconnect.enqueue_failed", queueError, { ...baseLog, accountId: recipient.accountId });
-      } finally {
-        await reconnectQueue.close().catch(() => undefined);
+      const activePairing = await isPhonePairingActive(recipient.accountId).catch(() => false);
+      if (activePairing) {
+        logger.warn("message.reconnect.skipped_active_pairing", { ...baseLog, accountId: recipient.accountId, finalAttempt });
+      } else {
+        await prisma.whatsAppAccount.updateMany({
+          where: { id: recipient.accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
+          data: { status: "CONNECTING", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
+        });
+        const reconnectQueue = whatsappQueue();
+        try {
+          await reconnectQueue.add("reconnect", { action: "reconnect", accountId: recipient.accountId }, { jobId: `send-reconnect-${recipient.accountId}`, removeOnComplete: 50, removeOnFail: 100 });
+        } catch (queueError) {
+          logger.error("message.reconnect.enqueue_failed", queueError, { ...baseLog, accountId: recipient.accountId });
+        } finally {
+          await reconnectQueue.close().catch(() => undefined);
+        }
       }
       if (finalAttempt) {
         const retryQueue = messageQueue();
@@ -514,17 +519,22 @@ async function processDeleteForEveryoneJob(job: Job<DeleteForEveryoneJob>) {
       },
     });
     if (recoverable) {
-      await prisma.whatsAppAccount.updateMany({
-        where: { id: recipient.accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
-        data: { status: "CONNECTING", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
-      });
-      const reconnectQueue = whatsappQueue();
-      try {
-        await reconnectQueue.add("reconnect", { action: "reconnect", accountId: recipient.accountId }, { jobId: `delete-reconnect-${recipient.accountId}`, removeOnComplete: 50, removeOnFail: 100 });
-      } catch (queueError) {
-        logger.error("message.delete.reconnect.enqueue_failed", queueError, baseLog);
-      } finally {
-        await reconnectQueue.close().catch(() => undefined);
+      const activePairing = await isPhonePairingActive(recipient.accountId).catch(() => false);
+      if (activePairing) {
+        logger.warn("message.delete.reconnect.skipped_active_pairing", { ...baseLog, accountId: recipient.accountId, finalAttempt });
+      } else {
+        await prisma.whatsAppAccount.updateMany({
+          where: { id: recipient.accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
+          data: { status: "CONNECTING", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
+        });
+        const reconnectQueue = whatsappQueue();
+        try {
+          await reconnectQueue.add("reconnect", { action: "reconnect", accountId: recipient.accountId }, { jobId: `delete-reconnect-${recipient.accountId}`, removeOnComplete: 50, removeOnFail: 100 });
+        } catch (queueError) {
+          logger.error("message.delete.reconnect.enqueue_failed", queueError, baseLog);
+        } finally {
+          await reconnectQueue.close().catch(() => undefined);
+        }
       }
     }
     logger.error("message.delete.failed", error, { ...baseLog, recoverable, finalAttempt });
