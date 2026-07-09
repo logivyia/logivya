@@ -70,6 +70,8 @@ assertIncludes(provider, "whatsapp.qr.error_after_ready_ignored", "QR mode must 
 assertIncludes(provider, "whatsapp.pairing.stale_socket_close_ignored", "phone pairing must ignore stale socket closes after a newer code request");
 assertIncludes(provider, "whatsapp.pairing.same_code_refresh_scheduled", "phone pairing must refresh the same visible code after socket closes");
 assertIncludes(provider, "activeSocket.requestPairingCode(phoneNumber, pairingCode)", "phone pairing refresh must re-register the same visible code with Baileys");
+assertIncludes(provider, "preserveUnregisteredPairingAuth", "phone pairing retries must preserve unregistered auth instead of creating a new companion identity each time");
+assertIncludes(provider, "whatsapp.pairing.unregistered_auth_preserved", "phone pairing must log preserved unregistered auth for production diagnostics");
 assertIncludes(provider, "Browsers.ubuntu", "phone pairing must use Baileys' canonical WEB_BROWSER identity by default");
 assertIncludes(provider, 'WHATSAPP_PAIRING_BROWSER_NAME || "Chrome"', "phone pairing must use a canonical Chrome browser identity by default");
 assertIncludes(provider, 'WHATSAPP_PAIRING_BROWSER_OS || "ubuntu"', "phone pairing must default to the Baileys Ubuntu web browser tuple");

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const WEB_RELEASE_MARKER = "WHATSAPP_PAIRING_UBUNTU_CHROME_WEB_BROWSER_V122";
+const WEB_RELEASE_MARKER = "WHATSAPP_PAIRING_PRESERVE_UNREGISTERED_AUTH_V123";
 
 export function GET() {
   return NextResponse.json({
