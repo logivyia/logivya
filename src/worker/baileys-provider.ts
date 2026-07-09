@@ -3,7 +3,7 @@
  * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
  * Do not modify without running the full WhatsApp regression test suite.
  */
-import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState, type WAMessageKey, type WASocket } from "@whiskeysockets/baileys";
+import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, fetchLatestWaWebVersion, useMultiFileAuthState, type WAMessageKey, type WASocket } from "@whiskeysockets/baileys";
 import { Prisma } from "@prisma/client";
 import QRCode from "qrcode";
 import { prisma } from "@/server/db";
@@ -25,6 +25,13 @@ import {
 import type { DeleteGroupMessageInput, DeleteResult, GroupResult, RequestPairingCodeOptions, SendGroupMessageInput, SendResult, SessionResult, WhatsAppProvider } from "@/server/whatsapp/provider";
 
 type SessionMode = "PAIR_QR" | "PAIR_PHONE" | "RESTORE" | "RECONNECT";
+type WhatsAppWebVersion = [number, number, number];
+type WhatsAppVersionInfo = {
+  version: WhatsAppWebVersion;
+  source: "wa-web" | "baileys-default";
+  isLatest: boolean;
+  fallbackReason?: string;
+};
 
 const sockets = new Map<string, WASocket>();
 const intentionallyStoppedSockets = new WeakSet<WASocket>();
@@ -58,6 +65,30 @@ function sleep(ms: number) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function fetchCurrentWhatsAppWebVersion(): Promise<WhatsAppVersionInfo> {
+  const live = await fetchLatestWaWebVersion({}).catch((error: unknown) => ({
+    version: undefined,
+    isLatest: false,
+    error,
+  }));
+  if (live.version) {
+    return {
+      version: live.version,
+      source: "wa-web",
+      isLatest: live.isLatest,
+      fallbackReason: "error" in live && live.error ? errorMessage(live.error) : undefined,
+    };
+  }
+
+  const fallback = await fetchLatestBaileysVersion();
+  return {
+    version: fallback.version,
+    source: "baileys-default",
+    isLatest: fallback.isLatest,
+    fallbackReason: "error" in live && live.error ? errorMessage(live.error) : "wa_web_version_unavailable",
+  };
 }
 
 function maskPhoneNumber(phoneNumber?: string | null) {
@@ -706,7 +737,8 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     // Baileys uses this name for its auth-state factory; it is not a React hook.
     // eslint-disable-next-line react-hooks/rules-of-hooks
     const { state, saveCreds } = await useMultiFileAuthState(directory);
-    const { version } = await fetchLatestBaileysVersion();
+    const versionInfo = await fetchCurrentWhatsAppWebVersion();
+    const { version } = versionInfo;
     if (!state.creds.registered && mode !== "PAIR_QR" && mode !== "PAIR_PHONE") {
       logger.warn("whatsapp.restore.credentials_missing", { accountId, mode });
       await this.handleMissingCredentials(accountId, `start_session_missing_credentials:${mode}`);
@@ -728,6 +760,10 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       qrTimeoutMs: mode === "PAIR_PHONE" ? PHONE_PAIRING_QR_REF_TIMEOUT_MS : undefined,
       browser: WHATSAPP_BROWSER,
       countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
+      waVersion: version,
+      waVersionSource: versionInfo.source,
+      waVersionIsLatest: versionInfo.isLatest,
+      waVersionFallbackReason: versionInfo.fallbackReason,
     });
     logger.info("whatsapp.session.starting", {
       accountId,
@@ -736,6 +772,10 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       qrTimeoutMs: mode === "PAIR_PHONE" ? PHONE_PAIRING_QR_REF_TIMEOUT_MS : undefined,
       browser: WHATSAPP_BROWSER,
       countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
+      waVersion: version,
+      waVersionSource: versionInfo.source,
+      waVersionIsLatest: versionInfo.isLatest,
+      waVersionFallbackReason: versionInfo.fallbackReason,
     });
     const socket = makeWASocket({
       auth: state,

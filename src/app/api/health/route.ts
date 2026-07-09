@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const WEB_RELEASE_MARKER = "WHATSAPP_PAIRING_DESKTOP_TR_IDENTITY_V118";
+const WEB_RELEASE_MARKER = "WHATSAPP_PAIRING_LIVE_WA_WEB_VERSION_V119";
 
 export function GET() {
   return NextResponse.json({

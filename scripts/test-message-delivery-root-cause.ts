@@ -71,6 +71,10 @@ assertIncludes(provider, "whatsapp.pairing.stale_socket_close_ignored", "phone p
 assertIncludes(provider, "whatsapp.pairing.same_code_refresh_scheduled", "phone pairing must refresh the same visible code after socket closes");
 assertIncludes(provider, "activeSocket.requestPairingCode(phoneNumber, pairingCode)", "phone pairing refresh must re-register the same visible code with Baileys");
 assertIncludes(provider, "Browsers.macOS", "phone pairing must identify as a desktop linked-device client");
+assertIncludes(provider, "fetchLatestWaWebVersion", "phone pairing must prefer the live WhatsApp Web client revision");
+assertIncludes(provider, "fetchCurrentWhatsAppWebVersion", "phone pairing must centralize WhatsApp Web version resolution");
+assertIncludes(provider, 'source: "wa-web"', "phone pairing must log the live WhatsApp Web version source");
+assertIncludes(provider, "waVersionSource", "phone pairing must expose the WhatsApp Web version source in production logs");
 assertIncludes(provider, "countryCode: WHATSAPP_PAIRING_COUNTRY_CODE", "phone pairing must send an explicit country code to Baileys");
 assertIncludes(provider, "browser: WHATSAPP_BROWSER", "phone pairing must log/audit the Baileys browser identity");
 assertIncludes(provider, "async refreshPairingCode", "phone pairing reuse must have worker-side socket refresh");
