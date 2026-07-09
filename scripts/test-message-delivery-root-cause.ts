@@ -70,6 +70,9 @@ assertIncludes(provider, "whatsapp.qr.error_after_ready_ignored", "QR mode must 
 assertIncludes(provider, "whatsapp.pairing.stale_socket_close_ignored", "phone pairing must ignore stale socket closes after a newer code request");
 assertIncludes(provider, "whatsapp.pairing.same_code_refresh_scheduled", "phone pairing must refresh the same visible code after socket closes");
 assertIncludes(provider, "activeSocket.requestPairingCode(phoneNumber, pairingCode)", "phone pairing refresh must re-register the same visible code with Baileys");
+assertIncludes(provider, "Browsers.macOS", "phone pairing must identify as a desktop linked-device client");
+assertIncludes(provider, "countryCode: WHATSAPP_PAIRING_COUNTRY_CODE", "phone pairing must send an explicit country code to Baileys");
+assertIncludes(provider, "browser: WHATSAPP_BROWSER", "phone pairing must log/audit the Baileys browser identity");
 assertIncludes(provider, "async refreshPairingCode", "phone pairing reuse must have worker-side socket refresh");
 assertIncludes(provider, "whatsapp.pairing.refresh_fallback_new_code", "phone pairing refresh must fall back to a new clean code when the old code cannot be re-registered");
 assertIncludes(provider, "whatsapp.pairing.registered_close_reconnect", "phone pairing must reconnect instead of clearing newly registered credentials");

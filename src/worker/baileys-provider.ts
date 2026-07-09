@@ -3,7 +3,7 @@
  * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
  * Do not modify without running the full WhatsApp regression test suite.
  */
-import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState, type WAMessageKey, type WASocket } from "@whiskeysockets/baileys";
+import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState, type WAMessageKey, type WASocket } from "@whiskeysockets/baileys";
 import { Prisma } from "@prisma/client";
 import QRCode from "qrcode";
 import { prisma } from "@/server/db";
@@ -49,6 +49,8 @@ const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_R
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
 const RECONNECT_BACKOFF_MS = [5_000, 10_000, 20_000, 40_000, 60_000, 120_000] as const;
+const WHATSAPP_PAIRING_COUNTRY_CODE = (process.env.WHATSAPP_PAIRING_COUNTRY_CODE || process.env.WHATSAPP_COUNTRY_CODE || "TR").toUpperCase();
+const WHATSAPP_BROWSER = Browsers.macOS(process.env.WHATSAPP_PAIRING_BROWSER_NAME || "Desktop");
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -367,8 +369,15 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         healthScore: 45,
       },
     });
-    logger.warn("whatsapp.pairing.same_code_refreshed", { accountId, attempt, expiresAt: expiresAt.toISOString(), qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS });
-    await auditAccount(accountId, "whatsapp.pairing.code_refreshed", { attempt, expiresAt: expiresAt.toISOString(), qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS }).catch((error) =>
+    const refreshMetadata = {
+      attempt,
+      expiresAt: expiresAt.toISOString(),
+      qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS,
+      browser: WHATSAPP_BROWSER,
+      countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
+    };
+    logger.warn("whatsapp.pairing.same_code_refreshed", { accountId, ...refreshMetadata });
+    await auditAccount(accountId, "whatsapp.pairing.code_refreshed", refreshMetadata).catch((error) =>
       logger.warn("whatsapp.pairing.refresh_audit_failed", { accountId, reason: errorMessage(error) }),
     );
   }
@@ -576,6 +585,8 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           accountId,
           attempt,
           phoneNumber: maskPhoneNumber(normalized),
+          browser: WHATSAPP_BROWSER,
+          countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
         });
         return activeSocket.requestPairingCode(normalized);
       };
@@ -612,10 +623,17 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         data: { status: "PAIRING_CODE_READY", phoneNumber: normalized, pairingCode: code, pairingCodeExpiresAt: expiresAt, lastError: null },
       });
       pairingRetryScheduledAt.delete(accountId);
-      logger.info("whatsapp.pairing.ready", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString(), qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS });
-      logger.info("whatsapp.pairing.code_generated", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString(), qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS });
-      logger.info("WA_PAIRING_CODE_GENERATED", { accountId, phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString(), qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS });
-      await auditAccount(accountId, "whatsapp.pairing.code_generated", { phoneNumber: maskPhoneNumber(normalized), expiresAt: expiresAt.toISOString(), qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS });
+      const pairingMetadata = {
+        phoneNumber: maskPhoneNumber(normalized),
+        expiresAt: expiresAt.toISOString(),
+        qrRefTimeoutMs: PHONE_PAIRING_QR_REF_TIMEOUT_MS,
+        browser: WHATSAPP_BROWSER,
+        countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
+      };
+      logger.info("whatsapp.pairing.ready", { accountId, ...pairingMetadata });
+      logger.info("whatsapp.pairing.code_generated", { accountId, ...pairingMetadata });
+      logger.info("WA_PAIRING_CODE_GENERATED", { accountId, ...pairingMetadata });
+      await auditAccount(accountId, "whatsapp.pairing.code_generated", pairingMetadata);
       return { code, expiresAt };
     } catch (error) {
       if (!isLoggedOutError(error) && await this.schedulePairingCodeRequestRetry(accountId, normalized, errorMessage(error))) {
@@ -702,11 +720,28 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       throw new Error("WhatsApp account no longer exists");
     }
 
-    logger.info("whatsapp.baileys.start", { accountId, mode, registered: state.creds.registered, sessionDirectory: directory, qrTimeoutMs: mode === "PAIR_PHONE" ? PHONE_PAIRING_QR_REF_TIMEOUT_MS : undefined });
-    logger.info("whatsapp.session.starting", { accountId, mode, registered: state.creds.registered, qrTimeoutMs: mode === "PAIR_PHONE" ? PHONE_PAIRING_QR_REF_TIMEOUT_MS : undefined });
+    logger.info("whatsapp.baileys.start", {
+      accountId,
+      mode,
+      registered: state.creds.registered,
+      sessionDirectory: directory,
+      qrTimeoutMs: mode === "PAIR_PHONE" ? PHONE_PAIRING_QR_REF_TIMEOUT_MS : undefined,
+      browser: WHATSAPP_BROWSER,
+      countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
+    });
+    logger.info("whatsapp.session.starting", {
+      accountId,
+      mode,
+      registered: state.creds.registered,
+      qrTimeoutMs: mode === "PAIR_PHONE" ? PHONE_PAIRING_QR_REF_TIMEOUT_MS : undefined,
+      browser: WHATSAPP_BROWSER,
+      countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
+    });
     const socket = makeWASocket({
       auth: state,
       version,
+      browser: WHATSAPP_BROWSER,
+      countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
       printQRInTerminal: false,
       markOnlineOnConnect: false,
       syncFullHistory: false,

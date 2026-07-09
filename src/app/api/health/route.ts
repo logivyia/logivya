@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const WEB_RELEASE_MARKER = "WHATSAPP_PHONE_PAIRING_TWO_MINUTE_TTL_GUARD_V117";
+const WEB_RELEASE_MARKER = "WHATSAPP_PAIRING_DESKTOP_TR_IDENTITY_V118";
 
 export function GET() {
   return NextResponse.json({
