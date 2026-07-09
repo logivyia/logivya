@@ -519,7 +519,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     pairingTransientRetries.set(accountId, nextAttempt);
     const shouldRetry = nextAttempt <= PAIRING_TRANSIENT_RETRY_LIMIT;
 
-    await this.clearTemporaryAuth(accountId, { preserveUnregisteredPairingAuth: true });
+    await this.clearTemporaryAuth(accountId);
     await prisma.whatsAppAccount.updateMany({
       where: { id: accountId, archivedAt: null },
       data: {
@@ -612,7 +612,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     logger.info("whatsapp.pairing.requested", { accountId, phoneNumber: maskPhoneNumber(normalized) });
     logger.info("whatsapp.pairing.request_started", { accountId, phoneNumber: maskPhoneNumber(normalized) });
     logger.info("WA_PAIRING_START", { accountId, phoneNumber: maskPhoneNumber(normalized), source: "worker" });
-    await this.clearTemporaryAuth(accountId, { preserveUnregisteredPairingAuth: true });
+    await this.clearTemporaryAuth(accountId);
     sessionModes.set(accountId, "PAIR_PHONE");
     await prisma.whatsAppAccount.update({
       where: { id: accountId },
@@ -667,7 +667,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           reason: errorMessage(requestError),
         });
         if (this.hasRecentPairingRetryScheduled(accountId)) throw requestError;
-        await this.clearTemporaryAuth(accountId, { preserveUnregisteredPairingAuth: true });
+        await this.clearTemporaryAuth(accountId);
         await prisma.whatsAppAccount.updateMany({
           where: { id: accountId, archivedAt: null },
           data: {

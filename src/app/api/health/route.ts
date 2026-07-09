@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const WEB_RELEASE_MARKER = "WHATSAPP_PAIRING_PRESERVE_UNREGISTERED_AUTH_V123";
+const WEB_RELEASE_MARKER = "WHATSAPP_PAIRING_CLEAR_REJECTED_AUTH_V124";
 
 export function GET() {
   return NextResponse.json({
