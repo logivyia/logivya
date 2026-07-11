@@ -33,6 +33,7 @@
     "test:admin-security": "tsx scripts/test-admin-security.ts",
     "test:subscription-admin": "tsx scripts/test-subscription-admin.ts",
     "test:seven-day-trial": "tsx scripts/test-seven-day-trial.ts",
+    "test:seven-day-trial:integration": "tsx scripts/test-seven-day-trial-integration.ts",
     "audit:seven-day-trial": "tsx scripts/audit-seven-day-trial-migration.ts",
     "admin:promote": "tsx scripts/promote-super-admin.ts",
     "db:generate": "prisma generate",

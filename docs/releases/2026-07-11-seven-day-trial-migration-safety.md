@@ -34,3 +34,15 @@ The repository-wide migration audit also passed with zero failures and zero warn
 `safeToDeploy: true`
 
 The trial migration may run after the application code passes typecheck, lint, web build, mobile typecheck, Android release build verification, and Stable Core regression checks.
+
+## Post-Migration Verification
+
+- Trial plan configured days: 7.
+- Active three-day trials still eligible: 0.
+- Active seven-day trials: 1.
+- Expired three-day trials left untouched: 6.
+- Database migration status: up to date.
+- Registration integration test: passed inside a rollback-only transaction.
+- First trial creation produced exactly seven days of access.
+- A second creation attempt resolved the original trial and did not create a duplicate.
+- Persistent integration-test users after rollback: 0.
