@@ -1,11 +1,12 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { CompanyRole, PrismaClient } from "@prisma/client";
+import { TRIAL_DURATION_DAYS, trialEndsAt } from "../src/server/billing/trial-policy";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required");
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 const plans = [
-  { name: "Deneme", slug: "trial", description:"İlk kayıt olan kullanıcılar için 3 günlük ücretsiz deneme.", monthlyPrice: 0, yearlyPrice: 0, currency:"TRY",trialDays:3,maxWhatsappAccounts: 1,maxTeamUsers:1,maxGroups:2147483647,maxMessagesPerDay:2147483647,maxMessagesPerMonth:2147483647,advertisingEnabled:true,hasScheduledMessages:true,hasRecurringMessages:true },
+  { name: "Deneme", slug: "trial", description:"İlk kayıt olan kullanıcılar için 7 günlük ücretsiz deneme.", monthlyPrice: 0, yearlyPrice: 0, currency:"TRY",trialDays:TRIAL_DURATION_DAYS,maxWhatsappAccounts: 1,maxTeamUsers:1,maxGroups:2147483647,maxMessagesPerDay:2147483647,maxMessagesPerMonth:2147483647,advertisingEnabled:true,hasScheduledMessages:true,hasRecurringMessages:true },
   { name: "Başlangıç", slug: "starter", description:"Küçük işletmeler ve bireysel kullanıcılar için.",monthlyPrice:350,yearlyPrice:3600,currency:"TRY",maxWhatsappAccounts:2,maxTeamUsers:2,maxGroups:2147483647,maxMessagesPerDay:2147483647,maxMessagesPerMonth:2147483647,hasScheduledMessages:true,hasRecurringMessages:true,hasNoBranding:true },
   { name: "Profesyonel", slug: "professional",description:"Profesyonel ekipler ve yoğun kullanım için.",monthlyPrice:450,yearlyPrice:4500,currency:"TRY",maxWhatsappAccounts:3,maxTeamUsers:3,maxGroups:2147483647,maxMessagesPerDay:2147483647,maxMessagesPerMonth:2147483647,hasScheduledMessages:true,hasRecurringMessages:true,hasNoBranding:true,advancedReportingEnabled:true,isPopular:true },
   { name: "Kurumsal", slug: "enterprise",description:"Kurumsal firmalar ve yüksek hacimli operasyonlar için.",monthlyPrice:0,yearlyPrice:0,currency:"TRY",maxWhatsappAccounts:2147483647,maxTeamUsers:2147483647,maxGroups:2147483647,maxMessagesPerDay:2147483647,maxMessagesPerMonth:2147483647,hasScheduledMessages:true,hasRecurringMessages:true,hasNoBranding:true,advancedReportingEnabled:true,hasCrm:true,hasApi:true,isCustom:true },
@@ -21,7 +22,7 @@ async function main() {
   const legacySubscriptions=await prisma.subscription.findMany({where:{currentPeriodEndsAt:null},select:{id:true,status:true,createdAt:true,trialStartsAt:true,trialEndsAt:true}});
   for(const subscription of legacySubscriptions){
     const startsAt=subscription.trialStartsAt??subscription.createdAt;
-    const endsAt=subscription.trialEndsAt??new Date(startsAt.getTime()+3*86400000);
+    const endsAt=subscription.trialEndsAt??trialEndsAt(startsAt);
     await prisma.subscription.update({where:{id:subscription.id},data:{billingPeriod:subscription.status==="TRIALING"?"TRIAL":"CUSTOM",startsAt,endsAt,currentPeriodStartsAt:startsAt,currentPeriodEndsAt:endsAt,source:subscription.status==="TRIALING"?"TRIAL":"MANUAL_ADMIN",provider:"MANUAL"}});
   }
   for (const [role, codes] of Object.entries(rolePermissions) as [CompanyRole, string[]][]) {

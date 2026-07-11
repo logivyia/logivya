@@ -7,6 +7,7 @@ import { createMobileSession, parseMobilePlatform } from "@/server/mobile/auth";
 import { clientIp, enforceMobileRateLimit } from "@/server/mobile/rate-limit";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
 import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
+import { ensureSevenDayTrial } from "@/server/billing/trial-service";
 import { writeAuditLog } from "@/server/security/audit";
 
 const passwordSchema = z.string().min(12).max(128).regex(/[A-Z]/).regex(/[a-z]/).regex(/\d/).regex(/[^A-Za-z0-9]/);
@@ -55,26 +56,7 @@ export async function POST(request: Request) {
         data: { name: `${user.name} Şirketi`, ownerId: user.id, email: user.email, phone: user.phone },
       });
       const membership = await tx.companyUser.create({ data: { companyId: company.id, userId: user.id, role: "OWNER" } });
-      const now = new Date();
-      const trialEndsAt = new Date(now.getTime() + 3 * 86_400_000);
-      const subscription = await tx.subscription.create({
-        data: {
-          companyId: company.id,
-          planId: trial.id,
-          status: "TRIALING",
-          billingPeriod: "TRIAL",
-          startsAt: now,
-          endsAt: trialEndsAt,
-          trialStartsAt: now,
-          trialEndsAt,
-          currentPeriodStartsAt: now,
-          currentPeriodEndsAt: trialEndsAt,
-          source: "TRIAL",
-          provider: "MANUAL",
-        },
-      });
-      await tx.subscriptionEvent.create({ data: { companyId: company.id, subscriptionId: subscription.id, actorUserId: user.id, type: "TRIAL_STARTED", message: "3 günlük ücretsiz deneme başlatıldı." } });
-      await tx.notification.create({ data: { companyId: company.id, userId: user.id, type: "TRIAL_STARTED", title: "Deneme paketi başladı", message: "3 günlük ücretsiz denemeniz başladı." } });
+      await ensureSevenDayTrial(tx, { companyId: company.id, planId: trial.id, userId: user.id });
       await tx.companyBillingProfile.create({ data: { companyId: company.id, billingType: "COMPANY", companyName: company.name, country: "TR", city: "-", addressLine1: "-", billingEmail: user.email } });
       await tx.onboardingChecklist.create({ data: { companyId: company.id } });
       await tx.consentRecord.createMany({

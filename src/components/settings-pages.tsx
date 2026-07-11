@@ -211,7 +211,7 @@ export function SubscriptionsSettingsPage() {
   const isTr = locale === "tr";
   const [data, setData] = useState<{
     subscription?: { status: string; cancelAtPeriodEnd: boolean; plan: { name: string } };
-    plans: Array<{ id: string; name: string; slug: string; monthlyPrice: string; yearlyPrice: string }>;
+    plans: Array<{ id: string; name: string; slug: string; monthlyPrice: string; yearlyPrice: string; trialDays: number }>;
   }>();
 
   const load = useCallback(() => fetch("/api/settings/subscriptions").then((response) => response.json()).then(setData), []);
@@ -253,7 +253,7 @@ export function SubscriptionsSettingsPage() {
             <p className="mt-3 text-2xl font-bold">
               {Number(plan.monthlyPrice) === 0 ? (plan.slug === "enterprise" ? (isTr ? "Teklif Alınız" : "Contact sales") : "0 TL") : `${Number(plan.monthlyPrice)} TL / ${isTr ? "Ay" : "Month"}`}
             </p>
-            <p className="mt-1 text-xs text-muted">{Number(plan.yearlyPrice) > 0 ? `${Number(plan.yearlyPrice)} TL / ${isTr ? "Yıl" : "Year"}` : isTr ? "3 Gün" : "3 Days"}</p>
+            <p className="mt-1 text-xs text-muted">{Number(plan.yearlyPrice) > 0 ? `${Number(plan.yearlyPrice)} TL / ${isTr ? "Yıl" : "Year"}` : plan.slug === "trial" ? `${plan.trialDays} ${isTr ? "Gün" : "Days"}` : isTr ? "Özel" : "Custom"}</p>
           </article>
         ))}
       </div>

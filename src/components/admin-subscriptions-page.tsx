@@ -5,7 +5,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { CalendarClock, CheckCircle2, LoaderCircle, Search, ShieldAlert, WalletCards, X } from "lucide-react";
 
-type Subscription = { id: string; status: string; startsAt?: string; endsAt?: string; currentPeriodEndsAt?: string; plan: { name: string; slug: string } };
+type Subscription = { id: string; status: string; startsAt?: string; endsAt?: string; trialStartsAt?: string; trialEndsAt?: string; currentPeriodEndsAt?: string; remainingDays?: number; trialDurationDays?: number; isActive?: boolean; plan: { name: string; slug: string; trialDays: number } };
 type Company = { id: string; name: string; phone?: string; owner: { name: string; email: string; phone?: string }; billingProfile?: { legalName?: string; billingEmail?: string }; subscriptions: Subscription[] };
 type ActionName = "ACTIVATE" | "EXTEND" | "SUSPEND" | "CANCEL" | "CHANGE_PLAN";
 type PendingAction = { subscription: Subscription; action: ActionName };
@@ -76,7 +76,25 @@ export function AdminSubscriptionsPage() {
     </form>
     <section className="rounded-2xl border bg-white p-5">
       <form onSubmit={(event) => { event.preventDefault(); void load(query); }} className="mb-5 flex flex-col gap-2 sm:flex-row"><label className="flex flex-1 items-center gap-2 rounded-xl border bg-white px-3"><Search className="size-4"/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Şirket, kullanıcı, e-posta veya telefon ara" className="w-full bg-transparent py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"/></label><button className={button}>Ara</button></form>
-      {!companies ? <LoaderCircle className="animate-spin"/> : <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="py-3">Şirket</th><th>Telefon</th><th>Fatura profili</th><th>Plan</th><th>Durum</th><th>Başlangıç</th><th>Bitiş</th><th>İşlemler</th></tr></thead><tbody>{companies.map((company) => { const subscription = company.subscriptions[0]; return <tr key={company.id} className="border-b last:border-0"><td className="py-4"><b>{company.name}</b><p className="text-xs text-slate-500">{company.owner.name} · {company.owner.email}</p></td><td>{company.phone || company.owner.phone || "-"}</td><td>{company.billingProfile?.billingEmail ? "Tamam" : "Eksik"}</td><td>{subscription?.plan.name || "-"}</td><td>{subscription?.status || "-"}</td><td>{date(subscription?.startsAt)}</td><td>{date(subscription?.endsAt || subscription?.currentPeriodEndsAt)}</td><td>{subscription && <div className="flex flex-wrap gap-2">{(["ACTIVATE","EXTEND","SUSPEND","CANCEL","CHANGE_PLAN"] as ActionName[]).map((action) => <button key={action} onClick={() => setPendingAction({ subscription, action })} className={button}>{actionLabel(action)}</button>)}<Link href={`/admin/companies/${company.id}`} className={button}>Detayları görüntüle</Link></div>}</td></tr>; })}</tbody></table></div>}
+      {!companies ? <LoaderCircle className="animate-spin"/> : <div className="overflow-x-auto">
+        <table className="w-full min-w-[1250px] text-sm">
+          <thead><tr className="border-b text-left text-slate-500"><th className="py-3">Şirket</th><th>Telefon</th><th>Fatura profili</th><th>Plan</th><th>Durum</th><th>Başlangıç</th><th>Bitiş</th><th>Deneme süresi</th><th>İşlemler</th></tr></thead>
+          <tbody>{companies.map((company) => {
+            const subscription = company.subscriptions[0];
+            return <tr key={company.id} className="border-b last:border-0">
+              <td className="py-4"><b>{company.name}</b><p className="text-xs text-slate-500">{company.owner.name} · {company.owner.email}</p></td>
+              <td>{company.phone || company.owner.phone || "-"}</td>
+              <td>{company.billingProfile?.billingEmail ? "Tamam" : "Eksik"}</td>
+              <td>{subscription?.plan.name || "-"}</td>
+              <td>{subscription?.isActive ? "Aktif" : subscription?.status || "-"}</td>
+              <td>{date(subscription?.trialStartsAt || subscription?.startsAt)}</td>
+              <td>{date(subscription?.trialEndsAt || subscription?.endsAt || subscription?.currentPeriodEndsAt)}</td>
+              <td>{trialSummary(subscription)}</td>
+              <td>{subscription && <div className="flex flex-wrap gap-2">{(["ACTIVATE","EXTEND","SUSPEND","CANCEL","CHANGE_PLAN"] as ActionName[]).map((action) => <button key={action} onClick={() => setPendingAction({ subscription, action })} className={button}>{actionLabel(action)}</button>)}<Link href={`/admin/companies/${company.id}`} className={button}>Detayları görüntüle</Link></div>}</td>
+            </tr>;
+          })}</tbody>
+        </table>
+      </div>}
     </section>
     {pendingAction && <ActionModal pending={pendingAction} loading={loading} onClose={() => setPendingAction(undefined)} onSubmit={submitAction}/>}
     {toast && <div role="status" className={`fixed bottom-5 right-5 z-50 max-w-sm rounded-xl border p-4 text-sm font-medium shadow-2xl ${toast.error ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{toast.message}</div>}
@@ -89,4 +107,9 @@ function ActionModal({ pending, loading, onClose, onSubmit }: { pending: Pending
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label><span className="mb-2 block text-xs font-semibold text-slate-700">{label}</span>{children}</label>; }
 function Metric({ label, value, icon: Icon }: { label: string; value: number; icon: typeof WalletCards }) { return <div className="rounded-2xl border bg-white p-5"><Icon className="size-5 text-orange-500"/><p className="mt-4 text-xs text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold">{value}</p></div>; }
 function date(value?: string) { return value ? new Date(value).toLocaleDateString("tr-TR") : "-"; }
+function trialSummary(subscription?: Subscription) {
+  if (!subscription || subscription.plan.slug !== "trial") return "-";
+  const duration = subscription.trialDurationDays ?? subscription.plan.trialDays;
+  return subscription.isActive ? `${duration} gün · ${subscription.remainingDays ?? 0} gün kaldı` : `${duration} gün · Sona erdi`;
+}
 function actionLabel(action: ActionName) { return ({ ACTIVATE: "Etkinleştir", EXTEND: "Uzat", SUSPEND: "Askıya al", CANCEL: "İptal et", CHANGE_PLAN: "Plan değiştir" })[action]; }

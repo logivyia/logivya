@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { registerSchema } from "@/features/auth/schemas";
 import { createSession } from "@/server/auth/session";
+import { ensureSevenDayTrial } from "@/server/billing/trial-service";
 import { prisma } from "@/server/db";
 import { hashPassword } from "@/server/security/passwords";
 
@@ -48,43 +49,7 @@ export async function POST(request: Request) {
 
     await tx.companyUser.create({ data: { companyId: company.id, userId: user.id, role: "OWNER" } });
 
-    const now = new Date();
-    const trialEndsAt = new Date(now.getTime() + 3 * 86_400_000);
-    const subscription = await tx.subscription.create({
-      data: {
-        companyId: company.id,
-        planId: trial.id,
-        status: "TRIALING",
-        billingPeriod: "TRIAL",
-        startsAt: now,
-        endsAt: trialEndsAt,
-        trialStartsAt: now,
-        trialEndsAt,
-        currentPeriodStartsAt: now,
-        currentPeriodEndsAt: trialEndsAt,
-        source: "TRIAL",
-        provider: "MANUAL",
-      },
-    });
-
-    await tx.subscriptionEvent.create({
-      data: {
-        companyId: company.id,
-        subscriptionId: subscription.id,
-        actorUserId: user.id,
-        type: "TRIAL_STARTED",
-        message: "3 günlük ücretsiz deneme başlatıldı.",
-      },
-    });
-    await tx.notification.create({
-      data: {
-        companyId: company.id,
-        userId: user.id,
-        type: "TRIAL_STARTED",
-        title: "Deneme paketi başladı",
-        message: "3 günlük ücretsiz denemeniz başladı.",
-      },
-    });
+    await ensureSevenDayTrial(tx, { companyId: company.id, planId: trial.id, userId: user.id });
     await tx.companyBillingProfile.create({
       data: {
         companyId: company.id,
