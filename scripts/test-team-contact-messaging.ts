@@ -102,6 +102,7 @@ assert(contacts.includes("whatsapp.contacts.persist_skipped_empty"), "An empty p
 assert(contacts.indexOf("if (!normalizedContacts.length)") < contacts.indexOf("lastContactSyncAt: syncedAt"), "Empty contact payloads must exit before the successful sync timestamp is written.");
 
 const baileysProvider = read("src/worker/baileys-provider.ts");
+assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "PERSISTENT_HISTORY_V2"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
 assert(baileysProvider.includes("syncFullHistory: Boolean(options.syncContactHistory)"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
 assert(baileysProvider.includes('this.startSession(accountId, "RECONNECT", { syncContactHistory: true })'), "A missing persistent contact directory must use the isolated contact-history reconnect path.");
 assert(baileysProvider.includes("if (existingCount === 0)"), "Invalid in-memory snapshots must not suppress a required persistent contact bootstrap.");

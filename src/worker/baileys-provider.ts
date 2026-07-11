@@ -57,6 +57,7 @@ const PAIRING_CODE_REFRESH_MIN_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE
 const PHONE_PAIRING_QR_REF_TIMEOUT_MS = Number(process.env.WHATSAPP_PHONE_PAIRING_QR_REF_TIMEOUT_MS || 60_000);
 const CONTACT_BOOTSTRAP_WAIT_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_WAIT_MS || 45_000);
 const CONTACT_BOOTSTRAP_QUIET_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_QUIET_MS || 4_000);
+const CONTACT_SYNC_IMPLEMENTATION = "PERSISTENT_HISTORY_V2";
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -1380,7 +1381,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     return { externalMessageId: result.key.id, messageKey: result.key };
   }
 
-  async syncContacts(accountId: string): Promise<{ count: number }> {
+  async syncContacts(accountId: string): Promise<{ count: number; implementation: string }> {
     const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId }, select: { id: true, userId: true, archivedAt: true } });
     if (!account || account.archivedAt || !account.userId) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
     if (!sockets.get(accountId)?.user) await restoreWhatsAppSessionFromDatabase(accountId);
@@ -1400,7 +1401,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           { jobId: `sync-contacts-deferred-${accountId}-${Math.floor(Date.now() / 30_000)}`, delay: 30_000, removeOnComplete: 50, removeOnFail: 100 },
         );
         logger.info("whatsapp.contacts.bootstrap_deferred_active_delivery", { accountId, activeDeliveries });
-        return { count: 0 };
+        return { count: 0, implementation: CONTACT_SYNC_IMPLEMENTATION };
       }
 
       logger.info("whatsapp.contacts.bootstrap_started", { accountId });
@@ -1413,7 +1414,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           logger.error("whatsapp.contacts.bootstrap_backup_failed", error, { accountId });
           return false;
         });
-      if (!sessionBackedUp) return { count: 0 };
+      if (!sessionBackedUp) return { count: 0, implementation: CONTACT_SYNC_IMPLEMENTATION };
       await this.stopSocket(accountId, "Bootstrap WhatsApp contact history");
       const { initialized } = await this.startSession(accountId, "RECONNECT", { syncContactHistory: true });
       await initialized;
@@ -1460,7 +1461,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { lastContactSyncAt: new Date() } });
     }
     logger.info("whatsapp.contacts.sync_completed", { accountId, snapshotCount: snapshot.length, verifiedCount: existing.length });
-    return { count: existing.length };
+    return { count: existing.length, implementation: CONTACT_SYNC_IMPLEMENTATION };
   }
 
   async sendContactMessage(input: SendContactMessageInput): Promise<SendResult> {
