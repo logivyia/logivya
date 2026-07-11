@@ -1,8 +1,8 @@
-import { loadEnvConfig } from "@next/env";
+import * as nextEnv from "@next/env";
 import { getEmailProviderStatus } from "../src/lib/email/email-provider";
 import { sendEmail, verifyEmailProviderConnection } from "../src/lib/email/send-email";
 
-loadEnvConfig(process.cwd());
+nextEnv.loadEnvConfig(process.cwd());
 
 async function main() {
   const to = process.argv[2]?.trim();
