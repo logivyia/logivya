@@ -1389,7 +1389,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     if (snapshot.length) await persistWhatsAppContacts(accountId, snapshot, { source: "BAILEYS_MANUAL_SYNC" });
 
     let existingCount = await prisma.contact.count({ where: { accountId, userId: account.userId } });
-    if (!snapshot.length && existingCount === 0) {
+    if (existingCount === 0) {
       const activeDeliveries = await prisma.messageRecipient.count({
         where: { accountId, status: { in: ["SENDING", "PROCESSING"] } },
       });

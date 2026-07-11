@@ -104,6 +104,8 @@ assert(contacts.indexOf("if (!normalizedContacts.length)") < contacts.indexOf("l
 const baileysProvider = read("src/worker/baileys-provider.ts");
 assert(baileysProvider.includes("syncFullHistory: Boolean(options.syncContactHistory)"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
 assert(baileysProvider.includes('this.startSession(accountId, "RECONNECT", { syncContactHistory: true })'), "A missing persistent contact directory must use the isolated contact-history reconnect path.");
+assert(baileysProvider.includes("if (existingCount === 0)"), "Invalid in-memory snapshots must not suppress a required persistent contact bootstrap.");
+assert(!baileysProvider.includes("!snapshot.length && existingCount === 0"), "Bootstrap eligibility must be based on persisted contacts, not raw in-memory records.");
 assert(baileysProvider.includes("bootstrap_deferred_active_delivery"), "Contact bootstrap must not interrupt an active message delivery.");
 assert(baileysProvider.includes("availabilityByJid.has(contact.externalContactId)"), "Partial availability responses must leave unreturned contacts unchanged.");
 assert(!baileysProvider.includes("available.has(contact.externalContactId)"), "Partial availability responses must not deactivate every omitted contact.");
