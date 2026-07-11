@@ -16,7 +16,12 @@ const featureKeys = [
   "home.feature.security",
 ] as const;
 
-const planKeys = ["trial", "starter", "professional", "enterprise"] as const;
+const planKeys = ["trial", "starter", "professional"] as const;
+const planFeatureCounts: Record<(typeof planKeys)[number], number> = {
+  trial: 7,
+  starter: 6,
+  professional: 6,
+};
 
 export function HomePageClient() {
   const { t } = useI18n();
@@ -79,14 +84,18 @@ export function HomePageClient() {
           <p className="text-sm font-semibold text-orange-400">{t("home.pricingEyebrow")}</p>
           <h2 className="mt-3 text-4xl font-bold">{t("home.pricingTitle")}</h2>
         </div>
-        <div className="mt-12 grid gap-5 lg:grid-cols-4">
+        <div className="mx-auto mt-12 grid max-w-6xl gap-5 md:grid-cols-2 lg:grid-cols-3">
           {planKeys.map((planKey) => {
-            const features = [1, 2, 3, 4]
+            const features = Array.from({ length: planFeatureCounts[planKey] }, (_, index) => index + 1)
               .map((index) => t(`home.plan.${planKey}.feature${index}`))
               .filter((feature) => !feature.startsWith("home.plan."));
             const badge = t(`home.plan.${planKey}.badge`);
             return (
-              <article key={planKey} className="relative rounded-2xl border border-white/10 bg-white/[.04] p-6">
+              <article
+                key={planKey}
+                data-pricing-plan={planKey}
+                className="relative flex h-full flex-col rounded-2xl border border-white/10 bg-white/[.04] p-6"
+              >
                 {badge && !badge.startsWith("home.plan.") && (
                   <span className="absolute end-5 top-5 rounded-full bg-orange-500/15 px-3 py-1 text-[10px] font-bold text-orange-300">
                     {badge}
@@ -96,11 +105,11 @@ export function HomePageClient() {
                 <p className="mt-6 text-2xl font-bold">{t(`home.plan.${planKey}.price`)}</p>
                 <p className="mt-1 text-xs text-white/40">{t(`home.plan.${planKey}.period`)}</p>
                 <p className="mt-5 min-h-16 text-sm leading-6 text-white/50">{t(`home.plan.${planKey}.description`)}</p>
-                <ul className="my-6 space-y-3 text-sm text-white/70">
+                <ul className="my-6 flex-1 space-y-3 text-sm text-white/70">
                   {features.map((feature) => (
                     <li key={feature} className="flex gap-2">
-                      <Check className="size-4 text-teal-400" />
-                      {feature}
+                      <Check className="mt-0.5 size-4 shrink-0 text-teal-400" />
+                      <span>{feature}</span>
                     </li>
                   ))}
                 </ul>
