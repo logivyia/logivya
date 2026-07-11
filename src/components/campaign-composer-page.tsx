@@ -152,10 +152,14 @@ export function CampaignComposerPage() {
       const syncResponse = await fetch("/api/whatsapp/contacts/sync-current", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
       const syncResult = await syncResponse.json();
       if (!syncResponse.ok) throw new Error(syncResult.message || syncResult.error);
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-      const response = await fetch("/api/whatsapp/contacts?limit=100", { cache: "no-store" });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message || result.error);
+      let result: { contacts?: Contact[]; pageInfo?: ContactPageInfo; message?: string; error?: string } = {};
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const response = await fetch("/api/whatsapp/contacts?limit=100", { cache: "no-store" });
+        result = await response.json();
+        if (!response.ok) throw new Error(result.message || result.error);
+        if ((result.pageInfo?.total ?? 0) > 0) break;
+      }
       setContacts(result.contacts ?? []);
       setContactPageInfo(result.pageInfo ?? null);
     } catch (error) {

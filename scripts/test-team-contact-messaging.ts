@@ -98,6 +98,15 @@ assert(contacts.includes("userId: scope.userId"), "Contact queries must enforce 
 assert(contacts.includes("accountId: scope.accountId"), "Contact queries must enforce account scope.");
 assert(contacts.includes("Math.min(100"), "Contact pagination must have a hard server-side page limit.");
 assert(contacts.includes("search?.trim().slice(0, 100)"), "Contact search input must be bounded.");
+assert(contacts.includes("whatsapp.contacts.persist_skipped_empty"), "An empty provider payload must not be recorded as a successful contact sync.");
+assert(contacts.indexOf("if (!normalizedContacts.length)") < contacts.indexOf("lastContactSyncAt: syncedAt"), "Empty contact payloads must exit before the successful sync timestamp is written.");
+
+const baileysProvider = read("src/worker/baileys-provider.ts");
+assert(baileysProvider.includes("syncFullHistory: Boolean(options.syncContactHistory)"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
+assert(baileysProvider.includes('this.startSession(accountId, "RECONNECT", { syncContactHistory: true })'), "A missing persistent contact directory must use the isolated contact-history reconnect path.");
+assert(baileysProvider.includes("bootstrap_deferred_active_delivery"), "Contact bootstrap must not interrupt an active message delivery.");
+assert(baileysProvider.includes("availabilityByJid.has(contact.externalContactId)"), "Partial availability responses must leave unreturned contacts unchanged.");
+assert(!baileysProvider.includes("available.has(contact.externalContactId)"), "Partial availability responses must not deactivate every omitted contact.");
 
 const pipeline = read("src/server/messages/delivery-pipeline.ts");
 assert(pipeline.includes('traceMessageStage("subscription.contact_access"'), "Contact entitlement must be checked before contact ownership resolution.");
@@ -126,6 +135,7 @@ for (const ui of ["src/components/campaign-composer-page.tsx", "apps/mobile/src/
   assert(source.includes("Görünen kişileri seç"), `${ui} must support visible contact selection.`);
   assert(source.includes("Daha fazla kişi yükle"), `${ui} must support paginated contact loading.`);
   assert(source.includes("Profesyonel paketinde"), `${ui} must explain the locked Starter contact feature.`);
+  assert(source.includes("attempt < 40"), `${ui} must poll the asynchronous contact bootstrap instead of assuming it finishes in 1.2 seconds.`);
 }
 
 console.log("Team seats, invitation lifecycle, contact privacy, typed delivery and cross-platform UI contracts passed.");

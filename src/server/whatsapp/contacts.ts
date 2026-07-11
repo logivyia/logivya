@@ -38,6 +38,17 @@ export async function persistWhatsAppContacts(accountId: string, contacts: Provi
   const normalizedContacts = [...deduplicated.values()];
   const syncedAt = new Date();
 
+  if (!normalizedContacts.length) {
+    logger.warn("whatsapp.contacts.persist_skipped_empty", {
+      userId: account.userId,
+      companyId: account.companyId,
+      whatsappAccountId: accountId,
+      receivedCount: contacts.length,
+      source: options.source ?? "BAILEYS",
+    });
+    return { count: 0, syncedAt: null };
+  }
+
   for (let offset = 0; offset < normalizedContacts.length; offset += 100) {
     const batch = normalizedContacts.slice(offset, offset + 100);
     await prisma.$transaction(batch.map((contact) => prisma.contact.upsert({

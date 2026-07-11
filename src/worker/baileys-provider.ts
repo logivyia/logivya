@@ -26,6 +26,7 @@ import {
 import type { DeleteContactMessageInput, DeleteGroupMessageInput, DeleteResult, GroupResult, RequestPairingCodeOptions, SendContactMessageInput, SendGroupMessageInput, SendResult, SessionResult, WhatsAppProvider } from "@/server/whatsapp/provider";
 
 type SessionMode = "PAIR_QR" | "PAIR_PHONE" | "RESTORE" | "RECONNECT";
+type StartSessionOptions = { syncContactHistory?: boolean };
 type WhatsAppWebVersion = [number, number, number];
 type WhatsAppVersionInfo = {
   version: WhatsAppWebVersion;
@@ -54,6 +55,8 @@ const PAIRING_REGISTERED_RECONNECT_LIMIT = Number(process.env.WHATSAPP_PAIRING_R
 const PAIRING_CODE_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_TTL_MS || 5 * 60_000);
 const PAIRING_CODE_REFRESH_MIN_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_MIN_TTL_MS || 120_000);
 const PHONE_PAIRING_QR_REF_TIMEOUT_MS = Number(process.env.WHATSAPP_PHONE_PAIRING_QR_REF_TIMEOUT_MS || 60_000);
+const CONTACT_BOOTSTRAP_WAIT_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_WAIT_MS || 45_000);
+const CONTACT_BOOTSTRAP_QUIET_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_QUIET_MS || 4_000);
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -74,6 +77,24 @@ const WHATSAPP_COMPANION_PLATFORM_DISPLAY = `${WHATSAPP_BROWSER[1]} (${WHATSAPP_
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForPersistedContacts(accountId: string, userId: string) {
+  const deadline = Date.now() + CONTACT_BOOTSTRAP_WAIT_MS;
+  let lastCount = 0;
+  let lastChangedAt = Date.now();
+
+  while (Date.now() < deadline) {
+    const count = await prisma.contact.count({ where: { accountId, userId, isActive: true } });
+    if (count !== lastCount) {
+      lastCount = count;
+      lastChangedAt = Date.now();
+    }
+    if (count > 0 && Date.now() - lastChangedAt >= CONTACT_BOOTSTRAP_QUIET_MS) return count;
+    await sleep(750);
+  }
+
+  return lastCount;
 }
 
 function rememberContacts(accountId: string, contacts: Array<BaileysContact | Partial<BaileysContact>>, source: string) {
@@ -808,7 +829,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     return (await prisma.whatsAppAccount.findUniqueOrThrow({ where: { id: accountId } })).status;
   }
 
-  private async startSession(accountId: string, mode: SessionMode) {
+  private async startSession(accountId: string, mode: SessionMode, options: StartSessionOptions = {}) {
     sessionModes.set(accountId, mode);
     await ensureWhatsAppSessionRoot();
     await restoreWhatsAppSessionFromDatabase(accountId);
@@ -845,6 +866,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       waVersionSource: versionInfo.source,
       waVersionIsLatest: versionInfo.isLatest,
       waVersionFallbackReason: versionInfo.fallbackReason,
+      syncContactHistory: Boolean(options.syncContactHistory),
     });
     logger.info("whatsapp.session.starting", {
       accountId,
@@ -859,6 +881,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       waVersionSource: versionInfo.source,
       waVersionIsLatest: versionInfo.isLatest,
       waVersionFallbackReason: versionInfo.fallbackReason,
+      syncContactHistory: Boolean(options.syncContactHistory),
     });
     const socket = makeWASocket({
       auth: state,
@@ -867,7 +890,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
       printQRInTerminal: false,
       markOnlineOnConnect: false,
-      syncFullHistory: false,
+      syncFullHistory: Boolean(options.syncContactHistory),
       ...(mode === "PAIR_PHONE" ? { qrTimeout: PHONE_PAIRING_QR_REF_TIMEOUT_MS } : {}),
     });
     sockets.set(accountId, socket);
@@ -1361,9 +1384,48 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId }, select: { id: true, userId: true, archivedAt: true } });
     if (!account || account.archivedAt || !account.userId) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
     if (!sockets.get(accountId)?.user) await restoreWhatsAppSessionFromDatabase(accountId);
-    const socket = await this.ensureConnectedSocket(accountId);
-    const snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
+    let socket = await this.ensureConnectedSocket(accountId);
+    let snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
     if (snapshot.length) await persistWhatsAppContacts(accountId, snapshot, { source: "BAILEYS_MANUAL_SYNC" });
+
+    let existingCount = await prisma.contact.count({ where: { accountId, userId: account.userId } });
+    if (!snapshot.length && existingCount === 0) {
+      const activeDeliveries = await prisma.messageRecipient.count({
+        where: { accountId, status: { in: ["SENDING", "PROCESSING"] } },
+      });
+      if (activeDeliveries > 0) {
+        await enqueueWhatsAppJob(
+          "sync-contacts",
+          { action: "sync-contacts", accountId },
+          { jobId: `sync-contacts-deferred-${accountId}-${Math.floor(Date.now() / 30_000)}`, delay: 30_000, removeOnComplete: 50, removeOnFail: 100 },
+        );
+        logger.info("whatsapp.contacts.bootstrap_deferred_active_delivery", { accountId, activeDeliveries });
+        return { count: 0 };
+      }
+
+      logger.info("whatsapp.contacts.bootstrap_started", { accountId });
+      await auditAccount(accountId, "whatsapp.contacts.bootstrap_started").catch((error) =>
+        logger.warn("whatsapp.contacts.bootstrap_audit_failed", { accountId, reason: errorMessage(error) }),
+      );
+      const sessionBackedUp = await backupWhatsAppSessionToDatabase(accountId, "contact.bootstrap.before_restart")
+        .then(() => true)
+        .catch((error) => {
+          logger.error("whatsapp.contacts.bootstrap_backup_failed", error, { accountId });
+          return false;
+        });
+      if (!sessionBackedUp) return { count: 0 };
+      await this.stopSocket(accountId, "Bootstrap WhatsApp contact history");
+      const { initialized } = await this.startSession(accountId, "RECONNECT", { syncContactHistory: true });
+      await initialized;
+      existingCount = await waitForPersistedContacts(accountId, account.userId);
+      snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
+      logger.info("whatsapp.contacts.bootstrap_finished", { accountId, persistedCount: existingCount, snapshotCount: snapshot.length });
+      await auditAccount(accountId, existingCount > 0 ? "whatsapp.contacts.bootstrap_completed" : "whatsapp.contacts.bootstrap_empty", {
+        persistedCount: existingCount,
+        snapshotCount: snapshot.length,
+      }).catch((error) => logger.warn("whatsapp.contacts.bootstrap_audit_failed", { accountId, reason: errorMessage(error) }));
+      socket = await this.ensureConnectedSocket(accountId);
+    }
 
     const existing = await prisma.contact.findMany({
       where: { accountId, userId: account.userId },
@@ -1372,16 +1434,33 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     });
     for (let offset = 0; offset < existing.length; offset += 100) {
       const batch = existing.slice(offset, offset + 100);
-      const availability = await socket.onWhatsApp(...batch.map((contact) => contact.externalContactId)) ?? [];
-      const available = new Set(availability.filter((item) => item.exists).map((item) => item.jid));
-      await Promise.all(batch.map((contact) => prisma.contact.update({
-        where: { id: contact.id },
-        data: { isWhatsAppUser: available.has(contact.externalContactId), isActive: available.has(contact.externalContactId) },
-      })));
+      try {
+        const availability = await socket.onWhatsApp(...batch.map((contact) => contact.externalContactId)) ?? [];
+        const availabilityByJid = new Map<string, boolean>();
+        for (const item of availability) {
+          if (item.jid) availabilityByJid.set(item.jid, Boolean(item.exists));
+        }
+        await Promise.all(batch.flatMap((contact) => {
+          if (!availabilityByJid.has(contact.externalContactId)) return [];
+          const exists = availabilityByJid.get(contact.externalContactId) ?? false;
+          return [prisma.contact.update({
+            where: { id: contact.id },
+            data: { isWhatsAppUser: exists, isActive: exists },
+          })];
+        }));
+      } catch (error) {
+        logger.warn("whatsapp.contacts.availability_check_failed", {
+          accountId,
+          batchSize: batch.length,
+          reason: errorMessage(error),
+        });
+      }
     }
-    await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { lastContactSyncAt: new Date() } });
+    if (existing.length) {
+      await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { lastContactSyncAt: new Date() } });
+    }
     logger.info("whatsapp.contacts.sync_completed", { accountId, snapshotCount: snapshot.length, verifiedCount: existing.length });
-    return { count: Math.max(snapshot.length, existing.length) };
+    return { count: existing.length };
   }
 
   async sendContactMessage(input: SendContactMessageInput): Promise<SendResult> {
