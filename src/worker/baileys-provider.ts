@@ -15,6 +15,7 @@ import { hasActivePhonePairing, isPhonePairingActive } from "@/server/whatsapp/p
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
 import { persistWhatsAppContacts, type ProviderContactRecord } from "@/server/whatsapp/contacts";
+import { collectGroupParticipantContacts } from "@/server/whatsapp/group-participant-contacts";
 import {
   backupWhatsAppSessionToDatabase,
   clearWhatsAppSession,
@@ -60,7 +61,7 @@ const CONTACT_APP_STATE_SYNC_WAIT_MS = Number(process.env.WHATSAPP_CONTACT_APP_S
 const CONTACT_BOOTSTRAP_QUIET_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_QUIET_MS || 4_000);
 const CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS || 5 * 60_000);
 const CONTACT_APP_STATE_COLLECTION = "critical_unblock_low" as const;
-const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_APP_STATE_V4";
+const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V5";
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -1435,6 +1436,27 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         );
       } catch (error) {
         logger.warn("whatsapp.contacts.app_state_sync_failed", { accountId, reason: errorMessage(error) });
+      }
+
+      if (existingCount === 0) {
+        try {
+          const metadata = Object.values(await socket.groupFetchAllParticipating());
+          const participantContacts = collectGroupParticipantContacts(metadata, {
+            ownJid: socket.user?.id,
+            knownContacts: snapshot,
+          });
+          const persisted = await persistWhatsAppContacts(accountId, participantContacts, { source: "BAILEYS_GROUP_PARTICIPANT" });
+          existingCount = persisted.count;
+          if (existingCount > 0) bootstrapStrategy = "GROUP_PARTICIPANTS";
+          logger.info("whatsapp.contacts.group_participants_collected", {
+            accountId,
+            groupCount: metadata.length,
+            participantContactCount: participantContacts.length,
+            persistedCount: existingCount,
+          });
+        } catch (error) {
+          logger.warn("whatsapp.contacts.group_participant_sync_failed", { accountId, reason: errorMessage(error) });
+        }
       }
 
       if (existingCount === 0) {

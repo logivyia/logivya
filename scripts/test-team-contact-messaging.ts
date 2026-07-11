@@ -6,6 +6,7 @@ import type { Plan } from "@prisma/client";
 import { deriveCompanyEntitlements } from "../src/server/billing/company-entitlements";
 import { calculateCompanySeatUsage, canActivateMembershipSeat, canReserveInvitationSeat } from "../src/server/team/seat-policy";
 import { normalizeProviderContact, normalizeWhatsAppContactJid } from "../src/server/whatsapp/contact-normalization";
+import { collectGroupParticipantContacts } from "../src/server/whatsapp/group-participant-contacts";
 
 const root = process.cwd();
 
@@ -57,6 +58,20 @@ assert(normalizeWhatsAppContactJid("905551112233@s.whatsapp.net")?.phone === "90
 assert(normalizeWhatsAppContactJid("120363000000@g.us") === null, "Group JIDs must never enter the contact model.");
 assert(normalizeWhatsAppContactJid("status@broadcast") === null, "Broadcast JIDs must never enter the contact model.");
 assert(normalizeProviderContact({ id: "905551112233@s.whatsapp.net", notify: "  Test Kişisi  " })?.pushName === "Test Kişisi", "Contact display data must be trimmed and normalized.");
+const participantContacts = collectGroupParticipantContacts([
+  { participants: [
+    { id: "111111111111@s.whatsapp.net" },
+    { id: "222222222222@lid", jid: "222222222222@s.whatsapp.net" },
+    { id: "111111111111@s.whatsapp.net" },
+    { id: "120363000000@g.us" },
+  ] },
+], {
+  ownJid: "111111111111:4@s.whatsapp.net",
+  knownContacts: [{ id: "222222222222@s.whatsapp.net", notify: "Known Person" }],
+});
+assert(participantContacts.length === 1, "Group participant contacts must be deduplicated and exclude the connected account.");
+assert(participantContacts[0]?.jid === "222222222222@s.whatsapp.net", "LID participants must use their phone-number JID.");
+assert(participantContacts[0]?.notify === "Known Person", "Known contact display data must enrich group participants.");
 
 for (const route of [
   "src/app/api/company/invitations/route.ts",
@@ -102,10 +117,11 @@ assert(contacts.includes("whatsapp.contacts.persist_skipped_empty"), "An empty p
 assert(contacts.indexOf("if (!normalizedContacts.length)") < contacts.indexOf("lastContactSyncAt: syncedAt"), "Empty contact payloads must exit before the successful sync timestamp is written.");
 
 const baileysProvider = read("src/worker/baileys-provider.ts");
-assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_APP_STATE_V4"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
+assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V5"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
 assert(baileysProvider.includes("syncFullHistory: Boolean(options.syncContactHistory)"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
 assert(baileysProvider.includes('CONTACT_APP_STATE_COLLECTION = "critical_unblock_low"'), "Contact bootstrap must use the Baileys collection that carries contact actions.");
 assert(baileysProvider.includes("socket.resyncAppState([CONTACT_APP_STATE_COLLECTION], true)"), "Existing sessions must request a fresh contact app-state snapshot before reconnect fallback.");
+assert(baileysProvider.includes("collectGroupParticipantContacts(metadata"), "Empty app-state snapshots must fall back to account-owned group participant metadata.");
 assert(baileysProvider.includes('this.startSession(accountId, "RECONNECT", { syncContactHistory: true })'), "A missing persistent contact directory must use the isolated contact-history reconnect path.");
 assert(baileysProvider.includes("if (existingCount === 0)"), "Invalid in-memory snapshots must not suppress a required persistent contact bootstrap.");
 assert(!baileysProvider.includes("!snapshot.length && existingCount === 0"), "Bootstrap eligibility must be based on persisted contacts, not raw in-memory records.");
