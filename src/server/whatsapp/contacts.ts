@@ -124,13 +124,16 @@ export async function listOwnedWhatsAppContacts(input: ContactScope & {
   const where: Prisma.ContactWhereInput = {
     ...ownedWhatsAppContactWhere({ companyId: input.companyId, userId: input.userId, accountId: account.id }),
     isActive: input.active ?? true,
-    ...(search ? {
-      OR: [
-        { name: { contains: search, mode: "insensitive" } },
-        { pushName: { contains: search, mode: "insensitive" } },
-        { phone: { contains: search } },
-      ],
-    } : {}),
+    AND: [
+      { OR: [{ name: { not: null } }, { pushName: { not: null } }] },
+      ...(search ? [{
+        OR: [
+          { name: { contains: search, mode: "insensitive" as const } },
+          { pushName: { contains: search, mode: "insensitive" as const } },
+          { phone: { contains: search } },
+        ],
+      }] : []),
+    ],
   };
   const [contacts, total] = await Promise.all([
     prisma.contact.findMany({

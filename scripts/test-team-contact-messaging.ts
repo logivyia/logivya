@@ -121,6 +121,7 @@ assert(contacts.includes("whatsapp.contacts.persist_skipped_empty"), "An empty p
 assert(contacts.indexOf("if (!normalizedContacts.length)") < contacts.indexOf("lastContactSyncAt: syncedAt"), "Empty contact payloads must exit before the successful sync timestamp is written.");
 assert(contacts.includes("name: contact.name ?? undefined"), "Partial provider payloads must not erase an existing saved contact name.");
 assert(contacts.includes("pushName: contact.pushName ?? undefined"), "Partial provider payloads must not erase an existing WhatsApp push name.");
+assert(contacts.includes('{ OR: [{ name: { not: null } }, { pushName: { not: null } }] }'), "The user-facing directory must exclude unnamed group-only fallback records.");
 
 const baileysProvider = read("src/worker/baileys-provider.ts");
 assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V6_FULL_APP_STATE"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
