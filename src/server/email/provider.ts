@@ -13,6 +13,7 @@ export type EmailTemplate =
   | "invoice_created"
   | "support_created"
   | "support_replied"
+  | "team_invitation"
   | "whatsapp_disconnected";
 
 export type EmailInput = { to: string; subject: string; html: string; text?: string };

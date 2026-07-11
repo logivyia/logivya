@@ -6,6 +6,12 @@ function teamError(error: unknown) {
   if (error instanceof Error) {
     if (error.message === "FORBIDDEN") return mobileError("FORBIDDEN", "Kullanici yonetimi icin yetkiniz yok.", { status: 403 });
     if (error.message === "NOT_FOUND") return mobileError("NOT_FOUND", "Kullanici bulunamadi.", { status: 404 });
+    if (error.message === "SEAT_LIMIT_REACHED") {
+      return mobileError("SEAT_LIMIT_REACHED", "Planınızdaki kullanılabilir ekip koltuğu dolu.", {
+        status: 409,
+        details: { limit: (error as Error & { limit?: number }).limit },
+      });
+    }
     if (error.message === "users.lastOwner") return mobileError("FORBIDDEN", "Son aktif yonetici kullanici kaldirilamaz.", { status: 403 });
   }
   return mobileSafeError(error, "Kullanici islemi tamamlanamadi.");

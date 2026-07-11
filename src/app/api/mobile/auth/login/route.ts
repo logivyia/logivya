@@ -4,10 +4,12 @@ import { prisma } from "@/server/db";
 import { verifyPassword } from "@/server/security/passwords";
 import { createMobileSession, parseMobilePlatform } from "@/server/mobile/auth";
 import { clientIp, enforceMobileRateLimit } from "@/server/mobile/rate-limit";
+import { readMobileJson } from "@/server/mobile/request-json";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
 import { logger } from "@/server/observability/logger";
 import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
 import { writeAuditLog } from "@/server/security/audit";
+import { resolvePreferredLoginMembership } from "@/server/team/login-membership";
 
 const schema = z.object({
   identifier: z.string().trim().min(3).max(254),
@@ -19,7 +21,10 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const parsed = schema.safeParse(await request.json());
+    const body = await readMobileJson(request);
+    if (!body.ok) return body.response;
+
+    const parsed = schema.safeParse(body.data);
     if (!parsed.success) return mobileValidationError(parsed.error);
 
     const ip = clientIp(request);
@@ -57,11 +62,7 @@ export async function POST(request: Request) {
       return mobileError("UNAUTHORIZED", "E-posta/telefon veya parola hatalı.", { status: 401 });
     }
 
-    const membership = await prisma.companyUser.findFirst({
-      where: { userId: user.id, status: "ACTIVE" },
-      include: { company: true },
-      orderBy: { createdAt: "asc" },
-    });
+    const membership = await resolvePreferredLoginMembership(user.id, parsed.data.deviceId);
     if (!membership) {
       logger.warn("Mobile login rejected: active membership missing", { userId: user.id });
       return mobileError("FORBIDDEN", "Çalışma alanı bulunamadı.", { status: 403 });

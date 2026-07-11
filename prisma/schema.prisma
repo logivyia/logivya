@@ -25,6 +25,14 @@ enum MembershipStatus {
   SUSPENDED
 }
 
+enum CompanyInvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  REVOKED
+}
+
 enum SubscriptionStatus {
   TRIALING
   ACTIVE
@@ -68,6 +76,12 @@ enum AccountStatus {
 enum CampaignType {
   WHATSAPP_GROUP
   WHATSAPP_CONTACT
+  WHATSAPP_MIXED
+}
+
+enum MessageTargetType {
+  GROUP
+  CONTACT
 }
 
 enum ScheduleType {
@@ -91,8 +105,12 @@ enum CampaignStatus {
 
 enum RecipientStatus {
   PENDING
+  QUEUED
+  PROCESSING
   SENDING
   SENT
+  DELIVERED
+  RETRYING
   FAILED
   CANCELED
   SKIPPED
@@ -335,6 +353,7 @@ enum SupportTicketStatus {
   OPEN
   PENDING
   IN_PROGRESS
+  ANSWERED
   RESOLVED
   CLOSED
 }
@@ -347,6 +366,7 @@ enum SupportTicketPriority {
 }
 
 enum SupportSenderType {
+  USER
   CUSTOMER
   ADMIN
   SYSTEM
@@ -426,7 +446,7 @@ model User {
   sessions                       UserSession[]
   mobileDeviceSessions           MobileDeviceSession[]
   mobilePushTokens               MobilePushToken[]
-  mobileFeedback                  MobileFeedback[]
+  mobileFeedback                 MobileFeedback[]
   trustedDevices                 TrustedDevice[]
   securityEvents                 SecurityEvent[]
   consents                       ConsentRecord[]
@@ -438,11 +458,14 @@ model User {
   assignedSupportTickets         SupportTicket[]          @relation("SupportTicketAssignee")
   supportMessages                SupportTicketMessage[]
   referralCodes                  ReferralCode[]
-  referredSignups                ReferralSignup[]          @relation("ReferredUser")
+  referredSignups                ReferralSignup[]         @relation("ReferredUser")
   emailDeliveries                EmailDeliveryLog[]
   messageVisibilityRecords       UserMessageVisibility[]
   whatsAppAccounts               WhatsAppAccount[]
   whatsAppGroups                 WhatsAppGroup[]
+  contacts                       Contact[]
+  sentCompanyInvitations         CompanyInvitation[]      @relation("CompanyInvitationInviter")
+  acceptedCompanyInvitations     CompanyInvitation[]      @relation("CompanyInvitationAcceptedUser")
   platformAdmin                  PlatformAdmin?
   adminAccessLogs                AdminAccessLog[]
   adminSessionEvents             AdminSessionEvent[]
@@ -454,79 +477,80 @@ model User {
 }
 
 model Company {
-  id                 String                    @id @default(cuid())
-  name               String
-  address            String?
-  city               String?
-  district           String?
-  postalCode         String?
-  taxOffice          String?
-  taxNumber          String?
-  phone              String?
-  email              String?
-  ownerId            String
-  owner              User                      @relation("CompanyOwner", fields: [ownerId], references: [id])
-  members            CompanyUser[]
-  subscriptions      Subscription[]
-  accounts           WhatsAppAccount[]
-  groups             WhatsAppGroup[]
-  contacts           Contact[]
-  categories         Category[]
-  campaigns          MessageCampaign[]
-  mediaFiles         MediaFile[]
-  notifications      Notification[]
-  auditLogs          AuditLog[]
-  channels           Channel[]
-  channelAccounts    ChannelAccount[]
-  channelMessages    ChannelMessage[]
-  aiConfigurations   AiProviderConfiguration[]
-  aiGenerations      AiGeneration[]
-  leads              Lead[]
-  customers          Customer[]
-  deals              Deal[]
-  pipelines          Pipeline[]
-  activities         Activity[]
-  tasks              Task[]
-  tags               Tag[]
-  notes              Note[]
-  campaignMetrics    CampaignMetric[]
-  accountMetrics     AccountMetricDaily[]
-  categoryMetrics    CategoryMetricDaily[]
-  userMetrics        UserMetricDaily[]
-  webhooks           WebhookEndpoint[]
-  webhookEvents      WebhookEvent[]
-  apiKeys            ApiKey[]
-  invoices           Invoice[]
-  payments           Payment[]
-  subscriptionEvents SubscriptionEvent[]
-  coupons            Coupon[]
-  activityFeed       ActivityFeedEntry[]
-  billingProfile     CompanyBillingProfile?
-  securityEvents     SecurityEvent[]
-  dataRequests       DataSubjectRequest[]
-  idempotencyKeys    IdempotencyKey[]
-  apiUsageLogs       ApiUsageLog[]
-  incidentLogs       IncidentLog[]
-  supportTickets     SupportTicket[]
-  internalNotes      CompanyInternalNote[]
-  onboarding         OnboardingChecklist?
-  branding           BrandingSettings?
-  referralCodes      ReferralCode[]
-  referredSignups    ReferralSignup[]            @relation("ReferredCompany")
-  emailDeliveries    EmailDeliveryLog[]
+  id                   String                    @id @default(cuid())
+  name                 String
+  address              String?
+  city                 String?
+  district             String?
+  postalCode           String?
+  taxOffice            String?
+  taxNumber            String?
+  phone                String?
+  email                String?
+  ownerId              String
+  owner                User                      @relation("CompanyOwner", fields: [ownerId], references: [id])
+  members              CompanyUser[]
+  invitations          CompanyInvitation[]
+  subscriptions        Subscription[]
+  accounts             WhatsAppAccount[]
+  groups               WhatsAppGroup[]
+  contacts             Contact[]
+  categories           Category[]
+  campaigns            MessageCampaign[]
+  mediaFiles           MediaFile[]
+  notifications        Notification[]
+  auditLogs            AuditLog[]
+  channels             Channel[]
+  channelAccounts      ChannelAccount[]
+  channelMessages      ChannelMessage[]
+  aiConfigurations     AiProviderConfiguration[]
+  aiGenerations        AiGeneration[]
+  leads                Lead[]
+  customers            Customer[]
+  deals                Deal[]
+  pipelines            Pipeline[]
+  activities           Activity[]
+  tasks                Task[]
+  tags                 Tag[]
+  notes                Note[]
+  campaignMetrics      CampaignMetric[]
+  accountMetrics       AccountMetricDaily[]
+  categoryMetrics      CategoryMetricDaily[]
+  userMetrics          UserMetricDaily[]
+  webhooks             WebhookEndpoint[]
+  webhookEvents        WebhookEvent[]
+  apiKeys              ApiKey[]
+  invoices             Invoice[]
+  payments             Payment[]
+  subscriptionEvents   SubscriptionEvent[]
+  coupons              Coupon[]
+  activityFeed         ActivityFeedEntry[]
+  billingProfile       CompanyBillingProfile?
+  securityEvents       SecurityEvent[]
+  dataRequests         DataSubjectRequest[]
+  idempotencyKeys      IdempotencyKey[]
+  apiUsageLogs         ApiUsageLog[]
+  incidentLogs         IncidentLog[]
+  supportTickets       SupportTicket[]
+  internalNotes        CompanyInternalNote[]
+  onboarding           OnboardingChecklist?
+  branding             BrandingSettings?
+  referralCodes        ReferralCode[]
+  referredSignups      ReferralSignup[]          @relation("ReferredCompany")
+  emailDeliveries      EmailDeliveryLog[]
   mobileDeviceSessions MobileDeviceSession[]
-  mobilePushTokens   MobilePushToken[]
-  mobileFeedback     MobileFeedback[]
-  securityStatus     CompanySecurityStatus     @default(ACTIVE)
-  billingLockedAt    DateTime?
-  campaignsPausedAt  DateTime?
-  retentionDays      Int                       @default(90)
-  defaultLanguage    String                    @default("tr")
-  defaultTimezone    String                    @default("Europe/Istanbul")
-  defaultCurrency    String                    @default("TRY")
-  defaultCountry     String                    @default("TR")
-  createdAt          DateTime                  @default(now())
-  updatedAt          DateTime                  @updatedAt
+  mobilePushTokens     MobilePushToken[]
+  mobileFeedback       MobileFeedback[]
+  securityStatus       CompanySecurityStatus     @default(ACTIVE)
+  billingLockedAt      DateTime?
+  campaignsPausedAt    DateTime?
+  retentionDays        Int                       @default(90)
+  defaultLanguage      String                    @default("tr")
+  defaultTimezone      String                    @default("Europe/Istanbul")
+  defaultCurrency      String                    @default("TRY")
+  defaultCountry       String                    @default("TR")
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
 
   @@index([ownerId])
 }
@@ -546,6 +570,33 @@ model CompanyUser {
   @@index([userId])
 }
 
+model CompanyInvitation {
+  id               String                  @id @default(cuid())
+  companyId        String
+  invitedByUserId  String
+  acceptedByUserId String?
+  email            String
+  name             String
+  role             CompanyRole             @default(OPERATOR)
+  status           CompanyInvitationStatus @default(PENDING)
+  tokenHash        String                  @unique
+  shortCodeHash    String?                 @unique
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  declinedAt       DateTime?
+  revokedAt        DateTime?
+  company          Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invitedBy        User                    @relation("CompanyInvitationInviter", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+  acceptedBy       User?                   @relation("CompanyInvitationAcceptedUser", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@index([companyId, status, expiresAt])
+  @@index([email, status])
+  @@index([invitedByUserId])
+  @@index([acceptedByUserId])
+}
+
 model Plan {
   id                       String           @id @default(cuid())
   name                     String
@@ -560,6 +611,9 @@ model Plan {
   maxGroups                Int
   maxMessagesPerDay        Int
   maxMessagesPerMonth      Int
+  groupMessagingEnabled    Boolean          @default(true)
+  contactMessagingEnabled  Boolean          @default(false)
+  deleteForEveryoneEnabled Boolean          @default(true)
   advertisingEnabled       Boolean          @default(false)
   hasScheduledMessages     Boolean          @default(false)
   hasRecurringMessages     Boolean          @default(false)
@@ -612,46 +666,47 @@ model Subscription {
 }
 
 model WhatsAppAccount {
-  id                  String             @id @default(cuid())
-  userId              String?
-  companyId           String
-  label               String?
-  phoneNumber         String?
-  displayName         String?
-  provider            String
-  providerSessionId   String?
-  status              AccountStatus      @default(PENDING_QR)
-  lastConnectedAt     DateTime?
-  lastDisconnectedAt  DateTime?
-  lastSyncedAt        DateTime?
-  lastHeartbeatAt     DateTime?
-  lastPingAt          DateTime?
-  lastPongAt          DateTime?
-  lastMessageAt       DateTime?
-  lastGroupSyncAt     DateTime?
+  id                      String             @id @default(cuid())
+  userId                  String?
+  companyId               String
+  label                   String?
+  phoneNumber             String?
+  displayName             String?
+  provider                String
+  providerSessionId       String?
+  status                  AccountStatus      @default(PENDING_QR)
+  lastConnectedAt         DateTime?
+  lastDisconnectedAt      DateTime?
+  lastSyncedAt            DateTime?
+  lastHeartbeatAt         DateTime?
+  lastPingAt              DateTime?
+  lastPongAt              DateTime?
+  lastMessageAt           DateTime?
+  lastGroupSyncAt         DateTime?
+  lastContactSyncAt       DateTime?
   lastConnectionLatencyMs Int?
-  batteryState        String?
-  healthScore         Int                @default(0)
-  recoveryLevel       Int                @default(0)
-  sessionRestoredAt   DateTime?
-  sessionSnapshotAt   DateTime?
-  reconnectRetryCount Int                @default(0)
-  deviceId            String?
-  syncIntervalMinutes Int                @default(120)
-  archivedAt          DateTime?
-  lastError           String?
-  qrCode              String?
-  qrExpiresAt         DateTime?
-  pairingCode         String?
-  pairingCodeExpiresAt DateTime?
-  user                User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
-  company             Company            @relation(fields: [companyId], references: [id])
-  sessions            WhatsAppSession[]
-  groups              WhatsAppGroup[]
-  contacts            Contact[]
-  recipients          MessageRecipient[]
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  batteryState            String?
+  healthScore             Int                @default(0)
+  recoveryLevel           Int                @default(0)
+  sessionRestoredAt       DateTime?
+  sessionSnapshotAt       DateTime?
+  reconnectRetryCount     Int                @default(0)
+  deviceId                String?
+  syncIntervalMinutes     Int                @default(120)
+  archivedAt              DateTime?
+  lastError               String?
+  qrCode                  String?
+  qrExpiresAt             DateTime?
+  pairingCode             String?
+  pairingCodeExpiresAt    DateTime?
+  user                    User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  company                 Company            @relation(fields: [companyId], references: [id])
+  sessions                WhatsAppSession[]
+  groups                  WhatsAppGroup[]
+  contacts                Contact[]
+  recipients              MessageRecipient[]
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
   @@index([userId])
   @@index([companyId, status])
@@ -710,12 +765,18 @@ model WhatsAppGroup {
 
 model Contact {
   id                String             @id @default(cuid())
+  userId            String?
   companyId         String
   accountId         String
   externalContactId String
   name              String?
+  pushName          String?
   phone             String
   source            String?
+  isWhatsAppUser    Boolean            @default(true)
+  isActive          Boolean            @default(true)
+  lastSeenAt        DateTime?
+  user              User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
   company           Company            @relation(fields: [companyId], references: [id])
   account           WhatsAppAccount    @relation(fields: [accountId], references: [id])
   recipients        MessageRecipient[]
@@ -723,7 +784,13 @@ model Contact {
   updatedAt         DateTime           @updatedAt
 
   @@unique([accountId, externalContactId])
+  @@index([userId])
+  @@index([companyId])
+  @@index([accountId])
   @@index([companyId, phone])
+  @@index([phone])
+  @@index([name])
+  @@index([accountId, isActive])
 }
 
 model Category {
@@ -757,35 +824,35 @@ model CategoryGroup {
 }
 
 model MessageCampaign {
-  id              String             @id @default(cuid())
-  companyId       String
-  createdById     String
-  title           String
-  content         String
-  contentJson     Json?
-  type            CampaignType
-  status          CampaignStatus     @default(DRAFT)
-  scheduleType    ScheduleType       @default(SEND_NOW)
-  scheduledAt     DateTime?
-  recurringRule   Json?
-  totalRecipients Int                @default(0)
-  sentCount       Int                @default(0)
-  failedCount     Int                @default(0)
-  canceledCount   Int                @default(0)
-  deletedAt       DateTime?
-  platformDeletedAt DateTime?
+  id                           String                          @id @default(cuid())
+  companyId                    String
+  createdById                  String
+  title                        String
+  content                      String
+  contentJson                  Json?
+  type                         CampaignType
+  status                       CampaignStatus                  @default(DRAFT)
+  scheduleType                 ScheduleType                    @default(SEND_NOW)
+  scheduledAt                  DateTime?
+  recurringRule                Json?
+  totalRecipients              Int                             @default(0)
+  sentCount                    Int                             @default(0)
+  failedCount                  Int                             @default(0)
+  canceledCount                Int                             @default(0)
+  deletedAt                    DateTime?
+  platformDeletedAt            DateTime?
   deleteForEveryoneStatus      CampaignDeleteForEveryoneStatus @default(NOT_REQUESTED)
   deleteForEveryoneRequestedAt DateTime?
   deleteForEveryoneCompletedAt DateTime?
   deleteForEveryoneError       String?
-  company         Company            @relation(fields: [companyId], references: [id])
-  createdBy       User               @relation(fields: [createdById], references: [id])
-  recipients      MessageRecipient[]
-  visibilityRecords UserMessageVisibility[]
-  channelMessages ChannelMessage[]
-  metric          CampaignMetric?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  company                      Company                         @relation(fields: [companyId], references: [id])
+  createdBy                    User                            @relation(fields: [createdById], references: [id])
+  recipients                   MessageRecipient[]
+  visibilityRecords            UserMessageVisibility[]
+  channelMessages              ChannelMessage[]
+  metric                       CampaignMetric?
+  createdAt                    DateTime                        @default(now())
+  updatedAt                    DateTime                        @updatedAt
 
   @@index([companyId, status, createdAt])
   @@index([companyId, createdAt])
@@ -793,37 +860,40 @@ model MessageCampaign {
 }
 
 model MessageRecipient {
-  id                  String          @id @default(cuid())
-  campaignId          String
-  accountId           String
-  groupId             String?
-  contactId           String?
-  recipientName       String
-  recipientExternalId String
-  status              RecipientStatus @default(PENDING)
-  externalMessageId   String?
-  messageKeyJson      Json?
-  messageKeyFromMe    Boolean?
-  messageKeyParticipant String?
+  id                           String                  @id @default(cuid())
+  campaignId                   String
+  accountId                    String
+  groupId                      String?
+  contactId                    String?
+  targetType                   MessageTargetType       @default(GROUP)
+  recipientName                String
+  recipientExternalId          String
+  status                       RecipientStatus         @default(PENDING)
+  attemptCount                 Int                     @default(0)
+  externalMessageId            String?
+  messageKeyJson               Json?
+  messageKeyFromMe             Boolean?
+  messageKeyParticipant        String?
   deleteForEveryoneStatus      DeleteForEveryoneStatus @default(NOT_REQUESTED)
   deleteForEveryoneAttemptedAt DateTime?
   deleteForEveryoneCompletedAt DateTime?
   deleteForEveryoneError       String?
-  deletedForMeAt      DateTime?
-  platformDeletedAt   DateTime?
-  errorMessage        String?
-  sentAt              DateTime?
-  failedAt            DateTime?
-  campaign            MessageCampaign @relation(fields: [campaignId], references: [id])
-  account             WhatsAppAccount @relation(fields: [accountId], references: [id])
-  group               WhatsAppGroup?  @relation(fields: [groupId], references: [id])
-  contact             Contact?        @relation(fields: [contactId], references: [id])
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  deletedForMeAt               DateTime?
+  platformDeletedAt            DateTime?
+  errorMessage                 String?
+  sentAt                       DateTime?
+  failedAt                     DateTime?
+  campaign                     MessageCampaign         @relation(fields: [campaignId], references: [id])
+  account                      WhatsAppAccount         @relation(fields: [accountId], references: [id])
+  group                        WhatsAppGroup?          @relation(fields: [groupId], references: [id])
+  contact                      Contact?                @relation(fields: [contactId], references: [id])
+  createdAt                    DateTime                @default(now())
+  updatedAt                    DateTime                @updatedAt
 
   @@index([campaignId, status])
   @@index([accountId, status])
   @@index([accountId, recipientExternalId])
+  @@index([campaignId, targetType, status])
   @@index([deleteForEveryoneStatus])
   @@index([sentAt])
 }
@@ -1639,21 +1709,21 @@ model MobilePushToken {
 }
 
 model MobileFeedback {
-  id          String         @id @default(cuid())
-  companyId   String
-  userId      String
-  type        String
-  subject     String
-  message     String
-  screenshot  String?
-  deviceInfo  Json?
-  appVersion  String?
-  platform    MobilePlatform @default(UNKNOWN)
-  status      String         @default("OPEN")
-  company     Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id         String         @id @default(cuid())
+  companyId  String
+  userId     String
+  type       String
+  subject    String
+  message    String
+  screenshot String?
+  deviceInfo Json?
+  appVersion String?
+  platform   MobilePlatform @default(UNKNOWN)
+  status     String         @default("OPEN")
+  company    Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
 
   @@index([companyId, createdAt])
   @@index([userId, createdAt])
@@ -1704,15 +1774,15 @@ model EmailVerificationToken {
 }
 
 model MfaCredential {
-  id                  String    @id @default(cuid())
+  id                  String                  @id @default(cuid())
   userId              String
   type                String
   secretEncrypted     String
   recoveryCodesHashed String[]
   verifiedAt          DateTime?
   revokedAt           DateTime?
-  createdAt           DateTime  @default(now())
-  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt           DateTime                @default(now())
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   recoveryCodes       TwoFactorRecoveryCode[]
 
   @@index([userId, revokedAt])
@@ -1821,7 +1891,7 @@ model IncidentLog {
 }
 
 model SupportTicket {
-  id                String                @id @default(cuid())
+  id                String                 @id @default(cuid())
   companyId         String
   tenantId          String
   createdById       String
@@ -1831,45 +1901,53 @@ model SupportTicket {
   title             String
   type              String
   category          String
-  description       String                @default("")
-  source            String                @default("WEB")
-  status            SupportTicketStatus   @default(OPEN)
-  priority          SupportTicketPriority @default(MEDIUM)
-  lastMessageAt     DateTime              @default(now())
+  description       String                 @default("")
+  source            String                 @default("WEB")
+  status            SupportTicketStatus    @default(OPEN)
+  priority          SupportTicketPriority  @default(MEDIUM)
+  lastMessageAt     DateTime               @default(now())
   closedAt          DateTime?
-  company           Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  createdBy         User                  @relation("SupportTicketCreator", fields: [createdById], references: [id])
-  assignedToAdmin   User?                 @relation("SupportTicketAssignee", fields: [assignedToAdminId], references: [id])
+  company           Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy         User                   @relation("SupportTicketCreator", fields: [createdById], references: [id])
+  assignedToAdmin   User?                  @relation("SupportTicketAssignee", fields: [assignedToAdminId], references: [id])
   messages          SupportTicketMessage[]
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
 
   @@index([companyId, status, lastMessageAt])
+  @@index([companyId])
   @@index([companyId, createdAt])
   @@index([tenantId, createdAt])
   @@index([tenantId, status, createdAt])
   @@index([createdById, createdAt])
+  @@index([userId])
   @@index([userId, createdAt])
+  @@index([status])
   @@index([status, createdAt])
+  @@index([category])
   @@index([type, createdAt])
   @@index([category, createdAt])
+  @@index([createdAt])
+  @@index([lastMessageAt])
   @@index([source, createdAt])
   @@index([status, priority, lastMessageAt])
 }
 
 model SupportTicketMessage {
-  id           String            @id @default(cuid())
-  ticketId     String
-  senderUserId String?
-  senderType   SupportSenderType
-  message      String
+  id            String            @id @default(cuid())
+  ticketId      String
+  senderUserId  String?
+  senderType    SupportSenderType
+  message       String
   attachmentUrl String?
-  isInternal   Boolean           @default(false)
-  ticket       SupportTicket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  senderUser   User?             @relation(fields: [senderUserId], references: [id])
-  createdAt    DateTime          @default(now())
+  isInternal    Boolean           @default(false)
+  ticket        SupportTicket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderUser    User?             @relation(fields: [senderUserId], references: [id])
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
   @@index([ticketId, createdAt])
+  @@index([senderUserId, createdAt])
 }
 
 model CompanyInternalNote {
@@ -1884,17 +1962,17 @@ model CompanyInternalNote {
 }
 
 model OnboardingChecklist {
-  id                      String   @id @default(cuid())
-  companyId               String   @unique
-  companyProfileCompleted Boolean  @default(false)
-  whatsappConnected       Boolean  @default(false)
-  groupsSynced             Boolean  @default(false)
-  categoryCreated          Boolean  @default(false)
-  firstMessageSent        Boolean  @default(false)
+  id                      String    @id @default(cuid())
+  companyId               String    @unique
+  companyProfileCompleted Boolean   @default(false)
+  whatsappConnected       Boolean   @default(false)
+  groupsSynced            Boolean   @default(false)
+  categoryCreated         Boolean   @default(false)
+  firstMessageSent        Boolean   @default(false)
   completedAt             DateTime?
-  company                 Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  company                 Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 }
 
 model EmailDeliveryLog {
@@ -1985,17 +2063,17 @@ model FeatureFlag {
 }
 
 model PlatformAdmin {
-  id                 String            @id @default(cuid())
-  userId             String            @unique
-  role               PlatformAdminRole
-  permissions        String[]
-  isActive           Boolean           @default(true)
-  requiresMfa        Boolean           @default(true)
-  lastElevatedAt     DateTime?
-  createdByUserId    String?
-  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  id              String            @id @default(cuid())
+  userId          String            @unique
+  role            PlatformAdminRole
+  permissions     String[]
+  isActive        Boolean           @default(true)
+  requiresMfa     Boolean           @default(true)
+  lastElevatedAt  DateTime?
+  createdByUserId String?
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   @@index([role, isActive])
 }
@@ -2020,15 +2098,15 @@ model AdminRolePermission {
 }
 
 model AdminSessionEvent {
-  id         String   @id @default(cuid())
-  userId     String
-  type       String
-  requestId  String?
-  ipAddress  String?
-  userAgent  String?
-  metadata   Json?
-  createdAt  DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  requestId String?
+  ipAddress String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([type, createdAt])
@@ -2063,28 +2141,28 @@ model RateLimitEvent {
 }
 
 model PlatformAdminInvite {
-  id             String            @id @default(cuid())
-  email          String            @unique
-  name           String
-  role           PlatformAdminRole @default(SUPER_ADMIN)
-  tokenHash      String            @unique
-  expiresAt      DateTime
-  acceptedAt     DateTime?
-  createdAt      DateTime          @default(now())
+  id         String            @id @default(cuid())
+  email      String            @unique
+  name       String
+  role       PlatformAdminRole @default(SUPER_ADMIN)
+  tokenHash  String            @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime          @default(now())
 }
 
 model AdminAccessLog {
-  id             String   @id @default(cuid())
-  userId         String
-  path           String
-  method         String
-  purpose        String?
-  permission     String?
-  sensitive      Boolean  @default(false)
-  ipAddress      String?
-  userAgent      String?
-  createdAt      DateTime @default(now())
-  user           User     @relation(fields: [userId], references: [id])
+  id         String   @id @default(cuid())
+  userId     String
+  path       String
+  method     String
+  purpose    String?
+  permission String?
+  sensitive  Boolean  @default(false)
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
 
   @@index([userId, createdAt])
   @@index([sensitive, createdAt])

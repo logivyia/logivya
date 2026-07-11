@@ -127,11 +127,13 @@ export async function requestCampaignDeleteForEveryone(input: { campaignId: stri
         select: {
           id: true,
           accountId: true,
+          targetType: true,
           recipientExternalId: true,
           sentAt: true,
           messageKeyJson: true,
           account: { select: { id: true, companyId: true, userId: true, archivedAt: true } },
           group: { select: { companyId: true, userId: true, accountId: true } },
+          contact: { select: { companyId: true, userId: true, accountId: true, isActive: true } },
         },
       },
     },
@@ -156,13 +158,22 @@ export async function requestCampaignDeleteForEveryone(input: { campaignId: stri
         await prisma.messageRecipient.update({ where: { id: recipient.id }, data: { deleteForEveryoneStatus: "EXPIRED", deleteForEveryoneAttemptedAt: now, deleteForEveryoneError: "WHATSAPP_DELETE_WINDOW_EXPIRED" } });
         continue;
       }
+      const groupOwnershipInvalid = recipient.targetType === "GROUP" && (
+        recipient.group?.companyId !== input.companyId ||
+        recipient.group?.userId !== input.userId ||
+        recipient.group?.accountId !== recipient.accountId
+      );
+      const contactOwnershipInvalid = recipient.targetType === "CONTACT" && (
+        recipient.contact?.companyId !== input.companyId ||
+        recipient.contact?.userId !== input.userId ||
+        recipient.contact?.accountId !== recipient.accountId
+      );
       if (
         recipient.account.id !== recipient.accountId ||
         recipient.account.companyId !== input.companyId ||
         recipient.account.userId !== input.userId ||
-        recipient.group?.companyId !== input.companyId ||
-        recipient.group?.userId !== input.userId ||
-        recipient.group?.accountId !== recipient.accountId ||
+        groupOwnershipInvalid ||
+        contactOwnershipInvalid ||
         recipient.account.archivedAt
       ) {
         failed += 1;
@@ -178,7 +189,9 @@ export async function requestCampaignDeleteForEveryone(input: { campaignId: stri
         campaignId: campaign.id,
         recipientId: recipient.id,
         whatsappAccountId: recipient.accountId,
-        groupJid: recipient.recipientExternalId,
+        groupJid: recipient.targetType === "GROUP" ? recipient.recipientExternalId : undefined,
+        targetJid: recipient.recipientExternalId,
+        targetType: recipient.targetType,
         messageKeyJson: recipient.messageKeyJson,
         userId: input.userId,
         correlationId,

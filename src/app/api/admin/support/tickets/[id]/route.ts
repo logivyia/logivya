@@ -3,10 +3,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/security/audit";
-import { requireSupportSuperAdmin } from "@/server/support";
+import { adminWritableSupportTicketStatuses, nextStatusAfterAdminReply, requireSupportSuperAdmin } from "@/server/support";
 
 const schema = z.object({
-  status: z.enum(["OPEN", "PENDING", "IN_PROGRESS", "RESOLVED", "CLOSED"]).optional(),
+  status: z.enum(adminWritableSupportTicketStatuses).optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).optional(),
   message: z.string().trim().min(1).max(10000).optional(),
   internalNote: z.boolean().default(false),
@@ -42,8 +42,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             id: true,
             senderType: true,
             message: true,
+            attachmentUrl: true,
             isInternal: true,
             createdAt: true,
+            updatedAt: true,
             senderUser: { select: { name: true, email: true } },
           },
           orderBy: { createdAt: "asc" },
@@ -83,18 +85,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
       const status = parsed.data.status as SupportTicketStatus | undefined;
       const priority = parsed.data.priority as SupportTicketPriority | undefined;
-      const nextStatus = status ?? (parsed.data.message && !parsed.data.internalNote && ticket.status === "OPEN" ? "IN_PROGRESS" : undefined);
-      const shouldClose = parsed.data.status === "CLOSED";
+      const nextStatus = status ?? (parsed.data.message ? nextStatusAfterAdminReply(ticket.status, parsed.data.internalNote) : undefined);
+      const shouldClose = nextStatus === "CLOSED";
       const row = await tx.supportTicket.update({
         where: { id },
         data: {
           assignedToAdminId: user.id,
           status: nextStatus,
           priority,
-          lastMessageAt: parsed.data.message ? new Date() : undefined,
+          lastMessageAt: parsed.data.message && !parsed.data.internalNote ? new Date() : undefined,
           closedAt: shouldClose ? new Date() : nextStatus ? null : undefined,
         },
-        select: { id: true, status: true, priority: true },
+        select: { id: true, status: true, priority: true, lastMessageAt: true, closedAt: true },
       });
 
       if (parsed.data.message && !parsed.data.internalNote) {

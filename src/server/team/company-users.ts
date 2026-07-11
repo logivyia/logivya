@@ -1,25 +1,15 @@
-import { randomBytes } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 
+import { resolveCompanyEntitlements } from "@/server/billing/company-entitlements";
 import { prisma } from "@/server/db";
-import { subscriptionAccess } from "@/server/billing/subscription-access";
-import { hashPassword } from "@/server/security/passwords";
 import { writeAuditLog } from "@/server/security/audit";
 
-export const inviteCompanyUserSchema = z.object({
-  name: z.string().trim().min(2).max(100),
-  email: z.string().trim().email(),
-  role: z.enum(["ADMIN", "OPERATOR", "VIEWER"]),
-});
-
 export const updateCompanyUserSchema = z.object({
-  role: z.enum(["OWNER", "ADMIN", "OPERATOR", "VIEWER"]).optional(),
-  status: z.enum(["ACTIVE", "INVITED", "SUSPENDED"]).optional(),
-  name: z.string().trim().min(2).max(100).optional(),
-  password: z.string().min(12).max(128).optional(),
-});
+  role: z.enum(["ADMIN", "OPERATOR", "VIEWER"]).optional(),
+  status: z.enum(["ACTIVE", "SUSPENDED"]).optional(),
+}).strict().refine((input) => Boolean(input.role || input.status), { message: "validation.invalid" });
 
-export type InviteCompanyUserInput = z.infer<typeof inviteCompanyUserSchema>;
 export type UpdateCompanyUserInput = z.infer<typeof updateCompanyUserSchema>;
 export type CompanyUserActorRole = "OWNER" | "ADMIN" | "OPERATOR" | "VIEWER";
 
@@ -29,8 +19,50 @@ type CompanyUserContext = {
   actorRole: string;
 };
 
+type TeamTransaction = Prisma.TransactionClient;
+type SeatLimitError = Error & { limit?: number; used?: number };
+
 function assertCanManageUsers(actorRole: string) {
-  if (!["OWNER", "ADMIN"].includes(actorRole)) throw new Error("FORBIDDEN");
+  if (actorRole !== "OWNER") throw new Error("FORBIDDEN");
+}
+
+async function lockCompany(tx: TeamTransaction, companyId: string) {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "Company" WHERE "id" = ${companyId} FOR UPDATE`;
+  if (!rows.length) throw new Error("COMPANY_NOT_FOUND");
+}
+
+async function findManageableTarget(tx: TeamTransaction, context: CompanyUserContext, targetId: string) {
+  const target = await tx.companyUser.findFirst({
+    where: { id: targetId, companyId: context.companyId },
+    include: { user: true },
+  });
+  if (!target) throw new Error("NOT_FOUND");
+  if (target.role === "OWNER") throw new Error("users.ownerProtected");
+  return target;
+}
+
+async function assertActivationSeatAvailable(tx: TeamTransaction, companyId: string, currentStatus: string) {
+  if (currentStatus === "ACTIVE" || currentStatus === "INVITED") return;
+  const now = new Date();
+  await tx.companyInvitation.updateMany({
+    where: { companyId, status: "PENDING", expiresAt: { lte: now } },
+    data: { status: "EXPIRED" },
+  });
+  const current = await resolveCompanyEntitlements(companyId, tx, now);
+  if (!current?.valid) throw new Error("subscription.inactive");
+  const [activeMembers, legacyInvitedMembers, pendingInvitations] = await Promise.all([
+    tx.companyUser.count({ where: { companyId, status: "ACTIVE" } }),
+    tx.companyUser.count({ where: { companyId, status: "INVITED" } }),
+    tx.companyInvitation.count({ where: { companyId, status: "PENDING", expiresAt: { gt: now } } }),
+  ]);
+  const used = activeMembers + legacyInvitedMembers + pendingInvitations;
+  const limit = current.entitlements.teamSeats;
+  if (used >= limit) {
+    const error = new Error("SEAT_LIMIT_REACHED") as SeatLimitError;
+    error.limit = limit;
+    error.used = used;
+    throw error;
+  }
 }
 
 export function serializeCompanyMember(member: Awaited<ReturnType<typeof listCompanyUsers>>[number]) {
@@ -72,139 +104,55 @@ export async function listCompanyUsers(companyId: string) {
   });
 }
 
-export async function inviteCompanyUser(request: Request, context: CompanyUserContext, input: InviteCompanyUserInput) {
-  assertCanManageUsers(context.actorRole);
-
-  const access = await subscriptionAccess.canInviteUser(context.companyId);
-  if (!access.allowed) {
-    const error = new Error("users.planLimit");
-    (error as Error & { limit?: number }).limit = access.limit;
-    throw error;
-  }
-
-  const email = input.email.toLowerCase();
-  let user = await prisma.user.findUnique({ where: { email } });
-
-  if (!user) {
-    const temporary = `Inv!${randomBytes(24).toString("base64url")}Aa1`;
-    user = await prisma.user.create({
-      data: {
-        name: input.name,
-        email,
-        username: `invite-${randomBytes(8).toString("hex")}`,
-        phone: null,
-        passwordHash: await hashPassword(temporary, process.env.PASSWORD_PEPPER ?? ""),
-        status: "INVITED",
-        locale: "tr",
-      },
-    });
-  }
-
-  const member = await prisma.companyUser.upsert({
-    where: { companyId_userId: { companyId: context.companyId, userId: user.id } },
-    update: { role: input.role, status: "INVITED" },
-    create: { companyId: context.companyId, userId: user.id, role: input.role, status: "INVITED" },
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          status: true,
-          sessions: { select: { lastActiveAt: true }, orderBy: { lastActiveAt: "desc" }, take: 1 },
-        },
-      },
-    },
-  });
-
-  await writeAuditLog(request, {
-    companyId: context.companyId,
-    userId: context.actorUserId,
-    action: "company.user.invited",
-    entityType: "CompanyUser",
-    entityId: member.id,
-    after: { email, role: member.role },
-  });
-
-  return member;
-}
-
-async function authorizeCompanyUser(context: CompanyUserContext, targetId: string) {
-  assertCanManageUsers(context.actorRole);
-
-  const target = await prisma.companyUser.findFirst({
-    where: { id: targetId, companyId: context.companyId },
-    include: { user: true },
-  });
-
-  if (!target) throw new Error("NOT_FOUND");
-  if (target.role === "OWNER" && context.actorRole !== "OWNER") throw new Error("FORBIDDEN");
-
-  if (target.userId === context.actorUserId && target.role === "OWNER") {
-    const owners = await prisma.companyUser.count({
-      where: { companyId: context.companyId, role: "OWNER", status: "ACTIVE" },
-    });
-    if (owners <= 1) throw new Error("users.lastOwner");
-  }
-
-  return target;
-}
-
 export async function updateCompanyUser(request: Request, context: CompanyUserContext, targetId: string, input: UpdateCompanyUserInput) {
-  const target = await authorizeCompanyUser(context, targetId);
-  if (input.role === "OWNER" && context.actorRole !== "OWNER") throw new Error("FORBIDDEN");
+  assertCanManageUsers(context.actorRole);
+  const target = await prisma.$transaction(async (tx) => {
+    await lockCompany(tx, context.companyId);
+    const currentTarget = await findManageableTarget(tx, context, targetId);
+    if (input.status === "ACTIVE") await assertActivationSeatAvailable(tx, context.companyId, currentTarget.status);
 
-  const { password, name, ...membershipData } = input;
-
-  await prisma.$transaction(async (tx) => {
-    if (Object.keys(membershipData).length) {
-      await tx.companyUser.update({ where: { id: targetId }, data: membershipData });
-    }
-
-    if (name || password) {
-      await tx.user.update({
-        where: { id: target.userId },
-        data: {
-          ...(name ? { name } : {}),
-          ...(password ? { passwordHash: await hashPassword(password, process.env.PASSWORD_PEPPER ?? "") } : {}),
-        },
-      });
-    }
-
-    if (password) {
+    const updated = await tx.companyUser.update({ where: { id: targetId }, data: input });
+    if (input.status === "SUSPENDED") {
+      const revokedAt = new Date();
       await tx.userSession.updateMany({
-        where: { userId: target.userId, companyId: context.companyId, revokedAt: null },
-        data: { revokedAt: new Date() },
+        where: { userId: currentTarget.userId, companyId: context.companyId, revokedAt: null },
+        data: { revokedAt },
       });
       await tx.mobileDeviceSession.updateMany({
-        where: { userId: target.userId, companyId: context.companyId, revokedAt: null },
-        data: { revokedAt: new Date() },
+        where: { userId: currentTarget.userId, companyId: context.companyId, revokedAt: null },
+        data: { revokedAt },
       });
     }
+    return { before: currentTarget, after: updated };
   });
 
   await writeAuditLog(request, {
     companyId: context.companyId,
     userId: context.actorUserId,
-    action: password ? "company.user.password_changed" : "company.user.updated",
+    action: input.status === "SUSPENDED" ? "company.user.suspended" : input.status === "ACTIVE" ? "company.user.reactivated" : "company.user.role_updated",
     entityType: "CompanyUser",
     entityId: targetId,
-    before: { name: target.user.name, role: target.role, status: target.status },
-    after: { name, role: membershipData.role, status: membershipData.status, passwordChanged: Boolean(password) },
+    before: { role: target.before.role, status: target.before.status },
+    after: { role: target.after.role, status: target.after.status },
   });
 }
 
 export async function deleteCompanyUser(request: Request, context: CompanyUserContext, targetId: string) {
-  const target = await authorizeCompanyUser(context, targetId);
-
-  await prisma.companyUser.delete({ where: { id: targetId } });
-  await prisma.userSession.updateMany({
-    where: { userId: target.userId, companyId: context.companyId, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
-  await prisma.mobileDeviceSession.updateMany({
-    where: { userId: target.userId, companyId: context.companyId, revokedAt: null },
-    data: { revokedAt: new Date() },
+  assertCanManageUsers(context.actorRole);
+  const target = await prisma.$transaction(async (tx) => {
+    await lockCompany(tx, context.companyId);
+    const currentTarget = await findManageableTarget(tx, context, targetId);
+    await tx.companyUser.delete({ where: { id: targetId } });
+    const revokedAt = new Date();
+    await tx.userSession.updateMany({
+      where: { userId: currentTarget.userId, companyId: context.companyId, revokedAt: null },
+      data: { revokedAt },
+    });
+    await tx.mobileDeviceSession.updateMany({
+      where: { userId: currentTarget.userId, companyId: context.companyId, revokedAt: null },
+      data: { revokedAt },
+    });
+    return currentTarget;
   });
 
   await writeAuditLog(request, {

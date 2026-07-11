@@ -6,7 +6,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { CalendarClock, CheckCircle2, LoaderCircle, Search, ShieldAlert, WalletCards, X } from "lucide-react";
 
 type Subscription = { id: string; status: string; startsAt?: string; endsAt?: string; trialStartsAt?: string; trialEndsAt?: string; currentPeriodEndsAt?: string; remainingDays?: number; trialDurationDays?: number; isActive?: boolean; plan: { name: string; slug: string; trialDays: number } };
-type Company = { id: string; name: string; phone?: string; owner: { name: string; email: string; phone?: string }; billingProfile?: { legalName?: string; billingEmail?: string }; subscriptions: Subscription[] };
+type Company = { id: string; name: string; phone?: string; owner: { name: string; email: string; phone?: string }; billingProfile?: { legalName?: string; billingEmail?: string }; subscriptions: Subscription[]; seatUsage?: { limit: number; used: number; activeMembers: number; pendingInvitations: number; available: number; reconciliationRequired: boolean } };
 type ActionName = "ACTIVATE" | "EXTEND" | "SUSPEND" | "CANCEL" | "CHANGE_PLAN";
 type PendingAction = { subscription: Subscription; action: ActionName };
 const field = "w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-100 disabled:bg-slate-100 disabled:text-slate-600";
@@ -39,8 +39,9 @@ export function AdminSubscriptionsPage() {
       headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))),
     });
+    const result = await response.json();
     setLoading(false);
-    notify(response.ok ? "Abonelik ve manuel ödeme başarıyla oluşturuldu." : "İşlem tamamlanamadı. Bilgileri kontrol edip tekrar deneyin.", !response.ok);
+    notify(response.ok ? "Abonelik ve manuel ödeme başarıyla oluşturuldu." : subscriptionActionError(result), !response.ok);
     if (response.ok) void load(query);
   }
   async function submitAction(event: FormEvent<HTMLFormElement>) {
@@ -53,9 +54,10 @@ export function AdminSubscriptionsPage() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
+    const result = await response.json();
     setLoading(false);
     setPendingAction(undefined);
-    notify(response.ok ? "Abonelik işlemi tamamlandı." : "İşlem tamamlanamadı. Lütfen tekrar deneyin.", !response.ok);
+    notify(response.ok ? "Abonelik işlemi tamamlandı." : subscriptionActionError(result), !response.ok);
     if (response.ok) void load(query);
   }
 
@@ -71,14 +73,14 @@ export function AdminSubscriptionsPage() {
       <Field label="Ödeme yöntemi"><select name="paymentMethod" className={field}><option value="MANUAL_BANK_TRANSFER">Banka transferi</option><option value="MANUAL">Manuel</option><option value="FREE_PROMO">Ücretsiz / Promo</option><option value="OTHER">Diğer</option></select></Field>
       <Field label="Para birimi"><input name="currency" value="TRY" readOnly className={field}/></Field>
       <Field label="Enterprise özel tutar"><input name="customAmount" type="number" min="0" step="0.01" placeholder="Varsayılan plan tutarı kullanılır" className={field}/></Field>
-      <Field label="İç not"><input name="note" maxLength={500} placeholder="Banka dekontu veya işlem notu" className={field}/></Field>
+      <Field label="İşlem gerekçesi"><input required name="note" minLength={5} maxLength={500} placeholder="Atama gerekçesini yazın" className={field}/></Field>
       <button disabled={loading} className="rounded-xl bg-orange-500 px-4 py-3 font-semibold text-white hover:bg-orange-600 disabled:bg-orange-300 disabled:text-white md:col-span-3">{loading ? <LoaderCircle className="mx-auto size-5 animate-spin"/> : "Manuel etkinleştir"}</button>
     </form>
     <section className="rounded-2xl border bg-white p-5">
       <form onSubmit={(event) => { event.preventDefault(); void load(query); }} className="mb-5 flex flex-col gap-2 sm:flex-row"><label className="flex flex-1 items-center gap-2 rounded-xl border bg-white px-3"><Search className="size-4"/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Şirket, kullanıcı, e-posta veya telefon ara" className="w-full bg-transparent py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"/></label><button className={button}>Ara</button></form>
       {!companies ? <LoaderCircle className="animate-spin"/> : <div className="overflow-x-auto">
         <table className="w-full min-w-[1250px] text-sm">
-          <thead><tr className="border-b text-left text-slate-500"><th className="py-3">Şirket</th><th>Telefon</th><th>Fatura profili</th><th>Plan</th><th>Durum</th><th>Başlangıç</th><th>Bitiş</th><th>Deneme süresi</th><th>İşlemler</th></tr></thead>
+          <thead><tr className="border-b text-left text-slate-500"><th className="py-3">Şirket</th><th>Telefon</th><th>Fatura profili</th><th>Plan</th><th>Koltuk</th><th>Durum</th><th>Başlangıç</th><th>Bitiş</th><th>Deneme süresi</th><th>İşlemler</th></tr></thead>
           <tbody>{companies.map((company) => {
             const subscription = company.subscriptions[0];
             return <tr key={company.id} className="border-b last:border-0">
@@ -86,6 +88,7 @@ export function AdminSubscriptionsPage() {
               <td>{company.phone || company.owner.phone || "-"}</td>
               <td>{company.billingProfile?.billingEmail ? "Tamam" : "Eksik"}</td>
               <td>{subscription?.plan.name || "-"}</td>
+              <td><b>{company.seatUsage ? `${company.seatUsage.used} / ${company.seatUsage.limit}` : "-"}</b>{company.seatUsage?.reconciliationRequired ? <p className="mt-1 text-xs font-semibold text-red-600">Uzlaştırma gerekli</p> : null}</td>
               <td>{subscription?.isActive ? "Aktif" : subscription?.status || "-"}</td>
               <td>{date(subscription?.trialStartsAt || subscription?.startsAt)}</td>
               <td>{date(subscription?.trialEndsAt || subscription?.endsAt || subscription?.currentPeriodEndsAt)}</td>
@@ -113,3 +116,11 @@ function trialSummary(subscription?: Subscription) {
   return subscription.isActive ? `${duration} gün · ${subscription.remainingDays ?? 0} gün kaldı` : `${duration} gün · Sona erdi`;
 }
 function actionLabel(action: ActionName) { return ({ ACTIVATE: "Etkinleştir", EXTEND: "Uzat", SUSPEND: "Askıya al", CANCEL: "İptal et", CHANGE_PLAN: "Plan değiştir" })[action]; }
+function subscriptionActionError(result: { error?: string; details?: { usedSeats?: number; targetSeatLimit?: number } }) {
+  if (result.error === "DOWNGRADE_SEAT_RECONCILIATION_REQUIRED") {
+    return `Plan değiştirilemedi: ${result.details?.usedSeats ?? "?"} koltuk kullanımda, hedef plan sınırı ${result.details?.targetSeatLimit ?? "?"}. Önce fazla üyeleri askıya alın veya kaldırın.`;
+  }
+  if (result.error === "billing.profileIncomplete") return "Şirketin fatura profili eksik.";
+  if (result.error === "VALIDATION_ERROR") return "Zorunlu alanları ve tarih aralığını kontrol edin.";
+  return "İşlem tamamlanamadı. Bilgileri kontrol edip tekrar deneyin.";
+}

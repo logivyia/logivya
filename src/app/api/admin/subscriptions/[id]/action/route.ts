@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
+import { activateCompanySubscription, SubscriptionActivationError } from "@/server/billing/subscription-activation";
 import { prisma } from "@/server/db";
 import { requestId, safeAdminError } from "@/server/security/admin-request";
 import { writeAuditLog } from "@/server/security/audit";
@@ -23,20 +24,35 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const before = await prisma.subscription.findUnique({ where: { id: subscriptionId }, include: { plan: true } });
     if (!before) return NextResponse.json({ error: "NOT_FOUND", requestId: id }, { status: 404 });
     const data = parsed.data;
+    if (data.action === "ACTIVATE" || data.action === "CHANGE_PLAN") {
+      const now = new Date();
+      const currentEnd = before.currentPeriodEndsAt ?? before.endsAt ?? before.trialEndsAt;
+      const endsAt = currentEnd && currentEnd > now ? currentEnd : new Date(now.getTime() + 30 * 86_400_000);
+      const result = await activateCompanySubscription({
+        companyId: before.companyId,
+        planSlug: data.action === "CHANGE_PLAN" ? data.planSlug : before.plan.slug,
+        billingPeriod: before.billingPeriod === "TRIAL" ? "MONTHLY" : before.billingPeriod,
+        startsAt: now,
+        endsAt,
+        source: "MANUAL_ADMIN",
+        actorUserId: user.id,
+        reason: data.reason,
+        correlationId: id,
+      });
+      return NextResponse.json({ ok: true, subscription: result.subscription, requestId: id });
+    }
     let update: Parameters<typeof prisma.subscription.update>[0]["data"] = {};
-    if (data.action === "ACTIVATE") update = { status: "ACTIVE", expiredAt: null, cancelledAt: null, pastDueAt: null };
     if (data.action === "SUSPEND") update = { status: "SUSPENDED" };
     if (data.action === "CANCEL") update = { status: "CANCELED", cancelledAt: new Date(), cancelAtPeriodEnd: false };
     if (data.action === "EXTEND") update = { status: "ACTIVE", endsAt: data.endsAt, currentPeriodEndsAt: data.endsAt, expiredAt: null };
-    if (data.action === "CHANGE_PLAN") {
-      const plan = await prisma.plan.findUnique({ where: { slug: data.planSlug } });
-      if (!plan) return NextResponse.json({ error: "NOT_FOUND", requestId: id }, { status: 404 });
-      update = { planId: plan.id, status: "ACTIVE", expiredAt: null };
-    }
     const subscription = await prisma.subscription.update({ where: { id: subscriptionId }, data: update });
     await writeAuditLog(request, { companyId: before.companyId, userId: user.id, action: `admin.subscription.${data.action.toLowerCase()}`, entityType: "Subscription", entityId: subscriptionId, before: { status: before.status, plan: before.plan.slug, endsAt: before.endsAt }, after: { ...data, status: subscription.status } });
     return NextResponse.json({ ok: true, subscription, requestId: id });
   } catch (error) {
+    if (error instanceof SubscriptionActivationError) {
+      const status = error.message === "DOWNGRADE_SEAT_RECONCILIATION_REQUIRED" ? 409 : 400;
+      return NextResponse.json({ error: error.message, details: error.details, requestId: id }, { status });
+    }
     const safe = safeAdminError(error, id);
     return NextResponse.json(safe.body, { status: safe.status });
   }

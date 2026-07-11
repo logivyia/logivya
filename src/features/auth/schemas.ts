@@ -10,7 +10,11 @@ export const registerSchema = z.object({
   privacyAccepted: z.literal("on"),
   kvkkAccepted: z.literal("on"),
   referralCode: z.string().max(40).optional(),
-}).refine((input) => input.password === input.passwordConfirmation, { path: ["passwordConfirmation"], message: "validation.passwordMatch" });
+  invitationToken: z.string().min(32).max(200).optional(),
+  invitationCode: z.string().trim().min(16).max(32).optional(),
+})
+  .refine((input) => !(input.invitationToken && input.invitationCode), { path: ["invitationCode"], message: "validation.invalid" })
+  .refine((input) => input.password === input.passwordConfirmation, { path: ["passwordConfirmation"], message: "validation.passwordMatch" });
 export const loginSchema = z.object({ identifier: z.string().min(3, "validation.required").max(254), password: z.string().min(1, "validation.required") });
 
 const identifierSchema = z.string().trim().min(3, "validation.required").max(254).refine(

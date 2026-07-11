@@ -11,6 +11,7 @@ import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { whatsappUserMessage } from "@/server/whatsapp/user-errors";
 import { AccountStatus } from "@prisma/client";
 import { assertSameOrigin } from "@/server/whatsapp/request-guards";
+import { requestWhatsAppSessionRestoreForAccounts } from "@/server/whatsapp/session-restore";
 
 const schema = z.object({ label: z.string().min(2).max(80).optional() });
 export async function GET(request: Request) {
@@ -19,7 +20,11 @@ export async function GET(request: Request) {
     await cleanupStuckWhatsAppAccounts(company.id);
     const archivedParam = new URL(request.url).searchParams.get("archived");
     const includeArchived = archivedParam === "true" || archivedParam === "1";
-    const accounts = await prisma.whatsAppAccount.findMany({ where: { companyId: company.id, userId: user.id, ...(includeArchived ? {} : { archivedAt: null }) }, include: { _count: { select: { groups: true, contacts: true, recipients: true } } }, orderBy: { createdAt: "desc" }, take: 100 });
+    let accounts = await prisma.whatsAppAccount.findMany({ where: { companyId: company.id, userId: user.id, ...(includeArchived ? {} : { archivedAt: null }) }, include: { _count: { select: { groups: true, contacts: true, recipients: true } } }, orderBy: { createdAt: "desc" }, take: 100 });
+    const restoreCount = includeArchived ? 0 : await requestWhatsAppSessionRestoreForAccounts(accounts, { companyId: company.id, userId: user.id }, "web-accounts");
+    if (restoreCount) {
+      accounts = await prisma.whatsAppAccount.findMany({ where: { companyId: company.id, userId: user.id, archivedAt: null }, include: { _count: { select: { groups: true, contacts: true, recipients: true } } }, orderBy: { createdAt: "desc" }, take: 100 });
+    }
     return NextResponse.json({
       ok: true,
       accounts: accounts.map((account) => ({

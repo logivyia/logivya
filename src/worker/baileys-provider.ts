@@ -3,7 +3,7 @@
  * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
  * Do not modify without running the full WhatsApp regression test suite.
  */
-import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, fetchLatestWaWebVersion, getPlatformId, useMultiFileAuthState, type WAMessageKey, type WASocket } from "@whiskeysockets/baileys";
+import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, fetchLatestWaWebVersion, getPlatformId, useMultiFileAuthState, type Contact as BaileysContact, type WAMessageKey, type WASocket } from "@whiskeysockets/baileys";
 import { Prisma } from "@prisma/client";
 import QRCode from "qrcode";
 import { prisma } from "@/server/db";
@@ -14,6 +14,7 @@ import { canExposePhonePairingCode } from "@/server/whatsapp/pairing-code-state"
 import { hasActivePhonePairing, isPhonePairingActive } from "@/server/whatsapp/pairing-guard";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
+import { persistWhatsAppContacts, type ProviderContactRecord } from "@/server/whatsapp/contacts";
 import {
   backupWhatsAppSessionToDatabase,
   clearWhatsAppSession,
@@ -22,7 +23,7 @@ import {
   restoreWhatsAppSessionFromDatabase,
   whatsappSessionDirectory,
 } from "@/lib/whatsapp/session-manager";
-import type { DeleteGroupMessageInput, DeleteResult, GroupResult, RequestPairingCodeOptions, SendGroupMessageInput, SendResult, SessionResult, WhatsAppProvider } from "@/server/whatsapp/provider";
+import type { DeleteContactMessageInput, DeleteGroupMessageInput, DeleteResult, GroupResult, RequestPairingCodeOptions, SendContactMessageInput, SendGroupMessageInput, SendResult, SessionResult, WhatsAppProvider } from "@/server/whatsapp/provider";
 
 type SessionMode = "PAIR_QR" | "PAIR_PHONE" | "RESTORE" | "RECONNECT";
 type WhatsAppWebVersion = [number, number, number];
@@ -43,6 +44,7 @@ const qrTransientRetries = new Map<string, number>();
 const pairingTransientRetries = new Map<string, number>();
 const pairingRegisteredReconnects = new Map<string, number>();
 const pairingRetryScheduledAt = new Map<string, number>();
+const contactSnapshots = new Map<string, Map<string, ProviderContactRecord>>();
 const SOCKET_INITIALIZATION_TIMEOUT_MS = Number(process.env.WHATSAPP_SOCKET_INITIALIZATION_TIMEOUT_MS || 30_000);
 const PAIRING_SOCKET_BOOTSTRAP_MS = Number(process.env.WHATSAPP_PAIRING_SOCKET_BOOTSTRAP_MS || 5_000);
 const HEARTBEAT_INTERVAL_MS = Number(process.env.WHATSAPP_HEARTBEAT_INTERVAL_MS || 30_000);
@@ -72,6 +74,30 @@ const WHATSAPP_COMPANION_PLATFORM_DISPLAY = `${WHATSAPP_BROWSER[1]} (${WHATSAPP_
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function rememberContacts(accountId: string, contacts: Array<BaileysContact | Partial<BaileysContact>>, source: string) {
+  const snapshot = contactSnapshots.get(accountId) ?? new Map<string, ProviderContactRecord>();
+  const changed: ProviderContactRecord[] = [];
+  for (const contact of contacts) {
+    if (!contact.id) continue;
+    const previous = snapshot.get(contact.id);
+    const next = {
+      id: contact.id,
+      jid: contact.jid ?? previous?.jid,
+      name: contact.name ?? previous?.name,
+      notify: contact.notify ?? previous?.notify,
+      verifiedName: contact.verifiedName ?? previous?.verifiedName,
+    };
+    snapshot.set(contact.id, next);
+    changed.push(next);
+  }
+  contactSnapshots.set(accountId, snapshot);
+  if (changed.length) {
+    void persistWhatsAppContacts(accountId, changed, { source }).catch((error) =>
+      logger.error("whatsapp.contacts.persist_failed", error, { accountId, source, receivedCount: contacts.length, snapshotCount: snapshot.size }),
+    );
+  }
 }
 
 function errorMessage(error: unknown) {
@@ -875,6 +901,15 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       }
       await backupWhatsAppSessionToDatabase(accountId, "creds.update").catch((error) => logger.error("whatsapp.session.backup_failed", error, { accountId }));
     });
+    socket.ev.on("messaging-history.set", ({ contacts }) => {
+      rememberContacts(accountId, contacts, "BAILEYS_HISTORY");
+    });
+    socket.ev.on("contacts.upsert", (contacts) => {
+      rememberContacts(accountId, contacts, "BAILEYS_UPSERT");
+    });
+    socket.ev.on("contacts.update", (contacts) => {
+      rememberContacts(accountId, contacts, "BAILEYS_UPDATE");
+    });
     socket.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
       try {
         const currentMode = sessionModes.get(accountId) || mode;
@@ -1322,6 +1357,45 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     return { externalMessageId: result.key.id, messageKey: result.key };
   }
 
+  async syncContacts(accountId: string): Promise<{ count: number }> {
+    const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId }, select: { id: true, userId: true, archivedAt: true } });
+    if (!account || account.archivedAt || !account.userId) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
+    if (!sockets.get(accountId)?.user) await restoreWhatsAppSessionFromDatabase(accountId);
+    const socket = await this.ensureConnectedSocket(accountId);
+    const snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
+    if (snapshot.length) await persistWhatsAppContacts(accountId, snapshot, { source: "BAILEYS_MANUAL_SYNC" });
+
+    const existing = await prisma.contact.findMany({
+      where: { accountId, userId: account.userId },
+      select: { id: true, externalContactId: true },
+      take: 10_000,
+    });
+    for (let offset = 0; offset < existing.length; offset += 100) {
+      const batch = existing.slice(offset, offset + 100);
+      const availability = await socket.onWhatsApp(...batch.map((contact) => contact.externalContactId)) ?? [];
+      const available = new Set(availability.filter((item) => item.exists).map((item) => item.jid));
+      await Promise.all(batch.map((contact) => prisma.contact.update({
+        where: { id: contact.id },
+        data: { isWhatsAppUser: available.has(contact.externalContactId), isActive: available.has(contact.externalContactId) },
+      })));
+    }
+    await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { lastContactSyncAt: new Date() } });
+    logger.info("whatsapp.contacts.sync_completed", { accountId, snapshotCount: snapshot.length, verifiedCount: existing.length });
+    return { count: Math.max(snapshot.length, existing.length) };
+  }
+
+  async sendContactMessage(input: SendContactMessageInput): Promise<SendResult> {
+    logger.info("message.baileys.contact_send.delegated", { accountId: input.accountId, contactExternalId: input.contactExternalId, correlationId: input.correlationId });
+    return this.sendGroupMessage({
+      accountId: input.accountId,
+      groupExternalId: input.contactExternalId,
+      content: input.content,
+      correlationId: input.correlationId,
+      campaignId: input.campaignId,
+      recipientId: input.recipientId,
+    });
+  }
+
   async deleteGroupMessage(input: DeleteGroupMessageInput): Promise<DeleteResult> {
     const account = await prisma.whatsAppAccount.findUnique({ where: { id: input.accountId } });
     if (!account || account.archivedAt) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
@@ -1386,5 +1460,17 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       this.scheduleReconnect(input.accountId, `message_delete_failed:${errorMessage(error)}`);
       throw new Error("WHATSAPP_RECONNECT_REQUIRED");
     }
+  }
+
+  async deleteContactMessage(input: DeleteContactMessageInput): Promise<DeleteResult> {
+    logger.info("message.baileys.contact_delete.delegated", { accountId: input.accountId, contactExternalId: input.contactExternalId, correlationId: input.correlationId });
+    return this.deleteGroupMessage({
+      accountId: input.accountId,
+      groupExternalId: input.contactExternalId,
+      messageKey: input.messageKey,
+      correlationId: input.correlationId,
+      campaignId: input.campaignId,
+      recipientId: input.recipientId,
+    });
   }
 }

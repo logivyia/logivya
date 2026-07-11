@@ -13,7 +13,13 @@ type Campaign = {
   totalRecipients: number;
   sentCount: number;
   failedCount: number;
+  canceledCount?: number;
+  groupCount?: number;
+  contactCount?: number;
+  pendingCount?: number;
+  retryingCount?: number;
   createdAt: string;
+  completedAt?: string | null;
   deleteForEveryone?: DeleteForEveryoneState;
 };
 
@@ -79,6 +85,7 @@ function deleteForEveryoneSummary(state: DeleteForEveryoneState, t: (key: string
 
 export function MessageHistoryStablePage() {
   const { locale, t } = useI18n();
+  const isTr = locale === "tr";
   const [showDeleted, setShowDeleted] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -212,8 +219,13 @@ export function MessageHistoryStablePage() {
                           failed: campaign.failedCount,
                         })}{" "}
                         / {campaign.totalRecipients}
+                        <p className="mt-1 text-xs text-muted">{isTr ? "Gruplar" : "Groups"}: {campaign.groupCount ?? 0} · {isTr ? "Kişiler" : "Contacts"}: {campaign.contactCount ?? 0}</p>
+                        <p className="mt-1 text-xs text-muted">{isTr ? "Bekleyen" : "Pending"}: {campaign.pendingCount ?? 0} · {isTr ? "Yeniden deneniyor" : "Retrying"}: {campaign.retryingCount ?? 0}</p>
                       </td>
-                      <td className="px-5 py-4 text-muted">{new Date(campaign.createdAt).toLocaleString(locale)}</td>
+                      <td className="px-5 py-4 text-muted">
+                        <span className="block">{isTr ? "Oluşturuldu" : "Created"}: {new Date(campaign.createdAt).toLocaleString(locale)}</span>
+                        {campaign.completedAt ? <span className="mt-1 block text-xs">{isTr ? "Tamamlandı" : "Completed"}: {new Date(campaign.completedAt).toLocaleString(locale)}</span> : null}
+                      </td>
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap gap-2">
                           {campaign.failedCount > 0 && (

@@ -5,6 +5,7 @@ import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
 import { requestGroupSyncIfStale, resolveCurrentWhatsAppAccount } from "@/server/whatsapp/account-scope";
+import { requestWhatsAppSessionRestoreForAccounts } from "@/server/whatsapp/session-restore";
 
 export async function GET() {
   try {
@@ -15,7 +16,7 @@ export async function GET() {
       void requestGroupSyncIfStale(scope, currentAccount, "platform");
     }
 
-    const [accounts, groups, rawCategories, campaigns, subscription, onboarding, announcements] = await Promise.all([
+    const [initialAccounts, groups, rawCategories, campaigns, subscription, onboarding, announcements] = await Promise.all([
       prisma.whatsAppAccount.findMany({
         where: { companyId: company.id, userId: user.id },
         include: { _count: { select: { groups: true, contacts: true } }, sessions: { orderBy: { updatedAt: "desc" }, take: 1 } },
@@ -62,6 +63,20 @@ export async function GET() {
         take: 3,
       }),
     ]);
+    let accounts = initialAccounts;
+    const restoreCount = await requestWhatsAppSessionRestoreForAccounts(
+      accounts.filter((account) => !account.archivedAt),
+      { companyId: company.id, userId: user.id },
+      "platform-bootstrap",
+    );
+    if (restoreCount) {
+      accounts = await prisma.whatsAppAccount.findMany({
+        where: { companyId: company.id, userId: user.id },
+        include: { _count: { select: { groups: true, contacts: true } }, sessions: { orderBy: { updatedAt: "desc" }, take: 1 } },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      });
+    }
 
     const visibleGroups = groups
       .filter((group) => isRecoverableWhatsAppStatus(group.account.status, group.account.lastError))
@@ -90,6 +105,7 @@ export async function GET() {
       categories,
       campaigns,
       subscription: subscription?.subscription ?? null,
+      entitlements: subscription?.entitlements ?? null,
       onboarding,
       announcements,
     });

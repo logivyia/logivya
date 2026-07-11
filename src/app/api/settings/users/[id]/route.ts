@@ -19,8 +19,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "errors.generic";
-    const status = message === "NOT_FOUND" ? 404 : message === "validation.invalid" ? 400 : 403;
-    return NextResponse.json({ error: message }, { status });
+    const status = message === "NOT_FOUND" ? 404 : message === "validation.invalid" ? 400 : message === "SEAT_LIMIT_REACHED" ? 409 : 403;
+    return NextResponse.json({ error: message, limit: (error as { limit?: number } | null)?.limit }, { status });
   }
 }
 

@@ -5,6 +5,7 @@ import { createSession } from "@/server/auth/session";
 import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
 import { prisma } from "@/server/db";
 import { verifyPassword } from "@/server/security/passwords";
+import { resolvePreferredLoginMembership } from "@/server/team/login-membership";
 
 export async function POST(request: Request) {
   const ipAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
@@ -23,10 +24,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "auth.invalidCredentials" }, { status: 401 });
   }
 
-  const membership = await prisma.companyUser.findFirst({
-    where: { userId: user.id, status: "ACTIVE" },
-    orderBy: { createdAt: "asc" },
-  });
+  const membership = await resolvePreferredLoginMembership(user.id);
   if (!membership) return NextResponse.json({ error: "auth.workspaceUnavailable" }, { status: 403 });
 
   await createSession(user.id, membership.companyId, request);

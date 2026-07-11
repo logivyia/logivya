@@ -5,7 +5,7 @@ import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
 import { NOTIFICATION_TYPES, notifyPlatformAdmins } from "@/server/notifications/service";
 import { writeAuditLog } from "@/server/security/audit";
-import { supportTicketIdentityData, supportTicketWebVisibilityWhere } from "@/server/support";
+import { supportTicketIdentityData, supportTicketOwnerWhere, supportTicketStatuses } from "@/server/support";
 
 const schema = z.object({
   subject: z.string().trim().min(3).max(160),
@@ -13,7 +13,7 @@ const schema = z.object({
   message: z.string().trim().min(5).max(10000),
 });
 
-const validStatuses = new Set<SupportTicketStatus>(["OPEN", "PENDING", "IN_PROGRESS", "RESOLVED", "CLOSED"]);
+const validStatuses = new Set<SupportTicketStatus>(supportTicketStatuses);
 
 export async function GET(request: Request) {
   try {
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     const page = Math.max(1, Number(params.get("page") || 1));
     const status = params.get("status");
     const where: Prisma.SupportTicketWhereInput = {
-      ...supportTicketWebVisibilityWhere(context),
+      ...supportTicketOwnerWhere(context),
       ...(status && validStatuses.has(status as SupportTicketStatus) ? { status: status as SupportTicketStatus } : {}),
     };
 
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
         include: {
           company: { select: { id: true, name: true } },
           createdBy: { select: { name: true, email: true } },
-          messages: { orderBy: { createdAt: "desc" }, take: 1 },
+          messages: { where: { isInternal: false }, orderBy: { createdAt: "desc" }, take: 1 },
         },
         orderBy: { lastMessageAt: "desc" },
         skip: (page - 1) * 20,
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
         messages: {
           create: {
             senderUserId: user.id,
-            senderType: "CUSTOMER",
+            senderType: "USER",
             message: parsed.data.message,
           },
         },

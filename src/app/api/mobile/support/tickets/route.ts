@@ -52,7 +52,7 @@ export async function GET(request: Request) {
     const rows = await prisma.supportTicket.findMany({
       where,
       select: ticketSelect,
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ lastMessageAt: "desc" }, { createdAt: "desc" }],
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       take: take + 1,
     });
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
         messages: {
           create: {
             senderUserId: user.id,
-            senderType: "CUSTOMER",
+            senderType: "USER",
             message: parsed.data.message,
           },
         },

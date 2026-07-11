@@ -23,7 +23,8 @@
     "test:continuous-message-delivery": "tsx scripts/test-continuous-message-delivery-contracts.ts",
     "test:message-root-cause": "tsx scripts/test-message-delivery-root-cause.ts",
     "test:smart-schedule-date": "tsx scripts/test-smart-schedule-date.ts",
-    "test:stable-core": "tsx scripts/test-stable-core-contracts.ts && npm run test:whatsapp-session-persistence && npm run test:message-pipeline && npm run test:delete-for-everyone && npm run test:continuous-message-delivery && npm run audit:whatsapp-groups",
+    "test:mobile-auth-resilience": "tsx scripts/test-mobile-auth-resilience.ts",
+    "test:stable-core": "tsx scripts/test-stable-core-contracts.ts && npm run test:mobile-auth-resilience && npm run test:whatsapp-session-persistence && npm run test:message-pipeline && npm run test:delete-for-everyone && npm run test:continuous-message-delivery && npm run audit:whatsapp-groups",
     "release:acceptance": "npm run test:stable-core && tsx scripts/release-acceptance-gate.ts",
     "audit:whatsapp-groups": "tsx scripts/audit-whatsapp-group-isolation.ts",
     "repair:whatsapp-group-ownership": "tsx scripts/repair-whatsapp-group-ownership.ts --apply",
@@ -34,7 +35,12 @@
     "test:subscription-admin": "tsx scripts/test-subscription-admin.ts",
     "test:seven-day-trial": "tsx scripts/test-seven-day-trial.ts",
     "test:seven-day-trial:integration": "tsx scripts/test-seven-day-trial-integration.ts",
+    "test:team-contact-messaging": "tsx scripts/test-team-contact-messaging.ts",
+    "test:enterprise-subscription": "tsx scripts/test-enterprise-subscription.ts",
+    "test:team-contact-messaging:integration": "tsx scripts/test-team-contact-integration.ts",
+    "test:team-contact-messaging:api": "tsx scripts/test-team-contact-api-smoke.ts",
     "audit:seven-day-trial": "tsx scripts/audit-seven-day-trial-migration.ts",
+    "audit:team-contact-migration": "tsx scripts/audit-team-contact-migration.ts",
     "admin:promote": "tsx scripts/promote-super-admin.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
@@ -58,7 +64,7 @@
     "lucide-react": "^1.17.0",
     "next": "16.2.9",
     "next-themes": "^0.4.6",
-    "nodemailer": "^8.0.11",
+    "nodemailer": "9.0.3",
     "pg": "^8.21.0",
     "qrcode": "^1.5.4",
     "react": "19.2.4",
@@ -78,5 +84,8 @@
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "form-data": "4.0.6"
   }
 }

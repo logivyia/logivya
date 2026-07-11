@@ -3,7 +3,7 @@ import { prisma } from "@/server/db";
 export async function syncOnboarding(companyId:string){
   const [company,accounts,groups,categories,messages]=await Promise.all([
     prisma.company.findUnique({where:{id:companyId},include:{billingProfile:true}}),
-    prisma.whatsAppAccount.count({where:{companyId,status:{in:["CONNECTED","CONNECTING","DISCONNECTED","RECONNECT_REQUIRED"]},archivedAt:null,NOT:{lastError:{in:["WHATSAPP_LOGGED_OUT","WHATSAPP_CREDENTIALS_MISSING"]}}}}),
+    prisma.whatsAppAccount.count({where:{companyId,status:{in:["CONNECTED","CONNECTING","DISCONNECTED","RECONNECT_REQUIRED"]},archivedAt:null,NOT:{lastError:{equals:"WHATSAPP_LOGGED_OUT"}}}}),
     prisma.whatsAppGroup.count({where:{companyId,isArchived:false}}),
     prisma.category.count({where:{companyId,archivedAt:null}}),
     prisma.messageRecipient.count({where:{campaign:{companyId},status:"SENT"}}),

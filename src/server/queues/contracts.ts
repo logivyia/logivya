@@ -11,7 +11,9 @@ export type DeleteForEveryoneJob = {
   campaignId: string;
   recipientId: string;
   whatsappAccountId: string;
-  groupJid: string;
+  groupJid?: string;
+  targetJid?: string;
+  targetType?: "GROUP" | "CONTACT";
   messageKeyJson: unknown;
   userId: string;
   correlationId: string;

@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { activateSubscriptionManually } from "@/server/billing/manual-activation";
+import { SubscriptionActivationError } from "@/server/billing/subscription-activation";
 import { requestId, safeAdminError } from "@/server/security/admin-request";
+
+const optionalAmount = z.preprocess((value) => value === "" || value === null ? undefined : value, z.coerce.number().min(0).optional());
 
 const schema = z.object({
   companyId: z.string().cuid(),
@@ -12,8 +15,8 @@ const schema = z.object({
   endsAt: z.coerce.date(),
   currency: z.literal("TRY").default("TRY"),
   paymentMethod: z.enum(["MANUAL_BANK_TRANSFER", "MANUAL", "FREE_PROMO", "OTHER"]),
-  note: z.string().trim().max(500).optional(),
-  customAmount: z.coerce.number().min(0).optional(),
+  note: z.string().trim().min(5).max(500),
+  customAmount: optionalAmount,
 }).refine((value) => value.planSlug === "enterprise" || value.customAmount === undefined, {
   message: "Custom amount is only available for Enterprise.",
   path: ["customAmount"],
@@ -33,6 +36,10 @@ export async function POST(request: Request) {
     const result = await activateSubscriptionManually({ ...parsed.data, adminUserId: user.id, idempotencyKey });
     return NextResponse.json({ ...result, requestId: id }, { status: 201 });
   } catch (error) {
+    if (error instanceof SubscriptionActivationError) {
+      const status = error.message === "DOWNGRADE_SEAT_RECONCILIATION_REQUIRED" ? 409 : 400;
+      return NextResponse.json({ error: error.message, details: error.details, requestId: id }, { status });
+    }
     const safe = safeAdminError(error, id);
     return NextResponse.json(safe.body, { status: safe.status });
   }

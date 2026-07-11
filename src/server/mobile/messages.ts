@@ -11,6 +11,7 @@ export async function createMobileMessageCampaign(
     content: string;
     groupIds: string[];
     categoryIds: string[];
+    contactIds: string[];
     scheduleType?: "SEND_NOW" | "SCHEDULED" | "RECURRING";
     scheduledAt?: Date;
     recurringRule?: RecurringRule;

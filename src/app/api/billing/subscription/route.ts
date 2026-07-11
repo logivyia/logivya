@@ -7,7 +7,10 @@ import { prisma } from "@/server/db";
 export async function GET() {
   try {
     const { company } = await requireApiSession();
-    const current = await subscriptionAccess.getCurrent(company.id);
+    const [current, entitlements] = await Promise.all([
+      subscriptionAccess.getCurrent(company.id),
+      subscriptionAccess.getSummary(company.id),
+    ]);
     const subscription = current?.subscription
       ? await prisma.subscription.findUnique({
           where: { id: current.subscription.id },
@@ -16,6 +19,7 @@ export async function GET() {
       : null;
     return NextResponse.json({
       subscription: subscription ? { ...subscription, ...serializeSubscription(subscription) } : null,
+      entitlements,
     });
   } catch {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });

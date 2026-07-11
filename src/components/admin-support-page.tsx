@@ -8,7 +8,8 @@ type SupportMessage = {
   id: string;
   senderType: string;
   message: string;
-  isInternal: boolean;
+  attachmentUrl?: string | null;
+  isInternal?: boolean;
   createdAt: string;
   senderUser?: { name: string | null; email: string } | null;
 };
@@ -28,30 +29,41 @@ type SupportTicket = {
   createdAt: string;
   updatedAt?: string;
   lastMessageAt?: string;
+  closedAt?: string | null;
   company?: { id: string; name: string } | null;
   createdBy?: { id: string; name: string | null; email: string } | null;
   assignedToAdmin?: { id: string; name: string | null; email: string } | null;
   messages?: SupportMessage[];
 };
 
-const statuses = [
-  ["ALL", "Tumu"],
-  ["OPEN", "Acik"],
-  ["PENDING", "Devam ediyor"],
-  ["IN_PROGRESS", "Islemde"],
-  ["RESOLVED", "Cozuldu"],
-  ["CLOSED", "Kapali"],
+const listStatuses = [
+  ["ALL", "Tümü"],
+  ["OPEN", "Açık"],
+  ["PENDING", "Beklemede"],
+  ["IN_PROGRESS", "İşlemde"],
+  ["ANSWERED", "Yanıtlandı"],
+  ["RESOLVED", "Çözüldü"],
+  ["CLOSED", "Kapalı"],
+] as const;
+
+const editableStatuses = [
+  ["OPEN", "Açık"],
+  ["PENDING", "Beklemede"],
+  ["IN_PROGRESS", "İşlemde"],
+  ["ANSWERED", "Yanıtlandı"],
+  ["RESOLVED", "Çözüldü"],
+  ["CLOSED", "Kapalı"],
 ] as const;
 
 const field = "w-full rounded-xl border bg-white px-3 py-3 text-sm outline-none";
 const button = "inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50";
-const ghost = "inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-primary";
+const ghost = "inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-primary disabled:opacity-50";
 
 function statusLabel(status: string) {
-  return statuses.find(([value]) => value === status)?.[1] ?? status;
+  return listStatuses.find(([value]) => value === status)?.[1] ?? status;
 }
 
-function formatDate(value?: string) {
+function formatDate(value?: string | null) {
   if (!value) return "-";
   return new Date(value).toLocaleString("tr-TR");
 }
@@ -64,25 +76,35 @@ function ticketCategory(ticket: SupportTicket) {
   return ticket.category || ticket.type;
 }
 
+function messageRoleLabel(message: SupportMessage) {
+  if (message.isInternal) return "İç not";
+  if (message.senderType === "ADMIN") return "Yönetici yanıtı";
+  if (message.senderType === "USER" || message.senderType === "CUSTOMER") return "Kullanıcı mesajı";
+  return "Sistem mesajı";
+}
+
 export function AdminSupportPage() {
   const [status, setStatus] = useState("ALL");
   const [page, setPage] = useState(1);
-  const [q, setQ] = useState("");
+  const [search, setSearch] = useState("");
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SupportTicket | null>(null);
   const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 1 });
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [savingReply, setSavingReply] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [replyText, setReplyText] = useState("");
+  const [statusDraft, setStatusDraft] = useState("OPEN");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: "30", status });
-    if (q.trim()) params.set("q", q.trim());
+    if (search.trim()) params.set("search", search.trim());
     return params.toString();
-  }, [page, q, status]);
+  }, [page, search, status]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -90,16 +112,17 @@ export function AdminSupportPage() {
     try {
       const response = await fetch(`/api/admin/support/tickets?${query}`, { cache: "no-store" });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Destek talepleri yuklenemedi.");
-      setTickets(payload.tickets || []);
+      if (!response.ok) throw new Error(payload.error || "Destek talepleri yüklenemedi.");
+      const nextTickets = payload.tickets || [];
+      setTickets(nextTickets);
       setPagination(payload.pagination || { page: 1, total: 0, pages: 1 });
-      if (!selectedId && payload.tickets?.[0]?.id) setSelectedId(payload.tickets[0].id);
+      setSelectedId((current) => current ?? nextTickets[0]?.id ?? null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Destek talepleri yuklenemedi.");
+      setError(loadError instanceof Error ? loadError.message : "Destek talepleri yüklenemedi.");
     } finally {
       setLoading(false);
     }
-  }, [query, selectedId]);
+  }, [query]);
 
   const loadDetail = useCallback(async (id: string) => {
     setDetailLoading(true);
@@ -107,10 +130,11 @@ export function AdminSupportPage() {
     try {
       const response = await fetch(`/api/admin/support/tickets/${id}`, { cache: "no-store" });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Destek talebi acilmadi.");
+      if (!response.ok) throw new Error(payload.error || "Destek talebi açılamadı.");
       setSelected(payload.ticket);
+      setStatusDraft(payload.ticket?.status || "OPEN");
     } catch (detailError) {
-      setError(detailError instanceof Error ? detailError.message : "Destek talebi acilmadi.");
+      setError(detailError instanceof Error ? detailError.message : "Destek talebi açılamadı.");
     } finally {
       setDetailLoading(false);
     }
@@ -124,56 +148,74 @@ export function AdminSupportPage() {
     if (selectedId) void loadDetail(selectedId);
   }, [loadDetail, selectedId]);
 
-  async function updateTicket(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    setReplyText("");
+    setNotice("");
+  }, [selectedId]);
+
+  async function sendReply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selected || saving) return;
-    const form = new FormData(event.currentTarget);
-    const message = String(form.get("message") || "").trim();
-    const nextStatus = String(form.get("status") || selected.status);
-    const priority = String(form.get("priority") || selected.priority);
-    const internalNote = form.get("internalNote") === "on";
-    if (!message && nextStatus === selected.status && priority === selected.priority) {
-      setNotice("Degisiklik yok.");
-      return;
-    }
-    setSaving(true);
+    if (!selected || savingReply || !replyText.trim()) return;
+    setSavingReply(true);
     setError("");
     setNotice("");
     try {
-      const response = await fetch(`/api/admin/support/tickets/${selected.id}`, {
-        method: "PATCH",
+      const response = await fetch(`/api/admin/support/tickets/${selected.id}/messages`, {
+        method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: message || undefined, status: nextStatus, priority, internalNote }),
+        body: JSON.stringify({ message: replyText.trim() }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Destek talebi guncellenemedi.");
-      event.currentTarget.reset();
-      setNotice("Destek talebi guncellendi.");
+      if (!response.ok) throw new Error(payload.message || payload.error || "Yanıt gönderilemedi.");
+      setReplyText("");
+      setNotice("Yanıt gönderildi.");
       await Promise.all([load(), loadDetail(selected.id)]);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Destek talebi guncellenemedi.");
+      setError(saveError instanceof Error ? saveError.message : "Yanıt gönderilemedi.");
     } finally {
-      setSaving(false);
+      setSavingReply(false);
+    }
+  }
+
+  async function updateStatus() {
+    if (!selected || savingStatus || statusDraft === selected.status) return;
+    setSavingStatus(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/admin/support/tickets/${selected.id}/status`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: statusDraft }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || payload.error || "Talep durumu güncellenemedi.");
+      setNotice("Talep durumu güncellendi.");
+      await Promise.all([load(), loadDetail(selected.id)]);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Talep durumu güncellenemedi.");
+    } finally {
+      setSavingStatus(false);
     }
   }
 
   return (
     <div>
       <header className="mb-7">
-        <p className="text-xs font-semibold uppercase tracking-[.2em] text-primary">Logivya Destek Operasyonlari</p>
+        <p className="text-xs font-semibold uppercase tracking-[.2em] text-primary">Logivya Destek Operasyonları</p>
         <h1 className="mt-2 text-3xl font-semibold">Destek Talepleri</h1>
-        <p className="mt-2 text-sm text-muted">Tum sirketlerden gelen destek taleplerini merkezi akistan yonetin.</p>
+        <p className="mt-2 text-sm text-muted">Tüm şirketlerden gelen destek taleplerini merkezi akıştan yönetin.</p>
       </header>
 
       <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto]">
         <input
           className={field}
-          value={q}
+          value={search}
           onChange={(event) => {
             setPage(1);
-            setQ(event.target.value);
+            setSearch(event.target.value);
           }}
-          placeholder="Konu, sirket, kullanici veya e-posta ara..."
+          placeholder="Konu, şirket, kullanıcı veya e-posta ara..."
         />
         <button type="button" className={ghost} onClick={() => void load()}>
           <RefreshCw className="size-4" />
@@ -182,7 +224,7 @@ export function AdminSupportPage() {
       </div>
 
       <div className="mb-5 flex flex-wrap gap-2">
-        {statuses.map(([value, label]) => (
+        {listStatuses.map(([value, label]) => (
           <button
             key={value}
             type="button"
@@ -200,21 +242,21 @@ export function AdminSupportPage() {
       {error ? <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
       {notice ? <p className="mb-4 rounded-xl bg-green-50 p-3 text-sm font-semibold text-green-700">{notice}</p> : null}
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_460px]">
         <section className="panel rounded-2xl p-0">
           <div className="border-b p-4 text-sm font-semibold text-muted">
-            {loading ? "Yukleniyor..." : `${pagination.total} destek talebi`}
+            {loading ? "Yükleniyor..." : `${pagination.total} destek talebi`}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs uppercase tracking-wide text-muted">
                   <th className="px-4 py-3">Talep</th>
-                  <th className="px-4 py-3">Sirket</th>
-                  <th className="px-4 py-3">Kullanici e-posta</th>
+                  <th className="px-4 py-3">Şirket</th>
+                  <th className="px-4 py-3">Kullanıcı e-posta</th>
                   <th className="px-4 py-3">Durum</th>
                   <th className="px-4 py-3">Kategori</th>
-                  <th className="px-4 py-3">Olusturma</th>
+                  <th className="px-4 py-3">Son mesaj</th>
                 </tr>
               </thead>
               <tbody>
@@ -226,23 +268,29 @@ export function AdminSupportPage() {
                   >
                     <td className="px-4 py-4">
                       <p className="font-semibold">{ticketTitle(ticket)}</p>
-                      <p className="mt-1 text-xs text-muted">{ticket.source || "WEB"}</p>
+                      <button type="button" className="mt-1 text-xs font-semibold text-primary">
+                        Talebi aç
+                      </button>
                     </td>
                     <td className="px-4 py-4">{ticket.company?.name || "-"}</td>
                     <td className="px-4 py-4">{ticket.createdBy?.email || "-"}</td>
                     <td className="px-4 py-4">{statusLabel(ticket.status)}</td>
                     <td className="px-4 py-4">{ticketCategory(ticket)}</td>
-                    <td className="px-4 py-4">{formatDate(ticket.createdAt)}</td>
+                    <td className="px-4 py-4">{formatDate(ticket.lastMessageAt || ticket.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {!loading && !tickets.length ? <p className="py-12 text-center text-sm text-muted">Kayit bulunmuyor.</p> : null}
+          {!loading && !tickets.length ? <p className="py-12 text-center text-sm text-muted">Kayıt bulunmuyor.</p> : null}
           <div className="flex items-center justify-between gap-3 border-t p-4 text-sm">
-            <button className={ghost} disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Onceki</button>
+            <button className={ghost} disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+              Önceki
+            </button>
             <span className="text-muted">Sayfa {pagination.page} / {Math.max(1, pagination.pages)}</span>
-            <button className={ghost} disabled={page >= pagination.pages} onClick={() => setPage((value) => value + 1)}>Sonraki</button>
+            <button className={ghost} disabled={page >= pagination.pages} onClick={() => setPage((value) => value + 1)}>
+              Sonraki
+            </button>
           </div>
         </section>
 
@@ -251,26 +299,40 @@ export function AdminSupportPage() {
             <div className="grid min-h-80 place-items-center text-center text-sm text-muted">
               <div>
                 <Ticket className="mx-auto mb-3 size-8 text-primary" />
-                {detailLoading ? "Talep yukleniyor..." : "Detay gormek icin talep secin."}
+                {detailLoading ? "Talep yükleniyor..." : "Detay görmek için talep seçin."}
               </div>
             </div>
           ) : (
             <div className="grid gap-5">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[.18em] text-primary">{ticketCategory(selected)} - {selected.source || "WEB"}</p>
+                <p className="text-xs font-semibold uppercase tracking-[.18em] text-primary">
+                  {ticketCategory(selected)} - {selected.source || "WEB"}
+                </p>
                 <h2 className="mt-2 text-xl font-semibold">{ticketTitle(selected)}</h2>
                 <p className="mt-2 text-sm text-muted">{selected.createdBy?.email || "-"} - {selected.company?.name || "-"}</p>
                 <p className="mt-1 text-xs text-muted">{formatDate(selected.createdAt)}</p>
               </div>
 
-              <div className="grid gap-3">
+              <div className="rounded-2xl border bg-white p-4">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted">Talep durumu</label>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <select className={field} value={statusDraft} onChange={(event) => setStatusDraft(event.target.value)}>
+                    {editableStatuses.map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                  <button type="button" className={button} disabled={savingStatus || statusDraft === selected.status} onClick={() => void updateStatus()}>
+                    {savingStatus ? <RefreshCw className="size-4 animate-spin" /> : null}
+                    Güncelle
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid max-h-[420px] gap-3 overflow-y-auto pr-1">
                 {(selected.messages || []).map((message) => (
                   <article key={message.id} className={`rounded-xl border p-3 ${message.isInternal ? "bg-amber-50" : "bg-white"}`}>
                     <div className="mb-2 flex items-center justify-between gap-3">
-                      <p className="text-xs font-semibold text-muted">
-                        {message.senderType === "ADMIN" ? "Admin" : message.senderType === "CUSTOMER" ? "Kullanici" : "Sistem"}
-                        {message.isInternal ? " - Ic not" : ""}
-                      </p>
+                      <p className="text-xs font-semibold text-muted">{messageRoleLabel(message)}</p>
                       <p className="text-xs text-muted">{formatDate(message.createdAt)}</p>
                     </div>
                     <p className="whitespace-pre-wrap text-sm leading-6">{message.message}</p>
@@ -278,26 +340,17 @@ export function AdminSupportPage() {
                 ))}
               </div>
 
-              <form className="grid gap-3" onSubmit={updateTicket}>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <select name="status" className={field} defaultValue={selected.status}>
-                    {statuses.filter(([value]) => value !== "ALL").map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                  <select name="priority" className={field} defaultValue={selected.priority}>
-                    <option value="LOW">Dusuk</option>
-                    <option value="MEDIUM">Orta</option>
-                    <option value="HIGH">Yuksek</option>
-                    <option value="URGENT">Acil</option>
-                  </select>
-                </div>
-                <textarea name="message" className={`${field} min-h-32`} placeholder="Kullaniciya yanit yazin..." />
-                <label className="inline-flex items-center gap-2 text-sm text-muted">
-                  <input type="checkbox" name="internalNote" />
-                  Ic not olarak kaydet
-                </label>
-                <button className={button} disabled={saving}>
-                  {saving ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
-                  Kaydet / Yanitla
+              <form className="grid gap-3" onSubmit={sendReply}>
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted">Yanıt yaz</label>
+                <textarea
+                  value={replyText}
+                  onChange={(event) => setReplyText(event.target.value)}
+                  className={`${field} min-h-32`}
+                  placeholder="Kullanıcıya yanıt yazın..."
+                />
+                <button className={button} disabled={savingReply || !replyText.trim()}>
+                  {savingReply ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
+                  Yanıt gönder
                 </button>
               </form>
             </div>
@@ -307,7 +360,7 @@ export function AdminSupportPage() {
 
       <div className="mt-5 rounded-2xl border bg-white p-4 text-sm text-muted">
         <MessageSquare className="me-2 inline size-4 text-primary" />
-        Yeni mobil destek talepleri bu listede MOBILE kaynagi ile gorunur. Yenile butonu en guncel kayitlari getirir.
+        Kullanıcı yanıtları ve yönetici yanıtları bu konuşma akışında gerçek zamanlı yenileme sonrası görünür.
       </div>
     </div>
   );

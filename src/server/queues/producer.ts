@@ -3,7 +3,7 @@ import { whatsappQueue } from "@/server/queues/client";
 import { logger } from "@/server/observability/logger";
 
 type WhatsAppConnectionJob =
-  | { action: "connect" | "reconnect" | "sync" | "disconnect"; accountId: string }
+  | { action: "connect" | "reconnect" | "sync" | "sync-contacts" | "disconnect"; accountId: string }
   | { action: "pairing" | "pairing-refresh"; accountId: string; phoneNumber: string; preserveRetryCounter?: boolean };
 
 export async function enqueueWhatsAppJob(name: string, data: WhatsAppConnectionJob, options?: JobsOptions) {

@@ -1,5 +1,6 @@
 import type { Plan, Subscription } from "@prisma/client";
 import { remainingDaysUntil } from "@/server/billing/trial-policy";
+import { deriveCompanyEntitlements } from "@/server/billing/company-entitlements";
 
 type SubscriptionWithPlan = Subscription & { plan: Plan };
 
@@ -16,18 +17,24 @@ function earliestDate(...dates: Array<Date | null | undefined>) {
 
 export function serializePlanLimits(plan?: Plan | null) {
   if (!plan) return null;
+  const entitlements = deriveCompanyEntitlements(plan, true);
   return {
     maxWhatsappAccounts: plan.maxWhatsappAccounts,
-    maxTeamUsers: plan.maxTeamUsers,
+    maxTeamUsers: entitlements.teamSeats,
     maxGroups: plan.maxGroups,
     maxMessagesPerDay: plan.maxMessagesPerDay,
     maxMessagesPerMonth: plan.maxMessagesPerMonth,
-    hasScheduledMessages: true,
-    hasRecurringMessages: true,
+    hasScheduledMessages: entitlements.scheduledMessages,
+    hasRecurringMessages: entitlements.recurringMessages,
     advancedReportingEnabled: plan.advancedReportingEnabled,
     hasNoBranding: plan.hasNoBranding,
     hasCrm: plan.hasCrm,
     hasApi: plan.hasApi,
+    groupMessagingEnabled: entitlements.groupMessaging,
+    contactMessagingEnabled: entitlements.contactMessaging,
+    deleteForEveryoneEnabled: entitlements.deleteForEveryone,
+    advertisingEnabled: entitlements.advertisingEnabled,
+    advancedSupportEnabled: entitlements.advancedSupport,
   };
 }
 
@@ -48,7 +55,7 @@ export function serializeSubscription(subscription?: SubscriptionWithPlan | null
       isActive: false,
       isExpired: true,
       limits: null,
-      entitlements: standardEntitlements(false),
+      entitlements: deriveCompanyEntitlements(null, false),
       lockedFeatures: LOCKED_FEATURES,
       upgradeRequired: true,
     };
@@ -76,25 +83,8 @@ export function serializeSubscription(subscription?: SubscriptionWithPlan | null
     isActive,
     isExpired: !isActive,
     limits: serializePlanLimits(subscription.plan),
-    entitlements: standardEntitlements(isActive),
+    entitlements: deriveCompanyEntitlements(subscription.plan, isActive),
     lockedFeatures: isActive ? [] : LOCKED_FEATURES,
     upgradeRequired: !isActive,
-  };
-}
-
-function standardEntitlements(active: boolean) {
-  return {
-    accountAccess: true,
-    support: true,
-    whatsappConnect: active,
-    groupSync: active,
-    categoryManagement: active,
-    messageSend: active,
-    scheduledMessages: active,
-    recurringMessages: active,
-    messageHistory: true,
-    deleteForEveryone: active,
-    deleteForMe: true,
-    platformDelete: true,
   };
 }

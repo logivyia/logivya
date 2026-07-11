@@ -38,6 +38,8 @@ function main() {
   assertIncludes("src/server/messages/delete-for-everyone.ts", "recipient.account.userId !== input.userId");
   assertIncludes("src/server/messages/delete-for-everyone.ts", "recipient.group?.userId !== input.userId");
   assertIncludes("src/worker/index.ts", "job.name === \"delete-for-everyone\"");
+  assertIncludes("src/worker/index.ts", "withWhatsAppAccountLock");
+  assertIncludes("src/worker/index.ts", "message-delete-for-everyone");
   assertIncludes("src/worker/index.ts", "provider.deleteGroupMessage");
   assertIncludes("src/worker/index.ts", "recipient.campaign.createdById !== jobData.userId");
   assertIncludes("src/worker/index.ts", "recipient.account.userId !== jobData.userId");

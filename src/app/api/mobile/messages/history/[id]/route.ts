@@ -26,12 +26,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         totalRecipients: true,
         sentCount: true,
         failedCount: true,
+        type: true,
         createdAt: true,
         recipients: {
           select: {
             id: true,
             recipientName: true,
+            recipientExternalId: true,
+            targetType: true,
             status: true,
+            attemptCount: true,
             errorMessage: true,
             sentAt: true,
             failedAt: true,

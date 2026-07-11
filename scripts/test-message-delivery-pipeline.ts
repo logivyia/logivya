@@ -34,6 +34,8 @@ for (const value of [
   "MESSAGE_JOB_OWNERSHIP_MISMATCH",
   "message.recurring.group_resolution_failed",
   "readCampaignCorrelationId",
+  "withWhatsAppAccountLock",
+  "WHATSAPP_ACCOUNT_LOCK_TIMEOUT",
   "provider.sendGroupMessage",
   "correlationId",
 ]) {

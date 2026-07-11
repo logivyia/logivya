@@ -12,6 +12,7 @@ import { requestGroupSyncIfStale, resolveCurrentWhatsAppAccount } from "@/server
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
 import { createMessageCorrelationId, withCampaignMetadata } from "@/server/messages/correlation";
 import { traceMessageStage } from "@/server/messages/delivery-tracing";
+import { resolveOwnedWhatsAppContacts } from "@/server/whatsapp/contacts";
 
 type MessageScheduleType = "SEND_NOW" | "SCHEDULED" | "RECURRING";
 type MessageDeliverySource = "web" | "mobile" | "recurring";
@@ -154,6 +155,7 @@ export async function createMessageDeliveryCampaign(
     content: string;
     groupIds: string[];
     categoryIds: string[];
+    contactIds: string[];
     scheduleType?: MessageScheduleType;
     scheduledAt?: Date;
     recurringRule?: RecurringRule;
@@ -173,6 +175,7 @@ export async function createMessageDeliveryCampaign(
     ...traceContext,
     requestedGroupCount: input.groupIds.length,
     requestedCategoryCount: input.categoryIds.length,
+    requestedContactCount: input.contactIds.length,
   });
 
   await traceMessageStage("auth.permission", traceContext, async () => {
@@ -187,6 +190,22 @@ export async function createMessageDeliveryCampaign(
       throw new MessageDeliveryError("RECURRING_RULE_REQUIRED", "Tekrarlayan gonderim kurali eksik.", 400, undefined, correlationId);
     }
   });
+
+  if (input.contactIds.length) {
+    const contactAccess = await traceMessageStage("subscription.contact_access", traceContext, async () =>
+      subscriptionAccess.canSendTargets(actor.companyId, { groupCount: 0, contactCount: 1 }),
+    );
+    if (!contactAccess.allowed) {
+      const contactLocked = contactAccess.reason === "entitlement.contactMessaging";
+      throw new MessageDeliveryError(
+        contactLocked ? "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL" : "SUBSCRIPTION_LOCKED",
+        contactLocked ? "Kişilere mesaj gönderimi Profesyonel paketinde kullanılabilir." : "Aboneliğiniz aktif değil. Mesaj göndermek için paketinizi yenileyin.",
+        403,
+        { reason: contactAccess.reason },
+        correlationId,
+      );
+    }
+  }
 
   const currentAccount = await traceMessageStage("audience.current_account.resolve", traceContext, async () => {
     const account = await resolveCurrentWhatsAppAccount({ companyId: actor.companyId, userId: actor.userId });
@@ -240,12 +259,35 @@ export async function createMessageDeliveryCampaign(
       throw error;
     }
   });
-  if (!groups.length) {
+  const contacts = await traceMessageStage("audience.contacts.resolve", {
+    ...traceContext,
+    requestedContactCount: input.contactIds.length,
+    whatsappAccountId: currentAccount.id,
+  }, async () => {
+    try {
+      return await resolveOwnedWhatsAppContacts(
+        { companyId: actor.companyId, userId: actor.userId, accountId: currentAccount.id },
+        input.contactIds,
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "WHATSAPP_CONTACT_OWNERSHIP_MISMATCH") {
+        throw new MessageDeliveryError(
+          "WHATSAPP_CONTACT_OWNERSHIP_MISMATCH",
+          "Bu kisi bu WhatsApp hesabina ait degil.",
+          403,
+          { requestedContactCount: input.contactIds.length },
+          correlationId,
+        );
+      }
+      throw error;
+    }
+  });
+  if (!groups.length && !contacts.length) {
     throw new MessageDeliveryError(
-      "NO_SENDABLE_GROUPS",
-      "Gonderilebilir bagli WhatsApp grubu bulunamadi. Lutfen WhatsApp hesabinizi baglayin veya gruplari senkronize edin.",
+      "NO_SENDABLE_TARGETS",
+      "Gonderilebilir WhatsApp grubu veya kisi bulunamadi.",
       400,
-      { requestedGroupCount: input.groupIds.length, requestedCategoryCount: input.categoryIds.length },
+      { requestedGroupCount: input.groupIds.length, requestedCategoryCount: input.categoryIds.length, requestedContactCount: input.contactIds.length },
       correlationId,
     );
   }
@@ -253,7 +295,8 @@ export async function createMessageDeliveryCampaign(
   const access = await traceMessageStage("subscription.message_access", {
     ...traceContext,
     resolvedGroupCount: groups.length,
-  }, async () => subscriptionAccess.canSendMessage(actor.companyId, groups.length));
+    resolvedContactCount: contacts.length,
+  }, async () => subscriptionAccess.canSendTargets(actor.companyId, { groupCount: groups.length, contactCount: contacts.length }));
   if (!access.allowed) {
     await writeAuditLog(request, {
       companyId: actor.companyId,
@@ -262,9 +305,10 @@ export async function createMessageDeliveryCampaign(
       entityType: "MessageCampaign",
       after: { reason: access.reason, limit: access.limit, used: access.used, correlationId },
     });
+    const contactLocked = access.reason === "entitlement.contactMessaging";
     throw new MessageDeliveryError(
-      "SUBSCRIPTION_LOCKED",
-      "Aboneliginiz aktif degil. Mesaj gondermek icin paketinizi yenileyin.",
+      contactLocked ? "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL" : "SUBSCRIPTION_LOCKED",
+      contactLocked ? "Kisilere mesaj gonderimi Profesyonel paketinde kullanilabilir." : "Aboneliginiz aktif degil. Mesaj gondermek icin paketinizi yenileyin.",
       403,
       { reason: access.reason, limit: access.limit, used: access.used },
       correlationId,
@@ -283,31 +327,45 @@ export async function createMessageDeliveryCampaign(
   const campaign = await traceMessageStage("campaign.create", {
     ...traceContext,
     resolvedGroupCount: groups.length,
+    resolvedContactCount: contacts.length,
   }, async () => prisma.messageCampaign.create({
     data: {
       companyId: actor.companyId,
       createdById: actor.userId,
       title: input.title,
       content: input.content,
-      type: "WHATSAPP_GROUP",
+      type: groups.length && contacts.length ? "WHATSAPP_MIXED" : contacts.length ? "WHATSAPP_CONTACT" : "WHATSAPP_GROUP",
       status: "QUEUED",
       scheduleType,
       scheduledAt: scheduleType === "SCHEDULED" ? input.scheduledAt : undefined,
       recurringRule: scheduleType === "RECURRING" ? (input.recurringRule as Prisma.InputJsonValue) : undefined,
-      totalRecipients: groups.length,
+      totalRecipients: groups.length + contacts.length,
       contentJson: withCampaignMetadata(undefined, {
         source: input.source,
         correlationId,
         requestedGroupCount: input.groupIds.length,
         requestedCategoryCount: input.categoryIds.length,
+        requestedContactCount: input.contactIds.length,
+        resolvedGroupCount: groups.length,
+        resolvedContactCount: contacts.length,
       }),
       recipients: {
-        create: groups.map((group) => ({
-          accountId: group.accountId,
-          groupId: group.id,
-          recipientName: group.name,
-          recipientExternalId: group.externalGroupId,
-        })),
+        create: [
+          ...groups.map((group) => ({
+            accountId: group.accountId,
+            groupId: group.id,
+            targetType: "GROUP" as const,
+            recipientName: group.name,
+            recipientExternalId: group.externalGroupId,
+          })),
+          ...contacts.map((contact) => ({
+            accountId: contact.accountId,
+            contactId: contact.id,
+            targetType: "CONTACT" as const,
+            recipientName: contact.name || contact.pushName || contact.phone,
+            recipientExternalId: contact.externalContactId,
+          })),
+        ],
       },
     },
     include: { recipients: true },

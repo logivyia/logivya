@@ -1,4 +1,3 @@
-import { requirePermission } from "@/server/auth/permissions";
 import { prisma } from "@/server/db";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { mobileError, mobileSafeError, mobileSuccess } from "@/server/mobile/response";
@@ -7,8 +6,7 @@ import { writeAuditLog } from "@/server/security/audit";
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { company, membership, user } = await requireMobileAuth(request);
-    requirePermission(membership.role, "disconnect_accounts");
+    const { company, user } = await requireMobileAuth(request);
     const { id } = await params;
     const account = await prisma.whatsAppAccount.findFirst({
       where: { id, companyId: company.id, userId: user.id },

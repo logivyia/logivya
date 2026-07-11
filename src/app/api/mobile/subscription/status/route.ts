@@ -6,8 +6,11 @@ import { serializeSubscription } from "@/server/mobile/subscription";
 export async function GET(request: Request) {
   try {
     const { company } = await requireMobileAuth(request);
-    const subscription = await subscriptionAccess.getCurrent(company.id);
-    return mobileSuccess({ subscription: serializeSubscription(subscription?.subscription ?? null) });
+    const [subscription, entitlements] = await Promise.all([
+      subscriptionAccess.getCurrent(company.id),
+      subscriptionAccess.getSummary(company.id),
+    ]);
+    return mobileSuccess({ subscription: serializeSubscription(subscription?.subscription ?? null), entitlements });
   } catch (error) {
     return mobileSafeError(error);
   }

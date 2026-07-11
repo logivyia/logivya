@@ -1,5 +1,4 @@
 import { AccountStatus } from "@prisma/client";
-import { requirePermission } from "@/server/auth/permissions";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { resetAccountForConnection } from "@/lib/whatsapp/account-status-machine";
 import { prisma } from "@/server/db";
@@ -16,8 +15,7 @@ import { assertWhatsAppWorkerReachable, isWhatsAppWaitTimeout, waitForAccountQr 
 export async function POST(request: Request) {
   let accountId: string | undefined;
   try {
-    const { company, membership, user } = await requireMobileAuth(request);
-    requirePermission(membership.role, "connect_accounts");
+    const { company, user } = await requireMobileAuth(request);
     enforceMobileRateLimit(`mobile-wa-qr:${company.id}`, 12, 60 * 60_000);
     await cleanupStuckWhatsAppAccounts(company.id);
     const connected = await prisma.whatsAppAccount.findFirst({

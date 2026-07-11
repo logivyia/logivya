@@ -1,55 +1,19 @@
-import type { Plan, Subscription } from "@prisma/client";
 import { prisma } from "@/server/db";
+import { resolveCompanyEntitlements, resolveCompanyEntitlementSummary } from "@/server/billing/company-entitlements";
 
 export const INACTIVE_SUBSCRIPTION_MESSAGE =
   "Aboneliginiz aktif degil. Mesaj gondermek veya yeni WhatsApp hesabi baglamak icin paketinizi yenileyin.";
 
 const ACTIVE_SUBSCRIPTION_STATUSES = ["ACTIVE", "TRIALING"] as const;
-
-type SubscriptionWithPlan = Subscription & { plan: Plan };
-
-function newestDate(...dates: Array<Date | null | undefined>) {
-  return dates.filter((date): date is Date => Boolean(date)).sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
-}
-
-function oldestDate(...dates: Array<Date | null | undefined>) {
-  return dates.filter((date): date is Date => Boolean(date)).sort((left, right) => left.getTime() - right.getTime())[0] ?? null;
-}
-
-function subscriptionEndDate(subscription: SubscriptionWithPlan) {
-  return newestDate(subscription.currentPeriodEndsAt, subscription.endsAt, subscription.trialEndsAt);
-}
-
-function subscriptionStartDate(subscription: SubscriptionWithPlan) {
-  return oldestDate(subscription.currentPeriodStartsAt, subscription.startsAt, subscription.trialStartsAt);
-}
-
-function isSubscriptionValid(subscription: SubscriptionWithPlan, now = new Date()) {
-  if (!(ACTIVE_SUBSCRIPTION_STATUSES as readonly string[]).includes(subscription.status)) return false;
-  const startsAt = subscriptionStartDate(subscription);
-  if (startsAt && startsAt > now) return false;
-  const endsAt = subscriptionEndDate(subscription);
-  return !endsAt || endsAt > now;
-}
+void ACTIVE_SUBSCRIPTION_STATUSES;
 
 export class SubscriptionAccessService {
   async getCurrent(companyId: string) {
-    const subscriptions = await prisma.subscription.findMany({
-      where: { companyId },
-      include: { plan: true },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-    });
-    if (!subscriptions.length) return null;
+    return resolveCompanyEntitlements(companyId);
+  }
 
-    const now = new Date();
-    const ranked = subscriptions.map((subscription) => ({
-      subscription,
-      plan: subscription.plan,
-      valid: isSubscriptionValid(subscription, now),
-    }));
-
-    return ranked.find((item) => item.valid) ?? ranked[0];
+  async getSummary(companyId: string) {
+    return resolveCompanyEntitlementSummary(companyId);
   }
 
   async requireActive(companyId: string) {
@@ -71,21 +35,44 @@ export class SubscriptionAccessService {
     return { allowed: true, limit: undefined, used: requestedRecipients };
   }
 
+  async canSendTargets(companyId: string, targets: { groupCount: number; contactCount: number }) {
+    const current = await this.getCurrent(companyId);
+    const used = targets.groupCount + targets.contactCount;
+    if (!current?.valid) return { allowed: false, reason: "subscription.inactive", limit: undefined, used };
+    if (targets.groupCount > 0 && !current.entitlements.groupMessaging) {
+      return { allowed: false, reason: "entitlement.groupMessaging", limit: undefined, used };
+    }
+    if (targets.contactCount > 0 && !current.entitlements.contactMessaging) {
+      return { allowed: false, reason: "entitlement.contactMessaging", limit: undefined, used };
+    }
+    return { allowed: true, reason: undefined, limit: undefined, used };
+  }
+
+  async canUseContactMessaging(companyId: string) {
+    return Boolean((await this.getCurrent(companyId))?.entitlements.contactMessaging);
+  }
+
   async canUseScheduledMessages(companyId: string) {
     const current = await this.getCurrent(companyId);
-    return Boolean(current?.valid);
+    return Boolean(current?.valid && current.entitlements.scheduledMessages);
   }
 
   async canUseRecurringMessages(companyId: string) {
     const current = await this.getCurrent(companyId);
-    return Boolean(current?.valid);
+    return Boolean(current?.valid && current.entitlements.recurringMessages);
   }
 
   async canInviteUser(companyId: string) {
     const current = await this.getCurrent(companyId);
     if (!current?.valid) return { allowed: false, limit: 0 };
-    const count = await prisma.companyUser.count({ where: { companyId, status: { not: "SUSPENDED" } } });
-    return { allowed: count < current.plan.maxTeamUsers, limit: current.plan.maxTeamUsers };
+    const now = new Date();
+    const [active, legacyInvited, pending] = await Promise.all([
+      prisma.companyUser.count({ where: { companyId, status: "ACTIVE" } }),
+      prisma.companyUser.count({ where: { companyId, status: "INVITED" } }),
+      prisma.companyInvitation.count({ where: { companyId, status: "PENDING", expiresAt: { gt: now } } }),
+    ]);
+    const used = active + legacyInvited + pending;
+    return { allowed: used < current.entitlements.teamSeats, limit: current.entitlements.teamSeats, used, active, legacyInvited, pending };
   }
 
   async canUseAdvancedReports(companyId: string) {
@@ -98,7 +85,7 @@ export class SubscriptionAccessService {
   }
 
   async getTeamUserLimit(companyId: string) {
-    return (await this.getCurrent(companyId))?.plan.maxTeamUsers ?? 0;
+    return (await this.getCurrent(companyId))?.entitlements.teamSeats ?? 0;
   }
 
   async getCurrentPlan(companyId: string) {

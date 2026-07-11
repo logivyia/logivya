@@ -1,9 +1,9 @@
 import { Prisma, SupportTicketStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
-import { requireSupportSuperAdmin } from "@/server/support";
+import { requireSupportSuperAdmin, supportTicketStatuses } from "@/server/support";
 
-const validStatuses = new Set<SupportTicketStatus>(["OPEN", "PENDING", "IN_PROGRESS", "RESOLVED", "CLOSED"]);
+const validStatuses = new Set<SupportTicketStatus>(supportTicketStatuses);
 
 export async function GET(request: Request) {
   try {
@@ -12,22 +12,31 @@ export async function GET(request: Request) {
     const page = Math.max(1, Number(params.get("page") || 1));
     const limit = Math.min(100, Math.max(10, Number(params.get("limit") || 30)));
     const status = params.get("status");
-    const q = params.get("q")?.trim();
+    const q = (params.get("search") || params.get("q"))?.trim();
+    const category = params.get("category")?.trim();
+    const companyId = params.get("companyId")?.trim();
+    const userId = params.get("userId")?.trim();
+    const andFilters: Prisma.SupportTicketWhereInput[] = [];
+    if (userId) andFilters.push({ OR: [{ userId }, { createdById: userId }] });
+    if (q) {
+      andFilters.push({
+        OR: [
+          { title: { contains: q, mode: "insensitive" } },
+          { subject: { contains: q, mode: "insensitive" } },
+          { category: { contains: q, mode: "insensitive" } },
+          { type: { contains: q, mode: "insensitive" } },
+          { description: { contains: q, mode: "insensitive" } },
+          { createdBy: { email: { contains: q, mode: "insensitive" } } },
+          { createdBy: { name: { contains: q, mode: "insensitive" } } },
+          { company: { name: { contains: q, mode: "insensitive" } } },
+        ],
+      });
+    }
     const where: Prisma.SupportTicketWhereInput = {
       ...(status && status !== "ALL" && validStatuses.has(status as SupportTicketStatus) ? { status: status as SupportTicketStatus } : {}),
-      ...(q
-        ? {
-            OR: [
-              { title: { contains: q, mode: "insensitive" } },
-              { subject: { contains: q, mode: "insensitive" } },
-              { category: { contains: q, mode: "insensitive" } },
-              { type: { contains: q, mode: "insensitive" } },
-              { createdBy: { email: { contains: q, mode: "insensitive" } } },
-              { createdBy: { name: { contains: q, mode: "insensitive" } } },
-              { company: { name: { contains: q, mode: "insensitive" } } },
-            ],
-          }
-        : {}),
+      ...(category ? { category } : {}),
+      ...(companyId ? { companyId } : {}),
+      ...(andFilters.length ? { AND: andFilters } : {}),
     };
 
     const [tickets, total] = await Promise.all([
@@ -48,6 +57,7 @@ export async function GET(request: Request) {
           createdAt: true,
           updatedAt: true,
           lastMessageAt: true,
+          closedAt: true,
           company: { select: { id: true, name: true } },
           createdBy: { select: { id: true, name: true, email: true } },
           assignedToAdmin: { select: { id: true, name: true, email: true } },
@@ -58,7 +68,7 @@ export async function GET(request: Request) {
             take: 1,
           },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ lastMessageAt: "desc" }, { createdAt: "desc" }],
         skip: (page - 1) * limit,
         take: limit,
       }),
