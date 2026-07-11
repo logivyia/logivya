@@ -96,7 +96,7 @@ export function HomePageClient() {
                 data-pricing-plan={planKey}
                 className="relative flex h-full flex-col rounded-2xl border border-white/10 bg-white/[.04] p-6"
               >
-                {badge && !badge.startsWith("home.plan.") && (
+                {planKey === "trial" && badge && !badge.startsWith("home.plan.") && (
                   <span className="absolute end-5 top-5 rounded-full bg-orange-500/15 px-3 py-1 text-[10px] font-bold text-orange-300">
                     {badge}
                   </span>
