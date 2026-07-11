@@ -57,7 +57,8 @@ const PAIRING_CODE_REFRESH_MIN_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE
 const PHONE_PAIRING_QR_REF_TIMEOUT_MS = Number(process.env.WHATSAPP_PHONE_PAIRING_QR_REF_TIMEOUT_MS || 60_000);
 const CONTACT_BOOTSTRAP_WAIT_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_WAIT_MS || 45_000);
 const CONTACT_BOOTSTRAP_QUIET_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_QUIET_MS || 4_000);
-const CONTACT_SYNC_IMPLEMENTATION = "PERSISTENT_HISTORY_V2";
+const CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS || 5 * 60_000);
+const CONTACT_SYNC_IMPLEMENTATION = "PERSISTENT_HISTORY_V3";
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -1392,7 +1393,11 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     let existingCount = await prisma.contact.count({ where: { accountId, userId: account.userId } });
     if (existingCount === 0) {
       const activeDeliveries = await prisma.messageRecipient.count({
-        where: { accountId, status: { in: ["SENDING", "PROCESSING"] } },
+        where: {
+          accountId,
+          status: { in: ["SENDING", "PROCESSING"] },
+          updatedAt: { gte: new Date(Date.now() - CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS) },
+        },
       });
       if (activeDeliveries > 0) {
         await enqueueWhatsAppJob(

@@ -102,12 +102,14 @@ assert(contacts.includes("whatsapp.contacts.persist_skipped_empty"), "An empty p
 assert(contacts.indexOf("if (!normalizedContacts.length)") < contacts.indexOf("lastContactSyncAt: syncedAt"), "Empty contact payloads must exit before the successful sync timestamp is written.");
 
 const baileysProvider = read("src/worker/baileys-provider.ts");
-assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "PERSISTENT_HISTORY_V2"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
+assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "PERSISTENT_HISTORY_V3"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
 assert(baileysProvider.includes("syncFullHistory: Boolean(options.syncContactHistory)"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
 assert(baileysProvider.includes('this.startSession(accountId, "RECONNECT", { syncContactHistory: true })'), "A missing persistent contact directory must use the isolated contact-history reconnect path.");
 assert(baileysProvider.includes("if (existingCount === 0)"), "Invalid in-memory snapshots must not suppress a required persistent contact bootstrap.");
 assert(!baileysProvider.includes("!snapshot.length && existingCount === 0"), "Bootstrap eligibility must be based on persisted contacts, not raw in-memory records.");
 assert(baileysProvider.includes("bootstrap_deferred_active_delivery"), "Contact bootstrap must not interrupt an active message delivery.");
+assert(baileysProvider.includes("CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS"), "Only recent active deliveries may defer contact bootstrap.");
+assert(baileysProvider.includes("updatedAt: { gte:"), "Stale SENDING rows must not block contact bootstrap forever.");
 assert(baileysProvider.includes("availabilityByJid.has(contact.externalContactId)"), "Partial availability responses must leave unreturned contacts unchanged.");
 assert(!baileysProvider.includes("available.has(contact.externalContactId)"), "Partial availability responses must not deactivate every omitted contact.");
 
