@@ -1,25 +1,20 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
+import { PURCHASABLE_PLAN_CODES } from "@/server/billing/plan-matrix";
 import { activateSubscriptionManually } from "@/server/billing/manual-activation";
 import { SubscriptionActivationError } from "@/server/billing/subscription-activation";
 import { requestId, safeAdminError } from "@/server/security/admin-request";
 
-const optionalAmount = z.preprocess((value) => value === "" || value === null ? undefined : value, z.coerce.number().min(0).optional());
-
 const schema = z.object({
   companyId: z.string().cuid(),
-  planSlug: z.enum(["starter", "professional", "enterprise"]),
+  planSlug: z.enum(PURCHASABLE_PLAN_CODES),
   billingPeriod: z.enum(["MONTHLY", "YEARLY"]),
   startsAt: z.coerce.date(),
   endsAt: z.coerce.date(),
   currency: z.literal("TRY").default("TRY"),
   paymentMethod: z.enum(["MANUAL_BANK_TRANSFER", "MANUAL", "FREE_PROMO", "OTHER"]),
   note: z.string().trim().min(5).max(500),
-  customAmount: optionalAmount,
-}).refine((value) => value.planSlug === "enterprise" || value.customAmount === undefined, {
-  message: "Custom amount is only available for Enterprise.",
-  path: ["customAmount"],
 });
 
 export async function POST(request: Request) {

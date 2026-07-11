@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiSession } from "@/server/auth/session";
+import { CORE_PLAN_CODES } from "@/server/billing/plan-matrix";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { serializeSubscription } from "@/server/billing/subscription-state";
 import { prisma } from "@/server/db";
@@ -9,7 +10,10 @@ export async function GET() {
     const { company } = await requireApiSession();
     const [subscription, plans, invoices] = await Promise.all([
       subscriptionAccess.getCurrent(company.id),
-      prisma.plan.findMany({ where: { isActive: true }, orderBy: { monthlyPrice: "asc" } }),
+      prisma.plan.findMany({
+        where: { isActive: true, slug: { in: [...CORE_PLAN_CODES] } },
+        orderBy: { monthlyPrice: "asc" },
+      }),
       prisma.invoice.findMany({ where: { companyId: company.id }, orderBy: { createdAt: "desc" }, take: 50 }),
     ]);
     const currentSubscription = subscription?.subscription;

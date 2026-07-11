@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { isBillingProfileComplete } from "@/server/billing/subscription-guard";
+import { PURCHASABLE_PLAN_CODES } from "@/server/billing/plan-matrix";
 import { prisma } from "@/server/db";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
 import { writeAuditLog } from "@/server/security/audit";
 
 const schema = z.object({
-  planSlug: z.enum(["starter", "professional", "enterprise"]),
-  billingPeriod: z.enum(["MONTHLY", "YEARLY", "CUSTOM"]),
+  planSlug: z.enum(PURCHASABLE_PLAN_CODES),
+  billingPeriod: z.enum(["MONTHLY", "YEARLY"]),
 });
 
 export async function POST(request: Request) {

@@ -36,6 +36,9 @@ export type MobileSubscription = {
     hasNoBranding?: boolean;
     hasCrm?: boolean;
     hasApi?: boolean;
+    groupMessagingEnabled?: boolean;
+    contactMessagingEnabled?: boolean;
+    deleteForEveryoneEnabled?: boolean;
   } | null;
   entitlements: {
     accountAccess: boolean;
@@ -43,6 +46,8 @@ export type MobileSubscription = {
     whatsappConnect: boolean;
     groupSync: boolean;
     categoryManagement: boolean;
+    groupMessaging: boolean;
+    contactMessaging: boolean;
     messageSend: boolean;
     scheduledMessages: boolean;
     recurringMessages: boolean;
@@ -50,6 +55,8 @@ export type MobileSubscription = {
     deleteForEveryone: boolean;
     deleteForMe: boolean;
     platformDelete: boolean;
+    adFreeMessaging: boolean;
+    teamSeats: number;
   };
   lockedFeatures: string[];
   upgradeRequired: boolean;
@@ -57,4 +64,8 @@ export type MobileSubscription = {
 
 export function getMobileSubscription() {
   return apiClient.request<{ subscription: MobileSubscription }>("/api/mobile/subscription/status");
+}
+
+export function requestMobileSubscriptionUpgrade(input: { planSlug: "starter" | "professional"; billingPeriod: "MONTHLY" | "YEARLY" }) {
+  return apiClient.post<{ requested: true; message: string }>("/api/mobile/subscription/request-upgrade", input);
 }

@@ -1,4 +1,8 @@
-export type CorePlanCode = "trial" | "starter" | "professional";
+export const CORE_PLAN_CODES = ["trial", "starter", "professional"] as const;
+export const PURCHASABLE_PLAN_CODES = ["starter", "professional"] as const;
+
+export type CorePlanCode = (typeof CORE_PLAN_CODES)[number];
+export type PurchasablePlanCode = (typeof PURCHASABLE_PLAN_CODES)[number];
 
 export type CorePlanRule = {
   monthlyPriceTry: number;
@@ -48,6 +52,10 @@ export const CORE_PLAN_MATRIX: Record<CorePlanCode, CorePlanRule> = {
   },
 };
 
+export function isCorePlanCode(slug?: string | null): slug is CorePlanCode {
+  return Boolean(slug && (CORE_PLAN_CODES as readonly string[]).includes(slug));
+}
+
 export function corePlanRule(slug?: string | null) {
-  return slug && slug in CORE_PLAN_MATRIX ? CORE_PLAN_MATRIX[slug as CorePlanCode] : null;
+  return isCorePlanCode(slug) ? CORE_PLAN_MATRIX[slug] : null;
 }

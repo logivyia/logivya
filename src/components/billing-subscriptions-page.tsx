@@ -54,7 +54,7 @@ export function BillingSubscriptionsPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  async function request(planSlug: string, billingPeriod: "MONTHLY" | "YEARLY" | "CUSTOM" = "MONTHLY") {
+  async function request(planSlug: string, billingPeriod: "MONTHLY" | "YEARLY" = "MONTHLY") {
     const response = await fetch("/api/billing/request-upgrade", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -109,9 +109,9 @@ export function BillingSubscriptionsPage() {
             {plan.isPopular && <span className="mt-4 inline-block rounded-full bg-primary px-2 py-1 text-[10px] font-bold text-white">{isTr ? "EN POPÜLER" : "MOST POPULAR"}</span>}
             <h3 className="mt-4 font-semibold">{plan.name}</h3>
             <p className="mt-2 text-sm text-muted">{plan.description}</p>
-            <p className="mt-4 text-2xl font-bold">{plan.slug === "enterprise" ? (isTr ? "Teklif Alınız" : "Contact sales") : `${Number(plan.monthlyPrice)} TL / ${isTr ? "Ay" : "Month"}`}</p>
+            <p className="mt-4 text-2xl font-bold">{`${Number(plan.monthlyPrice)} TL / ${isTr ? "Ay" : "Month"}`}</p>
             <p className="text-xs text-muted">{Number(plan.yearlyPrice) > 0 ? `${Number(plan.yearlyPrice)} TL / ${isTr ? "Yıl" : "Year"}` : plan.slug === "trial" ? `${plan.trialDays} ${isTr ? "Gün" : "Days"}` : isTr ? "Özel" : "Custom"}</p>
-            {plan.slug !== "trial" && <button onClick={() => void request(plan.slug, plan.slug === "enterprise" ? "CUSTOM" : "MONTHLY")} className={`${button} mt-5 w-full`}>{plan.slug === "enterprise" ? (isTr ? "Teklif Al" : "Contact sales") : isTr ? "Paketi Seç" : "Select plan"}</button>}
+            {(plan.slug === "starter" || plan.slug === "professional") && <button onClick={() => void request(plan.slug)} className={`${button} mt-5 w-full`}>{isTr ? "Paketi Seç" : "Select plan"}</button>}
           </article>
         ))}
       </div>

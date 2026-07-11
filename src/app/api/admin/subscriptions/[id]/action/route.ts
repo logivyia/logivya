@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
+import { PURCHASABLE_PLAN_CODES } from "@/server/billing/plan-matrix";
 import { activateCompanySubscription, SubscriptionActivationError } from "@/server/billing/subscription-activation";
 import { prisma } from "@/server/db";
 import { requestId, safeAdminError } from "@/server/security/admin-request";
@@ -11,7 +12,7 @@ const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("SUSPEND"), reason: z.string().trim().min(5).max(500) }),
   z.object({ action: z.literal("CANCEL"), reason: z.string().trim().min(5).max(500) }),
   z.object({ action: z.literal("EXTEND"), endsAt: z.coerce.date(), reason: z.string().trim().min(5).max(500) }),
-  z.object({ action: z.literal("CHANGE_PLAN"), planSlug: z.enum(["starter", "professional", "enterprise"]), reason: z.string().trim().min(5).max(500) }),
+  z.object({ action: z.literal("CHANGE_PLAN"), planSlug: z.enum(PURCHASABLE_PLAN_CODES), reason: z.string().trim().min(5).max(500) }),
 ]);
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {

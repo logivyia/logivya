@@ -3,7 +3,7 @@ import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { CORE_PLAN_MATRIX } from "../src/server/billing/plan-matrix";
+import { CORE_PLAN_CODES, CORE_PLAN_MATRIX, PURCHASABLE_PLAN_CODES } from "../src/server/billing/plan-matrix";
 import { applyAdvertisingDeliveryPolicy } from "../src/server/messages/advertising-policy";
 import { normalizeIyzicoDecimal, verifyIyzicoPaymentDetailResponse } from "../src/server/billing/iyzico-payment-verification";
 import { assertPlanSeatCompatibility, SubscriptionActivationError } from "../src/server/billing/subscription-activation";
@@ -27,6 +27,8 @@ assert.equal(CORE_PLAN_MATRIX.professional.monthlyPriceTry, 380);
 assert.equal(CORE_PLAN_MATRIX.professional.totalUserSeats, 3);
 assert.equal(CORE_PLAN_MATRIX.professional.contactMessaging, true);
 assert.equal(CORE_PLAN_MATRIX.professional.advertisingEnabled, false);
+assert.deepEqual([...CORE_PLAN_CODES], ["trial", "starter", "professional"]);
+assert.deepEqual([...PURCHASABLE_PLAN_CODES], ["starter", "professional"]);
 
 const previousAttribution = process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT;
 delete process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT;
@@ -115,8 +117,19 @@ assert.equal(iyzicoDetails.observedCurrency, "TRY");
 
 const activationSource = read("src/server/billing/subscription-activation.ts");
 const adminActivationSource = read("src/app/api/admin/subscriptions/manual-activate/route.ts");
+const adminActionSource = read("src/app/api/admin/subscriptions/[id]/action/route.ts");
+const billingPlansSource = read("src/app/api/billing/plans/route.ts");
+const billingUpgradeSource = read("src/app/api/billing/request-upgrade/route.ts");
+const mobileBillingUpgradeSource = read("src/app/api/mobile/subscription/request-upgrade/route.ts");
+const billingPageSource = read("src/components/billing-subscriptions-page.tsx");
 const webhookSource = read("src/server/billing/webhook-handler.ts");
 assert(adminActivationSource.includes("activateSubscriptionManually"));
+assert(adminActivationSource.includes("PURCHASABLE_PLAN_CODES"));
+assert(adminActionSource.includes("PURCHASABLE_PLAN_CODES"));
+assert(billingPlansSource.includes("CORE_PLAN_CODES"));
+assert(billingUpgradeSource.includes("PURCHASABLE_PLAN_CODES"));
+assert(mobileBillingUpgradeSource.includes("PURCHASABLE_PLAN_CODES"));
+assert(!billingPageSource.includes('plan.slug === "enterprise"'));
 assert(webhookSource.includes("activateCompanySubscription"));
 assert(activationSource.includes("TransactionIsolationLevel.Serializable"));
 assert(activationSource.includes("DOWNGRADE_SEAT_RECONCILIATION_REQUIRED"));

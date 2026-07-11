@@ -251,7 +251,7 @@ export function SubscriptionsSettingsPage() {
             <CreditCard className="size-5 text-primary" />
             <h3 className="mt-5 font-semibold">{plan.name}</h3>
             <p className="mt-3 text-2xl font-bold">
-              {Number(plan.monthlyPrice) === 0 ? (plan.slug === "enterprise" ? (isTr ? "Teklif Alınız" : "Contact sales") : "0 TL") : `${Number(plan.monthlyPrice)} TL / ${isTr ? "Ay" : "Month"}`}
+              {Number(plan.monthlyPrice) === 0 ? "0 TL" : `${Number(plan.monthlyPrice)} TL / ${isTr ? "Ay" : "Month"}`}
             </p>
             <p className="mt-1 text-xs text-muted">{Number(plan.yearlyPrice) > 0 ? `${Number(plan.yearlyPrice)} TL / ${isTr ? "Yıl" : "Year"}` : plan.slug === "trial" ? `${plan.trialDays} ${isTr ? "Gün" : "Days"}` : isTr ? "Özel" : "Custom"}</p>
           </article>
