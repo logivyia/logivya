@@ -57,6 +57,10 @@ assert(normalizeWhatsAppContactJid("+905551112233")?.jid === "905551112233@s.wha
 assert(normalizeWhatsAppContactJid("905551112233@s.whatsapp.net")?.phone === "905551112233", "Existing contact JIDs must be preserved.");
 assert(normalizeWhatsAppContactJid("120363000000@g.us") === null, "Group JIDs must never enter the contact model.");
 assert(normalizeWhatsAppContactJid("status@broadcast") === null, "Broadcast JIDs must never enter the contact model.");
+assert(
+  normalizeProviderContact({ id: "123456789@lid", phoneNumber: "905551112233@s.whatsapp.net", name: "Saved Name" })?.name === "Saved Name",
+  "Modern LID contacts must normalize through their phone-number JID without losing the saved name.",
+);
 assert(normalizeProviderContact({ id: "905551112233@s.whatsapp.net", notify: "  Test Kişisi  " })?.pushName === "Test Kişisi", "Contact display data must be trimmed and normalized.");
 const participantContacts = collectGroupParticipantContacts([
   { participants: [
@@ -115,21 +119,31 @@ assert(contacts.includes("Math.min(100"), "Contact pagination must have a hard s
 assert(contacts.includes("search?.trim().slice(0, 100)"), "Contact search input must be bounded.");
 assert(contacts.includes("whatsapp.contacts.persist_skipped_empty"), "An empty provider payload must not be recorded as a successful contact sync.");
 assert(contacts.indexOf("if (!normalizedContacts.length)") < contacts.indexOf("lastContactSyncAt: syncedAt"), "Empty contact payloads must exit before the successful sync timestamp is written.");
+assert(contacts.includes("name: contact.name ?? undefined"), "Partial provider payloads must not erase an existing saved contact name.");
+assert(contacts.includes("pushName: contact.pushName ?? undefined"), "Partial provider payloads must not erase an existing WhatsApp push name.");
 
 const baileysProvider = read("src/worker/baileys-provider.ts");
-assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V5"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
+assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V6_FULL_APP_STATE"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
 assert(baileysProvider.includes("syncFullHistory: Boolean(options.syncContactHistory)"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
 assert(baileysProvider.includes('CONTACT_APP_STATE_COLLECTION = "critical_unblock_low"'), "Contact bootstrap must use the Baileys collection that carries contact actions.");
 assert(baileysProvider.includes("socket.resyncAppState([CONTACT_APP_STATE_COLLECTION], true)"), "Existing sessions must request a fresh contact app-state snapshot before reconnect fallback.");
-assert(baileysProvider.includes("collectGroupParticipantContacts(metadata"), "Empty app-state snapshots must fall back to account-owned group participant metadata.");
+assert(baileysProvider.includes("flushContactPersistence(accountId)"), "A completed app-state request must wait for every contact persistence batch.");
+assert(baileysProvider.includes("collectGroupParticipantContacts(metadata"), "App-state contacts must be supplemented with account-owned group participant metadata.");
 assert(baileysProvider.includes('this.startSession(accountId, "RECONNECT", { syncContactHistory: true })'), "A missing persistent contact directory must use the isolated contact-history reconnect path.");
-assert(baileysProvider.includes("if (existingCount === 0)"), "Invalid in-memory snapshots must not suppress a required persistent contact bootstrap.");
-assert(!baileysProvider.includes("!snapshot.length && existingCount === 0"), "Bootstrap eligibility must be based on persisted contacts, not raw in-memory records.");
+assert(baileysProvider.includes('"whatsapp.contacts.full_sync_started"'), "A manual refresh must run a full contact app-state sync even when fallback contacts already exist.");
+assert(baileysProvider.includes("contactPhoneJidsByLid"), "Contact sync must retain LID-to-phone mappings across partial events.");
+assert(baileysProvider.includes('socket.ev.on("chats.phoneNumberShare"'), "Phone-number share events must resolve modern LID contacts.");
 assert(baileysProvider.includes("bootstrap_deferred_active_delivery"), "Contact bootstrap must not interrupt an active message delivery.");
 assert(baileysProvider.includes("CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS"), "Only recent active deliveries may defer contact bootstrap.");
 assert(baileysProvider.includes("updatedAt: { gte:"), "Stale SENDING rows must not block contact bootstrap forever.");
 assert(baileysProvider.includes("availabilityByJid.has(contact.externalContactId)"), "Partial availability responses must leave unreturned contacts unchanged.");
 assert(!baileysProvider.includes("available.has(contact.externalContactId)"), "Partial availability responses must not deactivate every omitted contact.");
+
+const baileysPatch = read("scripts/patch-baileys-contact-jid.mjs");
+assert(baileysPatch.includes("LOGIVYA_CONTACT_PN_JID_COMPAT"), "The pinned Baileys 6.x build must retain modern contactAction PN JIDs.");
+assert(baileysPatch.includes("LOGIVYA_HISTORY_LID_PN_COMPAT"), "History contacts must resolve official phone-number-to-LID mappings.");
+assert(read("package.json").includes("node scripts/patch-baileys-contact-jid.mjs"), "Dependency installation must fail closed unless the Baileys contact compatibility patch applies.");
+assert(read("Dockerfile.worker").includes("COPY scripts/patch-baileys-contact-jid.mjs"), "The production worker image must include the Baileys compatibility patch before npm ci.");
 
 const pipeline = read("src/server/messages/delivery-pipeline.ts");
 assert(pipeline.includes('traceMessageStage("subscription.contact_access"'), "Contact entitlement must be checked before contact ownership resolution.");

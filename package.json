@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && node scripts/patch-baileys-contact-jid.mjs",
     "start": "next start",
     "worker": "tsx src/worker/index.ts",
     "worker:health": "tsx src/worker/health.ts",
@@ -36,6 +36,7 @@
     "test:seven-day-trial": "tsx scripts/test-seven-day-trial.ts",
     "test:seven-day-trial:integration": "tsx scripts/test-seven-day-trial-integration.ts",
     "test:team-contact-messaging": "tsx scripts/test-team-contact-messaging.ts",
+    "test:whatsapp-contacts": "node scripts/patch-baileys-contact-jid.mjs && tsx scripts/test-team-contact-messaging.ts",
     "test:enterprise-subscription": "tsx scripts/test-enterprise-subscription.ts",
     "test:team-contact-messaging:integration": "tsx scripts/test-team-contact-integration.ts",
     "test:team-contact-messaging:api": "tsx scripts/test-team-contact-api-smoke.ts",

@@ -28,6 +28,7 @@ import type { DeleteContactMessageInput, DeleteGroupMessageInput, DeleteResult, 
 
 type SessionMode = "PAIR_QR" | "PAIR_PHONE" | "RESTORE" | "RECONNECT";
 type StartSessionOptions = { syncContactHistory?: boolean };
+type BaileysContactRecord = Partial<BaileysContact> & { id?: string; phoneNumber?: string | null };
 type WhatsAppWebVersion = [number, number, number];
 type WhatsAppVersionInfo = {
   version: WhatsAppWebVersion;
@@ -47,6 +48,8 @@ const pairingTransientRetries = new Map<string, number>();
 const pairingRegisteredReconnects = new Map<string, number>();
 const pairingRetryScheduledAt = new Map<string, number>();
 const contactSnapshots = new Map<string, Map<string, ProviderContactRecord>>();
+const contactPhoneJidsByLid = new Map<string, Map<string, string>>();
+const contactPersistenceTails = new Map<string, Promise<void>>();
 const SOCKET_INITIALIZATION_TIMEOUT_MS = Number(process.env.WHATSAPP_SOCKET_INITIALIZATION_TIMEOUT_MS || 30_000);
 const PAIRING_SOCKET_BOOTSTRAP_MS = Number(process.env.WHATSAPP_PAIRING_SOCKET_BOOTSTRAP_MS || 5_000);
 const HEARTBEAT_INTERVAL_MS = Number(process.env.WHATSAPP_HEARTBEAT_INTERVAL_MS || 30_000);
@@ -57,11 +60,10 @@ const PAIRING_CODE_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_TTL_MS || 5
 const PAIRING_CODE_REFRESH_MIN_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_MIN_TTL_MS || 120_000);
 const PHONE_PAIRING_QR_REF_TIMEOUT_MS = Number(process.env.WHATSAPP_PHONE_PAIRING_QR_REF_TIMEOUT_MS || 60_000);
 const CONTACT_BOOTSTRAP_WAIT_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_WAIT_MS || 45_000);
-const CONTACT_APP_STATE_SYNC_WAIT_MS = Number(process.env.WHATSAPP_CONTACT_APP_STATE_SYNC_WAIT_MS || 20_000);
 const CONTACT_BOOTSTRAP_QUIET_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_QUIET_MS || 4_000);
 const CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS || 5 * 60_000);
 const CONTACT_APP_STATE_COLLECTION = "critical_unblock_low" as const;
-const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V5";
+const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V6_FULL_APP_STATE";
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -102,28 +104,86 @@ async function waitForPersistedContacts(accountId: string, userId: string, timeo
   return lastCount;
 }
 
-function rememberContacts(accountId: string, contacts: Array<BaileysContact | Partial<BaileysContact>>, source: string) {
+async function persistedContactStats(accountId: string, userId: string) {
+  const where = { accountId, userId, isActive: true } as const;
+  const [total, named] = await Promise.all([
+    prisma.contact.count({ where }),
+    prisma.contact.count({
+      where: {
+        ...where,
+        OR: [{ name: { not: null } }, { pushName: { not: null } }],
+      },
+    }),
+  ]);
+  return { total, named };
+}
+
+function queueContactPersistence(accountId: string, contacts: ProviderContactRecord[], source: string) {
+  if (!contacts.length) return;
+  const previous = contactPersistenceTails.get(accountId) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(async () => {
+      await persistWhatsAppContacts(accountId, contacts, { source });
+    })
+    .catch((error) => {
+      logger.error("whatsapp.contacts.persist_failed", error, { accountId, source, receivedCount: contacts.length });
+    });
+  contactPersistenceTails.set(accountId, next);
+  void next.finally(() => {
+    if (contactPersistenceTails.get(accountId) === next) contactPersistenceTails.delete(accountId);
+  });
+}
+
+async function flushContactPersistence(accountId: string) {
+  while (true) {
+    const pending = contactPersistenceTails.get(accountId);
+    if (!pending) return;
+    await pending;
+    if (contactPersistenceTails.get(accountId) === pending) return;
+  }
+}
+
+function rememberContacts(accountId: string, contacts: BaileysContactRecord[], source: string) {
   const snapshot = contactSnapshots.get(accountId) ?? new Map<string, ProviderContactRecord>();
+  const phoneJidsByLid = contactPhoneJidsByLid.get(accountId) ?? new Map<string, string>();
   const changed: ProviderContactRecord[] = [];
+  let namedCount = 0;
+  let unresolvedLidCount = 0;
   for (const contact of contacts) {
     if (!contact.id) continue;
-    const previous = snapshot.get(contact.id);
+    const lid = contact.lid || (contact.id.endsWith("@lid") ? contact.id : undefined);
+    const directPhoneJid = contact.phoneNumber || contact.jid || (contact.id.endsWith("@s.whatsapp.net") ? contact.id : undefined);
+    if (lid && directPhoneJid?.endsWith("@s.whatsapp.net")) phoneJidsByLid.set(lid, directPhoneJid);
+    const phoneJid = directPhoneJid?.endsWith("@s.whatsapp.net") ? directPhoneJid : lid ? phoneJidsByLid.get(lid) : undefined;
+    const snapshotKey = phoneJid || contact.id;
+    const previous = snapshot.get(snapshotKey) || snapshot.get(contact.id);
     const next = {
-      id: contact.id,
-      jid: contact.jid ?? previous?.jid,
+      id: snapshotKey,
+      jid: phoneJid ?? previous?.jid,
+      phoneNumber: phoneJid ?? previous?.phoneNumber,
       name: contact.name ?? previous?.name,
       notify: contact.notify ?? previous?.notify,
       verifiedName: contact.verifiedName ?? previous?.verifiedName,
     };
-    snapshot.set(contact.id, next);
-    changed.push(next);
+    if (snapshotKey !== contact.id) snapshot.delete(contact.id);
+    snapshot.set(snapshotKey, next);
+    if (next.name?.trim() || next.notify?.trim() || next.verifiedName?.trim()) namedCount += 1;
+    if (phoneJid) changed.push(next);
+    else if (lid) unresolvedLidCount += 1;
   }
   contactSnapshots.set(accountId, snapshot);
-  if (changed.length) {
-    void persistWhatsAppContacts(accountId, changed, { source }).catch((error) =>
-      logger.error("whatsapp.contacts.persist_failed", error, { accountId, source, receivedCount: contacts.length, snapshotCount: snapshot.size }),
-    );
-  }
+  contactPhoneJidsByLid.set(accountId, phoneJidsByLid);
+  logger.info("whatsapp.contacts.provider_event", {
+    accountId,
+    source,
+    receivedCount: contacts.length,
+    phoneResolvedCount: changed.length,
+    namedCount,
+    unresolvedLidCount,
+    snapshotCount: snapshot.size,
+  });
+  queueContactPersistence(accountId, changed, source);
 }
 
 function errorMessage(error: unknown) {
@@ -938,6 +998,9 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     socket.ev.on("contacts.update", (contacts) => {
       rememberContacts(accountId, contacts, "BAILEYS_UPDATE");
     });
+    socket.ev.on("chats.phoneNumberShare", ({ lid, jid }) => {
+      rememberContacts(accountId, [{ id: lid, lid, jid, phoneNumber: jid }], "BAILEYS_PHONE_NUMBER_SHARE");
+    });
     socket.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
       try {
         const currentMode = sessionModes.get(accountId) || mode;
@@ -1393,88 +1456,100 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     let snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
     if (snapshot.length) await persistWhatsAppContacts(accountId, snapshot, { source: "BAILEYS_MANUAL_SYNC" });
 
-    let existingCount = await prisma.contact.count({ where: { accountId, userId: account.userId } });
-    if (existingCount === 0) {
-      const activeDeliveries = await prisma.messageRecipient.count({
-        where: {
-          accountId,
-          status: { in: ["SENDING", "PROCESSING"] },
-          updatedAt: { gte: new Date(Date.now() - CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS) },
-        },
-      });
-      if (activeDeliveries > 0) {
-        await enqueueWhatsAppJob(
-          "sync-contacts",
-          { action: "sync-contacts", accountId },
-          { jobId: `sync-contacts-deferred-${accountId}-${Math.floor(Date.now() / 30_000)}`, delay: 30_000, removeOnComplete: 50, removeOnFail: 100 },
-        );
-        logger.info("whatsapp.contacts.bootstrap_deferred_active_delivery", { accountId, activeDeliveries });
-        return { count: 0, implementation: CONTACT_SYNC_IMPLEMENTATION };
-      }
-
-      logger.info("whatsapp.contacts.bootstrap_started", { accountId });
-      await auditAccount(accountId, "whatsapp.contacts.bootstrap_started").catch((error) =>
-        logger.warn("whatsapp.contacts.bootstrap_audit_failed", { accountId, reason: errorMessage(error) }),
+    let directoryStats = await persistedContactStats(accountId, account.userId);
+    const activeDeliveries = await prisma.messageRecipient.count({
+      where: {
+        accountId,
+        status: { in: ["SENDING", "PROCESSING"] },
+        updatedAt: { gte: new Date(Date.now() - CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS) },
+      },
+    });
+    if (activeDeliveries > 0) {
+      await enqueueWhatsAppJob(
+        "sync-contacts",
+        { action: "sync-contacts", accountId },
+        { jobId: `sync-contacts-deferred-${accountId}-${Math.floor(Date.now() / 30_000)}`, delay: 30_000, removeOnComplete: 50, removeOnFail: 100 },
       );
-      const sessionBackedUp = await backupWhatsAppSessionToDatabase(accountId, "contact.bootstrap.before_sync")
-        .then(() => true)
-        .catch((error) => {
-          logger.error("whatsapp.contacts.bootstrap_backup_failed", error, { accountId });
-          return false;
-        });
-      if (!sessionBackedUp) return { count: 0, implementation: CONTACT_SYNC_IMPLEMENTATION };
-
-      let bootstrapStrategy = "APP_STATE";
-      try {
-        await socket.authState.keys.set({
-          "app-state-sync-version": { [CONTACT_APP_STATE_COLLECTION]: null },
-        });
-        await socket.resyncAppState([CONTACT_APP_STATE_COLLECTION], true);
-        existingCount = await waitForPersistedContacts(accountId, account.userId, CONTACT_APP_STATE_SYNC_WAIT_MS);
-        await backupWhatsAppSessionToDatabase(accountId, "contact.bootstrap.app_state_synced").catch((error) =>
-          logger.error("whatsapp.contacts.bootstrap_backup_failed", error, { accountId, strategy: bootstrapStrategy }),
-        );
-      } catch (error) {
-        logger.warn("whatsapp.contacts.app_state_sync_failed", { accountId, reason: errorMessage(error) });
-      }
-
-      if (existingCount === 0) {
-        try {
-          const metadata = Object.values(await socket.groupFetchAllParticipating());
-          const participantContacts = collectGroupParticipantContacts(metadata, {
-            ownJid: socket.user?.id,
-            knownContacts: snapshot,
-          });
-          const persisted = await persistWhatsAppContacts(accountId, participantContacts, { source: "BAILEYS_GROUP_PARTICIPANT" });
-          existingCount = persisted.count;
-          if (existingCount > 0) bootstrapStrategy = "GROUP_PARTICIPANTS";
-          logger.info("whatsapp.contacts.group_participants_collected", {
-            accountId,
-            groupCount: metadata.length,
-            participantContactCount: participantContacts.length,
-            persistedCount: existingCount,
-          });
-        } catch (error) {
-          logger.warn("whatsapp.contacts.group_participant_sync_failed", { accountId, reason: errorMessage(error) });
-        }
-      }
-
-      if (existingCount === 0) {
-        bootstrapStrategy = "HISTORY_FALLBACK";
-        await this.stopSocket(accountId, "Bootstrap WhatsApp contact history");
-        const { initialized } = await this.startSession(accountId, "RECONNECT", { syncContactHistory: true });
-        await initialized;
-        existingCount = await waitForPersistedContacts(accountId, account.userId);
-        socket = await this.ensureConnectedSocket(accountId);
-      }
-      snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
-      logger.info("whatsapp.contacts.bootstrap_finished", { accountId, persistedCount: existingCount, snapshotCount: snapshot.length, strategy: bootstrapStrategy });
-      await auditAccount(accountId, existingCount > 0 ? "whatsapp.contacts.bootstrap_completed" : "whatsapp.contacts.bootstrap_empty", {
-        persistedCount: existingCount,
-        snapshotCount: snapshot.length,
-        strategy: bootstrapStrategy,
-      }).catch((error) => logger.warn("whatsapp.contacts.bootstrap_audit_failed", { accountId, reason: errorMessage(error) }));
+      logger.info("whatsapp.contacts.bootstrap_deferred_active_delivery", { accountId, activeDeliveries, existingCount: directoryStats.total });
+      return { count: directoryStats.total, implementation: CONTACT_SYNC_IMPLEMENTATION };
     }
+
+    logger.info("whatsapp.contacts.full_sync_started", { accountId, existingCount: directoryStats.total, existingNamedCount: directoryStats.named });
+    await auditAccount(accountId, "whatsapp.contacts.full_sync_started", {
+      existingCount: directoryStats.total,
+      existingNamedCount: directoryStats.named,
+    }).catch((error) => logger.warn("whatsapp.contacts.bootstrap_audit_failed", { accountId, reason: errorMessage(error) }));
+
+    const sessionBackedUp = await backupWhatsAppSessionToDatabase(accountId, "contact.full_sync.before_app_state")
+      .then(() => true)
+      .catch((error) => {
+        logger.error("whatsapp.contacts.bootstrap_backup_failed", error, { accountId });
+        return false;
+      });
+    if (!sessionBackedUp) return { count: directoryStats.total, implementation: CONTACT_SYNC_IMPLEMENTATION };
+
+    let syncStrategy = "APP_STATE";
+    try {
+      await socket.authState.keys.set({
+        "app-state-sync-version": { [CONTACT_APP_STATE_COLLECTION]: null },
+      });
+      await socket.resyncAppState([CONTACT_APP_STATE_COLLECTION], true);
+      await flushContactPersistence(accountId);
+      snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
+      directoryStats = await persistedContactStats(accountId, account.userId);
+      await backupWhatsAppSessionToDatabase(accountId, "contact.full_sync.app_state_synced").catch((error) =>
+        logger.error("whatsapp.contacts.bootstrap_backup_failed", error, { accountId, strategy: syncStrategy }),
+      );
+    } catch (error) {
+      logger.warn("whatsapp.contacts.app_state_sync_failed", { accountId, reason: errorMessage(error) });
+    }
+
+    try {
+      const metadata = Object.values(await socket.groupFetchAllParticipating());
+      const participantContacts = collectGroupParticipantContacts(metadata, {
+        ownJid: socket.user?.id,
+        knownContacts: snapshot,
+      });
+      if (participantContacts.length) {
+        await persistWhatsAppContacts(accountId, participantContacts, { source: "BAILEYS_GROUP_PARTICIPANT" });
+      }
+      directoryStats = await persistedContactStats(accountId, account.userId);
+      if (!directoryStats.named && directoryStats.total > 0) syncStrategy = "APP_STATE_PLUS_GROUP_PARTICIPANTS";
+      logger.info("whatsapp.contacts.group_participants_collected", {
+        accountId,
+        groupCount: metadata.length,
+        participantContactCount: participantContacts.length,
+        persistedCount: directoryStats.total,
+        namedCount: directoryStats.named,
+      });
+    } catch (error) {
+      logger.warn("whatsapp.contacts.group_participant_sync_failed", { accountId, reason: errorMessage(error) });
+    }
+
+    if (directoryStats.total === 0) {
+      syncStrategy = "HISTORY_FALLBACK";
+      await this.stopSocket(accountId, "Bootstrap WhatsApp contact history");
+      const { initialized } = await this.startSession(accountId, "RECONNECT", { syncContactHistory: true });
+      await initialized;
+      await waitForPersistedContacts(accountId, account.userId);
+      await flushContactPersistence(accountId);
+      socket = await this.ensureConnectedSocket(accountId);
+      directoryStats = await persistedContactStats(accountId, account.userId);
+    }
+    snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
+    logger.info("whatsapp.contacts.full_sync_finished", {
+      accountId,
+      persistedCount: directoryStats.total,
+      namedCount: directoryStats.named,
+      snapshotCount: snapshot.length,
+      strategy: syncStrategy,
+    });
+    await auditAccount(accountId, directoryStats.total > 0 ? "whatsapp.contacts.full_sync_completed" : "whatsapp.contacts.full_sync_empty", {
+      persistedCount: directoryStats.total,
+      namedCount: directoryStats.named,
+      snapshotCount: snapshot.length,
+      strategy: syncStrategy,
+    }).catch((error) => logger.warn("whatsapp.contacts.bootstrap_audit_failed", { accountId, reason: errorMessage(error) }));
 
     const existing = await prisma.contact.findMany({
       where: { accountId, userId: account.userId },

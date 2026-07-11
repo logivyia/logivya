@@ -6,6 +6,7 @@ RUN apt-get update -y && apt-get install -y openssl
 
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
+COPY scripts/patch-baileys-contact-jid.mjs ./scripts/patch-baileys-contact-jid.mjs
 
 RUN npm ci
 

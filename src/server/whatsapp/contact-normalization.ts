@@ -1,6 +1,7 @@
 export type ProviderContactRecord = {
   id: string;
   jid?: string | null;
+  phoneNumber?: string | null;
   name?: string | null;
   notify?: string | null;
   verifiedName?: string | null;
@@ -21,7 +22,7 @@ export function normalizeWhatsAppContactJid(value: string | null | undefined) {
 }
 
 export function normalizeProviderContact(contact: ProviderContactRecord) {
-  const normalized = normalizeWhatsAppContactJid(contact.jid || contact.id);
+  const normalized = normalizeWhatsAppContactJid(contact.phoneNumber || contact.jid || contact.id);
   if (!normalized) return null;
   return {
     externalContactId: normalized.jid,
