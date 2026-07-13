@@ -6,7 +6,7 @@
   "crons": [
     {
       "path": "/api/cron/support-notifications",
-      "schedule": "*/5 * * * *"
+      "schedule": "17 2 * * *"
     }
   ]
 }
