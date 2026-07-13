@@ -9,7 +9,7 @@ import { useI18n } from "@/i18n/provider";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand-logo";
 import { LanguageSelector } from "@/components/language-selector";
-import { getAdminMenuLabel, getSubscriptionStatusLabel } from "@/lib/i18n/status-labels";
+import { adminMenuLabel, statusLabel } from "@/i18n/status";
 
 const nav = [
   ["/dashboard", "nav.dashboard", LayoutDashboard], ["/accounts", "nav.accounts", Smartphone],
@@ -44,7 +44,6 @@ function latestSubscriptionEnd(subscription?: ShellSubscription) {
 
 function localizedSubscriptionBanner(
   subscription: ShellSubscription | undefined,
-  locale: ReturnType<typeof useI18n>["locale"],
   t: ReturnType<typeof useI18n>["t"],
   now: number,
 ) {
@@ -63,13 +62,13 @@ function localizedSubscriptionBanner(
   if (status === "EXPIRED" || status === "CANCELED" || status === "CANCELLED") {
     return { text: t("subscription.expired"), isPositive: false };
   }
-  return { text: getSubscriptionStatusLabel(status, locale), isPositive: false };
+  return { text: statusLabel(t, "subscription", status), isPositive: false };
 }
 
 export function AppShell({ children, userName, subscription, isPlatformAdmin=false }: { children: React.ReactNode; userName: string; isPlatformAdmin?:boolean; subscription?: ShellSubscription }) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState(false);
   const [noticeItems,setNoticeItems]=useState<NoticeItem[]>([]);
@@ -80,15 +79,15 @@ export function AppShell({ children, userName, subscription, isPlatformAdmin=fal
   const subscriptionEndDate=latestSubscriptionEnd(subscription);
   const trialDays=remainingDays(subscriptionEndDate,currentTime);
   const periodDays=remainingDays(subscriptionEndDate,currentTime);
-  const banner=localizedSubscriptionBanner(subscription,locale,t,currentTime);
+  const banner=localizedSubscriptionBanner(subscription,t,currentTime);
   if(pathname.startsWith("/admin"))return <>{children}</>;
 
   return <div className="min-h-screen lg:grid lg:grid-cols-[252px_1fr]">
     {open && <button className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setOpen(false)} aria-label={t("common.closeMenu")} />}
     <aside className={cn("fixed inset-y-0 start-0 z-50 flex w-[252px] flex-col border-e border-white/6 bg-sidebar px-4 py-5 text-white transition-transform lg:sticky lg:translate-x-0", open ? "translate-x-0" : "-translate-x-full rtl:translate-x-full")}>
       <div className="mb-8 flex items-center justify-between px-2"><Link href="/dashboard"><BrandLogo dark className="w-44" /></Link><button className="lg:hidden" onClick={() => setOpen(false)}><X className="size-5" /></button></div>
-      <nav className="space-y-1">{nav.map(([href, key, Icon]) => { const active = pathname.startsWith(href); const label=t(key); return <Link key={href} href={href} onClick={() => setOpen(false)} className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/72 hover:bg-white/8 hover:text-white", active && "bg-primary/16 text-primary")}><Icon className="size-[18px]" /><span>{label}</span>{active && <span className="ms-auto size-1.5 rounded-full bg-primary shadow-[0_0_10px_currentColor]" />}</Link>; })}{isPlatformAdmin&&<Link href="/admin" className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-orange-200 hover:bg-white/8 hover:text-white",pathname.startsWith("/admin")&&"bg-primary/16 text-primary")}><ShieldCheck className="size-[18px]"/>{getAdminMenuLabel("superAdmin", locale)}</Link>}<button onClick={()=>setSettingsOpen(value=>!value)} className={cn("flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/72 hover:bg-white/8 hover:text-white",pathname.startsWith("/settings")&&"bg-primary/16 text-primary")}><Settings className="size-[18px]"/><span>{t("nav.settings")}</span><ChevronDown className={cn("ms-auto size-4 transition-transform",settingsOpen&&"rotate-180")}/></button>{settingsOpen&&<div className="ms-4 space-y-1 border-s border-white/15 ps-3">{settingsNav.map(([href,key,Icon])=><Link key={href} href={href} onClick={()=>setOpen(false)} className={cn("flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/65 hover:bg-white/8 hover:text-white",pathname===href&&"bg-white/10 text-primary")}><Icon className="size-4"/>{t(key)}</Link>)}</div>}</nav>
-      <div className="mt-auto rounded-2xl border border-white/12 bg-white/[.06] p-4"><div className="mb-3 flex items-center justify-between"><span className="rounded-full bg-primary/18 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary">{subscription?.planName||t("trial.professional")}</span><span className="text-xs text-white/68">{subscription?.status==="TRIALING"?t("trial.days",{count:trialDays}):subscription?.status==="ACTIVE"?t("trial.days",{count:periodDays}):subscription?.status?getSubscriptionStatusLabel(subscription.status,locale):""}</span></div><p className="text-xs leading-5 text-white/70">{t("trial.description")}</p><Link href="/settings/subscriptions" className="mt-3 block w-full rounded-lg bg-primary px-3 py-2 text-center text-xs font-semibold text-primary-foreground hover:brightness-95">{t("trial.upgrade")}</Link></div>
+      <nav className="space-y-1">{nav.map(([href, key, Icon]) => { const active = pathname.startsWith(href); const label=t(key); return <Link key={href} href={href} onClick={() => setOpen(false)} className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/72 hover:bg-white/8 hover:text-white", active && "bg-primary/16 text-primary")}><Icon className="size-[18px]" /><span>{label}</span>{active && <span className="ms-auto size-1.5 rounded-full bg-primary shadow-[0_0_10px_currentColor]" />}</Link>; })}{isPlatformAdmin&&<Link href="/admin" className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-orange-200 hover:bg-white/8 hover:text-white",pathname.startsWith("/admin")&&"bg-primary/16 text-primary")}><ShieldCheck className="size-[18px]"/>{adminMenuLabel(t, "superAdmin")}</Link>}<button onClick={()=>setSettingsOpen(value=>!value)} className={cn("flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/72 hover:bg-white/8 hover:text-white",pathname.startsWith("/settings")&&"bg-primary/16 text-primary")}><Settings className="size-[18px]"/><span>{t("nav.settings")}</span><ChevronDown className={cn("ms-auto size-4 transition-transform",settingsOpen&&"rotate-180")}/></button>{settingsOpen&&<div className="ms-4 space-y-1 border-s border-white/15 ps-3">{settingsNav.map(([href,key,Icon])=><Link key={href} href={href} onClick={()=>setOpen(false)} className={cn("flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/65 hover:bg-white/8 hover:text-white",pathname===href&&"bg-white/10 text-primary")}><Icon className="size-4"/>{t(key)}</Link>)}</div>}</nav>
+      <div className="mt-auto rounded-2xl border border-white/12 bg-white/[.06] p-4"><div className="mb-3 flex items-center justify-between"><span className="rounded-full bg-primary/18 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary">{subscription?.planName||t("trial.professional")}</span><span className="text-xs text-white/68">{subscription?.status==="TRIALING"?t("trial.days",{count:trialDays}):subscription?.status==="ACTIVE"?t("trial.days",{count:periodDays}):subscription?.status?statusLabel(t,"subscription",subscription.status):""}</span></div><p className="text-xs leading-5 text-white/70">{t("trial.description")}</p><Link href="/settings/subscriptions" className="mt-3 block w-full rounded-lg bg-primary px-3 py-2 text-center text-xs font-semibold text-primary-foreground hover:brightness-95">{t("trial.upgrade")}</Link></div>
     </aside>
     <div className="min-w-0"><header className="sticky top-0 z-30 flex h-18 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur-xl md:px-8"><button className="rounded-lg border p-2 lg:hidden" onClick={() => setOpen(true)}><Menu className="size-5" /></button><div className="ms-auto flex items-center gap-2">
       <label className="hidden items-center gap-2 rounded-xl border bg-card px-3 py-2 md:flex"><Search className="size-4 text-muted" /><input className="w-32 bg-transparent text-xs outline-none" placeholder={t("header.search")} /><kbd className="text-[10px] text-muted">{t("header.shortcut")}</kbd></label>

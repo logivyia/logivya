@@ -4,7 +4,7 @@ import { requireMobileAuth } from "@/server/mobile/auth";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
 import { writeAuditLog } from "@/server/security/audit";
 
-const schema = z.object({ confirmation: z.literal("LOGIVYA HESABIMI KAPAT") });
+const schema = z.object({ confirmation: z.enum(["LOGIVYA HESABIMI KAPAT", "CLOSE MY LOGIVYA ACCOUNT"]) });
 
 export async function POST(request: Request) {
   try {

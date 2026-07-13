@@ -7,7 +7,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand-logo";
 import { useI18n } from "@/i18n/provider";
-import { getAdminMenuLabel } from "@/lib/i18n/status-labels";
+import { adminMenuLabel } from "@/i18n/status";
 
 const nav = [
   ["/admin", "dashboard", Gauge],
@@ -42,7 +42,7 @@ const settings = [
 export function AdminShell({ children, role, permissions }: { children: React.ReactNode; role: string; permissions: string[] }) {
   const router = useRouter();
   const path = usePathname();
-  const { locale, t } = useI18n();
+  const { t } = useI18n();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<any>();
   const [open, setOpen] = useState(true);
@@ -75,7 +75,7 @@ export function AdminShell({ children, role, permissions }: { children: React.Re
         <button type="button" onClick={() => replaceAdminRoute("/admin")} className="block text-left">
           <BrandLogo dark className="w-44" />
           <small className="mt-2 block text-[10px] uppercase tracking-[.18em] text-white/40">
-            {role === "SUPER_ADMIN" ? getAdminMenuLabel("superAdmin", locale) : role}
+            {role === "SUPER_ADMIN" ? adminMenuLabel(t, "superAdmin") : role}
           </small>
         </button>
         <button
@@ -99,10 +99,10 @@ export function AdminShell({ children, role, permissions }: { children: React.Re
             )}
           >
             <Icon className="size-4" />
-            {getAdminMenuLabel(labelKey, locale)}
+            {adminMenuLabel(t, labelKey)}
           </button>
         ))}
-        <button onClick={() => setOpen((value) => !value)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-xs text-white/55"><Settings className="size-4" />{getAdminMenuLabel("settings", locale)}<ChevronDown className={cn("ms-auto size-3", open && "rotate-180")} /></button>
+        <button onClick={() => setOpen((value) => !value)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-xs text-white/55"><Settings className="size-4" />{adminMenuLabel(t, "settings")}<ChevronDown className={cn("ms-auto size-3", open && "rotate-180")} /></button>
         {canAccessAdminNavigation && open && settings.map(([href, labelKey, Icon]) => (
           <button
             key={href}
@@ -114,13 +114,13 @@ export function AdminShell({ children, role, permissions }: { children: React.Re
             )}
           >
             <Icon className="size-4" />
-            {getAdminMenuLabel(labelKey, locale)}
+            {adminMenuLabel(t, labelKey)}
           </button>
         ))}
       </nav>
     </aside>
     <section>
-      <header className="sticky top-0 z-30 border-b bg-white/90 p-4 backdrop-blur"><div className="relative mx-auto max-w-5xl"><label className="flex items-center gap-2 rounded-xl border bg-white px-4"><Search className="size-4 text-slate-400" /><input value={q} onChange={(event) => void search(event.target.value)} placeholder={t("admin.searchPlaceholder")} className="w-full py-3 text-sm outline-none" /></label>{results && <div className="absolute inset-x-0 top-14 rounded-2xl border bg-white p-4 shadow-2xl"><SearchGroup title={getAdminMenuLabel("companies", locale)} rows={results.companies} /><SearchGroup title={getAdminMenuLabel("users", locale)} rows={results.users} /><SearchGroup title={getAdminMenuLabel("campaigns", locale)} rows={results.campaigns} /><SearchGroup title={getAdminMenuLabel("support", locale)} rows={results.tickets} /></div>}</div></header>
+      <header className="sticky top-0 z-30 border-b bg-white/90 p-4 backdrop-blur"><div className="relative mx-auto max-w-5xl"><label className="flex items-center gap-2 rounded-xl border bg-white px-4"><Search className="size-4 text-slate-400" /><input value={q} onChange={(event) => void search(event.target.value)} placeholder={t("admin.searchPlaceholder")} className="w-full py-3 text-sm outline-none" /></label>{results && <div className="absolute inset-x-0 top-14 rounded-2xl border bg-white p-4 shadow-2xl"><SearchGroup title={adminMenuLabel(t, "companies")} rows={results.companies} /><SearchGroup title={adminMenuLabel(t, "users")} rows={results.users} /><SearchGroup title={adminMenuLabel(t, "campaigns")} rows={results.campaigns} /><SearchGroup title={adminMenuLabel(t, "support")} rows={results.tickets} /></div>}</div></header>
       <main className="mx-auto max-w-[1600px] p-5 md:p-8">{children}</main>
     </section>
   </div>;

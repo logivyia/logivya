@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "@/components/theme-provider";
 import { I18nProvider } from "@/i18n/provider";
-import { getServerLocale } from "@/i18n/server";
+import { getServerLocale, loadServerDictionary } from "@/i18n/server";
 import "./globals.css";
 import { CookieConsent } from "@/components/cookie-consent";
 
@@ -49,10 +49,11 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await getServerLocale();
+  const dictionary = await loadServerDictionary(locale);
   return (
     <html lang={locale} suppressHydrationWarning>
       <body>
-        <ThemeProvider><I18nProvider initialLocale={locale}>{children}<CookieConsent/></I18nProvider></ThemeProvider>
+        <ThemeProvider><I18nProvider initialLocale={locale} initialDictionary={dictionary}>{children}<CookieConsent/></I18nProvider></ThemeProvider>
       </body>
     </html>
   );

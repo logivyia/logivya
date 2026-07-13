@@ -1,9 +1,11 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
-export const PASSWORD_POLICY = { minLength: 12, requireUppercase: true, requireLowercase: true, requireNumber: true, requireSymbol: true } as const;
-export function validateStrongPassword(password: string) {
-  return password.length >= PASSWORD_POLICY.minLength && /[A-Z]/.test(password) && /[a-z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
-}
+export {
+  isValidPassword,
+  MIN_PASSWORD_LENGTH,
+  passwordCharacterCount,
+  validatePasswordPolicy,
+} from "@logivya/validation/password-policy";
 export function hashOpaqueToken(token: string) { return createHash("sha256").update(token).digest("base64url"); }
 export function createExpiringToken(ttlMinutes: number) {
   const token = randomBytes(32).toString("base64url");

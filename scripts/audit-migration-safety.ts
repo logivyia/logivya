@@ -195,30 +195,42 @@ async function main() {
       await scalar(client, `
         SELECT COUNT(*) AS count
         FROM "MessageRecipient" mr
-        LEFT JOIN "MessageCampaign" mc ON mc.id = mr."campaignId"
-        LEFT JOIN "WhatsAppAccount" a ON a.id = mr."accountId"
-        LEFT JOIN "WhatsAppGroup" g ON g.id = mr."groupId"
-        WHERE mc.id IS NULL
-           OR a.id IS NULL
-           OR g.id IS NULL
-           OR mc."companyId" <> a."companyId"
-           OR mc."companyId" <> g."companyId"
-           OR mr."accountId" <> g."accountId"
-      `),
-      "Message recipients must reference existing same-company campaign/account/group rows and the group must belong to the recipient account.",
+         LEFT JOIN "MessageCampaign" mc ON mc.id = mr."campaignId"
+         LEFT JOIN "WhatsAppAccount" a ON a.id = mr."accountId"
+         LEFT JOIN "WhatsAppGroup" g ON g.id = mr."groupId"
+         LEFT JOIN "Contact" c ON c.id = mr."contactId"
+         WHERE mc.id IS NULL
+            OR a.id IS NULL
+            OR mc."companyId" <> a."companyId"
+            OR (
+              mr."targetType" = 'GROUP'
+              AND (mr."groupId" IS NULL OR mr."contactId" IS NOT NULL OR g.id IS NULL OR mc."companyId" <> g."companyId" OR mr."accountId" <> g."accountId")
+            )
+            OR (
+              mr."targetType" = 'CONTACT'
+              AND (mr."contactId" IS NULL OR mr."groupId" IS NOT NULL OR c.id IS NULL OR mc."companyId" <> c."companyId" OR mr."accountId" <> c."accountId")
+            )
+       `),
+      "Message recipients must reference an existing same-company account and exactly one account-owned group or contact target.",
       await sample(client, `
-        SELECT mr.id, mr."campaignId", mr."accountId", mr."groupId", mc."companyId" AS "campaignCompanyId", a."companyId" AS "accountCompanyId", g."companyId" AS "groupCompanyId", g."accountId" AS "groupAccountId"
-        FROM "MessageRecipient" mr
-        LEFT JOIN "MessageCampaign" mc ON mc.id = mr."campaignId"
-        LEFT JOIN "WhatsAppAccount" a ON a.id = mr."accountId"
-        LEFT JOIN "WhatsAppGroup" g ON g.id = mr."groupId"
-        WHERE mc.id IS NULL
-           OR a.id IS NULL
-           OR g.id IS NULL
-           OR mc."companyId" <> a."companyId"
-           OR mc."companyId" <> g."companyId"
-           OR mr."accountId" <> g."accountId"
-        LIMIT 20
+        SELECT mr.id, mr."campaignId", mr."accountId", mr."targetType", mr."groupId", mr."contactId", mc."companyId" AS "campaignCompanyId", a."companyId" AS "accountCompanyId", g."companyId" AS "groupCompanyId", g."accountId" AS "groupAccountId", c."companyId" AS "contactCompanyId", c."accountId" AS "contactAccountId"
+         FROM "MessageRecipient" mr
+         LEFT JOIN "MessageCampaign" mc ON mc.id = mr."campaignId"
+         LEFT JOIN "WhatsAppAccount" a ON a.id = mr."accountId"
+         LEFT JOIN "WhatsAppGroup" g ON g.id = mr."groupId"
+         LEFT JOIN "Contact" c ON c.id = mr."contactId"
+         WHERE mc.id IS NULL
+            OR a.id IS NULL
+            OR mc."companyId" <> a."companyId"
+            OR (
+              mr."targetType" = 'GROUP'
+              AND (mr."groupId" IS NULL OR mr."contactId" IS NOT NULL OR g.id IS NULL OR mc."companyId" <> g."companyId" OR mr."accountId" <> g."accountId")
+            )
+            OR (
+              mr."targetType" = 'CONTACT'
+              AND (mr."contactId" IS NULL OR mr."groupId" IS NOT NULL OR c.id IS NULL OR mc."companyId" <> c."companyId" OR mr."accountId" <> c."accountId")
+            )
+         LIMIT 20
       `),
     ));
 

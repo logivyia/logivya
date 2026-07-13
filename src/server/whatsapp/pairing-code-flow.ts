@@ -9,6 +9,7 @@ import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
 import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { withWhatsAppAccountLock } from "@/server/whatsapp/account-lock";
+import { resetWhatsAppContactDirectoryIfIdentityChanged } from "@/server/whatsapp/contacts";
 import { canExposePhonePairingCode } from "@/server/whatsapp/pairing-code-state";
 import { waitForPairingCode } from "@/server/whatsapp/worker-health";
 
@@ -123,6 +124,7 @@ export async function requestPhonePairingCode(input: RequestPhonePairingCodeInpu
         return { reused: true, alreadyConnected: false, refreshRequestedAt: null };
       }
 
+      await resetWhatsAppContactDirectoryIfIdentityChanged(input.accountId, input.phoneNumber, "phone-pairing");
       await resetAccountForConnection(input.accountId, AccountStatus.PENDING_PAIRING, { phoneNumber: input.phoneNumber });
       const jobBucket = Math.floor(Date.now() / 10_000);
       const job = await enqueueWhatsAppJob(

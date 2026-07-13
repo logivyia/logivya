@@ -5,6 +5,7 @@ const authPaths = ["/login", "/register", "/forgot-password", "/reset-password"]
 
 export function proxy(request: NextRequest) {
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
+  const hasBearerToken = /^Bearer\s+\S+/i.test(request.headers.get("authorization") || "");
   const isAuthPath = authPaths.some((path) => request.nextUrl.pathname.startsWith(path));
   const isProtected = ["/dashboard", "/accounts", "/groups", "/categories", "/send-message", "/messages", "/message-history", "/settings", "/support", "/activity", "/onboarding", "/admin"].some((path) => request.nextUrl.pathname.startsWith(path));
   if (process.env.MAINTENANCE_MODE === "true" && !request.nextUrl.pathname.startsWith("/admin") && isProtected) {
@@ -12,8 +13,8 @@ export function proxy(request: NextRequest) {
   }
   if (!hasSession && isProtected) return NextResponse.redirect(new URL("/login", request.url));
   if (request.nextUrl.pathname.startsWith("/api/admin/")) {
-    if (!hasSession) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
+    if (!hasSession && !hasBearerToken) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    if (hasSession && !hasBearerToken && ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
       const origin = request.headers.get("origin");
       const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
       if (!origin || !host || new URL(origin).host !== host) return NextResponse.json({ error: "CSRF_REJECTED" }, { status: 403 });

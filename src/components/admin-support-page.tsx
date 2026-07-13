@@ -1,367 +1,331 @@
 "use client";
 
-/* eslint-disable react-hooks/set-state-in-effect */
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { MessageSquare, RefreshCw, Send, Ticket } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { ChevronDown, MessageSquare, RefreshCw, Search, Send, Ticket } from "lucide-react";
+import { apiErrorMessage } from "@/i18n/api-error";
+import { formatDateTime } from "@/i18n/format";
+import { useI18n } from "@/i18n/provider";
 
 type SupportMessage = {
   id: string;
   senderType: string;
   message: string;
-  attachmentUrl?: string | null;
   isInternal?: boolean;
   createdAt: string;
-  senderUser?: { name: string | null; email: string } | null;
 };
 
 type SupportTicket = {
   id: string;
-  tenantId?: string;
-  userId?: string;
+  publicId: string;
   title?: string;
-  description?: string;
-  category?: string;
   subject: string;
+  category?: string;
   type: string;
   source?: string;
   status: string;
   priority: string;
   createdAt: string;
-  updatedAt?: string;
   lastMessageAt?: string;
-  closedAt?: string | null;
+  adminUnreadCount?: number;
+  unreadReplyCount?: number;
   company?: { id: string; name: string } | null;
   createdBy?: { id: string; name: string | null; email: string } | null;
   assignedToAdmin?: { id: string; name: string | null; email: string } | null;
   messages?: SupportMessage[];
 };
 
-const listStatuses = [
-  ["ALL", "Tümü"],
-  ["OPEN", "Açık"],
-  ["PENDING", "Beklemede"],
-  ["IN_PROGRESS", "İşlemde"],
-  ["ANSWERED", "Yanıtlandı"],
-  ["RESOLVED", "Çözüldü"],
-  ["CLOSED", "Kapalı"],
-] as const;
+type Metrics = {
+  totalOpen: number;
+  open: number;
+  inProgress: number;
+  waitingForUser: number;
+  waitingForAdmin: number;
+  resolvedToday: number;
+  urgent: number;
+  unread: number;
+  averageFirstResponseSeconds: number | null;
+};
 
-const editableStatuses = [
-  ["OPEN", "Açık"],
-  ["PENDING", "Beklemede"],
-  ["IN_PROGRESS", "İşlemde"],
-  ["ANSWERED", "Yanıtlandı"],
-  ["RESOLVED", "Çözüldü"],
-  ["CLOSED", "Kapalı"],
-] as const;
+type PageInfo = { hasMore: boolean; nextCursor: string | null };
 
-const field = "w-full rounded-xl border bg-white px-3 py-3 text-sm outline-none";
-const button = "inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50";
-const ghost = "inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-primary disabled:opacity-50";
+const statuses = ["ALL", "OPEN", "IN_PROGRESS", "WAITING_FOR_ADMIN", "WAITING_FOR_USER", "RESOLVED", "CLOSED"] as const;
+const priorities = ["ALL", "LOW", "NORMAL", "HIGH", "URGENT"] as const;
+const categories = ["ALL", "TECHNICAL", "WHATSAPP_CONNECTION", "MESSAGE_DELIVERY", "DELETE_FOR_EVERYONE", "ACCOUNT", "SUBSCRIPTION", "BILLING", "TEAM", "SECURITY", "FEATURE_REQUEST", "OTHER"] as const;
+const categoryKeys: Record<string, string> = {
+  TECHNICAL: "support.category.technical",
+  WHATSAPP_CONNECTION: "support.category.whatsappConnection",
+  MESSAGE_DELIVERY: "support.category.messageDelivery",
+  DELETE_FOR_EVERYONE: "support.category.deleteForEveryone",
+  ACCOUNT: "support.category.account",
+  SUBSCRIPTION: "support.category.subscription",
+  BILLING: "support.category.billing",
+  TEAM: "support.category.team",
+  SECURITY: "support.category.security",
+  FEATURE_REQUEST: "support.category.featureRequest",
+  OTHER: "support.category.other",
+};
 
-function statusLabel(status: string) {
-  return listStatuses.find(([value]) => value === status)?.[1] ?? status;
+const field = "w-full rounded-lg border bg-input px-3 py-2.5 text-sm text-input-foreground outline-none transition focus:border-primary";
+const primaryButton = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50";
+const secondaryButton = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border bg-background px-4 py-2.5 text-sm font-semibold hover:border-primary disabled:opacity-50";
+
+function statusLabel(status: string, t: ReturnType<typeof useI18n>["t"]) {
+  return t(`status.${status.toLowerCase()}`);
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("tr-TR");
+function priorityLabel(priority: string, t: ReturnType<typeof useI18n>["t"]) {
+  return t(`priority.${priority.toLowerCase()}`);
 }
 
-function ticketTitle(ticket: SupportTicket) {
-  return ticket.title || ticket.subject;
+function categoryLabel(category: string, t: ReturnType<typeof useI18n>["t"]) {
+  return t(categoryKeys[category] ?? "support.category.other");
 }
 
-function ticketCategory(ticket: SupportTicket) {
-  return ticket.category || ticket.type;
+function operationId(prefix: string) {
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
-function messageRoleLabel(message: SupportMessage) {
-  if (message.isInternal) return "İç not";
-  if (message.senderType === "ADMIN") return "Yönetici yanıtı";
-  if (message.senderType === "USER" || message.senderType === "CUSTOMER") return "Kullanıcı mesajı";
-  return "Sistem mesajı";
-}
-
-export function AdminSupportPage() {
+export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string }) {
+  const { locale, t } = useI18n();
   const [status, setStatus] = useState("ALL");
-  const [page, setPage] = useState(1);
+  const [priority, setPriority] = useState("ALL");
+  const [category, setCategory] = useState("ALL");
   const [search, setSearch] = useState("");
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pageInfo, setPageInfo] = useState<PageInfo>({ hasMore: false, nextCursor: null });
+  const [messagePageInfo, setMessagePageInfo] = useState<PageInfo>({ hasMore: false, nextCursor: null });
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [selected, setSelected] = useState<SupportTicket | null>(null);
-  const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 1 });
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [savingReply, setSavingReply] = useState(false);
-  const [savingStatus, setSavingStatus] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [replyText, setReplyText] = useState("");
+  const [internalNote, setInternalNote] = useState(false);
   const [statusDraft, setStatusDraft] = useState("OPEN");
+  const [priorityDraft, setPriorityDraft] = useState("NORMAL");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const pendingReply = useRef<{ body: string; id: string } | null>(null);
 
-  const query = useMemo(() => {
-    const params = new URLSearchParams({ page: String(page), limit: "30", status });
-    if (search.trim()) params.set("search", search.trim());
-    return params.toString();
-  }, [page, search, status]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (cursor?: string | null) => {
+    if (cursor) setLoadingMore(true);
+    else setLoading(true);
     setError("");
     try {
+      const query = new URLSearchParams({ limit: "30", status, priority, category });
+      if (search.trim()) query.set("search", search.trim());
+      if (unreadOnly) query.set("unread", "true");
+      if (cursor) query.set("cursor", cursor);
       const response = await fetch(`/api/admin/support/tickets?${query}`, { cache: "no-store" });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Destek talepleri yüklenemedi.");
-      const nextTickets = payload.tickets || [];
-      setTickets(nextTickets);
-      setPagination(payload.pagination || { page: 1, total: 0, pages: 1 });
-      setSelectedId((current) => current ?? nextTickets[0]?.id ?? null);
+      if (!response.ok) throw new Error(apiErrorMessage(t, payload, "support.loadFailed"));
+      setTickets((current) => cursor ? [...current, ...(payload.tickets || [])] : payload.tickets || []);
+      setPageInfo(payload.pageInfo || { hasMore: false, nextCursor: null });
+      setMetrics(payload.metrics || null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Destek talepleri yüklenemedi.");
+      setError(loadError instanceof Error ? loadError.message : t("support.loadFailed"));
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [query]);
+  }, [category, priority, search, status, t, unreadOnly]);
 
-  const loadDetail = useCallback(async (id: string) => {
+  const openTicket = useCallback(async (identifier: string, options: { older?: boolean; updateUrl?: boolean; cursor?: string | null } = {}) => {
     setDetailLoading(true);
     setError("");
     try {
-      const response = await fetch(`/api/admin/support/tickets/${id}`, { cache: "no-store" });
+      const query = new URLSearchParams({ limit: "50" });
+      if (options.older && options.cursor) query.set("cursor", options.cursor);
+      const response = await fetch(`/api/admin/support/tickets/${encodeURIComponent(identifier)}?${query}`, { cache: "no-store" });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Destek talebi açılamadı.");
-      setSelected(payload.ticket);
-      setStatusDraft(payload.ticket?.status || "OPEN");
+      if (!response.ok) throw new Error(apiErrorMessage(t, payload, "support.openFailed"));
+      if (options.older) {
+        setSelected((current) => current ? { ...current, messages: [...(payload.messages || []), ...(current.messages || [])] } : payload.ticket);
+      } else {
+        setSelected(payload.ticket);
+        setStatusDraft(payload.ticket.status);
+        setPriorityDraft(payload.ticket.priority);
+        setTickets((current) => current.map((ticket) => ticket.publicId === payload.ticket.publicId
+          ? { ...ticket, adminUnreadCount: 0, unreadReplyCount: 0 }
+          : ticket));
+        if (options.updateUrl !== false) window.history.replaceState(null, "", `/admin/support/${encodeURIComponent(payload.ticket.publicId)}`);
+      }
+      setMessagePageInfo(payload.pageInfo || { hasMore: false, nextCursor: null });
     } catch (detailError) {
-      setError(detailError instanceof Error ? detailError.message : "Destek talebi açılamadı.");
+      setError(detailError instanceof Error ? detailError.message : t("support.openFailed"));
     } finally {
       setDetailLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => void load(), 250);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   useEffect(() => {
-    if (selectedId) void loadDetail(selectedId);
-  }, [loadDetail, selectedId]);
-
-  useEffect(() => {
-    setReplyText("");
-    setNotice("");
-  }, [selectedId]);
+    if (!initialPublicId) return;
+    const timer = window.setTimeout(() => void openTicket(initialPublicId, { updateUrl: false }), 0);
+    return () => window.clearTimeout(timer);
+  }, [initialPublicId, openTicket]);
 
   async function sendReply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selected || savingReply || !replyText.trim()) return;
-    setSavingReply(true);
+    const body = replyText.trim();
+    if (!selected || !body || saving) return;
+    if (!pendingReply.current || pendingReply.current.body !== body) pendingReply.current = { body, id: operationId("admin-reply") };
+    setSaving(true);
     setError("");
     setNotice("");
     try {
-      const response = await fetch(`/api/admin/support/tickets/${selected.id}/messages`, {
+      const response = await fetch(`/api/admin/support/tickets/${encodeURIComponent(selected.publicId || selected.id)}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: replyText.trim() }),
+        body: JSON.stringify({ body, clientMessageId: pendingReply.current.id, visibility: internalNote ? "INTERNAL" : "PUBLIC" }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.message || payload.error || "Yanıt gönderilemedi.");
+      if (!response.ok) throw new Error(apiErrorMessage(t, payload, "support.replyFailed"));
+      pendingReply.current = null;
       setReplyText("");
-      setNotice("Yanıt gönderildi.");
-      await Promise.all([load(), loadDetail(selected.id)]);
+      setInternalNote(false);
+      setNotice(t("support.replySent"));
+      await Promise.all([load(), openTicket(selected.publicId || selected.id, { updateUrl: false })]);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Yanıt gönderilemedi.");
+      setError(saveError instanceof Error ? saveError.message : t("support.replyFailed"));
     } finally {
-      setSavingReply(false);
+      setSaving(false);
     }
   }
 
-  async function updateStatus() {
-    if (!selected || savingStatus || statusDraft === selected.status) return;
-    setSavingStatus(true);
+  async function updateTicket(kind: "status" | "priority") {
+    if (!selected || saving) return;
+    setSaving(true);
     setError("");
     setNotice("");
     try {
-      const response = await fetch(`/api/admin/support/tickets/${selected.id}/status`, {
+      const value = kind === "status" ? statusDraft : priorityDraft;
+      const response = await fetch(`/api/admin/support/tickets/${encodeURIComponent(selected.publicId || selected.id)}/${kind}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ status: statusDraft }),
+        body: JSON.stringify({ [kind]: value }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.message || payload.error || "Talep durumu güncellenemedi.");
-      setNotice("Talep durumu güncellendi.");
-      await Promise.all([load(), loadDetail(selected.id)]);
+      if (!response.ok) throw new Error(apiErrorMessage(t, payload, kind === "status" ? "adminSupport.statusUpdateFailed" : "support.priorityUpdateFailed"));
+      setNotice(kind === "status" ? t("adminSupport.statusUpdated") : t("support.priorityUpdated"));
+      await Promise.all([load(), openTicket(selected.publicId || selected.id, { updateUrl: false })]);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Talep durumu güncellenemedi.");
+      setError(saveError instanceof Error ? saveError.message : t("support.updateFailed"));
     } finally {
-      setSavingStatus(false);
+      setSaving(false);
     }
   }
+
+  const metricItems = metrics ? [
+    ["support.metrics.open", metrics.totalOpen],
+    ["support.metrics.waitingForAdmin", metrics.waitingForAdmin],
+    ["support.metrics.waitingForUser", metrics.waitingForUser],
+    ["support.metrics.inProgress", metrics.inProgress],
+    ["support.metrics.resolvedToday", metrics.resolvedToday],
+    ["support.metrics.urgent", metrics.urgent],
+    ["support.metrics.unread", metrics.unread],
+  ] as const : [];
 
   return (
     <div>
-      <header className="mb-7">
-        <p className="text-xs font-semibold uppercase tracking-[.2em] text-primary">Logivya Destek Operasyonları</p>
-        <h1 className="mt-2 text-3xl font-semibold">Destek Talepleri</h1>
-        <p className="mt-2 text-sm text-muted">Tüm şirketlerden gelen destek taleplerini merkezi akıştan yönetin.</p>
+      <header className="mb-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t("adminSupport.eyebrow")}</p>
+        <h1 className="mt-2 text-3xl font-semibold">{t("adminSupport.title")}</h1>
+        <p className="mt-2 text-sm text-muted">{t("adminSupport.description")}</p>
       </header>
 
-      <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto]">
-        <input
-          className={field}
-          value={search}
-          onChange={(event) => {
-            setPage(1);
-            setSearch(event.target.value);
-          }}
-          placeholder="Konu, şirket, kullanıcı veya e-posta ara..."
-        />
-        <button type="button" className={ghost} onClick={() => void load()}>
-          <RefreshCw className="size-4" />
-          Yenile
-        </button>
+      {metricItems.length ? (
+        <div className="mb-5 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
+          {metricItems.map(([label, value]) => (
+            <div key={label} className="rounded-lg border bg-card p-3">
+              <p className="text-xs text-muted">{t(label)}</p>
+              <p className="mt-1 text-xl font-semibold">{value}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mb-5 grid gap-2 border-y py-4 md:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_180px_160px_180px_auto_auto]">
+        <label className="relative">
+          <Search className="pointer-events-none absolute start-3 top-3 size-4 text-muted" />
+          <input className={`${field} ps-9`} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("adminSupport.searchPlaceholder")} />
+        </label>
+        <select className={field} value={status} onChange={(event) => setStatus(event.target.value)}>
+          {statuses.map((value) => <option key={value} value={value}>{value === "ALL" ? t("adminSupport.all") : statusLabel(value, t)}</option>)}
+        </select>
+        <select className={field} value={priority} onChange={(event) => setPriority(event.target.value)}>
+          {priorities.map((value) => <option key={value} value={value}>{value === "ALL" ? t("support.allPriorities") : priorityLabel(value, t)}</option>)}
+        </select>
+        <select className={field} value={category} onChange={(event) => setCategory(event.target.value)}>
+          {categories.map((value) => <option key={value} value={value}>{value === "ALL" ? t("support.allCategories") : categoryLabel(value, t)}</option>)}
+        </select>
+        <button type="button" className={unreadOnly ? primaryButton : secondaryButton} onClick={() => setUnreadOnly((value) => !value)}>{t("support.unreadOnly")}</button>
+        <button type="button" className={secondaryButton} onClick={() => void load()}><RefreshCw className="size-4" />{t("adminSupport.refresh")}</button>
       </div>
 
-      <div className="mb-5 flex flex-wrap gap-2">
-        {listStatuses.map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => {
-              setPage(1);
-              setStatus(value);
-            }}
-            className={value === status ? button : ghost}
-          >
-            {label}
-          </button>
-        ))}
+      <div aria-live="polite">
+        {error ? <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm font-semibold text-red-600">{error}</p> : null}
+        {notice ? <p className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-600">{notice}</p> : null}
       </div>
 
-      {error ? <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
-      {notice ? <p className="mb-4 rounded-xl bg-green-50 p-3 text-sm font-semibold text-green-700">{notice}</p> : null}
-
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_460px]">
-        <section className="panel rounded-2xl p-0">
-          <div className="border-b p-4 text-sm font-semibold text-muted">
-            {loading ? "Yükleniyor..." : `${pagination.total} destek talebi`}
-          </div>
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(380px,500px)]">
+        <section className="min-w-0 rounded-lg border bg-card">
+          <div className="border-b px-4 py-3 text-sm font-semibold text-muted">{loading ? t("common.loading") : t("adminSupport.ticketCount", { count: tickets.length })}</div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="px-4 py-3">Talep</th>
-                  <th className="px-4 py-3">Şirket</th>
-                  <th className="px-4 py-3">Kullanıcı e-posta</th>
-                  <th className="px-4 py-3">Durum</th>
-                  <th className="px-4 py-3">Kategori</th>
-                  <th className="px-4 py-3">Son mesaj</th>
-                </tr>
-              </thead>
+            <table className="w-full min-w-[820px] text-sm">
+              <thead><tr className="border-b text-start text-xs uppercase text-muted">
+                <th className="px-4 py-3">{t("adminSupport.ticket")}</th><th className="px-4 py-3">{t("common.company")}</th><th className="px-4 py-3">{t("adminSupport.userEmail")}</th><th className="px-4 py-3">{t("common.status")}</th><th className="px-4 py-3">{t("support.priority")}</th><th className="px-4 py-3">{t("adminSupport.lastMessage")}</th>
+              </tr></thead>
               <tbody>
-                {tickets.map((ticket) => (
-                  <tr
-                    key={ticket.id}
-                    onClick={() => setSelectedId(ticket.id)}
-                    className={`cursor-pointer border-b last:border-0 hover:bg-slate-50 ${selectedId === ticket.id ? "bg-orange-50" : ""}`}
-                  >
-                    <td className="px-4 py-4">
-                      <p className="font-semibold">{ticketTitle(ticket)}</p>
-                      <button type="button" className="mt-1 text-xs font-semibold text-primary">
-                        Talebi aç
-                      </button>
-                    </td>
-                    <td className="px-4 py-4">{ticket.company?.name || "-"}</td>
-                    <td className="px-4 py-4">{ticket.createdBy?.email || "-"}</td>
-                    <td className="px-4 py-4">{statusLabel(ticket.status)}</td>
-                    <td className="px-4 py-4">{ticketCategory(ticket)}</td>
-                    <td className="px-4 py-4">{formatDate(ticket.lastMessageAt || ticket.createdAt)}</td>
-                  </tr>
-                ))}
+                {tickets.map((ticket) => {
+                  const unread = ticket.adminUnreadCount || ticket.unreadReplyCount || 0;
+                  return (
+                    <tr key={ticket.id} onClick={() => void openTicket(ticket.publicId || ticket.id)} className={`cursor-pointer border-b transition last:border-0 hover:bg-primary/5 ${selected?.id === ticket.id ? "bg-primary/5" : ""}`}>
+                      <td className="px-4 py-3"><div className="flex items-center gap-2"><span className="font-semibold">{ticket.title || ticket.subject}</span>{unread ? <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground">{unread}</span> : null}</div><p className="mt-1 text-xs text-muted">{ticket.publicId}</p></td>
+                      <td className="px-4 py-3">{ticket.company?.name || "-"}</td><td className="px-4 py-3">{ticket.createdBy?.email || "-"}</td><td className="px-4 py-3">{statusLabel(ticket.status, t)}</td><td className="px-4 py-3">{priorityLabel(ticket.priority, t)}</td><td className="px-4 py-3">{formatDateTime(ticket.lastMessageAt || ticket.createdAt, locale)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-          {!loading && !tickets.length ? <p className="py-12 text-center text-sm text-muted">Kayıt bulunmuyor.</p> : null}
-          <div className="flex items-center justify-between gap-3 border-t p-4 text-sm">
-            <button className={ghost} disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
-              Önceki
-            </button>
-            <span className="text-muted">Sayfa {pagination.page} / {Math.max(1, pagination.pages)}</span>
-            <button className={ghost} disabled={page >= pagination.pages} onClick={() => setPage((value) => value + 1)}>
-              Sonraki
-            </button>
-          </div>
+          {!loading && !tickets.length ? <p className="py-12 text-center text-sm text-muted">{t("support.empty.admin")}</p> : null}
+          {pageInfo.hasMore ? <button type="button" className={`${secondaryButton} m-4 w-[calc(100%-2rem)]`} disabled={loadingMore} onClick={() => void load(pageInfo.nextCursor)}>{loadingMore ? <RefreshCw className="size-4 animate-spin" /> : <ChevronDown className="size-4" />}{t("support.loadMore")}</button> : null}
         </section>
 
-        <aside className="panel rounded-2xl p-5">
-          {!selected || detailLoading ? (
-            <div className="grid min-h-80 place-items-center text-center text-sm text-muted">
-              <div>
-                <Ticket className="mx-auto mb-3 size-8 text-primary" />
-                {detailLoading ? "Talep yükleniyor..." : "Detay görmek için talep seçin."}
-              </div>
-            </div>
+        <aside className="min-w-0 rounded-lg border bg-card p-5">
+          {!selected ? (
+            <div className="grid min-h-80 place-items-center text-center text-sm text-muted"><div><Ticket className="mx-auto mb-3 size-8 text-primary" />{detailLoading ? t("adminSupport.ticketLoading") : t("adminSupport.selectTicket")}</div></div>
           ) : (
             <div className="grid gap-5">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[.18em] text-primary">
-                  {ticketCategory(selected)} - {selected.source || "WEB"}
-                </p>
-                <h2 className="mt-2 text-xl font-semibold">{ticketTitle(selected)}</h2>
-                <p className="mt-2 text-sm text-muted">{selected.createdBy?.email || "-"} - {selected.company?.name || "-"}</p>
-                <p className="mt-1 text-xs text-muted">{formatDate(selected.createdAt)}</p>
+              <div><p className="text-xs font-semibold text-primary">{selected.publicId}</p><h2 className="mt-2 text-xl font-semibold">{selected.title || selected.subject}</h2><p className="mt-2 text-sm text-muted">{selected.createdBy?.name || selected.createdBy?.email || "-"} · {selected.company?.name || "-"}</p><p className="mt-1 text-xs text-muted">{formatDateTime(selected.createdAt, locale)}</p></div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div><label className="mb-1 block text-xs font-semibold text-muted">{t("adminSupport.ticketStatus")}</label><div className="flex gap-2"><select className={field} value={statusDraft} onChange={(event) => setStatusDraft(event.target.value)}>{statuses.filter((value) => value !== "ALL").map((value) => <option key={value} value={value}>{statusLabel(value, t)}</option>)}</select><button type="button" title={t("adminSupport.update")} className={primaryButton} disabled={saving || statusDraft === selected.status} onClick={() => void updateTicket("status")}>{t("common.save")}</button></div></div>
+                <div><label className="mb-1 block text-xs font-semibold text-muted">{t("support.priority")}</label><div className="flex gap-2"><select className={field} value={priorityDraft} onChange={(event) => setPriorityDraft(event.target.value)}>{priorities.filter((value) => value !== "ALL").map((value) => <option key={value} value={value}>{priorityLabel(value, t)}</option>)}</select><button type="button" title={t("adminSupport.update")} className={primaryButton} disabled={saving || priorityDraft === selected.priority} onClick={() => void updateTicket("priority")}>{t("common.save")}</button></div></div>
               </div>
-
-              <div className="rounded-2xl border bg-white p-4">
-                <label className="text-xs font-semibold uppercase tracking-wide text-muted">Talep durumu</label>
-                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
-                  <select className={field} value={statusDraft} onChange={(event) => setStatusDraft(event.target.value)}>
-                    {editableStatuses.map(([value, label]) => (
-                      <option key={value} value={value}>{label}</option>
-                    ))}
-                  </select>
-                  <button type="button" className={button} disabled={savingStatus || statusDraft === selected.status} onClick={() => void updateStatus()}>
-                    {savingStatus ? <RefreshCw className="size-4 animate-spin" /> : null}
-                    Güncelle
-                  </button>
-                </div>
+              <div className="grid max-h-[430px] gap-3 overflow-y-auto pe-1">
+                {messagePageInfo.hasMore ? <button type="button" className={secondaryButton} disabled={detailLoading} onClick={() => void openTicket(selected.publicId || selected.id, { older: true, updateUrl: false, cursor: messagePageInfo.nextCursor })}>{t("support.loadOlder")}</button> : null}
+                {(selected.messages || []).map((message) => <article key={message.id} className={`max-w-[92%] rounded-lg border p-3 ${message.isInternal ? "bg-amber-500/10" : message.senderType === "ADMIN" ? "ms-auto bg-primary/5" : "bg-background"}`}><div className="mb-2 flex justify-between gap-3 text-xs text-muted"><span className="font-semibold">{message.isInternal ? t("adminSupport.internalNote") : message.senderType === "ADMIN" ? t("adminSupport.adminReply") : t("adminSupport.userMessage")}</span><span>{formatDateTime(message.createdAt, locale)}</span></div><p className="whitespace-pre-wrap break-words text-sm leading-6">{message.message}</p></article>)}
               </div>
-
-              <div className="grid max-h-[420px] gap-3 overflow-y-auto pr-1">
-                {(selected.messages || []).map((message) => (
-                  <article key={message.id} className={`rounded-xl border p-3 ${message.isInternal ? "bg-amber-50" : "bg-white"}`}>
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <p className="text-xs font-semibold text-muted">{messageRoleLabel(message)}</p>
-                      <p className="text-xs text-muted">{formatDate(message.createdAt)}</p>
-                    </div>
-                    <p className="whitespace-pre-wrap text-sm leading-6">{message.message}</p>
-                  </article>
-                ))}
-              </div>
-
+              {selected.status === "CLOSED" && !internalNote ? <p className="rounded-lg bg-muted/10 p-3 text-sm text-muted">{t("support.closedNoReply")}</p> : null}
               <form className="grid gap-3" onSubmit={sendReply}>
-                <label className="text-xs font-semibold uppercase tracking-wide text-muted">Yanıt yaz</label>
-                <textarea
-                  value={replyText}
-                  onChange={(event) => setReplyText(event.target.value)}
-                  className={`${field} min-h-32`}
-                  placeholder="Kullanıcıya yanıt yazın..."
-                />
-                <button className={button} disabled={savingReply || !replyText.trim()}>
-                  {savingReply ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
-                  Yanıt gönder
-                </button>
+                <label className="text-xs font-semibold uppercase text-muted">{t("adminSupport.writeReply")}</label>
+                <textarea value={replyText} onChange={(event) => { setReplyText(event.target.value); if (pendingReply.current?.body !== event.target.value.trim()) pendingReply.current = null; }} maxLength={10000} className={`${field} min-h-28`} placeholder={t("adminSupport.replyPlaceholder")} />
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={internalNote} onChange={(event) => setInternalNote(event.target.checked)} />{t("adminSupport.internalNote")}</label>
+                <button className={primaryButton} disabled={saving || !replyText.trim() || (selected.status === "CLOSED" && !internalNote)}>{saving ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}{t("adminSupport.sendReply")}</button>
               </form>
             </div>
           )}
         </aside>
       </div>
 
-      <div className="mt-5 rounded-2xl border bg-white p-4 text-sm text-muted">
-        <MessageSquare className="me-2 inline size-4 text-primary" />
-        Kullanıcı yanıtları ve yönetici yanıtları bu konuşma akışında gerçek zamanlı yenileme sonrası görünür.
-      </div>
+      <p className="mt-5 border-t pt-4 text-sm text-muted"><MessageSquare className="me-2 inline size-4 text-primary" />{t("adminSupport.threadNotice")}</p>
     </div>
   );
 }

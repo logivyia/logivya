@@ -1,1 +1,7 @@
-import { LegalPage } from "@/components/legal-page";export default function Page(){return <LegalPage title="Kullanım Koşulları"><p>Logivya yalnızca hukuka uygun ve alıcı izinlerine uygun mesajlaşma operasyonlarında kullanılabilir.</p><p>Spam, kötüye kullanım, yetkisiz erişim ve platform güvenliğini riske atan faaliyetler yasaktır.</p></LegalPage>}
+import { LegalPage } from "@/components/legal-page";
+import { getServerTranslator } from "@/i18n/server";
+
+export default async function Page() {
+  const { t } = await getServerTranslator();
+  return <LegalPage title={t("legal.terms.title")} versionLabel={t("legal.version")}><p>{t("legal.terms.usage")}</p><p>{t("legal.terms.prohibited")}</p></LegalPage>;
+}

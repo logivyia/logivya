@@ -4,7 +4,7 @@ import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/security/audit";
 
-const schema = z.object({ confirmation: z.literal("LOGIVYA HESABIMI KAPAT") });
+const schema = z.object({ confirmation: z.enum(["LOGIVYA HESABIMI KAPAT", "CLOSE MY LOGIVYA ACCOUNT"]) });
 export async function POST(request: Request) {
   try {
     const { company, membership, user } = await requireApiSession();

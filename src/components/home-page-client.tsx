@@ -5,6 +5,7 @@ import { ArrowRight, CalendarClock, Check, Layers3, LockKeyhole, MessagesSquare,
 import { BrandLogo } from "@/components/brand-logo";
 import { LanguageSelector } from "@/components/language-selector";
 import { useI18n } from "@/i18n/provider";
+import { formatCurrency } from "@/i18n/format";
 
 const featureIconMap = [MessagesSquare, CalendarClock, RefreshCw, Layers3, Zap, ShieldCheck] as const;
 const featureKeys = [
@@ -24,7 +25,7 @@ const planFeatureCounts: Record<(typeof planKeys)[number], number> = {
 };
 
 export function HomePageClient() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   return (
     <main className="min-h-screen bg-[#090d19] text-white">
@@ -102,7 +103,7 @@ export function HomePageClient() {
                   </span>
                 )}
                 <h3 className="text-sm font-bold">{t(`home.plan.${planKey}.name`)}</h3>
-                <p className="mt-6 text-2xl font-bold">{t(`home.plan.${planKey}.price`)}</p>
+                <p className="mt-6 text-2xl font-bold">{formatCurrency(planKey === "trial" ? 0 : planKey === "starter" ? 280 : 380, "TRY", locale)}</p>
                 <p className="mt-1 text-xs text-white/40">{t(`home.plan.${planKey}.period`)}</p>
                 <p className="mt-5 min-h-16 text-sm leading-6 text-white/50">{t(`home.plan.${planKey}.description`)}</p>
                 <ul className="my-6 flex-1 space-y-3 text-sm text-white/70">

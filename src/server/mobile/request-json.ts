@@ -11,7 +11,7 @@ export async function readMobileJson(request: Request): Promise<MobileJsonResult
   } catch {
     return {
       ok: false,
-      response: mobileError("VALIDATION_ERROR", "Geçerli JSON isteği gönderilmedi.", { status: 400 }),
+      response: await mobileError("VALIDATION_ERROR", "api.error.invalidJson", { status: 400 }),
     };
   }
 }

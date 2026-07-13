@@ -4,7 +4,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Archive, FileText, LoaderCircle, RefreshCw, Trash2 } from "lucide-react";
 import { useI18n } from "@/i18n/provider";
-import { getMessageStatusLabel } from "@/lib/i18n/status-labels";
+import { formatDateTime, formatNumber } from "@/i18n/format";
+import { statusLabel } from "@/i18n/status";
+import { apiErrorMessage } from "@/i18n/api-error";
 
 type Campaign = {
   id: string;
@@ -44,14 +46,14 @@ const ghost =
 const danger =
   "inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 hover:bg-red-100";
 
-async function post(url: string, body: unknown = {}) {
+async function post(url: string, body: unknown, t: ReturnType<typeof useI18n>["t"]) {
   const response = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || result.message || "errors.generic");
+  if (!response.ok) throw new Error(apiErrorMessage(t, result));
   return result;
 }
 
@@ -85,7 +87,6 @@ function deleteForEveryoneSummary(state: DeleteForEveryoneState, t: (key: string
 
 export function MessageHistoryStablePage() {
   const { locale, t } = useI18n();
-  const isTr = locale === "tr";
   const [showDeleted, setShowDeleted] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -113,7 +114,7 @@ export function MessageHistoryStablePage() {
           ? "history.deleteForMeConfirm"
           : "history.platformDeleteConfirm";
     if (!confirm(t(confirmKey))) return;
-    await post(`/api/messages/campaigns/${id}/${action}`);
+    await post(`/api/messages/campaigns/${id}/${action}`, {}, t);
     void load();
   }
 
@@ -121,7 +122,7 @@ export function MessageHistoryStablePage() {
     if (!selected.length) return;
     if (!confirm(action === "archive" ? t("history.bulkArchiveConfirm") : t("history.bulkDeleteConfirm"))) return;
     try {
-      const result = await post("/api/messages/campaigns/bulk", { ids: selected, action });
+      const result = await post("/api/messages/campaigns/bulk", { ids: selected, action }, t);
       setStatus(t("history.recordsUpdated", { count: result.affected || 0 }));
       void load();
     } catch (error) {
@@ -133,8 +134,8 @@ export function MessageHistoryStablePage() {
   async function deleteEveryone(id: string) {
     if (!confirm(t("history.deleteEveryoneConfirm"))) return;
     try {
-      const result = await post(`/api/messages/campaigns/${id}/delete-everyone`);
-      setStatus(result.message || t("history.deleteEveryoneStarted"));
+      await post(`/api/messages/campaigns/${id}/delete-everyone`, {}, t);
+      setStatus(t("history.deleteEveryoneStarted"));
       void load();
     } catch (error) {
       const key = error instanceof Error ? error.message : "errors.generic";
@@ -212,26 +213,26 @@ export function MessageHistoryStablePage() {
                         />
                       </td>
                       <td className="px-5 py-4 font-medium">{campaign.title}</td>
-                      <td className="px-5 py-4">{getMessageStatusLabel(campaign.status, locale)}</td>
+                      <td className="px-5 py-4">{statusLabel(t, "message", campaign.status)}</td>
                       <td className="px-5 py-4">
                         {t("history.sentFailed", {
                           sent: campaign.sentCount,
                           failed: campaign.failedCount,
                         })}{" "}
-                        / {campaign.totalRecipients}
-                        <p className="mt-1 text-xs text-muted">{isTr ? "Gruplar" : "Groups"}: {campaign.groupCount ?? 0} · {isTr ? "Kişiler" : "Contacts"}: {campaign.contactCount ?? 0}</p>
-                        <p className="mt-1 text-xs text-muted">{isTr ? "Bekleyen" : "Pending"}: {campaign.pendingCount ?? 0} · {isTr ? "Yeniden deneniyor" : "Retrying"}: {campaign.retryingCount ?? 0}</p>
+                        / {formatNumber(campaign.totalRecipients, locale)}
+                        <p className="mt-1 text-xs text-muted">{t("common.groups")}: {formatNumber(campaign.groupCount ?? 0, locale)} · {t("common.contacts")}: {formatNumber(campaign.contactCount ?? 0, locale)}</p>
+                        <p className="mt-1 text-xs text-muted">{t("history.pending")}: {formatNumber(campaign.pendingCount ?? 0, locale)} · {t("history.retrying")}: {formatNumber(campaign.retryingCount ?? 0, locale)}</p>
                       </td>
                       <td className="px-5 py-4 text-muted">
-                        <span className="block">{isTr ? "Oluşturuldu" : "Created"}: {new Date(campaign.createdAt).toLocaleString(locale)}</span>
-                        {campaign.completedAt ? <span className="mt-1 block text-xs">{isTr ? "Tamamlandı" : "Completed"}: {new Date(campaign.completedAt).toLocaleString(locale)}</span> : null}
+                        <span className="block">{t("history.created")}: {formatDateTime(campaign.createdAt, locale)}</span>
+                        {campaign.completedAt ? <span className="mt-1 block text-xs">{t("status.completed")}: {formatDateTime(campaign.completedAt, locale)}</span> : null}
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap gap-2">
                           {campaign.failedCount > 0 && (
                             <button
                               title={t("history.retryFailed")}
-                              onClick={() => void post(`/api/messages/campaigns/${campaign.id}/retry-failed`).then(load)}
+                              onClick={() => void post(`/api/messages/campaigns/${campaign.id}/retry-failed`, {}, t).then(load)}
                               className={ghost}
                             >
                               <RefreshCw className="size-4" />

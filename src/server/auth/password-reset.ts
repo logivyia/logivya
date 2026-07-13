@@ -13,9 +13,9 @@ const MAX_ACCOUNT_REQUESTS = 3;
 const MAX_IP_REQUESTS = 10;
 const MAX_ATTEMPTS = 5;
 
-export const RESET_REQUEST_MESSAGE = "Eğer bilgiler sistemde kayıtlıysa doğrulama kodu gönderilmiştir.";
-export const RESET_EMAIL_DELIVERY_FAILED_MESSAGE = "Doğrulama kodu gönderilemedi. Lütfen daha sonra tekrar deneyin.";
-export const RESET_EMAIL_CONFIGURATION_MESSAGE = "E-posta servisi yapılandırılmamış. Lütfen yöneticiyle iletişime geçin.";
+export const RESET_REQUEST_MESSAGE = "api.success.resetCodeSent";
+export const RESET_EMAIL_DELIVERY_FAILED_MESSAGE = "auth.resetEmailFailed";
+export const RESET_EMAIL_CONFIGURATION_MESSAGE = "auth.emailServiceNotConfigured";
 
 export class PasswordResetEmailDeliveryError extends Error {
   constructor(public readonly errorCode = "EMAIL_DELIVERY_FAILED") {
@@ -29,6 +29,7 @@ export type ResetCodeVerificationResult = "OK" | "INVALID" | "EXPIRED" | "LOCKED
 type ResetUser = {
   id: string;
   email: string;
+  locale: string;
   memberships: Array<{ companyId: string }>;
   ownedCompanies: Array<{ id: string }>;
 };
@@ -54,6 +55,7 @@ async function findUser(identifier: string): Promise<ResetUser | null> {
     select: {
       id: true,
       email: true,
+      locale: true,
       memberships: { where: { status: "ACTIVE" }, select: { companyId: true }, take: 1 },
       ownedCompanies: { select: { id: true }, take: 1 },
     },
@@ -183,7 +185,7 @@ export async function requestPasswordReset(request: Request, identifier: string)
   const delivery = await sendTemplateEmailSafely({
     to: user.email,
     template: "password_reset",
-    variables: { code },
+    variables: { code, locale: user.locale },
     companyId: companyIdFor(user),
     userId: user.id,
   });

@@ -1,12 +1,15 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 
-import { registerSchema } from "@/features/auth/schemas";
+import { authPasswordErrorCode, registerSchema } from "@/features/auth/schemas";
+import { getRequestLocale, getServerTranslator } from "@/i18n/server";
 import { createSession } from "@/server/auth/session";
 import { ensureSevenDayTrial } from "@/server/billing/trial-service";
 import { prisma } from "@/server/db";
+import { logger } from "@/server/observability/logger";
+import { requestCorrelationId } from "@/server/observability/request-id";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
-import { hashPassword } from "@/server/security/passwords";
+import { hashPassword, PasswordPolicyValidationError } from "@/server/security/passwords";
 import {
   acceptCompanyInvitationInTransaction,
   companyInvitationErrorStatus,
@@ -30,17 +33,29 @@ function clientIp(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const correlationId = requestCorrelationId(request);
+  const route = "/api/auth/register";
   try {
+    const requestedLocale = await getRequestLocale(request.headers.get("x-logivya-locale"));
+    const { t } = await getServerTranslator(requestedLocale);
     const parsed = registerSchema.safeParse(await request.json());
     if (!parsed.success) {
-      return NextResponse.json({ error: "validation.invalid", fields: parsed.error.flatten().fieldErrors }, { status: 400 });
+      const code = authPasswordErrorCode(parsed.error) ?? "VALIDATION_ERROR";
+      logger.warn(code === "PASSWORD_TOO_SHORT" ? "PASSWORD_TOO_SHORT_REJECTED" : code === "PASSWORD_CONFIRMATION_MISMATCH" ? "PASSWORD_CONFIRMATION_FAILED" : "REGISTRATION_VALIDATION_FAILED", {
+        correlationId,
+        route,
+        platform: "web",
+        appVersion: request.headers.get("x-logivya-app-version") ?? undefined,
+        code,
+      });
+      return NextResponse.json({ error: code, fields: parsed.error.flatten().fieldErrors, correlationId }, { status: 400 });
     }
 
     const input = parsed.data;
     const fullName = input.name.trim();
     const normalizedEmail = input.email.trim().toLowerCase();
     const normalizedPhone = input.phone.replace(/\D/g, "");
-    const defaultCompanyName = fullName ? `${fullName} Şirketi` : "Yeni Şirket";
+    const defaultCompanyName = fullName ? t("registration.defaultCompanyName", { name: fullName }) : t("registration.newCompany");
     const ipAddress = clientIp(request);
     const userAgent = request.headers.get("user-agent");
 
@@ -53,7 +68,10 @@ export async function POST(request: Request) {
     });
 
     const duplicate = await prisma.user.findFirst({ where: { OR: [{ email: normalizedEmail }, { phone: normalizedPhone }] } });
-    if (duplicate) return NextResponse.json({ error: "auth.accountExists" }, { status: 409 });
+    if (duplicate) {
+      const code = duplicate.email === normalizedEmail ? "EMAIL_ALREADY_REGISTERED" : "ACCOUNT_EXISTS";
+      return NextResponse.json({ error: code, correlationId }, { status: 409 });
+    }
 
     const hasInvitation = Boolean(input.invitationToken || input.invitationCode);
     const invitation = input.invitationToken
@@ -78,7 +96,7 @@ export async function POST(request: Request) {
           phone: normalizedPhone,
           email: normalizedEmail,
           passwordHash,
-          locale: "tr",
+          locale: requestedLocale,
         },
       });
 
@@ -144,10 +162,28 @@ export async function POST(request: Request) {
     });
 
     await createSession(result.user.id, result.company.id, request);
-    return NextResponse.json({ ok: true }, { status: 201 });
+    logger.info("REGISTRATION_SUCCEEDED", {
+      correlationId,
+      route,
+      platform: "web",
+      appVersion: request.headers.get("x-logivya-app-version") ?? undefined,
+      userId: result.user.id,
+      companyId: result.company.id,
+    });
+    return NextResponse.json({ ok: true, correlationId }, { status: 201 });
   } catch (error) {
+    if (error instanceof PasswordPolicyValidationError) {
+      logger.warn(error.code === "PASSWORD_TOO_SHORT" ? "PASSWORD_TOO_SHORT_REJECTED" : "REGISTRATION_VALIDATION_FAILED", {
+        correlationId,
+        route,
+        platform: "web",
+        code: error.code,
+      });
+      return NextResponse.json({ error: error.code, correlationId }, { status: 400 });
+    }
     const rawCode = error instanceof Error ? error.message : "errors.generic";
-    const code = exposedRegistrationErrors.has(rawCode) ? rawCode : "errors.generic";
-    return NextResponse.json({ error: code }, { status: code === "errors.generic" ? 500 : companyInvitationErrorStatus(code) });
+    const code = exposedRegistrationErrors.has(rawCode) ? rawCode : "REGISTRATION_FAILED";
+    logger.error("REGISTRATION_FAILED", error, { correlationId, route, platform: "web", code });
+    return NextResponse.json({ error: code, correlationId }, { status: code === "REGISTRATION_FAILED" ? 500 : companyInvitationErrorStatus(code) });
   }
 }

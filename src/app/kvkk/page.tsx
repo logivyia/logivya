@@ -1,1 +1,7 @@
-import { LegalPage } from "@/components/legal-page";export default function Page(){return <LegalPage title="KVKK Aydınlatma Metni"><p>Kişisel verileriniz 6698 sayılı KVKK kapsamında hizmet sunumu, güvenlik, destek ve yasal yükümlülükler için işlenir.</p><p>Erişim, düzeltme, silme ve itiraz haklarınız için support@logivya.com ile iletişim kurabilirsiniz.</p></LegalPage>}
+import { LegalPage } from "@/components/legal-page";
+import { getServerTranslator } from "@/i18n/server";
+
+export default async function Page() {
+  const { t } = await getServerTranslator();
+  return <LegalPage title={t("legal.kvkk.title")} versionLabel={t("legal.version")}><p>{t("legal.kvkk.processing")}</p><p>{t("legal.kvkk.rights")}</p></LegalPage>;
+}

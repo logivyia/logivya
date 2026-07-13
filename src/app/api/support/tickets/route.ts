@@ -1,118 +1,58 @@
-import { Prisma, SupportTicketStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireApiSession } from "@/server/auth/session";
-import { prisma } from "@/server/db";
-import { NOTIFICATION_TYPES, notifyPlatformAdmins } from "@/server/notifications/service";
-import { writeAuditLog } from "@/server/security/audit";
-import { supportTicketIdentityData, supportTicketOwnerWhere, supportTicketStatuses } from "@/server/support";
+import { createSupportTicket, listUserSupportTickets } from "@/server/support/service";
+import { supportErrorResponse } from "@/server/support/errors";
+import { scheduleSupportNotificationDelivery } from "@/server/support/notifications";
 
-const schema = z.object({
-  subject: z.string().trim().min(3).max(160),
-  type: z.string().trim().min(2).max(80),
-  message: z.string().trim().min(5).max(10000),
+const createSchema = z.object({
+  subject: z.string(),
+  category: z.string().optional(),
+  type: z.string().optional(),
+  message: z.string().optional(),
+  body: z.string().optional(),
+  description: z.string().optional(),
+  clientMessageId: z.string().optional(),
+  clientRequestId: z.string().optional(),
+  attachmentUrl: z.string().optional(),
 });
-
-const validStatuses = new Set<SupportTicketStatus>(supportTicketStatuses);
 
 export async function GET(request: Request) {
   try {
     const context = await requireApiSession();
     const params = new URL(request.url).searchParams;
-    const page = Math.max(1, Number(params.get("page") || 1));
-    const status = params.get("status");
-    const where: Prisma.SupportTicketWhereInput = {
-      ...supportTicketOwnerWhere(context),
-      ...(status && validStatuses.has(status as SupportTicketStatus) ? { status: status as SupportTicketStatus } : {}),
-    };
-
-    const [tickets, total] = await Promise.all([
-      prisma.supportTicket.findMany({
-        where,
-        include: {
-          company: { select: { id: true, name: true } },
-          createdBy: { select: { name: true, email: true } },
-          messages: { where: { isInternal: false }, orderBy: { createdAt: "desc" }, take: 1 },
-        },
-        orderBy: { lastMessageAt: "desc" },
-        skip: (page - 1) * 20,
-        take: 20,
-      }),
-      prisma.supportTicket.count({ where }),
-    ]);
-
-    return NextResponse.json({ tickets, pagination: { page, total, pages: Math.ceil(total / 20) } });
-  } catch {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const result = await listUserSupportTickets(context, {
+      cursor: params.get("cursor"),
+      limit: Number(params.get("limit") || 20),
+      status: params.get("status"),
+      category: params.get("category"),
+      search: params.get("search") || params.get("q"),
+    });
+    return NextResponse.json({ ...result, pagination: result.pageInfo });
+  } catch (error) {
+    return supportErrorResponse(error, "SUPPORT_LIST_FAILED");
   }
 }
 
 export async function POST(request: Request) {
   try {
     const context = await requireApiSession();
-    const { company, user } = context;
-    const parsed = schema.safeParse(await request.json());
-
-    if (!parsed.success) {
-      return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
-    }
-
-    const ticket = await prisma.supportTicket.create({
-      data: {
-        companyId: company.id,
-        createdById: user.id,
-        ...supportTicketIdentityData(context, {
-          title: parsed.data.subject,
-          category: parsed.data.type,
-          description: parsed.data.message,
-        }),
-        subject: parsed.data.subject,
-        type: parsed.data.type,
-        source: "WEB",
-        priority: "MEDIUM",
-        messages: {
-          create: {
-            senderUserId: user.id,
-            senderType: "USER",
-            message: parsed.data.message,
-          },
-        },
-      },
-      include: {
-        company: { select: { id: true, name: true } },
-        createdBy: { select: { id: true, name: true, email: true } },
-        messages: { orderBy: { createdAt: "desc" }, take: 1 },
-      },
+    const parsed = createSchema.safeParse(await request.json());
+    if (!parsed.success) return NextResponse.json({ error: "SUPPORT_VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors }, { status: 400 });
+    const result = await createSupportTicket({
+      actor: context,
+      subject: parsed.data.subject,
+      category: parsed.data.category || parsed.data.type || "",
+      message: parsed.data.message || parsed.data.body || parsed.data.description || "",
+      source: "WEB",
+      clientMessageId: parsed.data.clientMessageId,
+      clientRequestId: parsed.data.clientRequestId,
+      attachmentUrl: parsed.data.attachmentUrl,
+      request,
     });
-
-    let adminNotificationCount = 0;
-    try {
-      const notifications = await notifyPlatformAdmins({
-        companyId: company.id,
-        type: NOTIFICATION_TYPES.SUPPORT_TICKET_CREATED,
-        title: "Yeni destek talebi",
-        message: `${company.name} sirketinden yeni destek talebi olusturuldu: ${parsed.data.subject}`,
-        payload: { ticketId: ticket.id, companyId: company.id },
-      });
-      adminNotificationCount = notifications.length;
-    } catch (notificationError) {
-      console.error("support.notification_failed", {
-        error: notificationError instanceof Error ? notificationError.message : String(notificationError),
-        ticketId: ticket.id,
-      });
-    }
-
-    await writeAuditLog(request, {
-      companyId: company.id,
-      userId: user.id,
-      action: "support.ticket.created",
-      entityType: "SupportTicket",
-      entityId: ticket.id,
-      after: { type: parsed.data.type, priority: "MEDIUM", adminNotifications: adminNotificationCount },
-    });
-
-    return NextResponse.json({ ticket }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    scheduleSupportNotificationDelivery();
+    return NextResponse.json(result, { status: result.duplicate ? 200 : 201 });
+  } catch (error) {
+    return supportErrorResponse(error, "SUPPORT_CREATE_FAILED");
   }
 }

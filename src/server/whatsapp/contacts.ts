@@ -4,11 +4,48 @@ import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
 import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { ownedWhatsAppAccountWhere, resolveCurrentWhatsAppAccount } from "@/server/whatsapp/account-scope";
-import { normalizeProviderContact, type ProviderContactRecord } from "@/server/whatsapp/contact-normalization";
+import {
+  normalizeProviderContact,
+  resolveWhatsAppContactDisplayIdentity,
+  resolveWhatsAppContactDisplayName,
+  type ProviderContactRecord,
+} from "@/server/whatsapp/contact-normalization";
 
 export { normalizeProviderContact, normalizeWhatsAppContactJid, type ProviderContactRecord } from "@/server/whatsapp/contact-normalization";
 
 type ContactScope = { companyId: string; userId: string; accountId?: string };
+
+export function normalizeWhatsAppAccountIdentity(value: string | null | undefined) {
+  const identity = value?.split(":")[0]?.split("@")[0]?.replace(/\D/g, "") ?? "";
+  return identity.length >= 7 ? identity : null;
+}
+
+export async function resetWhatsAppContactDirectoryIfIdentityChanged(accountId: string, nextIdentityValue: string | null | undefined, source: string) {
+  const account = await prisma.whatsAppAccount.findUnique({
+    where: { id: accountId },
+    select: { id: true, userId: true, companyId: true, phoneNumber: true, deviceId: true, archivedAt: true },
+  });
+  if (!account || account.archivedAt) return { changed: false, deactivatedCount: 0 };
+
+  const previousIdentity = normalizeWhatsAppAccountIdentity(account.deviceId) || normalizeWhatsAppAccountIdentity(account.phoneNumber);
+  const nextIdentity = normalizeWhatsAppAccountIdentity(nextIdentityValue);
+  if (!previousIdentity || !nextIdentity || previousIdentity === nextIdentity) {
+    return { changed: false, deactivatedCount: 0 };
+  }
+
+  const [deactivated] = await prisma.$transaction([
+    prisma.contact.updateMany({ where: { accountId, isActive: true }, data: { isActive: false } }),
+    prisma.whatsAppAccount.update({ where: { id: accountId }, data: { lastContactSyncAt: null } }),
+  ]);
+  logger.warn("whatsapp.contacts.identity_changed", {
+    userId: account.userId ?? undefined,
+    companyId: account.companyId,
+    whatsappAccountId: accountId,
+    source,
+    deactivatedCount: deactivated.count,
+  });
+  return { changed: true, deactivatedCount: deactivated.count };
+}
 
 export function ownedWhatsAppContactWhere(scope: ContactScope): Prisma.ContactWhereInput {
   return {
@@ -46,12 +83,40 @@ export async function persistWhatsAppContacts(accountId: string, contacts: Provi
       receivedCount: contacts.length,
       source: options.source ?? "BAILEYS",
     });
-    return { count: 0, syncedAt: null };
+    return { count: 0, namedCount: 0, fallbackCount: 0, syncedAt: null };
   }
 
   for (let offset = 0; offset < normalizedContacts.length; offset += 100) {
     const batch = normalizedContacts.slice(offset, offset + 100);
-    await prisma.$transaction(batch.map((contact) => prisma.contact.upsert({
+    const existing = await prisma.contact.findMany({
+      where: { accountId, externalContactId: { in: batch.map((contact) => contact.externalContactId) } },
+      select: {
+        externalContactId: true,
+        name: true,
+        pushName: true,
+        notifyName: true,
+        verifiedName: true,
+        displayName: true,
+        displayNameSource: true,
+      },
+    });
+    const existingByExternalId = new Map(existing.map((contact) => [contact.externalContactId, contact]));
+    await prisma.$transaction(batch.map((contact) => {
+      const previous = existingByExternalId.get(contact.externalContactId);
+      const name = contact.name ?? previous?.name ?? null;
+      const pushName = contact.pushName ?? previous?.pushName ?? null;
+      const notifyName = contact.notifyName ?? previous?.notifyName ?? null;
+      const verifiedName = contact.verifiedName ?? previous?.verifiedName ?? null;
+      const identity = resolveWhatsAppContactDisplayIdentity({
+        phone: contact.phone,
+        name,
+        pushName,
+        notifyName,
+        verifiedName,
+        displayName: previous?.displayName,
+        displayNameSource: previous?.displayNameSource,
+      });
+      return prisma.contact.upsert({
         where: { accountId_externalContactId: { accountId, externalContactId: contact.externalContactId } },
         create: {
           userId: account.userId,
@@ -59,25 +124,34 @@ export async function persistWhatsAppContacts(accountId: string, contacts: Provi
           accountId,
           externalContactId: contact.externalContactId,
           phone: contact.phone,
-          name: contact.name,
-          pushName: contact.pushName,
+          name,
+          pushName,
+          notifyName,
+          verifiedName,
+          ...identity,
           source: options.source ?? "BAILEYS",
           isWhatsAppUser: true,
           isActive: true,
           lastSeenAt: syncedAt,
+          lastSyncedAt: syncedAt,
         },
         update: {
           userId: account.userId,
           companyId: account.companyId,
           phone: contact.phone,
-          name: contact.name ?? undefined,
-          pushName: contact.pushName ?? undefined,
+          name,
+          pushName,
+          notifyName,
+          verifiedName,
+          ...identity,
           source: options.source ?? "BAILEYS",
           isWhatsAppUser: true,
           isActive: true,
           lastSeenAt: syncedAt,
+          lastSyncedAt: syncedAt,
         },
-      })));
+      });
+    }));
   }
   if (options.fullSync && normalizedContacts.length > 0) {
     await prisma.contact.updateMany({
@@ -96,7 +170,13 @@ export async function persistWhatsAppContacts(accountId: string, contacts: Provi
     fullSync: Boolean(options.fullSync),
     source: options.source ?? "BAILEYS",
   });
-  return { count: normalizedContacts.length, syncedAt };
+  const fallbackCount = normalizedContacts.filter((contact) => contact.displayNameSource === "PHONE_FALLBACK").length;
+  return {
+    count: normalizedContacts.length,
+    namedCount: normalizedContacts.length - fallbackCount,
+    fallbackCount,
+    syncedAt,
+  };
 }
 
 export async function listOwnedWhatsAppContacts(input: ContactScope & {
@@ -117,17 +197,17 @@ export async function listOwnedWhatsAppContacts(input: ContactScope & {
   const limit = Math.min(100, Math.max(10, requestedLimit));
   const search = input.search?.trim().slice(0, 100);
   const orderBy: Prisma.ContactOrderByWithRelationInput[] = input.sort === "updated_desc"
-    ? [{ updatedAt: "desc" }, { name: "asc" }]
+    ? [{ updatedAt: "desc" }, { displayName: "asc" }]
     : input.sort === "name_desc"
-      ? [{ name: "desc" }, { phone: "asc" }]
-      : [{ name: "asc" }, { phone: "asc" }];
+      ? [{ displayName: "desc" }, { phone: "asc" }]
+      : [{ displayName: "asc" }, { phone: "asc" }];
   const where: Prisma.ContactWhereInput = {
     ...ownedWhatsAppContactWhere({ companyId: input.companyId, userId: input.userId, accountId: account.id }),
     isActive: input.active ?? true,
     AND: [
-      { OR: [{ name: { not: null } }, { pushName: { not: null } }] },
       ...(search ? [{
         OR: [
+          { displayName: { contains: search, mode: "insensitive" as const } },
           { name: { contains: search, mode: "insensitive" as const } },
           { pushName: { contains: search, mode: "insensitive" as const } },
           { phone: { contains: search } },
@@ -135,7 +215,7 @@ export async function listOwnedWhatsAppContacts(input: ContactScope & {
       }] : []),
     ],
   };
-  const [contacts, total] = await Promise.all([
+  const [contacts, total, syncRun] = await Promise.all([
     prisma.contact.findMany({
       where,
       select: {
@@ -145,6 +225,10 @@ export async function listOwnedWhatsAppContacts(input: ContactScope & {
         phone: true,
         name: true,
         pushName: true,
+        notifyName: true,
+        verifiedName: true,
+        displayName: true,
+        displayNameSource: true,
         isWhatsAppUser: true,
         isActive: true,
         lastSeenAt: true,
@@ -155,10 +239,31 @@ export async function listOwnedWhatsAppContacts(input: ContactScope & {
       take: limit,
     }),
     prisma.contact.count({ where }),
+    prisma.contactSyncRun.findFirst({
+      where: { accountId: account.id, companyId: input.companyId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        status: true,
+        discoveredCount: true,
+        persistedCount: true,
+        namedCount: true,
+        fallbackCount: true,
+        errorCode: true,
+        startedAt: true,
+        completedAt: true,
+        createdAt: true,
+      },
+    }),
   ]);
+  const visibleContacts = contacts.map((contact) => ({
+    ...contact,
+    displayName: contact.displayName || resolveWhatsAppContactDisplayName(contact),
+  }));
   return {
     account: { id: account.id, phoneNumber: account.phoneNumber, lastContactSyncAt: account.lastContactSyncAt },
-    contacts,
+    contacts: visibleContacts,
+    syncRun,
     pageInfo: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)), hasMore: page * limit < total },
   };
 }
@@ -182,17 +287,89 @@ export async function resolveOwnedWhatsAppContacts(scope: Required<ContactScope>
 export async function requestCurrentAccountContactSync(scope: { companyId: string; userId: string }, accountId?: string, source = "contacts-api") {
   const account = await resolveCurrentWhatsAppAccount(scope, { accountId });
   if (!account) throw new Error("WHATSAPP_ACCOUNT_REQUIRED");
-  const job = await enqueueWhatsAppJob(
-    "sync-contacts",
-    { action: "sync-contacts", accountId: account.id },
-    { jobId: `sync-contacts-${account.id}-${Date.now()}`, removeOnComplete: 50, removeOnFail: 100 },
-  );
+  const staleBefore = new Date(Date.now() - 15 * 60_000);
+  const syncRequest = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "WhatsAppAccount" WHERE "id" = ${account.id} FOR UPDATE`;
+    await tx.contactSyncRun.updateMany({
+      where: { accountId: account.id, status: { in: ["QUEUED", "RUNNING"] }, updatedAt: { lt: staleBefore } },
+      data: { status: "FAILED", errorCode: "CONTACT_SYNC_STALE", completedAt: new Date() },
+    });
+    const existing = await tx.contactSyncRun.findFirst({
+      where: { accountId: account.id, status: { in: ["QUEUED", "RUNNING"] } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (existing) return { run: existing, reused: true };
+    const run = await tx.contactSyncRun.create({
+      data: {
+        accountId: account.id,
+        companyId: scope.companyId,
+        requestedByUserId: scope.userId,
+        source,
+      },
+    });
+    return { run, reused: false };
+  });
+  const jobId = `sync-contacts-${syncRequest.run.id}`;
+  if (!syncRequest.reused) {
+    try {
+      await enqueueWhatsAppJob(
+        "sync-contacts",
+        { action: "sync-contacts", accountId: account.id, syncRunId: syncRequest.run.id },
+        { jobId, removeOnComplete: 50, removeOnFail: 100 },
+      );
+    } catch (error) {
+      await failContactSyncRun(syncRequest.run.id, account.id, "CONTACT_SYNC_QUEUE_FAILED");
+      throw error;
+    }
+  }
   logger.info("whatsapp.contact_sync.requested", {
-    correlationId: job.id,
+    correlationId: jobId,
     source,
     userId: scope.userId,
     companyId: scope.companyId,
     whatsappAccountId: account.id,
+    syncRunId: syncRequest.run.id,
+    reused: syncRequest.reused,
   });
-  return { account, job };
+  return { account, jobId, syncRun: syncRequest.run, reused: syncRequest.reused };
+}
+
+export async function startContactSyncRun(syncRunId: string | undefined, accountId: string) {
+  if (!syncRunId) return;
+  await prisma.contactSyncRun.updateMany({
+    where: { id: syncRunId, accountId, status: "QUEUED" },
+    data: { status: "RUNNING", startedAt: new Date(), errorCode: null },
+  });
+}
+
+export async function completeContactSyncRun(
+  syncRunId: string | undefined,
+  accountId: string,
+  options: { status?: "COMPLETED" | "PARTIAL"; errorCode?: string } = {},
+) {
+  if (!syncRunId) return;
+  const [persistedCount, fallbackCount] = await Promise.all([
+    prisma.contact.count({ where: { accountId, isActive: true, isWhatsAppUser: true } }),
+    prisma.contact.count({ where: { accountId, isActive: true, isWhatsAppUser: true, displayNameSource: "PHONE_FALLBACK" } }),
+  ]);
+  await prisma.contactSyncRun.updateMany({
+    where: { id: syncRunId, accountId, status: { in: ["QUEUED", "RUNNING"] } },
+    data: {
+      status: options.status ?? "COMPLETED",
+      discoveredCount: persistedCount,
+      persistedCount,
+      namedCount: persistedCount - fallbackCount,
+      fallbackCount,
+      errorCode: options.errorCode ?? null,
+      completedAt: new Date(),
+    },
+  });
+}
+
+export async function failContactSyncRun(syncRunId: string | undefined, accountId: string, errorCode: string) {
+  if (!syncRunId) return;
+  await prisma.contactSyncRun.updateMany({
+    where: { id: syncRunId, accountId, status: { in: ["QUEUED", "RUNNING"] } },
+    data: { status: "FAILED", errorCode: errorCode.slice(0, 200), completedAt: new Date() },
+  });
 }

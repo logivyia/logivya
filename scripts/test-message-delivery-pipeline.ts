@@ -52,9 +52,9 @@ assert(sendableGroups.includes("userId: scope.userId"), "Sendable group resoluti
 assert(sendableGroups.includes("accountId: scope.accountId"), "Sendable group resolution must enforce account scope.");
 
 const mobileClient = read("apps/mobile/src/api/client.ts");
-const genericForbiddenIndex = mobileClient.indexOf("Bu islem icin yetkiniz yok.");
+const genericForbiddenIndex = mobileClient.indexOf('status === 403) return translateCurrent("operationForbiddenError")');
 const staleMobileAccessIndex = mobileClient.indexOf("mobil eri");
-assert(genericForbiddenIndex >= 0, "Mobile client must provide a generic 403 message.");
+assert(genericForbiddenIndex >= 0, "Mobile client must map generic 403 responses to the localized permission message.");
 assert(staleMobileAccessIndex < 0 || genericForbiddenIndex < staleMobileAccessIndex, "Generic 403 mapping must run before the stale mobile access message.");
 
 for (const route of [

@@ -13,7 +13,12 @@ import { writeWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { hasActivePhonePairing, isPhonePairingActive } from "@/server/whatsapp/pairing-guard";
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
-import { resolveOwnedWhatsAppContacts } from "@/server/whatsapp/contacts";
+import {
+  completeContactSyncRun,
+  failContactSyncRun,
+  resolveOwnedWhatsAppContacts,
+  startContactSyncRun,
+} from "@/server/whatsapp/contacts";
 import { createNotification, NOTIFICATION_TYPES } from "@/server/notifications/service";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { applyAdvertisingDeliveryPolicy } from "@/server/messages/advertising-policy";
@@ -209,7 +214,7 @@ registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign, async (job) => {
 }, { connection, concurrency: 2 }));
 
 registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
-  const { action, accountId, phoneNumber, preserveRetryCounter } = job.data as { action: "connect" | "pairing" | "pairing-refresh" | "sync" | "sync-contacts" | "disconnect" | "reconnect"; accountId: string; phoneNumber?: string; preserveRetryCounter?: boolean };
+  const { action, accountId, phoneNumber, preserveRetryCounter, syncRunId } = job.data as { action: "connect" | "pairing" | "pairing-refresh" | "sync" | "sync-contacts" | "disconnect" | "reconnect"; accountId: string; phoneNumber?: string; preserveRetryCounter?: boolean; syncRunId?: string };
   return withWhatsAppAccountLock(accountId, `worker:${action}`, async () => {
     try {
       logger.info("whatsapp.worker.job.received", { workerId, jobId: job.id, action, accountId });
@@ -218,12 +223,19 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
         where: { id: accountId },
         select: { companyId: true, status: true, archivedAt: true, updatedAt: true, pairingCode: true, pairingCodeExpiresAt: true, lastError: true },
       });
-      if (!account || account.archivedAt) return;
+      if (!account || account.archivedAt) {
+        await failContactSyncRun(syncRunId, accountId, "WHATSAPP_ACCOUNT_NOT_FOUND");
+        return;
+      }
       if (action === "sync-contacts" && !(await subscriptionAccess.canUseContactMessaging(account.companyId))) {
+        await failContactSyncRun(syncRunId, accountId, "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL");
         logger.warn("whatsapp.contacts.sync_skipped", { workerId, jobId: job.id, accountId, companyId: account.companyId, reason: "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL" });
         return;
       }
       if ((action === "reconnect" || action === "sync" || action === "sync-contacts") && hasActivePhonePairing(account)) {
+        if (action === "sync-contacts") {
+          await completeContactSyncRun(syncRunId, accountId, { status: "PARTIAL", errorCode: "WHATSAPP_PAIRING_IN_PROGRESS" });
+        }
         logger.warn("whatsapp.worker.reconnect.skipped_active_pairing", { workerId, jobId: job.id, accountId, action, status: account.status });
         return;
       }
@@ -249,10 +261,24 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
         return await provider.refreshPairingCode(accountId, phoneNumber);
       }
       if (action === "sync") return await provider.syncGroups(accountId);
-      if (action === "sync-contacts") return await provider.syncContacts(accountId);
+      if (action === "sync-contacts") {
+        await startContactSyncRun(syncRunId, accountId);
+        const result = await provider.syncContacts(accountId);
+        await completeContactSyncRun(syncRunId, accountId, result.deferred
+          ? { status: "PARTIAL", errorCode: "CONTACT_SYNC_DEFERRED_ACTIVE_DELIVERY" }
+          : { status: "COMPLETED" });
+        return result;
+      }
       if (action === "disconnect") return await provider.disconnect(accountId);
       return await provider.reconnect(accountId);
     } catch (error) {
+      if (action === "sync-contacts") {
+        await failContactSyncRun(syncRunId, accountId, errorMessage(error)).catch((syncRunError) =>
+          logger.error("whatsapp.contacts.sync_run_failure_update_failed", syncRunError, { accountId, syncRunId }),
+        );
+        logger.error("whatsapp.contacts.sync_failed_without_connection_downgrade", error, { workerId, jobId: job.id, accountId, syncRunId });
+        throw error;
+      }
       if (action === "pairing" && errorMessage(error).includes("WHATSAPP_PAIRING_RETRY_SCHEDULED")) {
         logger.warn("whatsapp.worker.pairing_retry_scheduled", { workerId, jobId: job.id, accountId, action });
         return;
@@ -261,7 +287,7 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
         where: { id: accountId },
         select: { status: true, pairingCode: true, pairingCodeExpiresAt: true, updatedAt: true, lastError: true },
       }).catch(() => null);
-      if ((action === "reconnect" || action === "sync" || action === "sync-contacts") && guardedAccount && hasActivePhonePairing(guardedAccount)) {
+      if ((action === "reconnect" || action === "sync") && guardedAccount && hasActivePhonePairing(guardedAccount)) {
         logger.warn("whatsapp.worker.reconnect.failure_skipped_active_pairing", { workerId, jobId: job.id, accountId, action, status: guardedAccount.status });
         return;
       }
@@ -282,7 +308,7 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
       logger.error("whatsapp.job.failed", error, { jobId: job.id, accountId, action, status, lastError });
       throw error;
     }
-  }, { ttlMs: 180_000, timeoutMs: 45_000, correlationId: String(job.id ?? "") });
+  }, { ttlMs: action === "sync-contacts" ? 15 * 60_000 : 180_000, timeoutMs: 45_000, correlationId: String(job.id ?? "") });
 }, { connection, concurrency: 5 }));
 
 registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {

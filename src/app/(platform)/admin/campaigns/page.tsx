@@ -1,13 +1,12 @@
 import { AdminCenter, AdminTable } from "@/components/admin-center";
-import { getServerLocale } from "@/i18n/server";
-import { getMessageStatusLabel } from "@/lib/i18n/status-labels";
+import { formatDateTime } from "@/i18n/format";
+import { getServerTranslator } from "@/i18n/server";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { prisma } from "@/server/db";
 
 export default async function Page() {
   await requirePlatformAdmin("operations:read");
-  const locale = await getServerLocale();
-  const isTr = locale === "tr";
+  const { locale, t } = await getServerTranslator();
   const rows = await prisma.messageCampaign.findMany({
     include: { company: { select: { name: true } }, createdBy: { select: { email: true } } },
     orderBy: { createdAt: "desc" },
@@ -16,25 +15,25 @@ export default async function Page() {
 
   return (
     <AdminCenter
-      eyebrow={isTr ? "Mesaj Operasyonları" : "Message Operations"}
-      title={isTr ? "Kampanyalar" : "Campaigns"}
-      description={isTr ? "Platform genelindeki kampanya sağlığını ve başarısızlıkları izleyin." : "Monitor campaign health and failures across the platform."}
+      eyebrow={t("adminCampaigns.eyebrow")}
+      title={t("adminCampaigns.title")}
+      description={t("adminCampaigns.description")}
       metrics={{
-        [isTr ? "Gösterilen" : "Shown"]: rows.length,
-        [isTr ? "Başarısız" : "Failed"]: rows.filter((x) => x.status === "FAILED").length,
-        [isTr ? "Gönderiliyor" : "Sending"]: rows.filter((x) => x.status === "SENDING").length,
-        [isTr ? "Tamamlanan" : "Completed"]: rows.filter((x) => x.status === "COMPLETED").length,
+        [t("adminCampaigns.shown")]: rows.length,
+        [t("adminCampaigns.failed")]: rows.filter((x) => x.status === "FAILED").length,
+        [t("adminCampaigns.sending")]: rows.filter((x) => x.status === "SENDING").length,
+        [t("adminCampaigns.completed")]: rows.filter((x) => x.status === "COMPLETED").length,
       }}
     >
       <AdminTable
-        headers={[isTr ? "Kampanya" : "Campaign", isTr ? "Şirket" : "Company", isTr ? "Durum" : "Status", isTr ? "Gönderilen / Başarısız" : "Sent / Failed", isTr ? "Aktör" : "Actor", isTr ? "Tarih" : "Date"]}
+        headers={[t("adminCampaigns.campaign"), t("common.company"), t("common.status"), t("adminCampaigns.sentFailed"), t("adminCampaigns.actor"), t("admin.list.date")]}
         rows={rows.map((x) => [
           x.title,
           x.company.name,
-          getMessageStatusLabel(x.status, locale),
+          t(`status.${x.status.toLowerCase()}`),
           `${x.sentCount} / ${x.failedCount}`,
           x.createdBy.email,
-          x.createdAt.toLocaleString(isTr ? "tr-TR" : "en-US"),
+          formatDateTime(x.createdAt, locale),
         ])}
       />
     </AdminCenter>

@@ -20,7 +20,7 @@ export interface WhatsAppProvider {
   disconnect(accountId: string): Promise<void>;
   reconnect(accountId: string): Promise<void>;
   syncGroups(accountId: string): Promise<GroupResult[]>;
-  syncContacts(accountId: string): Promise<{ count: number }>;
+  syncContacts(accountId: string): Promise<{ count: number; deferred?: boolean }>;
   sendGroupMessage(input: SendGroupMessageInput): Promise<SendResult>;
   sendContactMessage(input: SendContactMessageInput): Promise<SendResult>;
   deleteGroupMessage(input: DeleteGroupMessageInput): Promise<DeleteResult>;

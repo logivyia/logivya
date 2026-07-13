@@ -1,49 +1,36 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireApiSession } from "@/server/auth/session";
-import { prisma } from "@/server/db";
-import { canReplyToSupportTicket, nextStatusAfterUserReply, supportTicketOwnerWhere } from "@/server/support";
+import { addUserSupportMessage } from "@/server/support/service";
+import { supportErrorResponse } from "@/server/support/errors";
+import { scheduleSupportNotificationDelivery } from "@/server/support/notifications";
 
-const schema = z.object({ message: z.string().trim().min(1).max(10000), attachmentUrl: z.string().url().optional() });
+const schema = z.object({
+  message: z.string().optional(),
+  body: z.string().optional(),
+  clientMessageId: z.string().optional(),
+  attachmentUrl: z.string().optional(),
+});
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const context = await requireApiSession();
-    const { user } = context;
     const { id } = await params;
     const parsed = schema.safeParse(await request.json());
-    if (!parsed.success) return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
-
-    const ticket = await prisma.supportTicket.findFirst({ where: { id, ...supportTicketOwnerWhere(context) } });
-    if (!ticket) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
-    if (!canReplyToSupportTicket(ticket)) {
-      return NextResponse.json({ error: "TICKET_CLOSED", message: "Talep kapalı olduğu için yanıt yazılamaz." }, { status: 409 });
-    }
-
-    const result = await prisma.$transaction(async (tx) => {
-      const message = await tx.supportTicketMessage.create({
-        data: { ticketId: id, senderUserId: user.id, senderType: "USER", ...parsed.data },
-        select: {
-          id: true,
-          senderType: true,
-          message: true,
-          attachmentUrl: true,
-          isInternal: true,
-          createdAt: true,
-          updatedAt: true,
-          senderUser: { select: { name: true, email: true } },
-        },
-      });
-      const updated = await tx.supportTicket.update({
-        where: { id },
-        data: { status: nextStatusAfterUserReply(ticket.status), lastMessageAt: new Date(), closedAt: null },
-        select: { id: true, status: true, lastMessageAt: true, closedAt: true },
-      });
-      return { message, ticket: updated };
+    if (!parsed.success) return NextResponse.json({ error: "SUPPORT_VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors }, { status: 400 });
+    const result = await addUserSupportMessage({
+      actor: context,
+      identifier: id,
+      reply: {
+        body: parsed.data.body || parsed.data.message || "",
+        clientMessageId: parsed.data.clientMessageId,
+        attachmentUrl: parsed.data.attachmentUrl,
+      },
+      request,
     });
-
-    return NextResponse.json(result, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    scheduleSupportNotificationDelivery();
+    return NextResponse.json(result, { status: result.duplicate ? 200 : 201 });
+  } catch (error) {
+    return supportErrorResponse(error, "SUPPORT_REPLY_FAILED");
   }
 }

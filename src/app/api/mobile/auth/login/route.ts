@@ -13,7 +13,7 @@ import { resolvePreferredLoginMembership } from "@/server/team/login-membership"
 
 const schema = z.object({
   identifier: z.string().trim().min(3).max(254),
-  password: z.string().min(1).max(128),
+  password: z.string().min(1),
   deviceId: z.string().min(3).max(160),
   platform: z.string().optional(),
   appVersion: z.string().max(40).optional(),

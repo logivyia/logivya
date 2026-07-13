@@ -36,6 +36,8 @@ yarn-error.log*
 !.env.example
 
 # application logs and runtime data
+.logs/
+.tools/
 logs/
 *.log
 *.pid
@@ -51,6 +53,7 @@ appendonly.aof
 /auth_info_baileys/
 /.wwebjs_auth/
 /.wwebjs_cache/
+/.cache/
 /qr/
 /qrcodes/
 /temp-qr/
@@ -73,3 +76,7 @@ appendonly.aof
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Expo local state
+.expo/
+.local-android/credentials/

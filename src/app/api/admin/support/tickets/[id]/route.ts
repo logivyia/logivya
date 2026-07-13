@@ -1,131 +1,86 @@
-import { SupportTicketPriority, SupportTicketStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/server/db";
-import { writeAuditLog } from "@/server/security/audit";
-import { adminWritableSupportTicketStatuses, nextStatusAfterAdminReply, requireSupportSuperAdmin } from "@/server/support";
+import { requireSupportSuperAdmin } from "@/server/support";
+import {
+  addAdminSupportMessage,
+  changeAdminSupportPriority,
+  changeAdminSupportStatus,
+  getAdminSupportTicketDetail,
+} from "@/server/support/service";
+import { supportErrorResponse } from "@/server/support/errors";
+import { scheduleSupportNotificationDelivery } from "@/server/support/notifications";
 
-const schema = z.object({
-  status: z.enum(adminWritableSupportTicketStatuses).optional(),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).optional(),
-  message: z.string().trim().min(1).max(10000).optional(),
-  internalNote: z.boolean().default(false),
+const updateSchema = z.object({
+  status: z.string().optional(),
+  priority: z.string().optional(),
+  message: z.string().optional(),
+  body: z.string().optional(),
+  clientMessageId: z.string().optional(),
+  attachmentUrl: z.string().optional(),
+  internalNote: z.boolean().optional(),
+  reason: z.string().optional(),
 });
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireSupportSuperAdmin(request);
+    const context = await requireSupportSuperAdmin(request);
     const { id } = await params;
-    const ticket = await prisma.supportTicket.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        tenantId: true,
-        userId: true,
-        title: true,
-        description: true,
-        category: true,
-        subject: true,
-        type: true,
-        source: true,
-        status: true,
-        priority: true,
-        createdAt: true,
-        updatedAt: true,
-        lastMessageAt: true,
-        closedAt: true,
-        company: { select: { id: true, name: true } },
-        createdBy: { select: { id: true, name: true, email: true } },
-        assignedToAdmin: { select: { id: true, name: true, email: true } },
-        messages: {
-          select: {
-            id: true,
-            senderType: true,
-            message: true,
-            attachmentUrl: true,
-            isInternal: true,
-            createdAt: true,
-            updatedAt: true,
-            senderUser: { select: { name: true, email: true } },
-          },
-          orderBy: { createdAt: "asc" },
-        },
-      },
+    const query = new URL(request.url).searchParams;
+    const result = await getAdminSupportTicketDetail(context, id, {
+      cursor: query.get("cursor"),
+      limit: Number(query.get("limit") || 50),
+      markRead: true,
     });
-    if (!ticket) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
-    return NextResponse.json({ ticket });
+    return NextResponse.json(result);
   } catch (error) {
-    console.error("admin.support.detail_failed", { error: error instanceof Error ? error.message : String(error) });
-    return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    return supportErrorResponse(error, "SUPPORT_ADMIN_DETAIL_FAILED");
   }
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user } = await requireSupportSuperAdmin(request);
+    const context = await requireSupportSuperAdmin(request, "update");
     const { id } = await params;
-    const parsed = schema.safeParse(await request.json());
-    if (!parsed.success) return NextResponse.json({ error: "validation.invalid", details: parsed.error.flatten().fieldErrors }, { status: 400 });
-
-    const ticket = await prisma.supportTicket.findUnique({ where: { id } });
-    if (!ticket) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
-
-    const updated = await prisma.$transaction(async (tx) => {
-      if (parsed.data.message) {
-        await tx.supportTicketMessage.create({
-          data: {
-            ticketId: id,
-            senderUserId: user.id,
-            senderType: "ADMIN",
-            message: parsed.data.message,
-            isInternal: parsed.data.internalNote,
-          },
-        });
-      }
-
-      const status = parsed.data.status as SupportTicketStatus | undefined;
-      const priority = parsed.data.priority as SupportTicketPriority | undefined;
-      const nextStatus = status ?? (parsed.data.message ? nextStatusAfterAdminReply(ticket.status, parsed.data.internalNote) : undefined);
-      const shouldClose = nextStatus === "CLOSED";
-      const row = await tx.supportTicket.update({
-        where: { id },
-        data: {
-          assignedToAdminId: user.id,
-          status: nextStatus,
-          priority,
-          lastMessageAt: parsed.data.message && !parsed.data.internalNote ? new Date() : undefined,
-          closedAt: shouldClose ? new Date() : nextStatus ? null : undefined,
+    const parsed = updateSchema.safeParse(await request.json());
+    if (!parsed.success) return NextResponse.json({ error: "SUPPORT_VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors }, { status: 400 });
+    let ticket: unknown = null;
+    let changed = false;
+    const body = parsed.data.body || parsed.data.message;
+    if (body) {
+      const result = await addAdminSupportMessage({
+        actor: context,
+        identifier: id,
+        reply: {
+          body,
+          clientMessageId: parsed.data.clientMessageId,
+          attachmentUrl: parsed.data.attachmentUrl,
+          internalNote: parsed.data.internalNote,
         },
-        select: { id: true, status: true, priority: true, lastMessageAt: true, closedAt: true },
+        request,
       });
-
-      if (parsed.data.message && !parsed.data.internalNote) {
-        await tx.notification.create({
-          data: {
-            companyId: ticket.companyId,
-            userId: ticket.createdById,
-            type: "SUPPORT_REPLY",
-            title: "Destek talebinize yanıt geldi",
-            message: ticket.subject,
-          },
-        });
-      }
-
-      return row;
-    });
-
-    await writeAuditLog(request, {
-      companyId: ticket.companyId,
-      userId: user.id,
-      action: "support.ticket.admin_updated",
-      entityType: "SupportTicket",
-      entityId: id,
-      after: parsed.data,
-    });
-
-    return NextResponse.json({ ok: true, ticket: updated });
+      ticket = result.ticket;
+      changed = true;
+    }
+    if (parsed.data.priority) {
+      const result = await changeAdminSupportPriority({ actor: context, identifier: id, priority: parsed.data.priority, request });
+      ticket = result.ticket;
+      changed = true;
+    }
+    if (parsed.data.status) {
+      const result = await changeAdminSupportStatus({
+        actor: context,
+        identifier: id,
+        status: parsed.data.status,
+        reason: parsed.data.reason,
+        request,
+      });
+      ticket = result.ticket;
+      changed = true;
+    }
+    if (!changed) return NextResponse.json({ error: "SUPPORT_VALIDATION_ERROR" }, { status: 400 });
+    scheduleSupportNotificationDelivery();
+    return NextResponse.json({ ok: true, ticket });
   } catch (error) {
-    console.error("admin.support.update_failed", { error: error instanceof Error ? error.message : String(error) });
-    return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    return supportErrorResponse(error, "SUPPORT_ADMIN_UPDATE_FAILED");
   }
 }

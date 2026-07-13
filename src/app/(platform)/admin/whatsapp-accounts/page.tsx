@@ -1,13 +1,12 @@
 import { AdminCenter, AdminTable } from "@/components/admin-center";
-import { getServerLocale } from "@/i18n/server";
-import { getWhatsAppStatusLabel } from "@/lib/i18n/status-labels";
+import { formatDateTime } from "@/i18n/format";
+import { getServerTranslator } from "@/i18n/server";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { prisma } from "@/server/db";
 
 export default async function Page() {
   await requirePlatformAdmin("operations:read");
-  const locale = await getServerLocale();
-  const isTr = locale === "tr";
+  const { locale, t } = await getServerTranslator();
   const rows = await prisma.whatsAppAccount.findMany({
     include: { company: { select: { name: true } }, _count: { select: { groups: true, recipients: true } } },
     orderBy: { createdAt: "desc" },
@@ -16,25 +15,25 @@ export default async function Page() {
 
   return (
     <AdminCenter
-      eyebrow={isTr ? "Mesajlaşma Altyapısı" : "Messaging Infrastructure"}
-      title={isTr ? "WhatsApp Hesapları" : "WhatsApp Accounts"}
-      description={isTr ? "Platform genelindeki WhatsApp bağlantı ve senkronizasyon sağlığı." : "WhatsApp connection and synchronization health across the platform."}
+      eyebrow={t("adminWhatsApp.eyebrow")}
+      title={t("adminWhatsApp.title")}
+      description={t("adminWhatsApp.description")}
       metrics={{
-        [isTr ? "Gösterilen" : "Shown"]: rows.length,
-        [isTr ? "Bağlı" : "Connected"]: rows.filter((x) => x.status === "CONNECTED").length,
-        [isTr ? "Bağlantısız" : "Not connected"]: rows.filter((x) => x.status === "DISCONNECTED").length,
-        [isTr ? "Riskli" : "At risk"]: rows.filter((x) => ["ERROR", "FAILED", "RECONNECT_REQUIRED"].includes(x.status)).length,
+        [t("adminWhatsApp.shown")]: rows.length,
+        [t("adminWhatsApp.connected")]: rows.filter((x) => x.status === "CONNECTED").length,
+        [t("adminWhatsApp.disconnected")]: rows.filter((x) => x.status === "DISCONNECTED").length,
+        [t("adminWhatsApp.atRisk")]: rows.filter((x) => ["ERROR", "FAILED", "RECONNECT_REQUIRED"].includes(x.status)).length,
       }}
     >
       <AdminTable
-        headers={[isTr ? "Hesap" : "Account", isTr ? "Şirket" : "Company", isTr ? "Durum" : "Status", isTr ? "Gruplar" : "Groups", isTr ? "Gönderimler" : "Deliveries", isTr ? "Son eşitleme" : "Last sync"]}
+        headers={[t("common.account"), t("common.company"), t("common.status"), t("common.groups"), t("adminWhatsApp.deliveries"), t("accounts.lastSync")]}
         rows={rows.map((x) => [
           x.label,
           x.company.name,
-          getWhatsAppStatusLabel(x.status, locale),
+          t(`accountStatus.${x.status}`),
           x._count.groups,
           x._count.recipients,
-          x.lastSyncedAt?.toLocaleString(isTr ? "tr-TR" : "en-US"),
+          x.lastSyncedAt ? formatDateTime(x.lastSyncedAt, locale) : "-",
         ])}
       />
     </AdminCenter>

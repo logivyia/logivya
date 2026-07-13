@@ -10,6 +10,37 @@ function redisClient() {
   return redis;
 }
 
+async function readyRedisClient() {
+  const client = redisClient();
+  if (client.status === "ready") return client;
+  if (client.status === "end") {
+    await client.connect();
+    return client;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const onReady = () => finish();
+    const onError = () => finish(new Error("ADMIN_RATE_LIMIT_UNAVAILABLE"));
+    const timeout = setTimeout(() => finish(new Error("ADMIN_RATE_LIMIT_UNAVAILABLE")), 3_000);
+
+    function finish(error?: Error) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      client.off("ready", onReady);
+      client.off("error", onError);
+      if (error) reject(error);
+      else resolve();
+    }
+
+    client.once("ready", onReady);
+    client.once("error", onError);
+    if (String(client.status) === "ready") finish();
+  });
+  return client;
+}
+
 export function requestId(request?: Request) {
   return request?.headers.get("x-request-id")?.slice(0, 128) || randomUUID();
 }
@@ -27,8 +58,9 @@ export async function enforceAdminRateLimit(request: Request, userId: string, pe
   const max = mutation ? 20 : 240;
   const windowSeconds = mutation ? 600 : 60;
   const key = `logivya:admin:${request.method}:${permission}:${userId}:${ip}`;
-  const count = await redisClient().incr(key);
-  if (count === 1) await redisClient().expire(key, windowSeconds);
+  const client = await readyRedisClient();
+  const count = await client.incr(key);
+  if (count === 1) await client.expire(key, windowSeconds);
   if (count > max) throw new Error("ADMIN_RATE_LIMITED");
 }
 
@@ -39,5 +71,5 @@ export function safeAdminError(error: unknown, id: string) {
     : code === "ADMIN_RATE_LIMITED" ? 429
     : code === "ADMIN_RECENT_AUTH_REQUIRED" || code === "ADMIN_MFA_REQUIRED" ? 428
     : 500;
-  return { status, body: { error: status === 500 ? "İşlem tamamlanamadı. Lütfen tekrar deneyin." : code, requestId: id } };
+  return { status, body: { error: status === 500 ? "ADMIN_REQUEST_FAILED" : code, requestId: id } };
 }

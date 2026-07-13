@@ -1,13 +1,12 @@
 import { AdminCenter, AdminTable } from "@/components/admin-center";
-import { getServerLocale } from "@/i18n/server";
-import { getPaymentStatusLabel } from "@/lib/i18n/status-labels";
+import { formatCurrency, formatDateTime } from "@/i18n/format";
+import { getServerTranslator } from "@/i18n/server";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { prisma } from "@/server/db";
 
 export default async function Page() {
   await requirePlatformAdmin("billing:read");
-  const locale = await getServerLocale();
-  const isTr = locale === "tr";
+  const { locale, t } = await getServerTranslator();
   const [payments, invoices, active, failed] = await Promise.all([
     prisma.payment.findMany({ include: { company: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 100 }),
     prisma.invoice.count(),
@@ -18,24 +17,24 @@ export default async function Page() {
 
   return (
     <AdminCenter
-      eyebrow={isTr ? "Gelir Operasyonları" : "Revenue Operations"}
-      title={isTr ? "Faturalandırma Operasyon Merkezi" : "Billing Operations Center"}
-      description={isTr ? "Abonelik, ödeme, fatura ve gelir operasyonlarının merkezi görünümü." : "A central view of subscription, payment, invoice, and revenue operations."}
+      eyebrow={t("adminBilling.eyebrow")}
+      title={t("adminBilling.title")}
+      description={t("adminBilling.description")}
       metrics={{
-        [isTr ? "Toplam gelir" : "Total revenue"]: `${revenue.toLocaleString(isTr ? "tr-TR" : "en-US")} TRY`,
-        [isTr ? "Aktif abonelik" : "Active subscriptions"]: active,
-        [isTr ? "Fatura" : "Invoices"]: invoices,
-        [isTr ? "Başarısız ödeme" : "Failed payments"]: failed,
+        [t("adminBilling.totalRevenue")]: formatCurrency(revenue, "TRY", locale),
+        [t("adminBilling.activeSubscriptions")]: active,
+        [t("adminBilling.invoices")]: invoices,
+        [t("adminBilling.failedPayments")]: failed,
       }}
     >
       <AdminTable
-        headers={[isTr ? "Şirket" : "Company", isTr ? "Durum" : "Status", isTr ? "Yöntem" : "Method", isTr ? "Tutar" : "Amount", isTr ? "Tarih" : "Date"]}
+        headers={[t("common.company"), t("common.status"), t("adminBilling.method"), t("adminPayments.amount"), t("admin.list.date")]}
         rows={payments.map((x) => [
           x.company.name,
-          getPaymentStatusLabel(x.status, locale),
-          x.paymentMethod,
-          `${x.amount} ${x.currency}`,
-          x.createdAt.toLocaleString(isTr ? "tr-TR" : "en-US"),
+          t(`payment.status.${x.status.toLowerCase()}`),
+          t(`billing.paymentMethod.${x.paymentMethod.toLowerCase()}`),
+          formatCurrency(Number(x.amount), x.currency, locale),
+          formatDateTime(x.createdAt, locale),
         ])}
       />
     </AdminCenter>

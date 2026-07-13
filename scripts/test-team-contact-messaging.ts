@@ -5,7 +5,13 @@ import type { Plan } from "@prisma/client";
 
 import { deriveCompanyEntitlements } from "../src/server/billing/company-entitlements";
 import { calculateCompanySeatUsage, canActivateMembershipSeat, canReserveInvitationSeat } from "../src/server/team/seat-policy";
-import { normalizeProviderContact, normalizeWhatsAppContactJid } from "../src/server/whatsapp/contact-normalization";
+import {
+  normalizeProviderContact,
+  normalizeWhatsAppContactJid,
+  resolveWhatsAppContactDisplayIdentity,
+  resolveWhatsAppContactDisplayName,
+} from "../src/server/whatsapp/contact-normalization";
+import { normalizeWhatsAppAccountIdentity } from "../src/server/whatsapp/contacts";
 import { collectGroupParticipantContacts } from "../src/server/whatsapp/group-participant-contacts";
 
 const root = process.cwd();
@@ -62,6 +68,22 @@ assert(
   "Modern LID contacts must normalize through their phone-number JID without losing the saved name.",
 );
 assert(normalizeProviderContact({ id: "905551112233@s.whatsapp.net", notify: "  Test Kişisi  " })?.pushName === "Test Kişisi", "Contact display data must be trimmed and normalized.");
+assert(normalizeProviderContact({ id: "905551112233@s.whatsapp.net", name: "+90 555 111 22 33" })?.name === null, "Raw phone numbers must never become contact display names.");
+assert(normalizeProviderContact({ id: "905551112233@s.whatsapp.net", notify: "905551112233@s.whatsapp.net" })?.pushName === null, "Raw WhatsApp JIDs must never become contact display names.");
+assert(resolveWhatsAppContactDisplayName({ phone: "905551112233", name: "Saved Name", pushName: null }) === "Saved Name", "Saved contact names must remain user-visible.");
+assert(resolveWhatsAppContactDisplayName({ phone: "905551112233", name: "905551112233", pushName: null }) === "+905551112233", "A valid phone-only contact must remain visible through normalized phone fallback.");
+const unicodeContactName = "J\u00f6rg \u00c7a\u011flar";
+assert(resolveWhatsAppContactDisplayName({ phone: "491701234567", name: unicodeContactName, pushName: null }) === unicodeContactName, "Unicode contact names must remain intact.");
+assert(
+  resolveWhatsAppContactDisplayIdentity({
+    phone: "905551112233",
+    name: "Saved Name",
+    notifyName: "Weaker Notify",
+    verifiedName: "Verified Business",
+  }).displayNameSource === "SAVED_NAME",
+  "A weaker provider name must never replace a saved address-book name.",
+);
+assert(normalizeWhatsAppAccountIdentity("905551112233:4@s.whatsapp.net") === "905551112233", "Connected device identities must normalize to their phone identity.");
 const participantContacts = collectGroupParticipantContacts([
   { participants: [
     { id: "111111111111@s.whatsapp.net" },
@@ -76,6 +98,13 @@ const participantContacts = collectGroupParticipantContacts([
 assert(participantContacts.length === 1, "Group participant contacts must be deduplicated and exclude the connected account.");
 assert(participantContacts[0]?.jid === "222222222222@s.whatsapp.net", "LID participants must use their phone-number JID.");
 assert(participantContacts[0]?.notify === "Known Person", "Known contact display data must enrich group participants.");
+
+for (const contactCount of [14, 317, 2_000]) {
+  const completeDirectory = collectGroupParticipantContacts([{
+    participants: Array.from({ length: contactCount }, (_, index) => ({ id: `${900000000000 + index}@s.whatsapp.net`, name: `Contact ${index}` })),
+  }]);
+  assert(completeDirectory.length === contactCount, `Contact collection must not truncate a ${contactCount}-contact directory.`);
+}
 
 for (const route of [
   "src/app/api/company/invitations/route.ts",
@@ -119,12 +148,14 @@ assert(contacts.includes("Math.min(100"), "Contact pagination must have a hard s
 assert(contacts.includes("search?.trim().slice(0, 100)"), "Contact search input must be bounded.");
 assert(contacts.includes("whatsapp.contacts.persist_skipped_empty"), "An empty provider payload must not be recorded as a successful contact sync.");
 assert(contacts.indexOf("if (!normalizedContacts.length)") < contacts.indexOf("lastContactSyncAt: syncedAt"), "Empty contact payloads must exit before the successful sync timestamp is written.");
-assert(contacts.includes("name: contact.name ?? undefined"), "Partial provider payloads must not erase an existing saved contact name.");
-assert(contacts.includes("pushName: contact.pushName ?? undefined"), "Partial provider payloads must not erase an existing WhatsApp push name.");
-assert(contacts.includes('{ OR: [{ name: { not: null } }, { pushName: { not: null } }] }'), "The user-facing directory must exclude unnamed group-only fallback records.");
+assert(contacts.includes("contact.name ?? previous?.name"), "Partial provider payloads must not erase an existing saved contact name.");
+assert(contacts.includes("contact.pushName ?? previous?.pushName"), "Partial provider payloads must not erase an existing WhatsApp push name.");
+assert(contacts.includes("displayNameSource"), "The backend must persist the authoritative contact display-name source.");
+assert(contacts.includes("contactSyncRun"), "Contact refresh requests must have durable synchronization-run state.");
+assert(!contacts.includes('{ OR: [{ name: { not: null } }, { pushName: { not: null } }] }'), "Phone-fallback contacts must not be removed from the user-facing directory.");
 
 const baileysProvider = read("src/worker/baileys-provider.ts");
-assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V6_FULL_APP_STATE"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
+assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V8_TENANT_SAFE_FULL_SYNC"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
 assert(baileysProvider.includes("syncFullHistory: Boolean(options.syncContactHistory)"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
 assert(baileysProvider.includes('CONTACT_APP_STATE_COLLECTION = "critical_unblock_low"'), "Contact bootstrap must use the Baileys collection that carries contact actions.");
 assert(baileysProvider.includes("socket.resyncAppState([CONTACT_APP_STATE_COLLECTION], true)"), "Existing sessions must request a fresh contact app-state snapshot before reconnect fallback.");
@@ -136,9 +167,18 @@ assert(baileysProvider.includes("contactPhoneJidsByLid"), "Contact sync must ret
 assert(baileysProvider.includes('socket.ev.on("chats.phoneNumberShare"'), "Phone-number share events must resolve modern LID contacts.");
 assert(baileysProvider.includes("bootstrap_deferred_active_delivery"), "Contact bootstrap must not interrupt an active message delivery.");
 assert(baileysProvider.includes("CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS"), "Only recent active deliveries may defer contact bootstrap.");
+assert(baileysProvider.includes("HISTORY_FALLBACK_SPARSE_NAMES"), "Sparse named directories must receive the guarded history fallback.");
+assert(baileysProvider.includes("CONTACT_HISTORY_FALLBACK_COOLDOWN_MS"), "Sparse history fallback must be protected from reconnect loops.");
+assert(baileysProvider.includes("resetWhatsAppContactDirectoryIfIdentityChanged"), "A newly connected phone identity must not inherit another phone's contacts.");
 assert(baileysProvider.includes("updatedAt: { gte:"), "Stale SENDING rows must not block contact bootstrap forever.");
 assert(baileysProvider.includes("availabilityByJid.has(contact.externalContactId)"), "Partial availability responses must leave unreturned contacts unchanged.");
 assert(!baileysProvider.includes("available.has(contact.externalContactId)"), "Partial availability responses must not deactivate every omitted contact.");
+assert(baileysProvider.includes("where: { accountId, userId: account.userId, isActive: true }"), "Availability verification must never reactivate contacts from a previous phone identity.");
+assert(!baileysProvider.includes("take: 10_000"), "Contact availability verification must not stop at an arbitrary total-contact limit.");
+assert(baileysProvider.includes("let contactCursor"), "Large contact directories must be verified through unbounded cursor pages.");
+
+const pairingFlow = read("src/server/whatsapp/pairing-code-flow.ts");
+assert(pairingFlow.includes("resetWhatsAppContactDirectoryIfIdentityChanged"), "Phone pairing must deactivate a previous phone's directory before account reuse.");
 
 const baileysPatch = read("scripts/patch-baileys-contact-jid.mjs");
 assert(baileysPatch.includes("LOGIVYA_CONTACT_PN_JID_COMPAT"), "The pinned Baileys 6.x build must retain modern contactAction PN JIDs.");
@@ -158,6 +198,8 @@ assert(worker.includes("provider.sendContactMessage"), "Worker must have an expl
 assert(worker.includes("CONTACT_MESSAGING_REQUIRES_PROFESSIONAL"), "Worker must recheck contact entitlement.");
 assert(worker.includes("WHATSAPP_CONTACT_OWNERSHIP_MISMATCH"), "Worker must recheck contact ownership.");
 assert(worker.includes("provider.deleteContactMessage"), "Contact Delete for Everyone must use the original contact target.");
+assert(worker.includes("sync_failed_without_connection_downgrade"), "Contact-sync failures must not downgrade a healthy WhatsApp connection.");
+assert(worker.includes('action === "sync-contacts" ? 15 * 60_000'), "Full contact sync must retain the account-scoped distributed lock for long directories.");
 
 const migration = read("prisma/migrations/20260711152000_team_seats_professional_contact_messaging/migration.sql");
 assert(migration.includes("MessageRecipient_typed_target_check"), "Migration must enforce group/contact target integrity.");
@@ -167,13 +209,40 @@ assert(!/UPDATE\s+"Subscription"/i.test(migration), "Migration must not overwrit
 const hardeningMigration = read("prisma/migrations/20260711210000_enterprise_subscription_invitation_hardening/migration.sql");
 assert(hardeningMigration.includes("CompanyInvitation_one_pending_email_per_company"), "Migration must prevent duplicate live pending invitations.");
 assert(hardeningMigration.includes('"attemptCount"'), "Migration must persist per-target delivery attempt counts.");
+const contactSyncMigration = read("prisma/migrations/20260713160000_professional_contact_sync_isolation/migration.sql");
+assert(contactSyncMigration.includes('CREATE TABLE "ContactSyncRun"'), "Migration must add durable contact synchronization runs.");
+assert(contactSyncMigration.includes('"Contact_accountId_isActive_displayName_idx"'), "Migration must index account-scoped contact listing.");
+assert(!/DELETE\s+FROM\s+"Contact"/i.test(contactSyncMigration), "Contact synchronization migration must not delete production contacts.");
 
-for (const ui of ["src/components/campaign-composer-page.tsx", "apps/mobile/src/screens/app/messaging-screen.tsx"]) {
-  const source = read(ui);
-  assert(source.includes("Görünen kişileri seç"), `${ui} must support visible contact selection.`);
-  assert(source.includes("Daha fazla kişi yükle"), `${ui} must support paginated contact loading.`);
-  assert(source.includes("Profesyonel paketinde"), `${ui} must explain the locked Starter contact feature.`);
-  assert(source.includes("attempt < 40"), `${ui} must poll the asynchronous contact bootstrap instead of assuming it finishes in 1.2 seconds.`);
+const localizedContactUiContracts = [
+  {
+    file: "src/components/campaign-composer-page.tsx",
+    selectVisible: 't("composer.selectVisibleContacts")',
+    loadMore: 't("composer.loadMoreContacts")',
+    professionalLock: 't("composer.contactMessagingProfessional")',
+  },
+  {
+    file: "apps/mobile/src/screens/app/messaging-screen.tsx",
+    selectVisible: 't("selectVisibleContacts")',
+    loadMore: 't("loadMoreContacts")',
+    professionalLock: 't("professionalContactsRequired")',
+  },
+];
+
+for (const ui of localizedContactUiContracts) {
+  const source = read(ui.file);
+  assert(source.includes(ui.selectVisible), `${ui.file} must support localized visible contact selection.`);
+  assert(source.includes(ui.loadMore), `${ui.file} must support localized paginated contact loading.`);
+  assert(source.includes(ui.professionalLock), `${ui.file} must explain the locked Starter contact feature through localization.`);
+  assert(source.includes("attempt < 40"), `${ui.file} must poll the asynchronous contact bootstrap instead of assuming it finishes in 1.2 seconds.`);
+  assert(!source.includes("contact.name || contact.pushName || contact.phone"), `${ui.file} must use the normalized backend display name instead of ad hoc raw fields.`);
 }
+const mobileComposer = read("apps/mobile/src/screens/app/messaging-screen.tsx");
+assert(mobileComposer.includes("contactRequestVersionRef"), "Mobile contact search must ignore stale responses.");
+assert(mobileComposer.includes("currentSyncAt !== previousSyncAt"), "Mobile refresh must wait for a completed contact sync timestamp.");
+assert(!mobileComposer.includes("label={contact.name || contact.pushName || contact.phone}"), "Mobile UI must use the canonical display-name resolver.");
+assert(read("apps/mobile/src/api/mobileContacts.ts").includes("getMobileContactDisplayName"), "Mobile contact labels must pass through a dedicated display-name sanitizer.");
+assert(read("src/components/campaign-composer-page.tsx").includes("currentSyncAt !== previousSyncAt"), "Web refresh must wait for a completed contact sync timestamp.");
+assert(read("package.json").includes("npm run test:whatsapp-contacts && npm run test:category-contact-assignment && tsx scripts/release-acceptance-gate.ts"), "The release gate must run contact directory and category assignment contracts.");
 
 console.log("Team seats, invitation lifecycle, contact privacy, typed delivery and cross-platform UI contracts passed.");

@@ -19,7 +19,13 @@ export async function POST(request: Request) {
       request,
     });
     const result = await requestCurrentAccountContactSync({ companyId: company.id, userId: user.id }, body.accountId, "mobile");
-    return mobileSuccess({ queued: true, accountId: result.account.id, jobId: result.job.id }, { status: 202 });
+    return mobileSuccess({
+      queued: !result.reused,
+      accountId: result.account.id,
+      jobId: result.jobId,
+      syncRunId: result.syncRun.id,
+      status: result.syncRun.status,
+    }, { status: 202 });
   } catch (error) {
     if (error instanceof Error && error.message === "RATE_LIMITED") {
       return mobileError("RATE_LIMITED", "Çok fazla kişi eşitleme isteği gönderdiniz. Lütfen daha sonra tekrar deneyin.", { status: 429 });

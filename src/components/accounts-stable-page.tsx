@@ -5,7 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Archive, LoaderCircle, MessageCircle, Plus, RefreshCw, Trash2, X } from "lucide-react";
 
 import { useI18n } from "@/i18n/provider";
-import { getWhatsAppStatusLabel } from "@/lib/i18n/status-labels";
+import { statusLabel } from "@/i18n/status";
+import { formatNumber } from "@/i18n/format";
 
 type Account = {
   id: string;
@@ -72,23 +73,23 @@ function normalizePhone(countryCode: string, phone: string) {
   return `${cc}${digits}`;
 }
 
-function userFacingWhatsAppError(message?: string | null) {
-  if (!message) return "";
+function userFacingWhatsAppErrorKey(message?: string | null) {
+  if (!message) return null;
   const normalized = message.trim().toUpperCase().replace(/\s+/g, "_");
   const mapped: Record<string, string> = {
-    WHATSAPP_CREDENTIALS_MISSING: "WhatsApp hesabınızı yeniden bağlamanız gerekiyor.",
-    AUTH_REQUIRED: "WhatsApp hesabınızı yeniden bağlamanız gerekiyor.",
-    WHATSAPP_LOGGED_OUT: "WhatsApp oturumu kapatıldı. Lütfen hesabı yeniden bağlayın.",
-    LOGGED_OUT: "WhatsApp oturumu kapatıldı. Lütfen hesabı yeniden bağlayın.",
-    WHATSAPP_TRANSIENT_DISCONNECT: "Yeniden bağlantı deneniyor.",
-    WHATSAPP_RECONNECT_REQUIRED: "Yeniden bağlantı deneniyor.",
-    WHATSAPP_CONNECTION_FAILED: "WhatsApp bağlantısı geçici olarak kesildi.",
-    WHATSAPP_QR_FAILED: "WhatsApp bağlantısı geçici olarak kesildi.",
-    MOBILE_QR_FAILED: "WhatsApp bağlantısı geçici olarak kesildi.",
+    WHATSAPP_CREDENTIALS_MISSING: "accounts.reconnectRequired",
+    AUTH_REQUIRED: "accounts.reconnectRequired",
+    WHATSAPP_LOGGED_OUT: "accounts.loggedOut",
+    LOGGED_OUT: "accounts.loggedOut",
+    WHATSAPP_TRANSIENT_DISCONNECT: "accounts.reconnectingMessage",
+    WHATSAPP_RECONNECT_REQUIRED: "accounts.reconnectingMessage",
+    WHATSAPP_CONNECTION_FAILED: "accounts.connectionTemporary",
+    WHATSAPP_QR_FAILED: "accounts.connectionTemporary",
+    MOBILE_QR_FAILED: "accounts.connectionTemporary",
   };
   if (mapped[normalized]) return mapped[normalized];
-  if (/^[A-Z0-9_]+$/.test(normalized) && normalized.includes("WHATSAPP")) return "WhatsApp bağlantısı geçici olarak kesildi.";
-  return message;
+  if (/^[a-z0-9_.-]+$/i.test(message) && message.includes(".")) return message;
+  return "accounts.connectionTemporary";
 }
 
 export function AccountsStablePage() {
@@ -107,9 +108,8 @@ export function AccountsStablePage() {
 
   const localizeError = useCallback(
     (message: string | undefined, fallbackKey: string) => {
-      const safeMessage = userFacingWhatsAppError(message);
-      if (!safeMessage) return t(fallbackKey);
-      return /^[a-z0-9_.-]+$/i.test(safeMessage) ? t(safeMessage) : safeMessage;
+      const key = userFacingWhatsAppErrorKey(message);
+      return t(key ?? fallbackKey);
     },
     [t],
   );
@@ -318,12 +318,12 @@ export function AccountsStablePage() {
               <div className="flex items-start justify-between gap-3">
                 <MessageCircle className="h-8 w-8 text-orange-500" />
                 <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusTone(account.status)}`}>
-                  {getWhatsAppStatusLabel(account.status, locale)}
+                  {statusLabel(t, "whatsapp", account.status)}
                 </span>
               </div>
               <h2 className="mt-7 truncate text-xl font-black text-card-foreground">{account.phoneNumber || t("accounts.phoneWaiting")}</h2>
               <dl className="mt-7 border-y py-5 text-center">
-                <dt className="text-3xl font-black text-card-foreground">{account.groupCount ?? 0}</dt>
+                <dt className="text-3xl font-black text-card-foreground">{formatNumber(account.groupCount ?? 0, locale)}</dt>
                 <dd className="mt-1 text-sm font-semibold text-muted">{t("accounts.connectedGroups")}</dd>
               </dl>
               <div className="mt-7 grid gap-3 sm:grid-cols-3">

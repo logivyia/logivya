@@ -1,8 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoaderCircle, Lock, RefreshCw, Search, Send } from "lucide-react";
 import { useI18n } from "@/i18n/provider";
+import { apiErrorMessage } from "@/i18n/api-error";
+import { intlLocale } from "@/i18n/config";
+import { formatNumber } from "@/i18n/format";
 import {
   getBrowserScheduleTimeZone,
   getQuickScheduleInput,
@@ -12,17 +15,49 @@ import {
 import { cn } from "@/lib/utils";
 
 type Group = { id: string; name: string; participantCount: number; canSend: boolean; account: { label: string } };
-type Category = { id: string; name: string; _count: { groups: number }; groups?: Array<{ groupId: string }> };
-type Contact = { id: string; phone: string; name: string | null; pushName: string | null; accountId: string };
+type Category = { id: string; name: string; _count: { groups: number; contacts: number }; groups?: Array<{ groupId: string }> };
+type Contact = { id: string; phone: string; name: string | null; pushName: string | null; displayName?: string | null; accountId: string };
 type ContactPageInfo = { page: number; limit: number; total: number; totalPages: number; hasMore: boolean };
+type ContactResponse = {
+  account?: { lastContactSyncAt?: string | null };
+  contacts?: Contact[];
+  pageInfo?: ContactPageInfo;
+  syncRun?: { id: string; status: "QUEUED" | "RUNNING" | "PARTIAL" | "COMPLETED" | "FAILED" | "CANCELLED"; errorCode?: string | null } | null;
+  message?: string;
+  error?: string;
+};
 type Data = { groups: Group[]; categories: Category[]; entitlements?: { contactMessaging?: boolean } | null };
 type Mode = "SEND_NOW" | "SCHEDULED" | "RECURRING";
 
 const card = "rounded-2xl border bg-card p-5 shadow-[var(--shadow-soft)]";
 const tab = "rounded-xl border bg-card px-3 py-2 text-sm text-foreground hover:bg-muted-background";
 
+function contactDisplayName(contact: Contact) {
+  for (const value of [contact.displayName, contact.name, contact.pushName]) {
+    const candidate = value?.trim();
+    if (!candidate) continue;
+    const lower = candidate.toLowerCase();
+    if (lower.endsWith("@s.whatsapp.net") || lower.endsWith("@lid") || lower.endsWith("@g.us")) continue;
+    const candidateDigits = candidate.replace(/\D/g, "");
+    if (/^[+\d\s().-]+$/.test(candidate) && candidateDigits.length >= 7) continue;
+    if (candidateDigits && candidateDigits === contact.phone.replace(/\D/g, "")) continue;
+    return candidate;
+  }
+  const digits = contact.phone.replace(/\D/g, "");
+  return digits ? `+${digits}` : contact.phone;
+}
+
+function formatCategoryAudience(category: Category, t: ReturnType<typeof useI18n>["t"]) {
+  const groups = category._count.groups ?? 0;
+  const contacts = category._count.contacts ?? 0;
+  if (groups && contacts) return t("composer.groupContactCount", { groups, contacts });
+  if (groups) return t("composer.groupCount", { count: groups });
+  if (contacts) return t("composer.contactCount", { count: contacts });
+  return t("composer.noAudience");
+}
+
 export function CampaignComposerPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [data, setData] = useState<Data | null>(null);
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
@@ -44,6 +79,8 @@ export function CampaignComposerPage() {
   const [contactLoading, setContactLoading] = useState(false);
   const [contactError, setContactError] = useState("");
   const [contactPageInfo, setContactPageInfo] = useState<ContactPageInfo | null>(null);
+  const contactRequestVersionRef = useRef(0);
+  const contactLastSyncAtRef = useRef<string | null>(null);
   const [mode, setMode] = useState<Mode>("SEND_NOW");
   const [scheduledAt, setScheduledAt] = useState("");
   const [frequency, setFrequency] = useState<"DAILY" | "WEEKLY" | "MONTHLY">("DAILY");
@@ -55,11 +92,11 @@ export function CampaignComposerPage() {
     if (mode !== "SCHEDULED" || !scheduledAt.trim()) return null;
     try {
       const parsed = parseSmartScheduleDateTime(scheduledAt, { timeZone: scheduleTimeZone });
-      return { ok: true, message: `Planlanan zaman: ${parsed.canonical} (${parsed.timeZone})` };
+      return { ok: true, message: t("composer.scheduledTime", { time: parsed.canonical, timeZone: parsed.timeZone }) };
     } catch (error) {
-      return { ok: false, message: error instanceof Error ? error.message : "Tarih anlaşılamadı." };
+      return { ok: false, message: error instanceof Error ? t(error.message) : t("composer.dateNotUnderstood") };
     }
-  }, [mode, scheduledAt, scheduleTimeZone]);
+  }, [mode, scheduledAt, scheduleTimeZone, t]);
 
   const loadPlatform = useCallback(() => {
     void fetch("/api/platform", { cache: "no-store" })
@@ -67,23 +104,34 @@ export function CampaignComposerPage() {
       .then((result: Data) => {
         setData(result);
         if (result.entitlements?.contactMessaging) {
+          const requestVersion = ++contactRequestVersionRef.current;
           setContactLoading(true);
           void fetch("/api/whatsapp/contacts?limit=100", { cache: "no-store" })
-            .then((response) => response.json().then((body) => ({ response, body })))
+            .then((response) => response.json().then((body: ContactResponse) => ({ response, body })))
             .then(({ response, body }) => {
-              if (!response.ok) throw new Error(body.message || body.error);
+              if (!response.ok) throw new Error(apiErrorMessage(t, body, "composer.contactsLoadFailed"));
+              if (requestVersion !== contactRequestVersionRef.current) return;
               setContacts(body.contacts ?? []);
               setContactPageInfo(body.pageInfo ?? null);
+              contactLastSyncAtRef.current = body.account?.lastContactSyncAt ?? null;
             })
-            .catch((error) => setContactError(error instanceof Error ? error.message : "Kişiler yüklenemedi."))
-            .finally(() => setContactLoading(false));
+            .catch((error) => {
+              if (requestVersion === contactRequestVersionRef.current) {
+                setContactError(error instanceof Error ? error.message : t("composer.contactsLoadFailed"));
+              }
+            })
+            .finally(() => {
+              if (requestVersion === contactRequestVersionRef.current) setContactLoading(false);
+            });
         } else {
+          contactRequestVersionRef.current += 1;
           setContacts([]);
           setSelectedContacts([]);
           setContactPageInfo(null);
+          contactLastSyncAtRef.current = null;
         }
       });
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadPlatform();
@@ -92,28 +140,43 @@ export function CampaignComposerPage() {
   }, [loadPlatform]);
 
   useEffect(() => {
-    if (!data?.entitlements?.contactMessaging) return;
+    if (!data?.entitlements?.contactMessaging) {
+      contactRequestVersionRef.current += 1;
+      return;
+    }
+    const requestVersion = ++contactRequestVersionRef.current;
     const timer = setTimeout(() => {
       setContactLoading(true);
       setContactError("");
       const query = new URLSearchParams({ limit: "100" });
       if (contactSearch.trim()) query.set("search", contactSearch.trim());
       void fetch(`/api/whatsapp/contacts?${query.toString()}`, { cache: "no-store" })
-        .then((response) => response.json().then((body) => ({ response, body })))
+        .then((response) => response.json().then((body: ContactResponse) => ({ response, body })))
         .then(({ response, body }) => {
-          if (!response.ok) throw new Error(body.message || body.error);
+          if (!response.ok) throw new Error(apiErrorMessage(t, body, "composer.contactsLoadFailed"));
+          if (requestVersion !== contactRequestVersionRef.current) return;
           setContacts(body.contacts ?? []);
           setContactPageInfo(body.pageInfo ?? null);
+          contactLastSyncAtRef.current = body.account?.lastContactSyncAt ?? null;
         })
-        .catch((error) => setContactError(error instanceof Error ? error.message : "Kişiler yüklenemedi."))
-        .finally(() => setContactLoading(false));
+        .catch((error) => {
+          if (requestVersion === contactRequestVersionRef.current) {
+            setContactError(error instanceof Error ? error.message : t("composer.contactsLoadFailed"));
+          }
+        })
+        .finally(() => {
+          if (requestVersion === contactRequestVersionRef.current) setContactLoading(false);
+        });
     }, 300);
-    return () => clearTimeout(timer);
-  }, [contactSearch, data?.entitlements?.contactMessaging]);
+    return () => {
+      clearTimeout(timer);
+      if (requestVersion === contactRequestVersionRef.current) contactRequestVersionRef.current += 1;
+    };
+  }, [contactSearch, data?.entitlements?.contactMessaging, t]);
 
   const groups = useMemo(
-    () => data?.groups.filter((group) => group.canSend && group.name.toLocaleLowerCase("tr-TR").includes(search.toLocaleLowerCase("tr-TR"))) || [],
-    [data, search]
+    () => data?.groups.filter((group) => group.canSend && group.name.toLocaleLowerCase(intlLocale(locale)).includes(search.toLocaleLowerCase(intlLocale(locale)))) || [],
+    [data, locale, search]
   );
   const sendableGroupCount = data?.groups.filter((group) => group.canSend).length ?? 0;
   const selectedCategoryNames = useMemo(
@@ -130,70 +193,101 @@ export function CampaignComposerPage() {
       ]),
     [data, selected, selectedCategories]
   );
-  const selectedTargetCount = resolved.size + selectedContacts.length;
+  const categoryContactCount = useMemo(
+    () => data?.categories
+      .filter((category) => selectedCategories.includes(category.id))
+      .reduce((total, category) => total + (category._count.contacts ?? 0), 0) ?? 0,
+    [data, selectedCategories],
+  );
+  const selectedTargetCount = resolved.size + selectedContacts.length + categoryContactCount;
   const targetTitle = selectedCategoryNames.length
     ? selectedCategoryNames.join(", ")
-    : resolved.size && selectedContacts.length
-      ? "Seçili gruplar ve kişiler"
+      : resolved.size && (selectedContacts.length || categoryContactCount)
+      ? t("composer.selectedGroupsContacts")
       : resolved.size
-        ? "Seçili gruplar"
-        : selectedContacts.length
-          ? "Seçili kişiler"
-          : "Hedef seçilmedi";
+        ? t("composer.selectedGroups")
+        : selectedContacts.length || categoryContactCount
+          ? t("composer.selectedContacts")
+          : t("composer.noTargetSelected");
   const targetContent = selectedTargetCount
-    ? `${selectedTargetCount} hedef (${resolved.size} grup, ${selectedContacts.length} kişi)`
-    : "Kategori, grup veya kişi seçin";
+    ? t("composer.targetSummary", { total: selectedTargetCount, groups: resolved.size, contacts: selectedContacts.length + categoryContactCount })
+    : t("composer.selectCategoryGroupContact");
   const canSubmit = Boolean(text.trim()) && selectedTargetCount > 0 && !(mode === "SCHEDULED" && !scheduledAt.trim());
 
   async function refreshContacts() {
+    const requestVersion = ++contactRequestVersionRef.current;
+    const previousSyncAt = contactLastSyncAtRef.current;
     setContactLoading(true);
     setContactError("");
     try {
       const syncResponse = await fetch("/api/whatsapp/contacts/sync-current", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-      const syncResult = await syncResponse.json();
+      const syncResult = await syncResponse.json() as { syncRunId?: string; message?: string; error?: string };
       if (!syncResponse.ok) throw new Error(syncResult.message || syncResult.error);
-      let result: { contacts?: Contact[]; pageInfo?: ContactPageInfo; message?: string; error?: string } = {};
+      let result: ContactResponse = {};
       for (let attempt = 0; attempt < 40; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
         const response = await fetch("/api/whatsapp/contacts?limit=100", { cache: "no-store" });
-        result = await response.json();
-        if (!response.ok) throw new Error(result.message || result.error);
-        if ((result.pageInfo?.total ?? 0) > 0) break;
+        result = await response.json() as ContactResponse;
+        if (!response.ok) throw new Error(apiErrorMessage(t, result, "contacts.loadFailed"));
+        if (requestVersion !== contactRequestVersionRef.current) return;
+        const currentSyncAt = result.account?.lastContactSyncAt ?? null;
+        if (syncResult.syncRunId && result.syncRun?.id === syncResult.syncRunId && ["COMPLETED", "PARTIAL", "FAILED", "CANCELLED"].includes(result.syncRun.status)) {
+          if (result.syncRun.status === "FAILED") throw new Error(t("composer.contactsRefreshFailed"));
+          break;
+        }
+        if (currentSyncAt && currentSyncAt !== previousSyncAt) {
+          contactLastSyncAtRef.current = currentSyncAt;
+          break;
+        }
       }
+      if (requestVersion !== contactRequestVersionRef.current) return;
       setContacts(result.contacts ?? []);
       setContactPageInfo(result.pageInfo ?? null);
+      contactLastSyncAtRef.current = result.account?.lastContactSyncAt ?? null;
     } catch (error) {
-      setContactError(error instanceof Error ? error.message : "Kişiler yenilenemedi.");
+      if (requestVersion === contactRequestVersionRef.current) {
+        setContactError(error instanceof Error ? error.message : t("composer.contactsRefreshFailed"));
+      }
     } finally {
-      setContactLoading(false);
+      if (requestVersion === contactRequestVersionRef.current) setContactLoading(false);
     }
   }
 
   async function loadMoreContacts() {
     if (!contactPageInfo?.hasMore || contactLoading) return;
+    const requestVersion = contactRequestVersionRef.current;
     setContactLoading(true);
     setContactError("");
     try {
       const query = new URLSearchParams({ page: String(contactPageInfo.page + 1), limit: String(contactPageInfo.limit) });
       if (contactSearch.trim()) query.set("search", contactSearch.trim());
       const response = await fetch(`/api/whatsapp/contacts?${query.toString()}`, { cache: "no-store" });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message || result.error);
+      const result = await response.json() as ContactResponse;
+      if (!response.ok) throw new Error(apiErrorMessage(t, result, "contacts.loadFailed"));
+      if (requestVersion !== contactRequestVersionRef.current) return;
       setContacts((current) => {
         const byId = new Map(current.map((contact) => [contact.id, contact]));
         for (const contact of (result.contacts ?? []) as Contact[]) byId.set(contact.id, contact);
         return [...byId.values()];
       });
       setContactPageInfo(result.pageInfo ?? null);
+      contactLastSyncAtRef.current = result.account?.lastContactSyncAt ?? null;
     } catch (error) {
-      setContactError(error instanceof Error ? error.message : "Kişiler yüklenemedi.");
+      if (requestVersion === contactRequestVersionRef.current) {
+        setContactError(error instanceof Error ? error.message : t("composer.contactsLoadFailed"));
+      }
     } finally {
-      setContactLoading(false);
+      if (requestVersion === contactRequestVersionRef.current) setContactLoading(false);
     }
   }
 
+  const displayableContacts = useMemo(() => contacts.flatMap((contact) => {
+    const displayName = contactDisplayName(contact);
+    return displayName ? [{ contact, displayName }] : [];
+  }), [contacts]);
+
   function toggleVisibleContacts() {
-    const visibleIds = contacts.map((contact) => contact.id);
+    const visibleIds = displayableContacts.map(({ contact }) => contact.id);
     const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedContacts.includes(id));
     setSelectedContacts((current) => allVisibleSelected
       ? current.filter((id) => !visibleIds.includes(id))
@@ -226,7 +320,7 @@ export function CampaignComposerPage() {
     const result = await response.json();
     setSending(false);
     if (!response.ok) {
-      setStatus(t(result.error || "errors.generic"));
+      setStatus(apiErrorMessage(t, result));
       return;
     }
     setStatus(t("composer.queued"));
@@ -254,10 +348,10 @@ export function CampaignComposerPage() {
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Seçili hedef" value={selectedTargetCount} />
-        <SummaryCard label="Gönderilebilir grup" value={sendableGroupCount} />
-        <SummaryCard label="Kategori" value={data.categories.length} />
-        <SummaryCard label="Seçili kişi" value={selectedContacts.length} />
+        <SummaryCard label={t("composer.selectedAudience")} value={selectedTargetCount} />
+        <SummaryCard label={t("composer.sendableGroups")} value={sendableGroupCount} />
+        <SummaryCard label={t("common.category")} value={data.categories.length} />
+        <SummaryCard label={t("composer.selectedContactCount")} value={selectedContacts.length} />
       </div>
 
       <div className="mt-6 grid gap-6">
@@ -291,11 +385,11 @@ export function CampaignComposerPage() {
               <div className="flex flex-wrap gap-2">
                 {(["today", "tomorrow", "nextMonday", "nextWeek"] as const).map((action) => (
                   <button key={action} type="button" onClick={() => setScheduledAt(getQuickScheduleInput(action, { timeZone: scheduleTimeZone }))} className={tab}>
-                    {action === "today" ? "Bugün" : action === "tomorrow" ? "Yarın" : action === "nextMonday" ? "Pazartesi" : "Haftaya"}
+                    {t(`composer.quick.${action}`)}
                   </button>
                 ))}
                 <label className={cn(tab, "cursor-pointer")}>
-                  <span>Tarih seç</span>
+                  <span>{t("composer.selectDate")}</span>
                   <input className="sr-only" type="datetime-local" onChange={(event) => setScheduledAt(normalizeNativeDateTimeInput(event.target.value))} />
                 </label>
               </div>
@@ -304,7 +398,7 @@ export function CampaignComposerPage() {
                 type="text"
                 value={scheduledAt}
                 onChange={(event) => setScheduledAt(event.target.value)}
-                placeholder="Yarın 19:20 veya 02.07.2026 19.20"
+                placeholder={t("composer.dateTimePlaceholder")}
               />
               {scheduleState ? <p className={cn("text-xs font-medium", scheduleState.ok ? "text-success" : "text-danger")}>{scheduleState.message}</p> : null}
             </div>
@@ -330,8 +424,8 @@ export function CampaignComposerPage() {
           ) : null}
 
           <div className="mt-5 rounded-xl border bg-accent p-4 text-accent-foreground">
-            <p className="text-xs font-semibold">Hedef: {targetTitle}</p>
-            <p className="mt-2 text-sm leading-6">İçerik: {targetContent}</p>
+            <p className="text-xs font-semibold">{t("composer.targetLabel")}: {targetTitle}</p>
+            <p className="mt-2 text-sm leading-6">{t("composer.contentLabel")}: {targetContent}</p>
           </div>
           <button
             disabled={sending || !canSubmit}
@@ -361,7 +455,7 @@ export function CampaignComposerPage() {
                   onChange={(event) => setSelectedCategories((value) => (event.target.checked ? [...value, category.id] : value.filter((id) => id !== category.id)))}
                 />
                 <b>{category.name}</b>
-                <span className="ms-auto text-muted">{category._count.groups}</span>
+                <span className="ms-auto text-muted">{formatCategoryAudience(category, t)}</span>
               </label>
             ))}
           </div>
@@ -394,55 +488,55 @@ export function CampaignComposerPage() {
           </div>
 
           <div className="mt-7 flex items-center justify-between gap-3">
-            <p className="text-xs font-semibold uppercase text-muted">Kişiler</p>
+            <p className="text-xs font-semibold uppercase text-muted">{t("common.contacts")}</p>
             {data.entitlements?.contactMessaging ? (
               <button type="button" disabled={contactLoading} onClick={() => void refreshContacts()} className={cn(tab, "inline-flex items-center gap-2 disabled:opacity-50")}>
                 <RefreshCw className={cn("size-4", contactLoading && "animate-spin")} />
-                Kişileri yenile
+                {t("composer.refreshContacts")}
               </button>
             ) : null}
           </div>
           {!data.entitlements?.contactMessaging ? (
             <div className="mt-3 flex items-center gap-3 rounded-xl border bg-accent p-4 text-sm text-accent-foreground">
               <Lock className="size-5 text-primary" />
-              <span>Kişilere mesaj gönderimi Profesyonel paketinde kullanılabilir.</span>
+              <span>{t("composer.contactMessagingProfessional")}</span>
             </div>
           ) : (
             <>
               <label className="mt-3 flex items-center gap-2 rounded-xl border bg-input px-3 text-input-foreground">
                 <Search className="size-4 text-muted" />
-                <input value={contactSearch} onChange={(event) => setContactSearch(event.target.value)} placeholder="Kişi ara" className="w-full bg-transparent py-3 text-sm outline-none" />
+                <input value={contactSearch} onChange={(event) => setContactSearch(event.target.value)} placeholder={t("composer.searchContacts")} className="w-full bg-transparent py-3 text-sm outline-none" />
               </label>
               <label className="mt-3 flex items-center gap-3 rounded-xl border p-3 text-sm font-semibold">
                 <input
                   type="checkbox"
-                  checked={contacts.length > 0 && contacts.every((contact) => selectedContacts.includes(contact.id))}
+                  checked={displayableContacts.length > 0 && displayableContacts.every(({ contact }) => selectedContacts.includes(contact.id))}
                   onChange={toggleVisibleContacts}
                 />
-                Görünen kişileri seç
-                <span className="ms-auto text-muted">{selectedContacts.length} seçili</span>
+                {t("composer.selectVisibleContacts")}
+                <span className="ms-auto text-muted">{t("composer.selectedCount", { count: selectedContacts.length })}</span>
               </label>
               {contactError ? <p className="mt-3 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-danger">{contactError}</p> : null}
-              {!contacts.length && contactLoading ? <div className="mt-3 flex items-center gap-2 text-sm text-muted"><LoaderCircle className="size-4 animate-spin" />Kişiler yükleniyor...</div> : contacts.length ? (
+              {!displayableContacts.length && contactLoading ? <div className="mt-3 flex items-center gap-2 text-sm text-muted"><LoaderCircle className="size-4 animate-spin" />{t("composer.contactsLoading")}</div> : displayableContacts.length ? (
                 <div className="mt-3 grid max-h-[520px] gap-2 overflow-auto md:grid-cols-2">
-                  {contacts.map((contact) => (
+                  {displayableContacts.map(({ contact, displayName }) => (
                     <label key={contact.id} className={cn("flex items-center gap-3 rounded-xl border p-3 text-sm", selectedContacts.includes(contact.id) && "border-primary bg-accent text-accent-foreground")}>
                       <input
                         type="checkbox"
                         checked={selectedContacts.includes(contact.id)}
                         onChange={(event) => setSelectedContacts((value) => event.target.checked ? [...new Set([...value, contact.id])] : value.filter((id) => id !== contact.id))}
                       />
-                      <span className="min-w-0"><b className="block truncate">{contact.name || contact.pushName || contact.phone}</b><small className="text-muted">+{contact.phone}</small></span>
+                      <span className="min-w-0"><b className="block truncate">{displayName}</b><small className="text-muted">+{contact.phone}</small></span>
                     </label>
                   ))}
                 </div>
-              ) : <p className="mt-3 rounded-xl border p-4 text-sm text-muted">Bu WhatsApp hesabında kişi bulunamadı.</p>}
+              ) : <p className="mt-3 rounded-xl border p-4 text-sm text-muted">{t("composer.noContacts")}</p>}
               {contactPageInfo?.hasMore ? (
                 <button type="button" disabled={contactLoading} onClick={() => void loadMoreContacts()} className={cn(tab, "mt-3 w-full disabled:opacity-50")}>
-                  {contactLoading ? "Yükleniyor..." : "Daha fazla kişi yükle"}
+                  {contactLoading ? t("common.loading") : t("composer.loadMoreContacts")}
                 </button>
               ) : null}
-              <p className="mt-3 text-xs leading-5 text-muted">Yalnızca mesaj bekleyen veya iletişim izni bulunan alıcılara gönderim yapın.</p>
+              <p className="mt-3 text-xs leading-5 text-muted">{t("composer.permissionNotice")}</p>
             </>
           )}
         </section>
@@ -452,10 +546,11 @@ export function CampaignComposerPage() {
 }
 
 function SummaryCard({ label, value }: { label: string; value: number }) {
+  const { locale } = useI18n();
   return (
     <div className={card}>
       <p className="text-xs text-muted">{label}</p>
-      <p className="mt-2 font-mono text-2xl font-semibold">{value}</p>
+      <p className="mt-2 font-mono text-2xl font-semibold">{formatNumber(value, locale)}</p>
     </div>
   );
 }

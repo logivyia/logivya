@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@logivya/validation/*": ["./packages/validation/src/*"]
     }
   },
   "include": [

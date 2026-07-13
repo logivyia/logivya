@@ -1,20 +1,26 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+
 import { requireApiSession } from "@/server/auth/session";
+import { subscriptionAccess } from "@/server/billing/subscription-access";
+import { resolveCategoryContactsForSend } from "@/server/categories/category-targets";
 import { prisma } from "@/server/db";
 import { resolveCurrentWhatsAppAccount } from "@/server/whatsapp/account-scope";
-import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
-import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { resolveOwnedWhatsAppContacts } from "@/server/whatsapp/contacts";
+import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
 
-const schema = z.object({ groupIds: z.array(z.string()).default([]), categoryIds: z.array(z.string()).default([]), contactIds: z.array(z.string()).default([]) });
+const schema = z.object({
+  groupIds: z.array(z.string()).default([]),
+  categoryIds: z.array(z.string()).default([]),
+  contactIds: z.array(z.string()).default([]),
+});
 
 export async function POST(request: Request) {
   try {
     const { company, user } = await requireApiSession();
     const body = schema.parse(await request.json());
     const account = await resolveCurrentWhatsAppAccount({ companyId: company.id, userId: user.id });
-    if (!account) return NextResponse.json({ error: "WhatsApp hesabınızı bağlayın" }, { status: 409 });
+    if (!account) return NextResponse.json({ error: "WHATSAPP_ACCOUNT_REQUIRED", message: "WhatsApp hesabınızı bağlayın." }, { status: 409 });
 
     const links = body.categoryIds.length
       ? await prisma.categoryGroup.findMany({
@@ -28,19 +34,33 @@ export async function POST(request: Request) {
       : [];
     const ids = [...new Set([...body.groupIds, ...links.map((item) => item.groupId)])];
     const groups = await resolveSendableWhatsAppGroups(company.id, ids, { userId: user.id, accountId: account.id });
-    if (body.contactIds.length && !(await subscriptionAccess.canUseContactMessaging(company.id))) {
+    const categoryContactResolution = await resolveCategoryContactsForSend(
+      { companyId: company.id, userId: user.id, accountId: account.id },
+      body.categoryIds,
+    );
+    if ((body.contactIds.length || categoryContactResolution.assignedCount) && !(await subscriptionAccess.canUseContactMessaging(company.id))) {
       return NextResponse.json({ error: "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL" }, { status: 403 });
     }
-    const contacts = await resolveOwnedWhatsAppContacts({ companyId: company.id, userId: user.id, accountId: account.id }, body.contactIds);
+    const directContacts = await resolveOwnedWhatsAppContacts(
+      { companyId: company.id, userId: user.id, accountId: account.id },
+      body.contactIds,
+    );
+    const contactsByIdentity = new Map<string, (typeof directContacts)[number]>();
+    for (const contact of [...directContacts, ...categoryContactResolution.contacts]) {
+      contactsByIdentity.set(`${contact.accountId}:${contact.externalContactId}`, contact);
+    }
+    const contacts = [...contactsByIdentity.values()];
     return NextResponse.json({
       groups: groups.sort((a, b) => a.name.localeCompare(b.name, "tr")),
       contacts,
       count: groups.length + contacts.length,
       groupCount: groups.length,
       contactCount: contacts.length,
+      skippedStaleContactCount: categoryContactResolution.skippedStaleCount,
     });
   } catch (error) {
-    const status = error instanceof Error && error.message === "WHATSAPP_GROUP_OWNERSHIP_MISMATCH" ? 403 : 401;
-    return NextResponse.json({ error: status === 403 ? "Bu grup bu hesaba ait değil" : "UNAUTHORIZED" }, { status });
+    const message = error instanceof Error ? error.message : "UNAUTHORIZED";
+    const ownershipMismatch = message === "WHATSAPP_GROUP_OWNERSHIP_MISMATCH" || message === "WHATSAPP_CONTACT_OWNERSHIP_MISMATCH";
+    return NextResponse.json({ error: ownershipMismatch ? message : "UNAUTHORIZED" }, { status: ownershipMismatch ? 403 : 401 });
   }
 }

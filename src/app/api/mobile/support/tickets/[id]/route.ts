@@ -1,46 +1,21 @@
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/server/db";
 import { requireMobileAuth } from "@/server/mobile/auth";
-import { mobileError, mobileSafeError, mobileSuccess } from "@/server/mobile/response";
-import { supportTicketOwnerWhere } from "@/server/support";
+import { mobileError, mobileSuccess } from "@/server/mobile/response";
+import { getUserSupportTicketDetail } from "@/server/support/service";
+import { supportErrorFromUnknown } from "@/server/support/errors";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const context = await requireMobileAuth(request);
     const { id } = await params;
-    const where: Prisma.SupportTicketWhereInput = {
-      id,
-      ...supportTicketOwnerWhere(context),
-    };
-    const ticket = await prisma.supportTicket.findFirst({
-      where,
-      select: {
-        id: true,
-        tenantId: true,
-        userId: true,
-        title: true,
-        description: true,
-        category: true,
-        subject: true,
-        type: true,
-        source: true,
-        status: true,
-        priority: true,
-        createdAt: true,
-        updatedAt: true,
-        lastMessageAt: true,
-        company: { select: { id: true, name: true } },
-        createdBy: { select: { id: true, name: true, email: true } },
-        messages: {
-          where: { isInternal: false },
-          select: { id: true, senderType: true, message: true, attachmentUrl: true, createdAt: true },
-          orderBy: { createdAt: "asc" },
-        },
-      },
+    const query = new URL(request.url).searchParams;
+    const result = await getUserSupportTicketDetail(context, id, {
+      cursor: query.get("cursor"),
+      limit: Number(query.get("limit") || 50),
+      markRead: true,
     });
-    if (!ticket) return mobileError("NOT_FOUND", "Destek talebi bulunamadı.", { status: 404 });
-    return mobileSuccess({ ticket });
+    return mobileSuccess(result);
   } catch (error) {
-    return mobileSafeError(error);
+    const resolved = supportErrorFromUnknown(error, "SUPPORT_DETAIL_FAILED");
+    return mobileError(resolved.code, "support.error.loadFailed", { status: resolved.status, details: resolved.details });
   }
 }

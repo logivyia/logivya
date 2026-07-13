@@ -4,10 +4,12 @@ import { ArrowRight, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
+import { MIN_PASSWORD_LENGTH, validatePasswordPolicy } from "@logivya/validation/password-policy";
 
 import { BrandLogo } from "@/components/brand-logo";
 import { LanguageSelector } from "@/components/language-selector";
 import { useI18n } from "@/i18n/provider";
+import { apiErrorMessage } from "@/i18n/api-error";
 
 type Mode = "login" | "register";
 const loginFields = [{ name: "identifier", type: "text", required: true }, { name: "password", type: "password", required: true }] as const;
@@ -20,15 +22,21 @@ const registerFields = [
 ] as const;
 
 const invitationMessages: Record<string, string> = {
-  INVITATION_INVALID: "Davet geçersiz.",
-  INVITATION_EXPIRED: "Davetin süresi dolmuş.",
-  INVITATION_EMAIL_MISMATCH: "Bu davet farklı bir e-posta adresine ait.",
-  INVITATION_ALREADY_USED: "Bu davet daha önce kullanılmış.",
-  INVITATION_REVOKED: "Bu davet iptal edilmiş.",
-  INVITATION_DECLINED: "Bu davet daha önce reddedilmiş.",
-  SEAT_LIMIT_REACHED: "Şirkette kullanılabilir ekip koltuğu kalmamış.",
-  RATE_LIMITED: "Çok fazla deneme yaptınız. Lütfen daha sonra tekrar deneyin.",
+  INVITATION_INVALID: "auth.invitationInvalid",
+  INVITATION_EXPIRED: "auth.invitationExpired",
+  INVITATION_EMAIL_MISMATCH: "auth.invitationEmailMismatch",
+  INVITATION_ALREADY_USED: "auth.invitationAlreadyUsed",
+  INVITATION_REVOKED: "auth.invitationRevoked",
+  INVITATION_DECLINED: "auth.invitationDeclined",
+  SEAT_LIMIT_REACHED: "auth.seatLimitReached",
+  RATE_LIMITED: "auth.rateLimited",
 };
+
+const passwordMessageKeys = {
+  PASSWORD_REQUIRED: "auth.passwordRequired",
+  PASSWORD_TOO_SHORT: "auth.passwordTooShort",
+  PASSWORD_INVALID_TYPE: "auth.passwordInvalidType",
+} as const;
 
 function AuthBrandPanel({ compact = false }: { compact?: boolean }) {
   const { t } = useI18n();
@@ -73,6 +81,19 @@ export function AuthForm({ mode }: { mode: Mode }) {
     setLoading(true);
     setError("");
     const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    if (mode === "register") {
+      const policy = validatePasswordPolicy(body.password);
+      if (!policy.valid) {
+        setError(t(passwordMessageKeys[policy.code]));
+        setLoading(false);
+        return;
+      }
+      if (body.password !== body.passwordConfirmation) {
+        setError(t("auth.passwordConfirmationMismatch"));
+        setLoading(false);
+        return;
+      }
+    }
     if (mode === "register" && invitationToken) body.invitationToken = invitationToken;
     if (mode === "register" && !invitationToken && invitationCode.trim()) body.invitationCode = invitationCode.trim();
 
@@ -83,7 +104,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
     });
     const result = await response.json();
     if (!response.ok) {
-      setError(invitationMessages[result.error] ?? t(result.error || "errors.generic"));
+      setError(invitationMessages[result.error] ? t(invitationMessages[result.error]) : apiErrorMessage(t, result));
       setLoading(false);
       return;
     }
@@ -98,7 +119,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
       });
       const invitationResult = await invitationResponse.json();
       if (!invitationResponse.ok) {
-        setError(invitationMessages[invitationResult.error] ?? t(invitationResult.error || "errors.generic"));
+        setError(t(invitationMessages[invitationResult.error] ?? invitationResult.error ?? "errors.generic"));
         setLoading(false);
         return;
       }
@@ -118,11 +139,11 @@ export function AuthForm({ mode }: { mode: Mode }) {
         <div className="mb-8">
           <h1 className="text-3xl font-semibold text-slate-950">{t(`auth.${mode}Title`)}</h1>
           <p className="mt-2 text-sm text-slate-600">{t(`auth.${mode}Description`)}</p>
-          {invitationToken ? <p className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm font-medium text-orange-800">Ekip davetiyle devam ediyorsunuz.</p> : null}
+          {invitationToken ? <p className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm font-medium text-orange-800">{t("auth.continueWithInvitation")}</p> : null}
         </div>
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={submit}>
           {!invitationToken ? <label className="sm:col-span-2">
-            <span className="mb-2 block text-xs font-medium text-slate-700">Davet kodu (isteğe bağlı)</span>
+            <span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.invitationCodeOptional")}</span>
             <input
               value={invitationCode}
               onChange={(event) => setInvitationCode(event.target.value.toUpperCase())}
@@ -138,10 +159,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
               required={field.required}
               name={field.name}
               type={field.type}
+              minLength={mode === "register" && field.name === "password" ? MIN_PASSWORD_LENGTH : undefined}
               autoComplete={field.name === "password" && mode === "login" ? "current-password" : field.name.includes("password") ? "new-password" : field.name}
               className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-950 caret-slate-950 placeholder:text-slate-400 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100"
             />
           </label>)}
+          {mode === "register" && <p className="text-xs leading-5 text-slate-500 sm:col-span-2">{t("auth.passwordPolicy")}</p>}
           {mode === "login" && <div className="-mt-1 text-end sm:col-span-2"><Link className="text-sm font-semibold text-orange-600 hover:text-orange-700" href="/forgot-password">{t("auth.forgotPassword")}</Link></div>}
           {mode === "register" && <>
             <label><span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.referralCode")}</span><input name="referralCode" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-950 caret-slate-950 placeholder:text-slate-400 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100" /></label>

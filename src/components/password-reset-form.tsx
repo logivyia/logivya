@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, LoaderCircle, ShieldCheck } from "lucide-react";
+import { MIN_PASSWORD_LENGTH, validatePasswordPolicy } from "@logivya/validation/password-policy";
 import { BrandLogo } from "@/components/brand-logo";
 import { LanguageSelector } from "@/components/language-selector";
 import { useI18n } from "@/i18n/provider";
+import { apiErrorMessage } from "@/i18n/api-error";
 
 type Mode = "forgot" | "reset";
 const inputClass = "w-full rounded-xl border bg-white px-3 py-3 text-sm text-slate-950 placeholder:text-slate-400 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100";
@@ -39,9 +41,9 @@ export function PasswordResetForm({ mode }: { mode: Mode }) {
     const response = await fetch("/api/auth/forgot-password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ identifier }) });
     const result = await response.json();
     setLoading(false);
-    if (!response.ok) return setError(result.message || t(result.error || "validation.invalid"));
+    if (!response.ok) return setError(apiErrorMessage(t, result, "validation.invalid"));
     sessionStorage.setItem("logivya.reset.identifier", identifier);
-    setMessage(result.message);
+    setMessage(t("api.success.resetCodeSent"));
     setTimeout(() => router.push("/reset-password"), 900);
   }
 
@@ -51,8 +53,8 @@ export function PasswordResetForm({ mode }: { mode: Mode }) {
     const response = await fetch("/api/auth/forgot-password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ identifier }) });
     const result = await response.json();
     setLoading(false);
-    if (!response.ok) return setError(result.message || t(result.error || "auth.resetEmailFailed"));
-    setMessage(result.message);
+    if (!response.ok) return setError(apiErrorMessage(t, result, "auth.resetEmailFailed"));
+    setMessage(t("api.success.resetCodeSent"));
     setResendCooldown(60);
   }
 
@@ -61,7 +63,7 @@ export function PasswordResetForm({ mode }: { mode: Mode }) {
     const response = await fetch("/api/auth/verify-reset-code", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ identifier, code }) });
     const result = await response.json();
     setLoading(false);
-    if (!response.ok) return setError(result.message || t(result.error || "auth.resetInvalidCode"));
+    if (!response.ok) return setError(apiErrorMessage(t, result, "auth.resetInvalidCode"));
     setVerified(true);
     setMessage(t("auth.resetVerified"));
   }
@@ -69,11 +71,20 @@ export function PasswordResetForm({ mode }: { mode: Mode }) {
   async function submitReset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!verified) return void verifyCode();
+    const policy = validatePasswordPolicy(password);
+    if (!policy.valid) {
+      setError(t(policy.code === "PASSWORD_REQUIRED" ? "auth.passwordRequired" : policy.code === "PASSWORD_TOO_SHORT" ? "auth.passwordTooShort" : "auth.passwordInvalidType"));
+      return;
+    }
+    if (password !== passwordConfirmation) {
+      setError(t("auth.passwordConfirmationMismatch"));
+      return;
+    }
     setLoading(true); setError("");
     const response = await fetch("/api/auth/reset-password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ identifier, code, password, passwordConfirmation }) });
     const result = await response.json();
     setLoading(false);
-    if (!response.ok) return setError(result.message || t(result.error || "errors.generic"));
+    if (!response.ok) return setError(apiErrorMessage(t, result));
     sessionStorage.removeItem("logivya.reset.identifier");
     router.push("/login?reset=success");
   }
@@ -96,11 +107,11 @@ export function PasswordResetForm({ mode }: { mode: Mode }) {
           <label><span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.verificationCode")}</span><input required inputMode="numeric" pattern="\d{6}" maxLength={6} value={code} onChange={(event) => { setCode(event.target.value.replace(/\D/g, "")); setVerified(false); }} className={inputClass} /></label>
           {!verified && <button type="button" disabled={loading || code.length !== 6} onClick={() => void verifyCode()} className="rounded-xl border bg-white px-4 py-3 text-sm font-semibold text-slate-900 disabled:bg-slate-100 disabled:text-slate-500"><CheckCircle2 className="me-2 inline size-4" />{t("auth.verifyCode")}</button>}
           {!verified && <button type="button" disabled={loading || resendCooldown > 0 || !identifier} onClick={() => void resendCode()} className="rounded-xl border bg-white px-4 py-3 text-sm font-semibold text-slate-900 disabled:bg-slate-100 disabled:text-slate-500">
-            {resendCooldown > 0 ? `Kodu tekrar gönder (${resendCooldown})` : "Kodu tekrar gönder"}
+            {resendCooldown > 0 ? t("auth.resendCodeCountdown", { seconds: resendCooldown }) : t("auth.resendCode")}
           </button>}
           {verified && <>
-            <label><span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.newPassword")}</span><input required type="password" minLength={12} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className={inputClass} /></label>
-            <label><span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.passwordConfirmation")}</span><input required type="password" minLength={12} value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} autoComplete="new-password" className={inputClass} /></label>
+            <label><span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.newPassword")}</span><input required type="password" minLength={MIN_PASSWORD_LENGTH} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className={inputClass} /></label>
+            <label><span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.passwordConfirmation")}</span><input required type="password" value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} autoComplete="new-password" className={inputClass} /></label>
             <p className="text-xs leading-5 text-slate-500">{t("auth.passwordPolicy")}</p>
           </>}
         </>}

@@ -7,6 +7,84 @@ export type ProviderContactRecord = {
   verifiedName?: string | null;
 };
 
+export type WhatsAppContactDisplayNameSource =
+  | "SAVED_NAME"
+  | "NOTIFY"
+  | "VERIFIED_NAME"
+  | "PUSH_NAME"
+  | "PHONE_FALLBACK";
+
+type ContactDisplayFields = {
+  phone: string;
+  name?: string | null;
+  pushName?: string | null;
+  notifyName?: string | null;
+  verifiedName?: string | null;
+  displayName?: string | null;
+  displayNameSource?: WhatsAppContactDisplayNameSource | null;
+};
+
+function usableDisplayName(value: string | null | undefined, phone: string) {
+  const candidate = value?.trim();
+  if (!candidate) return null;
+
+  const lower = candidate.toLowerCase();
+  if (lower.endsWith("@s.whatsapp.net") || lower.endsWith("@lid") || lower.endsWith("@g.us")) return null;
+
+  const candidateDigits = candidate.replace(/\D/g, "");
+  const phoneDigits = phone.replace(/\D/g, "");
+  const phoneLike = /^[+\d\s().-]+$/.test(candidate);
+  if (phoneLike && candidateDigits.length >= 7) return null;
+  if (candidateDigits && candidateDigits === phoneDigits) return null;
+
+  return candidate;
+}
+
+function phoneDisplayName(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  return digits ? `+${digits}` : phone.trim();
+}
+
+const DISPLAY_NAME_SOURCE_PRIORITY: Record<WhatsAppContactDisplayNameSource, number> = {
+  SAVED_NAME: 50,
+  NOTIFY: 40,
+  VERIFIED_NAME: 30,
+  PUSH_NAME: 20,
+  PHONE_FALLBACK: 10,
+};
+
+export function resolveWhatsAppContactDisplayIdentity(contact: ContactDisplayFields): {
+  displayName: string;
+  displayNameSource: WhatsAppContactDisplayNameSource;
+} {
+  const candidates: Array<{ value: string | null; source: WhatsAppContactDisplayNameSource }> = [
+    { value: usableDisplayName(contact.name, contact.phone), source: "SAVED_NAME" },
+    { value: usableDisplayName(contact.notifyName, contact.phone), source: "NOTIFY" },
+    { value: usableDisplayName(contact.verifiedName, contact.phone), source: "VERIFIED_NAME" },
+    { value: usableDisplayName(contact.pushName, contact.phone), source: "PUSH_NAME" },
+  ];
+
+  if (contact.displayName && contact.displayNameSource && contact.displayNameSource !== "PHONE_FALLBACK") {
+    candidates.push({
+      value: usableDisplayName(contact.displayName, contact.phone),
+      source: contact.displayNameSource,
+    });
+  }
+
+  const strongest = candidates
+    .filter((candidate): candidate is { value: string; source: WhatsAppContactDisplayNameSource } => Boolean(candidate.value))
+    .sort((left, right) => DISPLAY_NAME_SOURCE_PRIORITY[right.source] - DISPLAY_NAME_SOURCE_PRIORITY[left.source])[0];
+
+  if (strongest) {
+    return { displayName: strongest.value, displayNameSource: strongest.source };
+  }
+  return { displayName: phoneDisplayName(contact.phone), displayNameSource: "PHONE_FALLBACK" };
+}
+
+export function resolveWhatsAppContactDisplayName(contact: ContactDisplayFields) {
+  return resolveWhatsAppContactDisplayIdentity(contact).displayName;
+}
+
 export function normalizeWhatsAppContactJid(value: string | null | undefined) {
   const candidate = value?.trim().toLowerCase();
   if (!candidate || candidate.endsWith("@g.us") || candidate.endsWith("@broadcast") || candidate === "status@broadcast") return null;
@@ -24,10 +102,24 @@ export function normalizeWhatsAppContactJid(value: string | null | undefined) {
 export function normalizeProviderContact(contact: ProviderContactRecord) {
   const normalized = normalizeWhatsAppContactJid(contact.phoneNumber || contact.jid || contact.id);
   if (!normalized) return null;
+  const name = usableDisplayName(contact.name, normalized.phone);
+  const notifyName = usableDisplayName(contact.notify, normalized.phone);
+  const verifiedName = usableDisplayName(contact.verifiedName, normalized.phone);
+  const pushName = notifyName || verifiedName;
+  const identity = resolveWhatsAppContactDisplayIdentity({
+    phone: normalized.phone,
+    name,
+    notifyName,
+    verifiedName,
+    pushName,
+  });
   return {
     externalContactId: normalized.jid,
     phone: normalized.phone,
-    name: contact.name?.trim() || contact.verifiedName?.trim() || contact.notify?.trim() || null,
-    pushName: contact.notify?.trim() || contact.verifiedName?.trim() || null,
+    name,
+    pushName,
+    notifyName,
+    verifiedName,
+    ...identity,
   };
 }

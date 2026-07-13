@@ -13,6 +13,7 @@ import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups
 import { createMessageCorrelationId, withCampaignMetadata } from "@/server/messages/correlation";
 import { traceMessageStage } from "@/server/messages/delivery-tracing";
 import { resolveOwnedWhatsAppContacts } from "@/server/whatsapp/contacts";
+import { resolveCategoryContactsForSend } from "@/server/categories/category-targets";
 
 type MessageScheduleType = "SEND_NOW" | "SCHEDULED" | "RECURRING";
 type MessageDeliverySource = "web" | "mobile" | "recurring";
@@ -259,7 +260,25 @@ export async function createMessageDeliveryCampaign(
       throw error;
     }
   });
-  const contacts = await traceMessageStage("audience.contacts.resolve", {
+  const categoryContactResolution = await traceMessageStage("audience.category_contacts.resolve", {
+    ...traceContext,
+    requestedCategoryCount: input.categoryIds.length,
+    whatsappAccountId: currentAccount.id,
+  }, async () => resolveCategoryContactsForSend(
+    { companyId: actor.companyId, userId: actor.userId, accountId: currentAccount.id },
+    input.categoryIds,
+    { correlationId },
+  ));
+  if (categoryContactResolution.assignedCount && !(await subscriptionAccess.canUseContactMessaging(actor.companyId))) {
+    throw new MessageDeliveryError(
+      "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL",
+      "Kişilere mesaj gönderimi Profesyonel paketinde kullanılabilir.",
+      403,
+      { assignedContactCount: categoryContactResolution.assignedCount },
+      correlationId,
+    );
+  }
+  const directContacts = await traceMessageStage("audience.contacts.resolve", {
     ...traceContext,
     requestedContactCount: input.contactIds.length,
     whatsappAccountId: currentAccount.id,
@@ -282,12 +301,22 @@ export async function createMessageDeliveryCampaign(
       throw error;
     }
   });
+  const contactsByIdentity = new Map<string, (typeof directContacts)[number]>();
+  for (const contact of [...directContacts, ...categoryContactResolution.contacts]) {
+    contactsByIdentity.set(`${contact.accountId}:${contact.externalContactId}`, contact);
+  }
+  const contacts = [...contactsByIdentity.values()];
   if (!groups.length && !contacts.length) {
     throw new MessageDeliveryError(
       "NO_SENDABLE_TARGETS",
       "Gonderilebilir WhatsApp grubu veya kisi bulunamadi.",
       400,
-      { requestedGroupCount: input.groupIds.length, requestedCategoryCount: input.categoryIds.length, requestedContactCount: input.contactIds.length },
+      {
+        requestedGroupCount: input.groupIds.length,
+        requestedCategoryCount: input.categoryIds.length,
+        requestedContactCount: input.contactIds.length,
+        skippedStaleCategoryContactCount: categoryContactResolution.skippedStaleCount,
+      },
       correlationId,
     );
   }
@@ -346,6 +375,8 @@ export async function createMessageDeliveryCampaign(
         requestedGroupCount: input.groupIds.length,
         requestedCategoryCount: input.categoryIds.length,
         requestedContactCount: input.contactIds.length,
+        categoryAssignedContactCount: categoryContactResolution.assignedCount,
+        skippedStaleCategoryContactCount: categoryContactResolution.skippedStaleCount,
         resolvedGroupCount: groups.length,
         resolvedContactCount: contacts.length,
       }),

@@ -1,21 +1,38 @@
-export function passwordResetCodeTemplate(code: string) {
-  const subject = "Logivya Parola Sıfırlama Kodunuz";
-  const text = `Merhaba,
+import { localeMetadata, normalizeLocale, fallbackLocale } from "@/i18n/config";
+import { translateForLocale } from "@/i18n/server";
 
-Şifre sıfırlama talebiniz alınmıştır.
+export async function passwordResetCodeTemplate(code: string, preferredLocale?: string) {
+  const locale = normalizeLocale(preferredLocale) ?? fallbackLocale;
+  const keys = [
+    "email.passwordReset.subject",
+    "email.passwordReset.greeting",
+    "email.passwordReset.requestReceived",
+    "email.passwordReset.codeLabel",
+    "email.passwordReset.validity",
+    "email.passwordReset.ignore",
+    "email.passwordReset.securitySystem",
+    "email.passwordReset.title",
+    "email.passwordReset.intro",
+  ] as const;
+  const [subject, greeting, requestReceived, codeLabel, validity, ignore, securitySystem, title, intro] = await Promise.all(
+    keys.map((key) => translateForLocale(locale, key)),
+  );
+  const text = `${greeting}
 
-Doğrulama Kodunuz:
+${requestReceived}
+
+${codeLabel}
 
 ${code}
 
-Bu kod 10 dakika boyunca geçerlidir.
+${validity}
 
-Eğer bu işlemi siz yapmadıysanız bu e-postayı dikkate almayınız.
+${ignore}
 
-Logivya Güvenlik Sistemi`;
+Logivya ${securitySystem}`;
 
   const html = `<!doctype html>
-<html lang="tr">
+<html lang="${locale}" dir="${localeMetadata[locale].direction}">
   <body style="margin:0;background:#f8fafc;font-family:Arial,sans-serif;color:#111827">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f8fafc;padding:32px 16px">
       <tr>
@@ -24,18 +41,18 @@ Logivya Güvenlik Sistemi`;
             <tr>
               <td style="padding:28px 32px;background:#111827;color:#ffffff">
                 <div style="font-size:22px;font-weight:800;letter-spacing:5px">LOGIVYA</div>
-                <div style="margin-top:8px;color:#fdba74;font-size:13px;font-weight:700;letter-spacing:2px">GÜVENLİK SİSTEMİ</div>
+                <div style="margin-top:8px;color:#fdba74;font-size:13px;font-weight:700;letter-spacing:2px">${securitySystem}</div>
               </td>
             </tr>
             <tr>
               <td style="padding:32px">
-                <h1 style="margin:0 0 12px;font-size:24px;line-height:1.3;color:#111827">Parola sıfırlama kodunuz</h1>
-                <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#475569">Şifre sıfırlama talebiniz alınmıştır. Aşağıdaki doğrulama kodunu Logivya ekranına girin.</p>
+                <h1 style="margin:0 0 12px;font-size:24px;line-height:1.3;color:#111827">${title}</h1>
+                <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#475569">${intro}</p>
                 <div style="margin:24px 0;padding:22px;border-radius:18px;background:#fff7ed;text-align:center">
                   <div style="font-size:36px;font-weight:800;letter-spacing:10px;color:#ea580c">${code}</div>
                 </div>
-                <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#475569">Bu kod 10 dakika boyunca geçerlidir ve yalnızca bir kez kullanılabilir.</p>
-                <p style="margin:0;font-size:14px;line-height:1.7;color:#64748b">Eğer bu işlemi siz yapmadıysanız bu e-postayı dikkate almayınız.</p>
+                <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#475569">${validity}</p>
+                <p style="margin:0;font-size:14px;line-height:1.7;color:#64748b">${ignore}</p>
               </td>
             </tr>
           </table>

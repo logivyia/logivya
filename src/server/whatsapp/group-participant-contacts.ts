@@ -12,7 +12,9 @@ export function collectGroupParticipantContacts(
   options: { ownJid?: string | null; knownContacts?: ProviderContactRecord[]; limit?: number } = {},
 ) {
   const own = normalizeCandidate(options.ownJid)?.jid;
-  const limit = Math.min(10_000, Math.max(1, options.limit ?? 10_000));
+  const explicitLimit = options.limit === undefined
+    ? null
+    : Math.max(1, Math.trunc(options.limit));
   const knownByJid = new Map<string, ProviderContactRecord>();
   for (const contact of options.knownContacts ?? []) {
     const normalized = normalizeCandidate(contact.jid || contact.id);
@@ -32,7 +34,7 @@ export function collectGroupParticipantContacts(
         notify: participant.notify ?? known?.notify,
         verifiedName: participant.verifiedName ?? known?.verifiedName,
       });
-      if (contacts.size >= limit) return [...contacts.values()];
+      if (explicitLimit && contacts.size >= explicitLimit) return [...contacts.values()];
     }
   }
   return [...contacts.values()];

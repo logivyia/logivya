@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { translateForLocale } from "@/i18n/server";
 import { LOGIVYA_PLATFORM_OWNER_EMAIL } from "@/server/auth/platform-owner";
 import { prisma } from "@/server/db";
 
@@ -22,7 +23,10 @@ export const NOTIFICATION_TYPES = {
   SUBSCRIPTION_CANCELLED: "subscription.cancelled",
   SUBSCRIPTION_PAYMENT_FAILED: "subscription.payment_failed",
   SUPPORT_TICKET_CREATED: "support.ticket_created",
+  SUPPORT_ADMIN_NEW_TICKET: "support.admin_new_ticket",
   SUPPORT_ADMIN_REPLIED: "support.admin_replied",
+  SUPPORT_USER_REPLIED: "support.user_replied",
+  SUPPORT_STATUS_CHANGED: "support.status_changed",
   SUPPORT_TICKET_CLOSED: "support.ticket_closed",
   SUPPORT_TICKET_REOPENED: "support.ticket_reopened",
   ADMIN_COMPANY_REGISTERED: "admin.company_registered",
@@ -47,6 +51,53 @@ type CreateNotificationInput = {
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const EXPO_TOKEN_PREFIXES = ["ExponentPushToken[", "ExpoPushToken["];
+const LEGACY_NOTIFICATION_TYPES = [
+  "ACCOUNT_ARCHIVED",
+  "PAYMENT_RECEIVED",
+  "PAYMENT_REJECTED",
+  "SUPPORT_REPLY",
+  "SUBSCRIPTION_ACTIVATED",
+  "SUBSCRIPTION_CANCELED",
+  "SUBSCRIPTION_EXPIRED",
+  "TRIAL_EXPIRED",
+  "TRIAL_STARTED",
+] as const;
+const LOCALIZED_NOTIFICATION_TYPES = new Set<string>([...Object.values(NOTIFICATION_TYPES), ...LEGACY_NOTIFICATION_TYPES]);
+
+function notificationVariables(payload?: NotificationPayload) {
+  return Object.fromEntries(
+    Object.entries(payload ?? {}).filter((entry): entry is [string, string | number] => {
+      const value = entry[1];
+      return typeof value === "string" || typeof value === "number";
+    }),
+  );
+}
+
+async function localizedNotificationContent(input: Pick<CreateNotificationInput, "type" | "title" | "message" | "payload">, locale?: string | null) {
+  if (!LOCALIZED_NOTIFICATION_TYPES.has(input.type)) {
+    return { title: input.title, message: input.message };
+  }
+
+  const variables = notificationVariables(input.payload);
+  const titleKey = `notification.title.${input.type}`;
+  const messageKey = `notification.message.${input.type}`;
+  const [title, message] = await Promise.all([
+    translateForLocale(locale, titleKey, variables),
+    translateForLocale(locale, messageKey, variables),
+  ]);
+  return {
+    title: title === titleKey ? input.title : title,
+    message: message === messageKey ? input.message : message,
+  };
+}
+
+export async function localizeNotificationRecord<T extends { type: string; title: string; message: string; payload?: Prisma.JsonValue | null }>(notification: T, locale?: string | null) {
+  const payload = notification.payload && typeof notification.payload === "object" && !Array.isArray(notification.payload)
+    ? notification.payload as NotificationPayload
+    : undefined;
+  const content = await localizedNotificationContent({ ...notification, payload }, locale);
+  return { ...notification, ...content };
+}
 
 export function serializeNotification(notification: {
   id: string;
@@ -74,13 +125,15 @@ export function serializeNotification(notification: {
 }
 
 export async function createNotification(input: CreateNotificationInput) {
+  const recipient = await prisma.user.findUnique({ where: { id: input.userId }, select: { locale: true } });
+  const content = await localizedNotificationContent(input, recipient?.locale);
   const notification = await prisma.notification.create({
     data: {
       companyId: input.companyId,
       userId: input.userId,
       type: input.type,
-      title: input.title,
-      message: input.message,
+      title: content.title,
+      message: content.message,
       payload: (input.payload ?? {}) as Prisma.InputJsonValue
     }
   });
@@ -88,8 +141,8 @@ export async function createNotification(input: CreateNotificationInput) {
   await sendPushToUser({
     companyId: input.companyId,
     userId: input.userId,
-    title: input.title,
-    message: input.message,
+    title: content.title,
+    message: content.message,
     type: input.type,
     notificationId: notification.id,
     payload: input.payload
@@ -102,19 +155,32 @@ export async function createNotificationsForUsers(input: Omit<CreateNotification
   const userIds = [...new Set(input.userIds)].filter(Boolean);
   if (!userIds.length) return [];
 
+  const recipients = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, locale: true },
+  });
+  const recipientLocale = new Map(recipients.map((recipient) => [recipient.id, recipient.locale]));
+  const localizedByUser = new Map(
+    await Promise.all(userIds.map(async (userId) => [
+      userId,
+      await localizedNotificationContent(input, recipientLocale.get(userId)),
+    ] as const)),
+  );
+
   const notifications = await prisma.$transaction(
-    userIds.map((userId) =>
-      prisma.notification.create({
+    userIds.map((userId) => {
+      const content = localizedByUser.get(userId) ?? { title: input.title, message: input.message };
+      return prisma.notification.create({
         data: {
           companyId: input.companyId,
           userId,
           type: input.type,
-          title: input.title,
-          message: input.message,
+          title: content.title,
+          message: content.message,
           payload: (input.payload ?? {}) as Prisma.InputJsonValue
         }
-      })
-    )
+      });
+    })
   );
 
   await Promise.all(
@@ -122,8 +188,8 @@ export async function createNotificationsForUsers(input: Omit<CreateNotification
       sendPushToUser({
         companyId: input.companyId,
         userId: notification.userId,
-        title: input.title,
-        message: input.message,
+        title: notification.title,
+        message: notification.message,
         type: input.type,
         notificationId: notification.id,
         payload: input.payload
@@ -196,6 +262,52 @@ async function sendPushToUser(input: {
       console.error("expo.push.error", { error: error instanceof Error ? error.message : String(error), userId: input.userId, notificationId: input.notificationId });
     }
   }
+}
+
+export async function sendPushToUserStrict(input: {
+  companyId: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: string;
+  notificationId: string;
+  payload?: NotificationPayload;
+}) {
+  const devices = await prisma.mobilePushToken.findMany({
+    where: { companyId: input.companyId, userId: input.userId, revokedAt: null },
+    select: { token: true },
+  });
+  const tokens = devices.filter((device) => isExpoPushToken(device.token));
+  if (!tokens.length) return { delivered: 0, skipped: true };
+
+  const messages = tokens.map((device) => ({
+    to: device.token,
+    sound: "default",
+    title: input.title,
+    body: input.message,
+    data: {
+      type: input.type,
+      notificationId: input.notificationId,
+      ...(input.payload ?? {}),
+    },
+  }));
+
+  let delivered = 0;
+  for (const chunk of chunkArray(messages, 100)) {
+    const response = await fetch(EXPO_PUSH_URL, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Accept-Encoding": "gzip, deflate",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(chunk),
+    });
+    if (!response.ok) throw new Error(`EXPO_PUSH_${response.status}`);
+    delivered += chunk.length;
+  }
+
+  return { delivered, skipped: false };
 }
 
 function isExpoPushToken(token: string) {

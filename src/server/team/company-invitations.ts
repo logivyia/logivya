@@ -5,6 +5,7 @@ import { z } from "zod";
 import { resolveCompanyEntitlements } from "@/server/billing/company-entitlements";
 import { prisma } from "@/server/db";
 import { sendTemplateEmailSafely } from "@/server/email/service";
+import { getRequestLocale, translateForLocale } from "@/i18n/server";
 import { hashOpaqueToken } from "@/server/security/authentication";
 import { writeAuditLog } from "@/server/security/audit";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
@@ -256,14 +257,20 @@ export async function createCompanyInvitation(
   }
 
   const acceptUrl = `${invitationBaseUrl(request)}/register?invitation=${encodeURIComponent(token)}`;
+  const locale = await getRequestLocale(request.headers.get("x-logivya-locale"));
+  const [emailTitle, emailMessage] = await Promise.all([
+    translateForLocale(locale, "email.teamInvitation.subject"),
+    translateForLocale(locale, "email.teamInvitation.message", { name: invitation.name, code: inviteCode, url: acceptUrl }),
+  ]);
   const delivery = await sendTemplateEmailSafely({
     companyId: context.companyId,
     userId: context.actorUserId,
     to: invitation.email,
     template: "team_invitation",
     variables: {
-      title: "Logivya ekip daveti",
-      message: `${invitation.name}, Logivya şirket çalışma alanına davet edildiniz. Davet kodunuz: ${inviteCode}. Daveti kabul etmek için: ${acceptUrl}`,
+      title: emailTitle,
+      message: emailMessage,
+      locale,
     },
   });
 

@@ -55,9 +55,9 @@ function main() {
   assertIncludes("src/components/message-history-stable-page.tsx", "history.deleteForMe");
   assertIncludes("src/components/message-history-stable-page.tsx", "history.deleteEveryone");
   assertIncludes("src/components/message-history-stable-page.tsx", "history.platformDelete");
-  assertIncludes("apps/mobile/src/screens/app/message-history-screen.tsx", "Benden sil");
-  assertIncludes("apps/mobile/src/screens/app/message-history-screen.tsx", "Herkesten sil");
-  assertIncludes("apps/mobile/src/screens/app/message-history-screen.tsx", "Platformdan sil");
+  assertIncludes("apps/mobile/src/screens/app/message-history-screen.tsx", 'label={t("deleteForMe")}');
+  assertIncludes("apps/mobile/src/screens/app/message-history-screen.tsx", 'label={t("deleteForEveryone")}');
+  assertIncludes("apps/mobile/src/screens/app/message-history-screen.tsx", 'label={t("deleteFromPlatform")}');
 
   if (existsSync(join(root, "src/lib/whatsapp/delete-message.ts"))) {
     throw new Error("Legacy fake WhatsApp delete helper still exists");

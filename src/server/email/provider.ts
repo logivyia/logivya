@@ -40,11 +40,11 @@ class TransactionalEmailProvider implements EmailProvider {
 
   async sendTemplateEmail(input: TemplateEmailInput) {
     if (input.template === "password_reset") {
-      return this.sendEmail({ to: input.to, ...passwordResetCodeTemplate(input.variables.code) });
+      return this.sendEmail({ to: input.to, ...await passwordResetCodeTemplate(input.variables.code, input.variables.locale) });
     }
 
-    const title = input.variables.title || "Logivya Bildirimi";
-    const message = input.variables.message || "Logivya hesabinizla ilgili yeni bir bildiriminiz var.";
+    const title = input.variables.title || "Logivya notification";
+    const message = input.variables.message || "You have a new notification about your Logivya account.";
     return this.sendEmail({
       to: input.to,
       subject: title,

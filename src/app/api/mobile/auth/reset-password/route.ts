@@ -1,4 +1,4 @@
-import { resetPasswordSchema } from "@/features/auth/schemas";
+import { authPasswordErrorCode, resetPasswordSchema } from "@/features/auth/schemas";
 import { completePasswordReset } from "@/server/auth/password-reset";
 import { prisma } from "@/server/db";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
@@ -6,7 +6,12 @@ import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } fr
 export async function POST(request: Request) {
   try {
     const parsed = resetPasswordSchema.safeParse(await request.json());
-    if (!parsed.success) return mobileValidationError(parsed.error);
+    if (!parsed.success) {
+      const code = authPasswordErrorCode(parsed.error);
+      return code
+        ? mobileError(code, code, { status: 400, details: parsed.error.flatten().fieldErrors })
+        : mobileValidationError(parsed.error);
+    }
     const completed = await completePasswordReset(request, parsed.data.identifier, parsed.data.code, parsed.data.password);
     if (!completed) return mobileError("RESET_CODE_INVALID", "Kod hatalı, süresi dolmuş veya kullanılmış.", { status: 400 });
     const identifier = parsed.data.identifier.trim().toLowerCase();

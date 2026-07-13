@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { LoaderCircle, Save } from "lucide-react";
 import { useI18n } from "@/i18n/provider";
+import { apiErrorMessage } from "@/i18n/api-error";
 
 type Data = {
   company: { name: string; phone?: string; address?: string; taxOffice?: string; taxNumber?: string };
@@ -25,7 +26,7 @@ export function CompanySettingsPage() {
     const form = new FormData(event.currentTarget);
     const response = await fetch("/api/settings/company", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(Object.fromEntries(form.entries())) });
     const result = await response.json();
-    setStatus(response.ok ? t("company.saved") : result.error || t("company.saveFailed"));
+    setStatus(response.ok ? t("company.saved") : apiErrorMessage(t, result, "company.saveFailed"));
     setSaving(false);
   }
   if (!data) return <LoaderCircle className="size-6 animate-spin text-orange-500" />;

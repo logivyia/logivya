@@ -1,12 +1,20 @@
 import { z } from "zod";
+
 import { requirePermission } from "@/server/auth/permissions";
+import { createCategoryWithTargets, isCategoryTargetError } from "@/server/categories/category-targets";
 import { prisma } from "@/server/db";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
 import { writeAuditLog } from "@/server/security/audit";
-import { assertGroupsBelongToCurrentAccount, resolveCurrentWhatsAppAccount } from "@/server/whatsapp/account-scope";
+import { resolveCurrentWhatsAppAccount } from "@/server/whatsapp/account-scope";
 
-const schema = z.object({ name: z.string().min(2).max(80), description: z.string().max(500).optional(), color: z.string().regex(/^#[0-9a-f]{6}$/i).default("#f97316"), groupIds: z.array(z.string()).default([]) });
+const schema = z.object({
+  name: z.string().min(2).max(80),
+  description: z.string().max(500).optional(),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i).default("#f97316"),
+  groupIds: z.array(z.string()).max(5_000).default([]),
+  contactIds: z.array(z.string()).max(50_000).default([]),
+});
 
 export async function GET(request: Request) {
   try {
@@ -15,10 +23,16 @@ export async function GET(request: Request) {
     const categories = await prisma.category.findMany({
       where: { companyId: company.id, archivedAt: null },
       include: {
-        _count: { select: { groups: true } },
-        groups: account
-          ? { where: { group: { companyId: company.id, userId: user.id, accountId: account.id, isArchived: false } }, select: { groupId: true } }
-          : { where: { groupId: "__NO_CURRENT_WHATSAPP_ACCOUNT__" }, select: { groupId: true } },
+        _count: {
+          select: {
+            groups: account
+              ? { where: { group: { companyId: company.id, userId: user.id, accountId: account.id, isArchived: false } } }
+              : { where: { groupId: "__NO_CURRENT_WHATSAPP_ACCOUNT__" } },
+            contacts: account
+              ? { where: { companyId: company.id, userId: user.id, accountId: account.id, contact: { isActive: true, isWhatsAppUser: true } } }
+              : { where: { id: "__NO_CURRENT_WHATSAPP_ACCOUNT__" } },
+          },
+        },
       },
       orderBy: { name: "asc" },
       take: 200,
@@ -29,7 +43,10 @@ export async function GET(request: Request) {
         name: category.name,
         color: category.color,
         description: category.description,
-        _count: { ...category._count, groups: category.groups.length },
+        assignedGroupCount: category._count.groups,
+        assignedContactCount: category._count.contacts,
+        totalTargetCount: category._count.groups + category._count.contacts,
+        _count: category._count,
       })),
     });
   } catch (error) {
@@ -43,20 +60,20 @@ export async function POST(request: Request) {
     requirePermission(membership.role, "manage_categories");
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return mobileValidationError(parsed.error);
-    const requestedGroupIds = [...new Set(parsed.data.groupIds)];
-    const account = requestedGroupIds.length ? await resolveCurrentWhatsAppAccount({ companyId: company.id, userId: user.id }) : null;
-    if (requestedGroupIds.length && !account) return mobileError("WHATSAPP_ACCOUNT_REQUIRED", "WhatsApp hesabınızı bağlayın", { status: 409 });
-    const validGroups = account ? await assertGroupsBelongToCurrentAccount({ companyId: company.id, userId: user.id, accountId: account.id }, requestedGroupIds) : [];
-    const category = await prisma.category.create({
-      data: { companyId: company.id, name: parsed.data.name, description: parsed.data.description, color: parsed.data.color, groups: { create: validGroups.map((group) => ({ groupId: group.id })) } },
-      select: { id: true, name: true, color: true, description: true, _count: { select: { groups: true } } },
-    });
-    await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "mobile.category.created", entityType: "Category", entityId: category.id }).catch((auditError) =>
+    const category = await createCategoryWithTargets({ companyId: company.id, userId: user.id }, parsed.data);
+    await writeAuditLog(request, {
+      companyId: company.id,
+      userId: user.id,
+      action: "mobile.category.created",
+      entityType: "Category",
+      entityId: category.id,
+      after: { groupCount: category.assignedGroupCount, contactCount: category.assignedContactCount },
+    }).catch((auditError) =>
       console.error("mobile.category.audit_failed", { error: auditError instanceof Error ? auditError.message : String(auditError), categoryId: category.id }),
     );
     return mobileSuccess({ category }, { status: 201 });
   } catch (error) {
-    if (error instanceof Error && error.message === "WHATSAPP_GROUP_OWNERSHIP_MISMATCH") return mobileError("FORBIDDEN", "Bu grup bu hesaba ait değil", { status: 403 });
+    if (isCategoryTargetError(error)) return mobileError(error.code, error.userMessage, { status: error.status });
     return mobileSafeError(error, "Kategori oluşturulamadı.");
   }
 }

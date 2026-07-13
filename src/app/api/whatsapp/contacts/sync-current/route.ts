@@ -20,7 +20,13 @@ export async function POST(request: Request) {
       request,
     });
     const result = await requestCurrentAccountContactSync({ companyId: company.id, userId: user.id }, body.accountId, "web");
-    return NextResponse.json({ queued: true, accountId: result.account.id, jobId: result.job.id }, { status: 202 });
+    return NextResponse.json({
+      queued: !result.reused,
+      accountId: result.account.id,
+      jobId: result.jobId,
+      syncRunId: result.syncRun.id,
+      status: result.syncRun.status,
+    }, { status: 202 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "errors.generic";
     return NextResponse.json({ error: message }, { status: message === "UNAUTHORIZED" ? 401 : message === "RATE_LIMITED" ? 429 : 409 });

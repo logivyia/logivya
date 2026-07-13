@@ -63,12 +63,12 @@ export function getQuickScheduleInput(action: SmartScheduleQuickAction, options:
   if (action === "today") {
     const current = getZonedTimeParts(now, timeZone);
     const nextHour = current.hour + 1;
-    if (nextHour <= 23) return `Bugün ${pad(nextHour)}:00`;
-    return "Yarın 09:00";
+    if (nextHour <= 23) return `${formatDateParts(today)} ${pad(nextHour)}:00`;
+    return `${formatDateParts(addDays(today, 1))} 09:00`;
   }
 
-  if (action === "tomorrow") return "Yarın 09:00";
-  if (action === "nextWeek") return "Gelecek hafta 09:00";
+  if (action === "tomorrow") return `${formatDateParts(addDays(today, 1))} 09:00`;
+  if (action === "nextWeek") return `${formatDateParts(addDays(today, 7))} 09:00`;
 
   const daysUntilMonday = daysUntilNextWeekday(today, 1);
   const monday = addDays(today, daysUntilMonday);
@@ -85,7 +85,7 @@ export function parseSmartScheduleDateTime(input: unknown, options: ParseOptions
   }
 
   if (typeof input !== "string" || !input.trim()) {
-    throw new SmartScheduleDateError("EMPTY", "Tarih anlaşılamadı.");
+    throw new SmartScheduleDateError("EMPTY", "composer.dateNotUnderstood");
   }
 
   const raw = collapseWhitespace(input);
@@ -96,7 +96,7 @@ export function parseSmartScheduleDateTime(input: unknown, options: ParseOptions
   const resolvedDate = resolveDate(dateText, timeZone, now);
   const resolvedTime = time ?? resolvedDate.defaultTime;
   if (!resolvedTime) {
-    throw new SmartScheduleDateError("UNPARSABLE", "Lütfen geçerli bir tarih girin.");
+    throw new SmartScheduleDateError("UNPARSABLE", "composer.invalidDate");
   }
 
   const date = makeDateInTimeZone({ ...resolvedDate.date, ...resolvedTime }, timeZone);
@@ -105,10 +105,10 @@ export function parseSmartScheduleDateTime(input: unknown, options: ParseOptions
 
 function finalizeDate(date: Date, dateParts: DateParts, timeParts: TimeParts, timeZone: string, now: Date, rejectPast: boolean) {
   if (Number.isNaN(date.getTime())) {
-    throw new SmartScheduleDateError("INVALID_DATE", "Lütfen geçerli bir tarih girin.");
+    throw new SmartScheduleDateError("INVALID_DATE", "composer.invalidDate");
   }
   if (rejectPast && date.getTime() <= now.getTime()) {
-    throw new SmartScheduleDateError("PAST", "Gönderim zamanı gelecekte olmalıdır.");
+    throw new SmartScheduleDateError("PAST", "composer.scheduleFuture");
   }
   return {
     date,
@@ -168,7 +168,7 @@ function resolveDate(input: string, timeZone: string, now: Date) {
   const numeric = parseNumericDate(text);
   if (numeric) return { date: numeric, defaultTime: null };
 
-  throw new SmartScheduleDateError("UNPARSABLE", "Tarih anlaşılamadı.");
+  throw new SmartScheduleDateError("UNPARSABLE", "composer.dateNotUnderstood");
 }
 
 function parseNumericDate(input: string) {
@@ -202,18 +202,18 @@ function extractTime(input: string) {
 
 function validateTimeParts(hour: number, minute: number): TimeParts {
   if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-    throw new SmartScheduleDateError("INVALID_TIME", "Lütfen geçerli bir tarih girin.");
+    throw new SmartScheduleDateError("INVALID_TIME", "composer.invalidDate");
   }
   return { hour, minute };
 }
 
 function validateDateParts(year: number, month: number, day: number): DateParts {
   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day) || year < 1970 || month < 1 || month > 12 || day < 1 || day > 31) {
-    throw new SmartScheduleDateError("INVALID_DATE", "Lütfen geçerli bir tarih girin.");
+    throw new SmartScheduleDateError("INVALID_DATE", "composer.invalidDate");
   }
   const date = new Date(Date.UTC(year, month - 1, day));
   if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
-    throw new SmartScheduleDateError("INVALID_DATE", "Lütfen geçerli bir tarih girin.");
+    throw new SmartScheduleDateError("INVALID_DATE", "composer.invalidDate");
   }
   return { year, month, day };
 }
@@ -237,7 +237,7 @@ function makeDateInTimeZone(parts: DateParts & TimeParts, timeZone: string) {
     roundTrip.hour !== parts.hour ||
     roundTrip.minute !== parts.minute
   ) {
-    throw new SmartScheduleDateError("INVALID_DATE", "Lütfen geçerli bir tarih girin.");
+    throw new SmartScheduleDateError("INVALID_DATE", "composer.invalidDate");
   }
   return date;
 }

@@ -43,7 +43,16 @@ export async function GET() {
       prisma.category.findMany({
         where: { companyId: company.id, archivedAt: null },
         include: {
-          _count: { select: { groups: true } },
+          _count: {
+            select: {
+              groups: currentAccount
+                ? { where: { group: { companyId: company.id, userId: user.id, accountId: currentAccount.id, isArchived: false } } }
+                : { where: { groupId: "__NO_CURRENT_WHATSAPP_ACCOUNT__" } },
+              contacts: currentAccount
+                ? { where: { companyId: company.id, userId: user.id, accountId: currentAccount.id, contact: { isActive: true, isWhatsAppUser: true } } }
+                : { where: { id: "__NO_CURRENT_WHATSAPP_ACCOUNT__" } },
+            },
+          },
           groups: currentAccount
             ? {
                 where: { group: { companyId: company.id, userId: user.id, accountId: currentAccount.id, isArchived: false } },
@@ -84,7 +93,9 @@ export async function GET() {
       .sort((a, b) => a.name.localeCompare(b.name, "tr"));
     const categories = rawCategories.map((category) => ({
       ...category,
-      _count: { ...category._count, groups: category.groups.length },
+      assignedGroupCount: category._count.groups,
+      assignedContactCount: category._count.contacts,
+      totalTargetCount: category._count.groups + category._count.contacts,
     }));
 
     logger.info("whatsapp.group_listing.platform", {

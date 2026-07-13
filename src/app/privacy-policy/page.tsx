@@ -1,1 +1,7 @@
-import { LegalPage } from "@/components/legal-page";export default function Page(){return <LegalPage title="Gizlilik Politikası"><p>Logivya, hizmetin sunulması, güvenliği, faturalama ve destek süreçleri için gerekli kişisel verileri işler.</p><h2 className="text-xl font-semibold">Veri güvenliği</h2><p>Tenant izolasyonu, şifreleme, erişim kontrolleri ve audit kayıtları uygulanır. Veri talepleri support@logivya.com adresine iletilebilir.</p></LegalPage>}
+import { LegalPage } from "@/components/legal-page";
+import { getServerTranslator } from "@/i18n/server";
+
+export default async function Page() {
+  const { t } = await getServerTranslator();
+  return <LegalPage title={t("legal.privacy.title")} versionLabel={t("legal.version")}><p>{t("legal.privacy.intro")}</p><h2 className="text-xl font-semibold">{t("legal.privacy.securityTitle")}</h2><p>{t("legal.privacy.securityBody")}</p></LegalPage>;
+}

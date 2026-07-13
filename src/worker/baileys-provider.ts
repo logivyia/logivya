@@ -14,7 +14,7 @@ import { canExposePhonePairingCode } from "@/server/whatsapp/pairing-code-state"
 import { hasActivePhonePairing, isPhonePairingActive } from "@/server/whatsapp/pairing-guard";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
-import { persistWhatsAppContacts, type ProviderContactRecord } from "@/server/whatsapp/contacts";
+import { persistWhatsAppContacts, resetWhatsAppContactDirectoryIfIdentityChanged, type ProviderContactRecord } from "@/server/whatsapp/contacts";
 import { collectGroupParticipantContacts } from "@/server/whatsapp/group-participant-contacts";
 import {
   backupWhatsAppSessionToDatabase,
@@ -50,6 +50,7 @@ const pairingRetryScheduledAt = new Map<string, number>();
 const contactSnapshots = new Map<string, Map<string, ProviderContactRecord>>();
 const contactPhoneJidsByLid = new Map<string, Map<string, string>>();
 const contactPersistenceTails = new Map<string, Promise<void>>();
+const contactHistoryBootstrapAttempts = new Map<string, number>();
 const SOCKET_INITIALIZATION_TIMEOUT_MS = Number(process.env.WHATSAPP_SOCKET_INITIALIZATION_TIMEOUT_MS || 30_000);
 const PAIRING_SOCKET_BOOTSTRAP_MS = Number(process.env.WHATSAPP_PAIRING_SOCKET_BOOTSTRAP_MS || 5_000);
 const HEARTBEAT_INTERVAL_MS = Number(process.env.WHATSAPP_HEARTBEAT_INTERVAL_MS || 30_000);
@@ -62,8 +63,10 @@ const PHONE_PAIRING_QR_REF_TIMEOUT_MS = Number(process.env.WHATSAPP_PHONE_PAIRIN
 const CONTACT_BOOTSTRAP_WAIT_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_WAIT_MS || 45_000);
 const CONTACT_BOOTSTRAP_QUIET_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_QUIET_MS || 4_000);
 const CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS || 5 * 60_000);
+const CONTACT_HISTORY_FALLBACK_MIN_NAMED = Number(process.env.WHATSAPP_CONTACT_HISTORY_FALLBACK_MIN_NAMED || 25);
+const CONTACT_HISTORY_FALLBACK_COOLDOWN_MS = Number(process.env.WHATSAPP_CONTACT_HISTORY_FALLBACK_COOLDOWN_MS || 6 * 60 * 60_000);
 const CONTACT_APP_STATE_COLLECTION = "critical_unblock_low" as const;
-const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V6_FULL_APP_STATE";
+const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V8_TENANT_SAFE_FULL_SYNC";
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -86,22 +89,31 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForPersistedContacts(accountId: string, userId: string, timeoutMs = CONTACT_BOOTSTRAP_WAIT_MS) {
+async function waitForPersistedContacts(
+  accountId: string,
+  userId: string,
+  baseline: { total: number; named: number },
+  timeoutMs = CONTACT_BOOTSTRAP_WAIT_MS,
+) {
   const deadline = Date.now() + timeoutMs;
-  let lastCount = 0;
+  let lastStats = baseline;
+  let lastSignature = `${baseline.total}:${baseline.named}`;
   let lastChangedAt = Date.now();
 
   while (Date.now() < deadline) {
-    const count = await prisma.contact.count({ where: { accountId, userId, isActive: true } });
-    if (count !== lastCount) {
-      lastCount = count;
+    const stats = await persistedContactStats(accountId, userId);
+    const signature = `${stats.total}:${stats.named}`;
+    if (signature !== lastSignature) {
+      lastStats = stats;
+      lastSignature = signature;
       lastChangedAt = Date.now();
     }
-    if (count > 0 && Date.now() - lastChangedAt >= CONTACT_BOOTSTRAP_QUIET_MS) return count;
+    const improved = stats.total > baseline.total || stats.named > baseline.named;
+    if (improved && Date.now() - lastChangedAt >= CONTACT_BOOTSTRAP_QUIET_MS) return stats.total;
     await sleep(750);
   }
 
-  return lastCount;
+  return lastStats.total;
 }
 
 async function persistedContactStats(accountId: string, userId: string) {
@@ -142,6 +154,14 @@ async function flushContactPersistence(accountId: string) {
     await pending;
     if (contactPersistenceTails.get(accountId) === pending) return;
   }
+}
+
+async function clearContactRuntimeState(accountId: string, source: string) {
+  await flushContactPersistence(accountId);
+  contactSnapshots.delete(accountId);
+  contactPhoneJidsByLid.delete(accountId);
+  contactPersistenceTails.delete(accountId);
+  logger.info("whatsapp.contacts.runtime_state_cleared", { accountId, source });
 }
 
 function rememberContacts(accountId: string, contacts: BaileysContactRecord[], source: string) {
@@ -896,6 +916,9 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
 
   private async startSession(accountId: string, mode: SessionMode, options: StartSessionOptions = {}) {
     sessionModes.set(accountId, mode);
+    if (mode === "PAIR_PHONE" || mode === "PAIR_QR") {
+      await clearContactRuntimeState(accountId, `fresh-${mode.toLowerCase()}`);
+    }
     await ensureWhatsAppSessionRoot();
     await restoreWhatsAppSessionFromDatabase(accountId);
     const directory = whatsappSessionDirectory(accountId);
@@ -1045,6 +1068,14 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           pairingRegisteredReconnects.delete(accountId);
           const phoneNumber = socket.user?.id?.split(":")[0] || socket.user?.id?.split("@")[0];
           const deviceId = socket.user?.id ?? null;
+          const identityReset = await resetWhatsAppContactDirectoryIfIdentityChanged(accountId, phoneNumber, "connection-open");
+          if (identityReset.changed) {
+            await flushContactPersistence(accountId);
+            const currentContacts = [...(contactSnapshots.get(accountId)?.values() ?? [])];
+            if (currentContacts.length) {
+              await persistWhatsAppContacts(accountId, currentContacts, { source: "BAILEYS_IDENTITY_CHANGED" });
+            }
+          }
           const updated = await prisma.whatsAppAccount.updateMany({ where: { id: accountId, archivedAt: null }, data: { status: "CONNECTED", phoneNumber, displayName: socket.user?.name, deviceId, lastConnectedAt: new Date(), lastHeartbeatAt: new Date(), lastPongAt: new Date(), reconnectRetryCount: 0, recoveryLevel: 0, healthScore: 95, qrCode: null, qrExpiresAt: null, pairingCode: null, pairingCodeExpiresAt: null, lastError: null } });
           if (!updated.count) return;
           await prisma.whatsAppSession.updateMany({ where: { accountId }, data: { status: "CONNECTED", qrCode: null, expiresAt: null } });
@@ -1057,6 +1088,13 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           await auditAccount(accountId, "whatsapp.connected", { phoneNumber: maskPhoneNumber(phoneNumber), mode: currentMode });
           settleInitialized();
           await this.syncGroups(accountId);
+          if (identityReset.changed) {
+            await enqueueWhatsAppJob(
+              "sync-contacts",
+              { action: "sync-contacts", accountId },
+              { jobId: `sync-contacts-identity-${accountId}-${Date.now()}`, delay: 2_000, removeOnComplete: 50, removeOnFail: 100 },
+            );
+          }
         }
         if (connection === "close") {
           this.stopHeartbeat(accountId);
@@ -1448,7 +1486,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     return { externalMessageId: result.key.id, messageKey: result.key };
   }
 
-  async syncContacts(accountId: string): Promise<{ count: number; implementation: string }> {
+  async syncContacts(accountId: string): Promise<{ count: number; implementation: string; deferred?: boolean }> {
     const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId }, select: { id: true, userId: true, archivedAt: true } });
     if (!account || account.archivedAt || !account.userId) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
     if (!sockets.get(accountId)?.user) await restoreWhatsAppSessionFromDatabase(accountId);
@@ -1471,7 +1509,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         { jobId: `sync-contacts-deferred-${accountId}-${Math.floor(Date.now() / 30_000)}`, delay: 30_000, removeOnComplete: 50, removeOnFail: 100 },
       );
       logger.info("whatsapp.contacts.bootstrap_deferred_active_delivery", { accountId, activeDeliveries, existingCount: directoryStats.total });
-      return { count: directoryStats.total, implementation: CONTACT_SYNC_IMPLEMENTATION };
+      return { count: directoryStats.total, implementation: CONTACT_SYNC_IMPLEMENTATION, deferred: true };
     }
 
     logger.info("whatsapp.contacts.full_sync_started", { accountId, existingCount: directoryStats.total, existingNamedCount: directoryStats.named });
@@ -1526,15 +1564,33 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       logger.warn("whatsapp.contacts.group_participant_sync_failed", { accountId, reason: errorMessage(error) });
     }
 
-    if (directoryStats.total === 0) {
-      syncStrategy = "HISTORY_FALLBACK";
-      await this.stopSocket(accountId, "Bootstrap WhatsApp contact history");
-      const { initialized } = await this.startSession(accountId, "RECONNECT", { syncContactHistory: true });
-      await initialized;
-      await waitForPersistedContacts(accountId, account.userId);
-      await flushContactPersistence(accountId);
-      socket = await this.ensureConnectedSocket(accountId);
-      directoryStats = await persistedContactStats(accountId, account.userId);
+    const expectedNamedCount = Math.min(directoryStats.total, Math.max(1, CONTACT_HISTORY_FALLBACK_MIN_NAMED));
+    const sparseNamedDirectory = directoryStats.total > 0 && directoryStats.named < expectedNamedCount;
+    const previousHistoryBootstrapAt = contactHistoryBootstrapAttempts.get(accountId) ?? 0;
+    const sparseHistoryFallbackAllowed = Date.now() - previousHistoryBootstrapAt >= CONTACT_HISTORY_FALLBACK_COOLDOWN_MS;
+    if (directoryStats.total === 0 || (sparseNamedDirectory && sparseHistoryFallbackAllowed)) {
+      syncStrategy = directoryStats.total === 0 ? "HISTORY_FALLBACK" : "HISTORY_FALLBACK_SPARSE_NAMES";
+      if (sparseNamedDirectory) contactHistoryBootstrapAttempts.set(accountId, Date.now());
+      const historyBaseline = directoryStats;
+      try {
+        await this.stopSocket(accountId, "Bootstrap WhatsApp contact history");
+        const { initialized } = await this.startSession(accountId, "RECONNECT", { syncContactHistory: true });
+        await initialized;
+        await waitForPersistedContacts(accountId, account.userId, historyBaseline);
+        await flushContactPersistence(accountId);
+        socket = await this.ensureConnectedSocket(accountId);
+        directoryStats = await persistedContactStats(accountId, account.userId);
+      } catch (error) {
+        if (sparseNamedDirectory) contactHistoryBootstrapAttempts.delete(accountId);
+        throw error;
+      }
+    } else if (sparseNamedDirectory) {
+      logger.info("whatsapp.contacts.sparse_history_fallback_cooldown", {
+        accountId,
+        persistedCount: directoryStats.total,
+        namedCount: directoryStats.named,
+        expectedNamedCount,
+      });
     }
     snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
     logger.info("whatsapp.contacts.full_sync_finished", {
@@ -1551,40 +1607,47 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       strategy: syncStrategy,
     }).catch((error) => logger.warn("whatsapp.contacts.bootstrap_audit_failed", { accountId, reason: errorMessage(error) }));
 
-    const existing = await prisma.contact.findMany({
-      where: { accountId, userId: account.userId },
-      select: { id: true, externalContactId: true },
-      take: 10_000,
-    });
-    for (let offset = 0; offset < existing.length; offset += 100) {
-      const batch = existing.slice(offset, offset + 100);
-      try {
-        const availability = await socket.onWhatsApp(...batch.map((contact) => contact.externalContactId)) ?? [];
-        const availabilityByJid = new Map<string, boolean>();
-        for (const item of availability) {
-          if (item.jid) availabilityByJid.set(item.jid, Boolean(item.exists));
+    let verifiedCount = 0;
+    let contactCursor: string | undefined;
+    while (true) {
+      const page = await prisma.contact.findMany({
+        where: { accountId, userId: account.userId, isActive: true },
+        select: { id: true, externalContactId: true },
+        orderBy: { id: "asc" },
+        take: 500,
+        ...(contactCursor ? { cursor: { id: contactCursor }, skip: 1 } : {}),
+      });
+      if (!page.length) break;
+      verifiedCount += page.length;
+      contactCursor = page.at(-1)?.id;
+      for (let offset = 0; offset < page.length; offset += 100) {
+        const batch = page.slice(offset, offset + 100);
+        try {
+          const availability = await socket.onWhatsApp(...batch.map((contact) => contact.externalContactId)) ?? [];
+          const availabilityByJid = new Map<string, boolean>();
+          for (const item of availability) {
+            if (item.jid) availabilityByJid.set(item.jid, Boolean(item.exists));
+          }
+          await Promise.all(batch.flatMap((contact) => {
+            if (!availabilityByJid.has(contact.externalContactId)) return [];
+            const exists = availabilityByJid.get(contact.externalContactId) ?? false;
+            return [prisma.contact.update({
+              where: { id: contact.id },
+              data: { isWhatsAppUser: exists, isActive: exists },
+            })];
+          }));
+        } catch (error) {
+          logger.warn("whatsapp.contacts.availability_check_failed", {
+            accountId,
+            batchSize: batch.length,
+            reason: errorMessage(error),
+          });
         }
-        await Promise.all(batch.flatMap((contact) => {
-          if (!availabilityByJid.has(contact.externalContactId)) return [];
-          const exists = availabilityByJid.get(contact.externalContactId) ?? false;
-          return [prisma.contact.update({
-            where: { id: contact.id },
-            data: { isWhatsAppUser: exists, isActive: exists },
-          })];
-        }));
-      } catch (error) {
-        logger.warn("whatsapp.contacts.availability_check_failed", {
-          accountId,
-          batchSize: batch.length,
-          reason: errorMessage(error),
-        });
       }
     }
-    if (existing.length) {
-      await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { lastContactSyncAt: new Date() } });
-    }
-    logger.info("whatsapp.contacts.sync_completed", { accountId, snapshotCount: snapshot.length, verifiedCount: existing.length });
-    return { count: existing.length, implementation: CONTACT_SYNC_IMPLEMENTATION };
+    await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { lastContactSyncAt: new Date() } });
+    logger.info("whatsapp.contacts.sync_completed", { accountId, snapshotCount: snapshot.length, verifiedCount });
+    return { count: verifiedCount, implementation: CONTACT_SYNC_IMPLEMENTATION };
   }
 
   async sendContactMessage(input: SendContactMessageInput): Promise<SendResult> {
