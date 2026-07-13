@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/state/empty-state";
 import { ErrorState } from "@/components/state/error-state";
 import { LoadingState } from "@/components/state/loading-state";
 import { useNotificationStore } from "@/features/notifications/notificationStore";
+import { formatDateTime } from "@/i18n/format";
 import { useTranslation } from "@/i18n/use-translation";
 import { useTheme } from "@/theme/theme-provider";
 import type { MobileNotification } from "@/api/mobileNotifications";
@@ -58,8 +59,8 @@ export function NotificationsScreen() {
                 <Text style={[styles.title, { color: theme.text }]}>{t("notifications")}</Text>
                 <Text style={[styles.subtitle, { color: theme.muted }]}>{t("notificationsDescription")}</Text>
               </View>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{unreadCount}</Text>
+              <View style={[styles.badge, { backgroundColor: theme.primary }]}>
+                <Text style={[styles.badgeText, { color: theme.primaryText }]}>{unreadCount}</Text>
               </View>
             </View>
             <PrimaryButton title={t("markAllAsRead")} onPress={() => void markAllAsRead()} disabled={unreadCount === 0} />
@@ -86,7 +87,9 @@ export function NotificationsScreen() {
             <View style={styles.notificationHeader}>
               <View style={[styles.unreadDot, { backgroundColor: item.isRead ? theme.border : theme.primary }]} />
               <Text style={[styles.notificationTitle, { color: theme.text }]} numberOfLines={2}>{item.title}</Text>
-              <Text style={[styles.date, { color: theme.muted }]}>{formatDate(item.createdAt, locale)}</Text>
+               <Text style={[styles.date, { color: theme.muted }]}>
+                 {formatDateTime(item.createdAt, locale, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+               </Text>
             </View>
             <Text style={[styles.message, { color: theme.muted }]} numberOfLines={3}>{item.message}</Text>
           </Pressable>
@@ -96,17 +99,6 @@ export function NotificationsScreen() {
   );
 }
 
-function formatDate(value: string, locale: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat(locale === "tr" ? "tr-TR" : "en-US", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date);
-}
-
 const styles = StyleSheet.create({
   screen: { paddingHorizontal: 18, paddingVertical: 16 },
   content: { gap: 14, paddingBottom: 32 },
@@ -114,8 +106,8 @@ const styles = StyleSheet.create({
   summaryTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
   title: { fontSize: 30, fontWeight: "900" },
   subtitle: { marginTop: 6, maxWidth: 250, fontSize: 15, lineHeight: 22 },
-  badge: { minWidth: 42, height: 42, borderRadius: 21, backgroundColor: "#ff5a00", alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
-  badgeText: { color: "#ffffff", fontSize: 16, fontWeight: "900" },
+  badge: { minWidth: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
+  badgeText: { fontSize: 16, fontWeight: "900" },
   notificationCard: { borderWidth: 1, borderRadius: 22, padding: 16, gap: 10 },
   pressed: { opacity: 0.78 },
   notificationHeader: { flexDirection: "row", alignItems: "center", gap: 10 },

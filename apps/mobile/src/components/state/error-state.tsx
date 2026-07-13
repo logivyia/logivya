@@ -11,7 +11,7 @@ export function ErrorState({ title, onRetry }: { title: string; onRetry: () => v
   return (
     <View style={[styles.container, { backgroundColor: theme.card, borderColor: theme.border }]}>
       <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
-      <Text style={[styles.description, { color: theme.muted }]}>İşlem şu anda tamamlanamadı. Lütfen tekrar deneyin.</Text>
+      <Text style={[styles.description, { color: theme.muted }]}>{t("actionFailed")}</Text>
       <PrimaryButton title={t("retry")} onPress={onRetry} />
     </View>
   );

@@ -1,7 +1,7 @@
-{
+﻿{
   "cli": {
     "version": ">= 14.0.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
@@ -10,9 +10,9 @@
       "env": {
         "APP_ENV": "development",
         "EXPO_PUBLIC_API_BASE_URL": "https://www.logivya.com",
-        "EXPO_PUBLIC_APP_VERSION": "1.0.0",
-        "ANDROID_VERSION_CODE": "1",
-        "IOS_BUILD_NUMBER": "1"
+        "EXPO_PUBLIC_APP_VERSION": "1.0.40",
+        "ANDROID_VERSION_CODE": "41",
+        "IOS_BUILD_NUMBER": "35"
       }
     },
     "preview": {
@@ -20,9 +20,9 @@
       "env": {
         "APP_ENV": "staging",
         "EXPO_PUBLIC_API_BASE_URL": "https://www.logivya.com",
-        "EXPO_PUBLIC_APP_VERSION": "1.0.0",
-        "ANDROID_VERSION_CODE": "1",
-        "IOS_BUILD_NUMBER": "1"
+        "EXPO_PUBLIC_APP_VERSION": "1.0.40",
+        "ANDROID_VERSION_CODE": "41",
+        "IOS_BUILD_NUMBER": "35"
       },
       "android": {
         "buildType": "apk"
@@ -33,15 +33,114 @@
       "env": {
         "APP_ENV": "production",
         "EXPO_PUBLIC_API_BASE_URL": "https://www.logivya.com",
-        "EXPO_PUBLIC_APP_VERSION": "1.0.0",
-        "ANDROID_VERSION_CODE": "1",
-        "IOS_BUILD_NUMBER": "1"
+        "EXPO_PUBLIC_APP_VERSION": "1.0.84",
+        "ANDROID_VERSION_CODE": "114",
+        "IOS_BUILD_NUMBER": "114",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "android": {
         "buildType": "app-bundle"
       },
       "ios": {
         "simulator": false
+      }
+    },
+    "production-apk": {
+      "autoIncrement": false,
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_API_BASE_URL": "https://www.logivya.com",
+        "EXPO_PUBLIC_APP_VERSION": "1.0.84",
+        "ANDROID_VERSION_CODE": "114",
+        "IOS_BUILD_NUMBER": "114",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "diagnostic-hermes-off-apk": {
+      "autoIncrement": false,
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_API_BASE_URL": "https://www.logivya.com",
+        "EXPO_PUBLIC_APP_VERSION": "1.0.6",
+        "ANDROID_VERSION_CODE": "7",
+        "IOS_BUILD_NUMBER": "7",
+        "EXPO_PUBLIC_STARTUP_TEST": "true",
+        "EXPO_PUBLIC_NATIVE_DIAGNOSTIC": "true",
+        "EXPO_PUBLIC_DISABLE_HERMES": "true",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "diagnostic-newarch-off-apk": {
+      "autoIncrement": false,
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_API_BASE_URL": "https://www.logivya.com",
+        "EXPO_PUBLIC_APP_VERSION": "1.0.5",
+        "ANDROID_VERSION_CODE": "6",
+        "IOS_BUILD_NUMBER": "6",
+        "EXPO_PUBLIC_STARTUP_TEST": "true",
+        "EXPO_PUBLIC_NATIVE_DIAGNOSTIC": "true",
+        "EXPO_PUBLIC_DISABLE_NEW_ARCH": "true",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "pure-native-apk": {
+      "autoIncrement": false,
+      "distribution": "internal",
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_APP_VERSION": "1.0.7",
+        "ANDROID_VERSION_CODE": "8",
+        "IOS_BUILD_NUMBER": "8"
+      },
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
+      }
+    },
+    "rn-shell-jsc-newarch-off-apk": {
+      "autoIncrement": false,
+      "distribution": "internal",
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_API_BASE_URL": "https://www.logivya.com",
+        "EXPO_PUBLIC_APP_VERSION": "1.0.8",
+        "ANDROID_VERSION_CODE": "9",
+        "IOS_BUILD_NUMBER": "9",
+        "EXPO_PUBLIC_STARTUP_TEST": "true",
+        "EXPO_PUBLIC_NATIVE_DIAGNOSTIC": "true",
+        "EXPO_PUBLIC_DISABLE_HERMES": "true",
+        "EXPO_PUBLIC_DISABLE_NEW_ARCH": "true",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "bare-rn-jsc-newarch-off-apk": {
+      "autoIncrement": false,
+      "distribution": "internal",
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_APP_VERSION": "1.0.9",
+        "ANDROID_VERSION_CODE": "10",
+        "IOS_BUILD_NUMBER": "10",
+        "EXPO_PUBLIC_NATIVE_DIAGNOSTIC": "true",
+        "EXPO_PUBLIC_DISABLE_HERMES": "true",
+        "EXPO_PUBLIC_DISABLE_NEW_ARCH": "true"
+      },
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
       }
     }
   },

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { meRequest } from "@/api/auth-api";
+import { translateCurrent } from "@/i18n/runtime";
 import type { MobileCompany, MobileUser } from "@/types/api";
 
 type ProfileState = {
@@ -25,9 +26,10 @@ export const useProfileStore = create<ProfileState>((set) => ({
     set({ loading: true, error: null });
     try {
       const response = await meRequest();
-      set({ user: { ...response.user, role: response.role }, company: response.company, role: response.role, permissions: response.permissions, loading: false });
+      const isPlatformAdmin = response.isAdmin === true || response.isPlatformAdmin === true || response.user.isAdmin === true || response.user.isPlatformAdmin === true;
+      set({ user: { ...response.user, role: response.role, isPlatformAdmin }, company: response.company, role: response.role, permissions: response.permissions, loading: false });
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Profil bilgisi alınamadı.", loading: false });
+      set({ error: error instanceof Error ? error.message : translateCurrent("profileLoadFailed"), loading: false });
     }
   },
   reset: () => set({ user: null, company: null, role: null, permissions: [], loading: false, error: null })

@@ -23,10 +23,10 @@ export function ForgotPasswordScreen() {
     setLoading(true);
     try {
       await forgotPasswordRequest(identifier);
-      Alert.alert("Kod gönderildi", "Eğer bilgiler sistemde kayıtlıysa doğrulama kodu gönderilmiştir.");
+      Alert.alert(t("codeSent"), t("codeSentDescription"));
       navigation.navigate("ResetPassword", { identifier });
     } catch (error) {
-      Alert.alert("Kod gönderilemedi", error instanceof Error ? error.message : "Lütfen tekrar deneyin.");
+      Alert.alert(t("codeSendFailed"), error instanceof Error ? error.message : t("tryAgain"));
     } finally {
       setLoading(false);
     }
@@ -37,9 +37,9 @@ export function ForgotPasswordScreen() {
       <BrandHeader />
       <View style={styles.form}>
         <Text style={[styles.title, { color: theme.text }]}>{t("forgotPasswordTitle")}</Text>
-        <Text style={[styles.subtitle, { color: theme.muted }]}>E-posta veya telefon bilginizi girin.</Text>
+        <Text style={[styles.subtitle, { color: theme.muted }]}>{t("identifierPrompt")}</Text>
         <TextField label={t("emailOrPhone")} autoCapitalize="none" value={identifier} onChangeText={setIdentifier} />
-        <PrimaryButton title="Doğrulama kodu gönder" loading={loading} disabled={!identifier} onPress={handleSubmit} />
+        <PrimaryButton title={t("sendVerificationCode")} loading={loading} disabled={!identifier} onPress={handleSubmit} />
       </View>
     </Screen>
   );

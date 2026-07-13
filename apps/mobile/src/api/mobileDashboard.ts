@@ -20,6 +20,8 @@ export type MobileBootstrap = {
     phone?: string | null;
     locale?: string | null;
     timezone?: string | null;
+    isAdmin?: boolean;
+    isPlatformAdmin?: boolean;
   };
   company: {
     id: string;
@@ -29,6 +31,8 @@ export type MobileBootstrap = {
     defaultCurrency?: string | null;
   };
   role: string;
+  isAdmin?: boolean;
+  isPlatformAdmin?: boolean;
   permissions: string[];
   subscription: MobileSubscription;
   trial: { isTrial: boolean; remainingDays: number };

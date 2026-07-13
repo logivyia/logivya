@@ -1,34 +1,19 @@
 import { useEffect } from "react";
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useNavigation } from "@react-navigation/native";
-import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 
 import { useDashboardStore } from "@/features/dashboard/dashboardStore";
-import { PrimaryButton } from "@/components/primary-button";
+import { StatCard, SurfaceCard } from "@/components/ui";
 import { Screen } from "@/components/screen";
 import { EmptyState } from "@/components/state/empty-state";
 import { ErrorState } from "@/components/state/error-state";
 import { LoadingState } from "@/components/state/loading-state";
-import { SubscriptionStatusCard } from "@/components/subscription/SubscriptionStatusCard";
 import { useTranslation } from "@/i18n/use-translation";
+import { formatNumber } from "@/i18n/format";
 import { useTheme } from "@/theme/theme-provider";
-import type { AppTabParamList } from "@/types/navigation";
-
-function MetricCard({ label, value }: { label: string; value: string | number }) {
-  const theme = useTheme();
-
-  return (
-    <View style={[styles.metricCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-      <Text style={[styles.metricValue, { color: theme.text }]}>{value}</Text>
-      <Text style={[styles.metricLabel, { color: theme.muted }]}>{label}</Text>
-    </View>
-  );
-}
 
 export function DashboardScreen() {
-  const navigation = useNavigation<BottomTabNavigationProp<AppTabParamList>>();
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { data, metrics, loading, refreshing, error, load, refresh } = useDashboardStore();
 
   useEffect(() => {
@@ -59,6 +44,8 @@ export function DashboardScreen() {
     );
   }
 
+  const remainingDays = Math.max(0, data.subscription.remainingDays);
+
   return (
     <Screen style={styles.screen}>
       <ScrollView
@@ -66,24 +53,15 @@ export function DashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={theme.primary} />}
         contentContainerStyle={styles.content}
       >
-        <View style={styles.header}>
-          <Text style={[styles.eyebrow, { color: theme.primary }]}>{t("dashboard")}</Text>
-          <Text style={[styles.title, { color: theme.text }]}>Merhaba, {data.user.name}</Text>
-          <Text style={[styles.subtitle, { color: theme.muted }]}>{data.company.name}</Text>
-        </View>
-
-        <SubscriptionStatusCard subscription={data.subscription} />
+        <SurfaceCard style={styles.planCard}>
+          <Text style={[styles.cardLabel, { color: theme.muted }]}>{t("currentPackage")}</Text>
+          <Text style={[styles.planValue, { color: theme.text }]}>{t("daysCount", { count: remainingDays })}</Text>
+        </SurfaceCard>
 
         <View style={styles.grid}>
-          <MetricCard label={t("connectedAccounts")} value={data.whatsapp.connectedCount} />
-          <MetricCard label={t("groups")} value={metrics.groupCount} />
-          <MetricCard label={t("sentThisMonth")} value={metrics.sentThisMonth} />
-          <MetricCard label={t("failedMessages")} value={metrics.failedMessages} />
-          <MetricCard label={t("currentPlan")} value={data.subscription.planName ?? t("trialPlan")} />
-          <MetricCard label={t("remainingDays")} value={Math.max(0, data.subscription.remainingDays)} />
+          <StatCard icon="logo-whatsapp" label={t("connectedWhatsApp")} value={`${formatNumber(data.whatsapp.connectedCount, locale)}/${formatNumber(metrics.accountCount, locale)}`} tone="success" />
+          <StatCard icon="people-outline" label={t("groups")} value={metrics.groupCount} tone="primary" />
         </View>
-
-        <PrimaryButton title={t("manageWhatsAppAccounts")} onPress={() => navigation.navigate("WhatsApp")} />
       </ScrollView>
     </Screen>
   );
@@ -94,46 +72,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18
   },
   content: {
-    gap: 18,
+    gap: 14,
     paddingBottom: 32
   },
-  header: {
-    gap: 6
+  planCard: {
+    gap: 8
   },
-  eyebrow: {
+  cardLabel: {
     fontSize: 12,
     fontWeight: "900",
-    letterSpacing: 1.6,
-    textTransform: "uppercase"
+    letterSpacing: 1.3,
+    lineHeight: 16
   },
-  title: {
+  planValue: {
     fontSize: 30,
-    fontWeight: "900"
-  },
-  subtitle: {
-    fontSize: 16,
-    fontWeight: "600"
+    fontWeight: "900",
+    letterSpacing: 0,
+    lineHeight: 36
   },
   grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
     gap: 12
-  },
-  metricCard: {
-    width: "48%",
-    borderWidth: 1,
-    borderRadius: 22,
-    padding: 18,
-    minHeight: 116,
-    justifyContent: "space-between"
-  },
-  metricValue: {
-    fontSize: 28,
-    fontWeight: "900"
-  },
-  metricLabel: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "700"
   }
 });

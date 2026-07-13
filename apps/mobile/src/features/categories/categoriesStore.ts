@@ -8,6 +8,7 @@ import {
   type MobileCategory,
   type MobileCategoryPayload
 } from "@/api/mobileCategories";
+import { translateCurrent } from "@/i18n/runtime";
 
 type CategoriesState = {
   categories: MobileCategory[];
@@ -56,7 +57,7 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
       set({ categories: response.categories, loading: false, refreshing: false });
     } catch (error) {
       set({
-        error: getErrorMessage(error, "Kategoriler yüklenemedi."),
+        error: getErrorMessage(error, translateCurrent("categoriesLoadFailed")),
         loading: false,
         refreshing: false
       });
@@ -73,12 +74,12 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
       set((state) => ({
         categories: upsertCategory(state.categories, response.category),
         saving: false,
-        success: "Kategori oluşturuldu."
+        success: translateCurrent("categoryCreated")
       }));
       await get().refresh();
       return true;
     } catch (error) {
-      set({ saving: false, error: getErrorMessage(error, "Kategori oluşturulamadı.") });
+      set({ saving: false, error: getErrorMessage(error, translateCurrent("categoryCreateFailed")) });
       return false;
     }
   },
@@ -90,12 +91,12 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
         categories: upsertCategory(state.categories, response.category),
         selectedCategory: state.selectedCategory?.id === id ? response.category : state.selectedCategory,
         saving: false,
-        success: "Kategori güncellendi."
+        success: translateCurrent("categoryUpdated")
       }));
       await get().refresh();
       return true;
     } catch (error) {
-      set({ saving: false, error: getErrorMessage(error, "Kategori güncellenemedi.") });
+      set({ saving: false, error: getErrorMessage(error, translateCurrent("categoryUpdateFailed")) });
       return false;
     }
   },
@@ -107,11 +108,11 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
         categories: state.categories.filter((category) => category.id !== id),
         selectedCategory: state.selectedCategory?.id === id ? null : state.selectedCategory,
         deletingId: null,
-        success: "Kategori silindi."
+        success: translateCurrent("categoryDeleted")
       }));
       return true;
     } catch (error) {
-      set({ deletingId: null, error: getErrorMessage(error, "Kategori silinemedi.") });
+      set({ deletingId: null, error: getErrorMessage(error, translateCurrent("categoryDeleteFailed")) });
       return false;
     }
   },

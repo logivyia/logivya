@@ -10,7 +10,8 @@ export const lightNavigationTheme: Theme = {
     background: colors.surfaceLight,
     card: colors.white,
     text: colors.navy,
-    border: colors.border
+    border: colors.border,
+    notification: colors.orange
   }
 };
 
@@ -22,6 +23,7 @@ export const darkNavigationTheme: Theme = {
     background: colors.navy,
     card: colors.navySoft,
     text: colors.white,
-    border: "#334155"
+    border: colors.borderDark,
+    notification: colors.orange
   }
 };

@@ -11,6 +11,7 @@ export type MobileGroupCategory = {
 export type MobileGroup = {
   id: string;
   accountId: string;
+  externalGroupId: string;
   name: string;
   description: string | null;
   participantCount: number | null;
@@ -32,4 +33,8 @@ export function getMobileGroups(params?: { q?: string; cursor?: string; limit?: 
 
   const query = search.toString();
   return apiClient.request<{ groups: MobileGroup[]; pageInfo: MobileGroupsPageInfo }>(`/api/mobile/groups${query ? `?${query}` : ""}`);
+}
+
+export function syncCurrentMobileGroups() {
+  return apiClient.post<{ message: string; accountId: string; jobId: string; groupCount: number }>("/api/mobile/groups/sync-current", {});
 }

@@ -1,5 +1,9 @@
 import { useAuthStore } from "@/auth/auth-store";
+import { useSettingsStore } from "@/auth/settings-store";
+import { ApiRequestError, isAuthenticationRejection } from "@/api/api-errors";
+import { normalizeAuthTokens } from "@/auth/token-normalizer";
 import { config } from "@/constants/config";
+import { translateCurrent } from "@/i18n/runtime";
 import { trackEvent } from "@/services/analytics";
 import { captureAppError } from "@/services/crash-reporting";
 import { readTokens, saveTokens } from "@/storage/secure-storage";
@@ -8,19 +12,98 @@ import type { AuthTokens, MobileApiResponse } from "@/types/api";
 type ApiOptions = RequestInit & {
   auth?: boolean;
   retry?: boolean;
+  hostFallback?: boolean;
 };
+
+function messageForApiError(code: string, status: number, fallback?: string) {
+  if (code === "PASSWORD_REQUIRED") return translateCurrent("passwordRequired");
+  if (code === "PASSWORD_TOO_SHORT") return translateCurrent("passwordTooShort");
+  if (code === "PASSWORD_CONFIRMATION_MISMATCH") return translateCurrent("passwordConfirmationMismatch");
+  if (code === "PASSWORD_INVALID_TYPE") return translateCurrent("passwordInvalidType");
+  if (code === "REGISTRATION_FAILED") return translateCurrent("registrationFailed");
+  if (code === "EMAIL_ALREADY_REGISTERED") return translateCurrent("accountExistsError");
+  if (code === "SUBSCRIPTION_LOCKED") return translateCurrent("subscriptionInactiveError");
+  if (code === "MESSAGING_PERMISSION_DENIED") return translateCurrent("messagingPermissionDeniedError");
+  if (code === "NETWORK_TIMEOUT") return translateCurrent("networkTimeoutError");
+  if (code === "SSL_ERROR") return translateCurrent("secureConnectionError");
+  if (code === "DNS_ERROR") return translateCurrent("dnsError");
+  if (code === "SERVER_UNREACHABLE" || code === "NETWORK_ERROR" || status === 0) return translateCurrent("serverUnreachableError");
+  if (code === "UNAUTHORIZED" || status === 401) return translateCurrent("invalidCredentialsError");
+  if (code === "FORBIDDEN" || status === 403) return translateCurrent("operationForbiddenError");
+  if (code === "VALIDATION_ERROR" || status === 400) return translateCurrent("invalidInputError");
+  if (code === "ACCOUNT_EXISTS" || status === 409) return translateCurrent("accountExistsError");
+  if (code === "CONFIGURATION_ERROR" || status === 503) return translateCurrent("serviceConfigurationError");
+  if (status >= 500) return translateCurrent("serverError");
+  return fallback || translateCurrent("operationFailedError");
+}
+
+function safeBodyKeys(body: BodyInit | null | undefined) {
+  if (typeof body !== "string") return undefined;
+  try {
+    return Object.keys(JSON.parse(body)).filter((key) => !["password", "passwordConfirmation", "confirmPassword"].includes(key));
+  } catch {
+    return undefined;
+  }
+}
+
+function uniqueBaseUrls(urls: string[]) {
+  return urls.filter((url, index) => url && urls.indexOf(url) === index);
+}
+
+function methodFor(options: ApiOptions) {
+  return (options.method || "GET").toUpperCase();
+}
+
+function canUseHostFallback(path: string, options: ApiOptions) {
+  if (options.hostFallback === false) return false;
+  const method = methodFor(options);
+  if (path === "/api/mobile/auth/login") return true;
+  return method === "GET";
+}
+
+function buildApiUrl(baseUrl: string, path: string) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${baseUrl.replace(/\/+$/, "")}${normalizedPath}`;
+}
+
+function diagnoseNetworkError(error: unknown, timedOut: boolean) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  const lower = message.toLowerCase();
+
+  if (timedOut || (error instanceof Error && error.name === "AbortError")) {
+    return { code: "NETWORK_TIMEOUT", reason: "timeout", nativeMessage: message };
+  }
+
+  if (lower.includes("ssl") || lower.includes("certificate") || lower.includes("cert path")) {
+    return { code: "SSL_ERROR", reason: "ssl", nativeMessage: message };
+  }
+
+  if (lower.includes("unable to resolve host") || lower.includes("enotfound") || lower.includes("dns")) {
+    return { code: "DNS_ERROR", reason: "dns", nativeMessage: message };
+  }
+
+  if (lower.includes("network request failed") || lower.includes("failed to fetch")) {
+    return { code: "SERVER_UNREACHABLE", reason: "unreachable", nativeMessage: message };
+  }
+
+  return { code: "NETWORK_ERROR", reason: "unknown", nativeMessage: message };
+}
 
 class MobileApiClient {
   private refreshPromise: Promise<AuthTokens | null> | null = null;
+  private activeBaseUrl: string | null = null;
 
   async request<T>(path: string, options: ApiOptions = {}): Promise<T> {
     const shouldAuth = options.auth !== false;
     const headers = new Headers(options.headers);
     headers.set("Content-Type", "application/json");
     headers.set("Accept", "application/json");
+    const locale = useSettingsStore.getState().locale;
+    headers.set("Accept-Language", locale);
+    headers.set("X-Logivya-Locale", locale);
 
     if (shouldAuth) {
-      let tokens = useAuthStore.getState().tokens ?? (await readTokens());
+      let tokens = useAuthStore.getState().tokens ? await readTokens() : null;
       if (tokens && this.isTokenExpiringSoon(tokens.accessTokenExpiresAt)) {
         tokens = await this.refreshTokens();
       }
@@ -39,18 +122,62 @@ class MobileApiClient {
     const payload = (await response.json().catch(() => null)) as MobileApiResponse<T> | null;
 
     if (!payload) {
-      const error = new Error("Sunucudan gecersiz yanit alindi.");
+      const error = new Error(translateCurrent("invalidServerResponseError"));
       this.reportApiError(error, path, response.status, "INVALID_RESPONSE");
       throw error;
     }
 
     if (!payload.success) {
-      const error = new Error(payload.error.message || "Islem tamamlanamadi.");
-      this.reportApiError(error, path, response.status, payload.error.code);
+      const message = messageForApiError(payload.error.code, response.status, payload.error.message);
+      const error = new ApiRequestError(message, payload.error.code, response.status, path);
+      this.reportApiError(error, path, response.status, payload.error.code, options);
       throw error;
     }
 
     return payload.data;
+  }
+
+  async requestRaw<T>(path: string, options: ApiOptions = {}): Promise<T> {
+    const shouldAuth = options.auth !== false;
+    const headers = new Headers(options.headers);
+    headers.set("Content-Type", "application/json");
+    headers.set("Accept", "application/json");
+    const locale = useSettingsStore.getState().locale;
+    headers.set("Accept-Language", locale);
+    headers.set("X-Logivya-Locale", locale);
+
+    if (shouldAuth) {
+      let tokens = useAuthStore.getState().tokens ? await readTokens() : null;
+      if (tokens && this.isTokenExpiringSoon(tokens.accessTokenExpiresAt)) {
+        tokens = await this.refreshTokens();
+      }
+
+      if (tokens?.accessToken) headers.set("Authorization", `Bearer ${tokens.accessToken}`);
+    }
+
+    const response = await this.fetchWithRetry(path, { ...options, headers });
+
+    if (response.status === 401 && shouldAuth) {
+      const refreshed = await this.refreshTokens();
+      if (refreshed) return this.requestRaw<T>(path, { ...options, retry: false });
+      await this.forceLogout();
+    }
+
+    const payload = (await response.json().catch(() => null)) as T | { error?: string } | null;
+    if (!response.ok) {
+      const errorCode = typeof payload === "object" && payload && "error" in payload ? String(payload.error) : "REQUEST_FAILED";
+      const error = new ApiRequestError(messageForApiError(errorCode, response.status), errorCode, response.status, path);
+      this.reportApiError(error, path, response.status, errorCode, options);
+      throw error;
+    }
+
+    if (!payload) {
+      const error = new Error(translateCurrent("invalidServerResponseError"));
+      this.reportApiError(error, path, response.status, "INVALID_RESPONSE");
+      throw error;
+    }
+
+    return payload as T;
   }
 
   async post<T, B extends Record<string, unknown> = Record<string, unknown>>(path: string, body: B, options?: ApiOptions) {
@@ -79,27 +206,51 @@ class MobileApiClient {
   private async fetchWithRetry(path: string, options: ApiOptions) {
     const attempts = options.retry === false ? 1 : config.retryCount + 1;
     let lastError: unknown;
+    let lastDiagnosis = diagnoseNetworkError(undefined, false);
+    const attemptedUrls: string[] = [];
+    const primaryBaseUrl = this.activeBaseUrl || config.apiBaseUrl;
+    const baseUrls = canUseHostFallback(path, options)
+      ? uniqueBaseUrls([primaryBaseUrl, config.apiBaseUrl, ...config.apiFallbackBaseUrls])
+      : [primaryBaseUrl];
 
-    for (let attempt = 1; attempt <= attempts; attempt += 1) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), config.requestTimeoutMs);
+    for (const baseUrl of baseUrls) {
+      for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        const controller = new AbortController();
+        let didTimeout = false;
+        const timeout = setTimeout(() => {
+          didTimeout = true;
+          controller.abort();
+        }, config.requestTimeoutMs);
 
-      try {
-        return await fetch(`${config.apiBaseUrl}${path}`, {
-          ...options,
-          signal: controller.signal
-        });
-      } catch (error) {
-        lastError = error;
-        if (attempt === attempts) break;
-        await new Promise((resolve) => setTimeout(resolve, attempt * 500));
-      } finally {
-        clearTimeout(timeout);
+        const url = buildApiUrl(baseUrl, path);
+        attemptedUrls.push(url);
+
+        try {
+          const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+          });
+          this.activeBaseUrl = baseUrl;
+          return response;
+        } catch (error) {
+          lastError = error;
+          lastDiagnosis = diagnoseNetworkError(error, didTimeout);
+          if (attempt < attempts) {
+            await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+          }
+        } finally {
+          clearTimeout(timeout);
+        }
       }
     }
 
-    const error = lastError instanceof Error ? lastError : new Error("Ag baglantisi kurulamadi.");
-    this.reportApiError(error, path, 0, "NETWORK_ERROR");
+    const message = messageForApiError(lastDiagnosis.code, 0);
+    const error = new ApiRequestError(message, lastDiagnosis.code, 0, path);
+    this.reportApiError(lastError instanceof Error ? lastError : error, path, 0, lastDiagnosis.code, options, {
+      networkReason: lastDiagnosis.reason,
+      nativeMessage: lastDiagnosis.nativeMessage,
+      attemptedUrls
+    });
     throw error;
   }
 
@@ -120,11 +271,16 @@ class MobileApiClient {
           { refreshToken: storedTokens.refreshToken },
           { auth: false, retry: false }
         );
-        await saveTokens(response.tokens);
-        useAuthStore.getState().setTokens(response.tokens);
-        return response.tokens;
-      } catch {
-        return null;
+        const tokens = normalizeAuthTokens(response.tokens);
+        await saveTokens(tokens);
+        useAuthStore.getState().setTokens(tokens);
+        return tokens;
+      } catch (error) {
+        if (isAuthenticationRejection(error)) {
+          await this.forceLogout();
+          return null;
+        }
+        throw error;
       } finally {
         this.refreshPromise = null;
       }
@@ -150,9 +306,20 @@ class MobileApiClient {
     return Number.isNaN(expiresAtMs) || expiresAtMs - Date.now() < 60_000;
   }
 
-  private reportApiError(error: Error, path: string, status: number, code: string) {
-    const context = { path, status, code };
+  private reportApiError(error: Error, path: string, status: number, code: string, options?: ApiOptions, extra?: Record<string, unknown>) {
+    const context = {
+      path,
+      url: buildApiUrl(this.activeBaseUrl || config.apiBaseUrl, path),
+      status,
+      code,
+      method: options?.method || "GET",
+      auth: options?.auth !== false,
+      bodyKeys: safeBodyKeys(options?.body),
+      ...extra
+    };
     void trackEvent("mobile_api_error", context);
+
+    console.warn("[mobile-api]", context, error.message);
 
     if (status === 0 || status === 401 || status >= 500) {
       captureAppError(error, context);

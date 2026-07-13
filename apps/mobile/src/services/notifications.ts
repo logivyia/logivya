@@ -17,6 +17,7 @@ type PermissionLike = {
 type NotificationData = Record<string, unknown>;
 
 const BACKGROUND_NOTIFICATION_TASK = "LOGIVYA_BACKGROUND_NOTIFICATION";
+let notificationRuntimeConfigured = false;
 
 export const LOGIVYA_NOTIFICATION_TYPES = {
   WHATSAPP_DISCONNECTED: "whatsapp.disconnected",
@@ -28,33 +29,59 @@ export const LOGIVYA_NOTIFICATION_TYPES = {
   SUBSCRIPTION_EXPIRED: "subscription.trial_expired",
   SUPPORT_TICKET_UPDATE: "support.admin_replied",
   SUPPORT_TICKET_CREATED: "support.ticket_created",
+  SUPPORT_ADMIN_NEW_TICKET: "support.admin_new_ticket",
+  SUPPORT_USER_REPLIED: "support.user_replied",
+  SUPPORT_STATUS_CHANGED: "support.status_changed",
+  SUPPORT_TICKET_CLOSED: "support.ticket_closed",
+  SUPPORT_TICKET_REOPENED: "support.ticket_reopened",
   CAMPAIGN_COMPLETED: "campaign.completed",
   CAMPAIGN_FAILED: "campaign.failed",
   CAMPAIGN_PARTIAL_DELIVERY: "campaign.partial_delivery"
 } as const;
 
-TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
-  if (error) {
-    captureAppError(error, { source: "background-notification-task" });
-    return;
+export function configureNotificationRuntime() {
+  if (notificationRuntimeConfigured) return;
+  notificationRuntimeConfigured = true;
+
+  try {
+    if (!TaskManager.isTaskDefined(BACKGROUND_NOTIFICATION_TASK)) {
+      TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
+        if (error) {
+          captureAppError(error, { source: "background-notification-task" });
+          return;
+        }
+        await trackEvent("push_background_received", { hasData: Boolean(data) });
+      });
+    }
+  } catch (error) {
+    captureAppError(error, { source: "background-notification-define" });
   }
-  await trackEvent("push_background_received", { hasData: Boolean(data) });
-});
 
-Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch((error) => {
-  captureAppError(error, { source: "background-notification-registration" });
-});
+  try {
+    Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch((error) => {
+      captureAppError(error, { source: "background-notification-registration" });
+    });
+  } catch (error) {
+    captureAppError(error, { source: "background-notification-registration" });
+  }
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: false,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true
-  })
-});
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldPlaySound: false,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true
+      })
+    });
+  } catch (error) {
+    captureAppError(error, { source: "notification-handler" });
+  }
+}
 
 export async function requestNotificationPermissionAndRegister() {
+  configureNotificationRuntime();
+
   if (!Device.isDevice) return { registered: false, reason: "physical-device-required" };
 
   const existing = (await Notifications.getPermissionsAsync()) as PermissionLike;
@@ -93,30 +120,52 @@ export async function requestNotificationPermissionAndRegister() {
 }
 
 export function subscribeNotificationHandlers(onOpen?: (url: string) => void) {
-  const foreground = Notifications.addNotificationReceivedListener((notification) => {
-    void trackEvent("push_foreground_received", {
-      type: notification.request.content.data?.type
-    });
-  });
+  configureNotificationRuntime();
 
-  const response = Notifications.addNotificationResponseReceivedListener((event) => {
-    try {
-      const url = getNotificationDeepLink(event.notification.request.content.data ?? {});
-      if (typeof url === "string" && onOpen) onOpen(url);
-      void trackEvent("push_opened", { url: typeof url === "string" ? url : undefined });
-    } catch (error) {
-      captureAppError(error, { source: "notification-open" });
-    }
-  });
+  let foreground: { remove: () => void } | undefined;
+  let response: { remove: () => void } | undefined;
+
+  try {
+    foreground = Notifications.addNotificationReceivedListener((notification) => {
+      void trackEvent("push_foreground_received", {
+        type: notification.request.content.data?.type
+      });
+    });
+  } catch (error) {
+    captureAppError(error, { source: "notification-foreground-subscribe" });
+  }
+
+  try {
+    response = Notifications.addNotificationResponseReceivedListener((event) => {
+      try {
+        const url = getNotificationDeepLink(event.notification.request.content.data ?? {});
+        if (typeof url === "string" && onOpen) onOpen(url);
+        void trackEvent("push_opened", { url: typeof url === "string" ? url : undefined });
+      } catch (error) {
+        captureAppError(error, { source: "notification-open" });
+      }
+    });
+  } catch (error) {
+    captureAppError(error, { source: "notification-response-subscribe" });
+  }
 
   return () => {
-    foreground.remove();
-    response.remove();
+    try {
+      foreground?.remove();
+    } catch (error) {
+      captureAppError(error, { source: "notification-foreground-unsubscribe" });
+    }
+    try {
+      response?.remove();
+    } catch (error) {
+      captureAppError(error, { source: "notification-response-unsubscribe" });
+    }
   };
 }
 
 function getNotificationDeepLink(data: NotificationData) {
   if (typeof data.url === "string") return data.url;
+  if (typeof data.deepLink === "string") return data.deepLink;
 
   switch (data.type) {
     case LOGIVYA_NOTIFICATION_TYPES.WHATSAPP_DISCONNECTED:
@@ -130,7 +179,17 @@ function getNotificationDeepLink(data: NotificationData) {
       return "logivya://profile/subscription";
     case LOGIVYA_NOTIFICATION_TYPES.SUPPORT_TICKET_UPDATE:
     case LOGIVYA_NOTIFICATION_TYPES.SUPPORT_TICKET_CREATED:
-      return typeof data.ticketId === "string" ? `logivya://support/tickets/${data.ticketId}` : "logivya://support";
+    case LOGIVYA_NOTIFICATION_TYPES.SUPPORT_STATUS_CHANGED:
+    case LOGIVYA_NOTIFICATION_TYPES.SUPPORT_TICKET_CLOSED:
+    case LOGIVYA_NOTIFICATION_TYPES.SUPPORT_TICKET_REOPENED: {
+      const ticketId = typeof data.publicId === "string" ? data.publicId : data.ticketId;
+      return typeof ticketId === "string" ? `logivya://support/tickets/${ticketId}` : "logivya://support";
+    }
+    case LOGIVYA_NOTIFICATION_TYPES.SUPPORT_ADMIN_NEW_TICKET:
+    case LOGIVYA_NOTIFICATION_TYPES.SUPPORT_USER_REPLIED: {
+      const ticketId = typeof data.publicId === "string" ? data.publicId : data.ticketId;
+      return typeof ticketId === "string" ? `logivya://profile/admin/support/${ticketId}` : "logivya://profile/admin/support";
+    }
     case LOGIVYA_NOTIFICATION_TYPES.CAMPAIGN_COMPLETED:
     case LOGIVYA_NOTIFICATION_TYPES.CAMPAIGN_FAILED:
     case LOGIVYA_NOTIFICATION_TYPES.CAMPAIGN_PARTIAL_DELIVERY:

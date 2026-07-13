@@ -1,0 +1,51 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+        classpath 'com.google.gms:google-services:4.4.1'
+    classpath('com.android.tools.build:gradle')
+    classpath('com.facebook.react:react-native-gradle-plugin')
+    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+  }
+}
+
+allprojects {
+  repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://www.jitpack.io' }
+  }
+}
+
+def shouldDisableNativeTaskTracking = { task ->
+    def taskName = task.name.toLowerCase(Locale.ROOT)
+    return taskName.contains("cmake") ||
+            taskName.contains("externalnativebuild") ||
+            taskName.contains("nativelibs") ||
+            taskName.contains("jnilibs") ||
+            taskName.contains("prefab")
+}
+
+def disableNativeTaskTracking = { task ->
+  if (shouldDisableNativeTaskTracking(task)) {
+    task.doNotTrackState("Windows NDK outputs can be hardlinks/reparse points; Gradle snapshotting fails on these files.")
+  }
+}
+
+subprojects { subproject ->
+  tasks.configureEach { task ->
+    disableNativeTaskTracking(task)
+  }
+  afterEvaluate {
+    tasks.matching { task -> shouldDisableNativeTaskTracking(task) }.configureEach { task ->
+      disableNativeTaskTracking(task)
+    }
+  }
+}
+
+apply plugin: "expo-root-project"
+apply plugin: "com.facebook.react.rootproject"

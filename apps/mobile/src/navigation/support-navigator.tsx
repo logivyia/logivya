@@ -12,7 +12,7 @@ export function SupportNavigator() {
   const { t } = useTranslation();
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: true }}>
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="SupportTickets" component={SupportScreen} options={{ title: t("support") }} />
       <Stack.Screen name="CreateTicket" component={CreateTicketScreen} options={{ title: t("createTicket") }} />
       <Stack.Screen name="TicketDetail" component={TicketDetailScreen} options={{ title: t("ticketDetail") }} />

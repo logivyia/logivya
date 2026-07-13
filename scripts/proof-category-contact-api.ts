@@ -32,7 +32,7 @@ async function main() {
     const memberships = await prisma.companyUser.findMany({
       where: {
         status: "ACTIVE",
-        user: { status: "ACTIVE" },
+        user: { status: "ACTIVE", email: { not: "burakidim@gmail.com" } },
         company: {
           accounts: { some: { userId: { not: null }, archivedAt: null, contacts: { some: { isActive: true, isWhatsAppUser: true } } } },
         },
@@ -53,7 +53,6 @@ async function main() {
           accountId: account.id,
           isActive: true,
           isWhatsAppUser: true,
-          OR: [{ name: { not: null } }, { pushName: { not: null } }],
         },
       });
       if (usableContacts) {

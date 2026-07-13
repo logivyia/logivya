@@ -10,9 +10,7 @@ import { useWhatsAppStore } from "@/features/whatsapp/whatsappStore";
 import { queryClient } from "@/services/offline-query";
 import { clearTokens } from "@/storage/secure-storage";
 
-export async function clearMobileSessionState() {
-  await clearTokens();
-
+export function clearMobileRuntimeSessionState() {
   queryClient.clear();
   useDashboardStore.getState().reset();
   useNotificationStore.getState().reset();
@@ -23,4 +21,9 @@ export async function clearMobileSessionState() {
   useGroupsStore.getState().reset();
   useCategoriesStore.getState().reset();
   useAuthStore.getState().clearSession();
+}
+
+export async function clearMobileSessionState() {
+  await clearTokens();
+  clearMobileRuntimeSessionState();
 }

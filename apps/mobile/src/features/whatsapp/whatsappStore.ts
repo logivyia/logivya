@@ -7,11 +7,18 @@ import {
   deleteMobileWhatsAppAccount,
   getMobileWhatsAppAccounts,
   getMobileWhatsAppAccountStatus,
+  getMobileWhatsAppStatus,
   reconnectMobileWhatsAppAccount,
-  type MobileWhatsAppAccount
+  type MobileWhatsAppAccount,
+  type MobileWhatsAppUnifiedStatus
 } from "@/api/mobileWhatsApp";
+import { useAuthStore } from "@/auth/auth-store";
+import { getWhatsAppUserMessage } from "@/features/whatsapp/whatsappStatus";
+import { translateCurrent } from "@/i18n/runtime";
+import { trackEvent } from "@/services/analytics";
 
 type ConnectionPhase = "idle" | "generating" | "ready" | "polling" | "connected" | "failed" | "expired";
+const WHATSAPP_ACCOUNTS_LOAD_TIMEOUT_MS = 20_000;
 
 type ConnectionState = {
   account: MobileWhatsAppAccount | null;
@@ -27,6 +34,7 @@ type WhatsAppState = {
   phoneCode: ConnectionState & { normalizedPhone: string | null };
   loading: boolean;
   refreshing: boolean;
+  loadAttempted: boolean;
   actionLoadingId: string | null;
   error: string | null;
   load: () => Promise<void>;
@@ -55,7 +63,42 @@ function upsertAccount(accounts: MobileWhatsAppAccount[], account: MobileWhatsAp
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message === "WA_ACCOUNTS_UI_TIMEOUT") return translateCurrent("whatsappAccountsRetry");
   return error instanceof Error ? error.message : fallback;
+}
+
+function accountTelemetryContext() {
+  const { user, company } = useAuthStore.getState();
+  return {
+    userId: user?.id,
+    companyId: company?.id,
+    role: user?.role,
+    email: user?.email
+  };
+}
+
+function statusFromAccounts(accounts: MobileWhatsAppAccount[]): MobileWhatsAppUnifiedStatus {
+  return {
+    connectedCount: accounts.filter((account) => account.status === "CONNECTED").length,
+    reconnectingCount: accounts.filter((account) => ["CONNECTING", "RECONNECTING", "DEGRADED"].includes(account.status)).length,
+    healthyCount: accounts.filter((account) => account.healthScore >= 70).length,
+    totalGroupCount: accounts.reduce((sum, account) => sum + account.groupCount, 0),
+    accounts
+  };
+}
+
+async function withAccountsLoadTimeout<T>(promise: Promise<T>) {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("WA_ACCOUNTS_UI_TIMEOUT")), WHATSAPP_ACCOUNTS_LOAD_TIMEOUT_MS);
+      })
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 function getConnectionPhase(account: MobileWhatsAppAccount, mode: "qr" | "phoneCode"): ConnectionPhase {
@@ -75,18 +118,37 @@ export const useWhatsAppStore = create<WhatsAppState>((set, get) => ({
   phoneCode: { ...emptyConnection, normalizedPhone: null },
   loading: false,
   refreshing: false,
+  loadAttempted: false,
   actionLoadingId: null,
   error: null,
   load: async () => {
-    set({ loading: true, error: null });
+    if (get().loading) return;
+    const startedAt = Date.now();
+    const telemetry = accountTelemetryContext();
+    set({ loading: true, error: null, loadAttempted: true });
+    void trackEvent("WA_ACCOUNTS_REQUEST_START", telemetry);
     try {
-      const response = await getMobileWhatsAppAccounts();
-      set({ accounts: response.accounts, loading: false, refreshing: false });
+      const response = await withAccountsLoadTimeout(
+        getMobileWhatsAppStatus().catch(() => getMobileWhatsAppAccounts().then((fallback) => ({ status: statusFromAccounts(fallback.accounts) })))
+      );
+      const accounts = response.status.accounts;
+      set({ accounts, loading: false, refreshing: false, error: null, loadAttempted: true });
+      void trackEvent(accounts.length ? "WA_ACCOUNTS_REQUEST_SUCCESS" : "WA_ACCOUNTS_REQUEST_EMPTY", {
+        ...telemetry,
+        accountCount: accounts.length,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
+      const message = getErrorMessage(error, translateCurrent("whatsappAccountsLoadFailed"));
+      const code = error instanceof Error ? error.message : "UNKNOWN";
+      const eventName = code === "WA_ACCOUNTS_UI_TIMEOUT" ? "WA_ACCOUNTS_UI_TIMEOUT" : "WA_ACCOUNTS_REQUEST_ERROR";
+      console.warn("[whatsapp-accounts]", eventName, { ...telemetry, error: code, durationMs: Date.now() - startedAt });
+      void trackEvent(eventName, { ...telemetry, error: code, durationMs: Date.now() - startedAt });
       set({
-        error: getErrorMessage(error, "WhatsApp hesapları yüklenemedi."),
+        error: message,
         loading: false,
-        refreshing: false
+        refreshing: false,
+        loadAttempted: true
       });
     }
   },
@@ -106,7 +168,7 @@ export const useWhatsAppStore = create<WhatsAppState>((set, get) => ({
       }));
       return account;
     } catch (error) {
-      set({ qr: { ...emptyConnection, phase: "failed", error: getErrorMessage(error, "QR kod oluşturulamadı.") } });
+      set({ qr: { ...emptyConnection, phase: "failed", error: getErrorMessage(error, translateCurrent("whatsappQrCreateFailed")) } });
       return null;
     }
   },
@@ -133,7 +195,7 @@ export const useWhatsAppStore = create<WhatsAppState>((set, get) => ({
           ...emptyConnection,
           normalizedPhone: phoneNumber,
           phase: "failed",
-          error: getErrorMessage(error, "Telefon kodu oluşturulamadı.")
+          error: getErrorMessage(error, translateCurrent("whatsappPhoneCodeCreateFailed"))
         }
       });
       return null;
@@ -155,7 +217,7 @@ export const useWhatsAppStore = create<WhatsAppState>((set, get) => ({
           ...state[mode],
           account,
           phase,
-          error: phase === "failed" ? account.lastError ?? "Bağlantı başarısız oldu." : null,
+          error: phase === "failed" ? getWhatsAppUserMessage(account) ?? translateCurrent("whatsappConnectionFailed") : null,
           polling: phase !== "connected" && phase !== "failed" && phase !== "expired"
         }
       }));
@@ -167,7 +229,7 @@ export const useWhatsAppStore = create<WhatsAppState>((set, get) => ({
         [mode]: {
           ...state[mode],
           phase: "failed",
-          error: getErrorMessage(error, "Bağlantı durumu alınamadı."),
+          error: getErrorMessage(error, translateCurrent("whatsappStatusLoadFailed")),
           polling: false
         }
       }));
@@ -214,6 +276,7 @@ export const useWhatsAppStore = create<WhatsAppState>((set, get) => ({
       phoneCode: { ...emptyConnection, normalizedPhone: null },
       loading: false,
       refreshing: false,
+      loadAttempted: false,
       actionLoadingId: null,
       error: null
     })

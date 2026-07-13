@@ -1,4 +1,5 @@
 import { apiClient } from "@/api/client";
+import type { MobileWhatsAppContact } from "@/api/mobileContacts";
 
 export type MobileCategory = {
   id: string;
@@ -7,7 +8,11 @@ export type MobileCategory = {
   description: string | null;
   _count?: {
     groups: number;
+    contacts: number;
   };
+  assignedGroupCount?: number;
+  assignedContactCount?: number;
+  totalTargetCount?: number;
 };
 
 export type MobileCategoryPayload = {
@@ -15,6 +20,16 @@ export type MobileCategoryPayload = {
   description?: string | null | undefined;
   color?: string;
   groupIds?: string[];
+  contactIds?: string[];
+};
+
+export type MobileCategoryContactsResponse = {
+  category: Pick<MobileCategory, "id" | "name" | "color" | "description">;
+  account: { id: string; phoneNumber: string | null; lastContactSyncAt: string | null };
+  contacts: Array<MobileWhatsAppContact & { assigned: boolean }>;
+  assignedContactIds: string[];
+  assignedContactCount: number;
+  pageInfo: { page: number; limit: number; total: number; totalPages: number; hasMore: boolean };
 };
 
 export function getMobileCategories() {
@@ -31,4 +46,12 @@ export function updateMobileCategory(id: string, payload: Partial<MobileCategory
 
 export function deleteMobileCategory(id: string) {
   return apiClient.delete<{ archived: true }>(`/api/mobile/categories/${id}`);
+}
+
+export function getMobileCategoryContacts(id: string, params: { page?: number; limit?: number; search?: string } = {}) {
+  const query = new URLSearchParams();
+  query.set("page", String(params.page ?? 1));
+  query.set("limit", String(params.limit ?? 50));
+  if (params.search?.trim()) query.set("search", params.search.trim());
+  return apiClient.request<MobileCategoryContactsResponse>(`/api/mobile/categories/${id}/contacts?${query.toString()}`);
 }

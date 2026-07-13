@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
-import { getMobileGroups, type MobileGroup } from "@/api/mobileGroups";
+import { getMobileGroups, syncCurrentMobileGroups, type MobileGroup } from "@/api/mobileGroups";
+import { translateCurrent } from "@/i18n/runtime";
 
 type GroupFilters = {
   search: string;
@@ -47,7 +48,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       set({ groups: response.groups, loading: false, refreshing: false });
     } catch (error) {
       set({
-        error: getErrorMessage(error, "Gruplar yüklenemedi."),
+        error: getErrorMessage(error, translateCurrent("groupsLoadFailed")),
         loading: false,
         refreshing: false
       });
@@ -55,6 +56,11 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   },
   refresh: async () => {
     set({ refreshing: true });
+    try {
+      await syncCurrentMobileGroups();
+    } catch {
+      // A stale or disconnected account should not block loading the scoped DB list.
+    }
     await get().load();
   },
   setSearch: (search) => set((state) => ({ filters: { ...state.filters, search } })),

@@ -6,7 +6,7 @@ type Props = TextInputProps & {
   label: string;
 };
 
-export function TextField({ label, ...props }: Props) {
+export function TextField({ label, style, ...props }: Props) {
   const theme = useTheme();
 
   return (
@@ -14,7 +14,7 @@ export function TextField({ label, ...props }: Props) {
       <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
       <TextInput
         placeholderTextColor={theme.muted}
-        style={[styles.input, { color: theme.text, backgroundColor: theme.card, borderColor: theme.border }]}
+        style={[styles.input, { color: theme.text, backgroundColor: theme.input, borderColor: theme.border }, style]}
         {...props}
       />
     </View>
@@ -26,13 +26,13 @@ const styles = StyleSheet.create({
     gap: 8
   },
   label: {
-    fontSize: 14,
-    fontWeight: "700"
+    fontSize: 13,
+    fontWeight: "800"
   },
   input: {
     minHeight: 54,
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 14,
     paddingHorizontal: 16,
     fontSize: 16
   }

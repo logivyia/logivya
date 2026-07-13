@@ -4,6 +4,7 @@ import { useFocusEffect } from "@react-navigation/native";
 
 import { Screen } from "@/components/screen";
 import { TextField } from "@/components/text-field";
+import { Badge, PageHeader, SectionTitle, StatCard } from "@/components/ui";
 import { EmptyState } from "@/components/state/empty-state";
 import { ErrorState } from "@/components/state/error-state";
 import { LoadingState } from "@/components/state/loading-state";
@@ -11,12 +12,13 @@ import { useCategoriesStore } from "@/features/categories/categoriesStore";
 import { useGroupsStore } from "@/features/groups/groupsStore";
 import { useWhatsAppStore } from "@/features/whatsapp/whatsappStore";
 import { useTranslation } from "@/i18n/use-translation";
+import { formatDate, formatNumber } from "@/i18n/format";
 import { useTheme } from "@/theme/theme-provider";
 import type { MobileGroup } from "@/api/mobileGroups";
 
 export function GroupsScreen() {
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { locale, t } = useTranslation();
   const { groups, filters, loading, refreshing, error, load, refresh, setSearch, setAccountFilter, setCategoryFilter, clearFilters } = useGroupsStore();
   const categories = useCategoriesStore((state) => state.categories);
   const loadCategories = useCategoriesStore((state) => state.load);
@@ -38,6 +40,8 @@ export function GroupsScreen() {
       return accountMatches && categoryMatches;
     });
   }, [filters.accountId, filters.categoryId, groups]);
+  const sendableCount = filteredGroups.filter((group) => group.canSend).length;
+  const memberCount = filteredGroups.reduce((total, group) => total + (group.participantCount ?? 0), 0);
 
   if (loading && !refreshing && groups.length === 0) {
     return (
@@ -64,10 +68,23 @@ export function GroupsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.primary} />}
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text style={[styles.eyebrow, { color: theme.primary }]}>{t("groupsEyebrow")}</Text>
-            <Text style={[styles.title, { color: theme.text }]}>{t("groupsTitle")}</Text>
-            <Text style={[styles.subtitle, { color: theme.muted }]}>{t("groupsSubtitle")}</Text>
+            <PageHeader eyebrow={t("groupsEyebrow")} title={t("groupsTitle")} description={t("groupsSubtitle")} />
+            <View style={styles.summaryGrid}>
+              <StatCard icon="albums-outline" label={t("totalGroups")} value={filteredGroups.length} />
+              <StatCard icon="people-outline" label={t("members")} value={memberCount} />
+              <StatCard icon="send-outline" label={t("sendableMetric")} value={sendableCount} tone="success" />
+            </View>
             <TextField label={t("searchGroups")} value={filters.search} onChangeText={setSearch} placeholder={t("searchGroupsPlaceholder")} returnKeyType="search" onSubmitEditing={load} />
+            <Pressable
+              accessibilityRole="button"
+              disabled={refreshing}
+              onPress={refresh}
+              style={[styles.refreshButton, { backgroundColor: theme.primary, opacity: refreshing ? 0.7 : 1 }]}
+            >
+              <Text style={[styles.refreshButtonText, { color: theme.primaryText }]}>
+                {refreshing ? t("refreshingGroups") : t("refreshGroups")}
+              </Text>
+            </Pressable>
             <FilterRow
               label={t("filterByAccount")}
               items={[
@@ -91,10 +108,11 @@ export function GroupsScreen() {
                 <Text style={[styles.clear, { color: theme.primary }]}>{t("clearFilters")}</Text>
               </Pressable>
             ) : null}
+            <SectionTitle title={t("groupList")} />
           </View>
         }
         ListEmptyComponent={<EmptyState title={t("noGroupsFound")} description={t("noGroupsFoundDescription")} />}
-        renderItem={({ item }) => <GroupCard group={item} />}
+        renderItem={({ item }) => <GroupCard group={item} locale={locale} />}
         contentContainerStyle={styles.list}
       />
     </Screen>
@@ -139,7 +157,7 @@ function FilterRow({
   );
 }
 
-function GroupCard({ group }: { group: MobileGroup }) {
+function GroupCard({ group, locale }: { group: MobileGroup; locale: ReturnType<typeof useTranslation>["locale"] }) {
   const theme = useTheme();
   const { t } = useTranslation();
   const accounts = useWhatsAppStore((state) => state.accounts);
@@ -153,13 +171,11 @@ function GroupCard({ group }: { group: MobileGroup }) {
           <Text style={[styles.cardTitle, { color: theme.text }]}>{group.name || t("unknown")}</Text>
           <Text style={[styles.cardMeta, { color: theme.muted }]}>{accountName}</Text>
         </View>
-        <View style={[styles.statusPill, { backgroundColor: group.canSend ? "#dcfce7" : "#fee2e2" }]}>
-          <Text style={[styles.statusText, { color: group.canSend ? "#047857" : "#b91c1c" }]}>{group.canSend ? t("sendable") : t("notSendable")}</Text>
-        </View>
+        <Badge label={group.canSend ? t("sendable") : t("notSendable")} tone={group.canSend ? "success" : "danger"} />
       </View>
       <View style={styles.statsRow}>
         <Text style={[styles.stat, { color: theme.text }]}>
-          {group.participantCount ?? 0} <Text style={{ color: theme.muted }}>{t("members")}</Text>
+          {formatNumber(group.participantCount ?? 0, locale)} <Text style={{ color: theme.muted }}>{t("members")}</Text>
         </Text>
         <Text style={[styles.stat, { color: theme.text }]}>
           {group.categories.length} <Text style={{ color: theme.muted }}>{t("categories")}</Text>
@@ -169,13 +185,13 @@ function GroupCard({ group }: { group: MobileGroup }) {
         <View style={styles.categoryRow}>
           {group.categories.map((item) => (
             <View key={item.category.id} style={[styles.categoryBadge, { backgroundColor: item.category.color || theme.primary }]}>
-              <Text style={styles.categoryBadgeText}>{item.category.name}</Text>
+              <Text style={[styles.categoryBadgeText, { color: theme.primaryText }]}>{item.category.name}</Text>
             </View>
           ))}
         </View>
       ) : null}
       <Text style={[styles.cardMeta, { color: theme.muted }]}>
-        {t("lastSync")}: {group.lastSyncedAt ? new Date(group.lastSyncedAt).toLocaleDateString() : t("unknown")}
+        {t("lastSync")}: {group.lastSyncedAt ? formatDate(group.lastSyncedAt, locale) : t("unknown")}
       </Text>
     </View>
   );
@@ -193,6 +209,11 @@ const styles = StyleSheet.create({
   header: {
     gap: 14,
     marginBottom: 4
+  },
+  summaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12
   },
   eyebrow: {
     fontSize: 12,
@@ -229,6 +250,16 @@ const styles = StyleSheet.create({
   clear: {
     fontSize: 14,
     fontWeight: "800"
+  },
+  refreshButton: {
+    alignItems: "center",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12
+  },
+  refreshButtonText: {
+    fontSize: 14,
+    fontWeight: "900"
   },
   card: {
     borderWidth: 1,
@@ -282,7 +313,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6
   },
   categoryBadgeText: {
-    color: "#ffffff",
     fontSize: 12,
     fontWeight: "900"
   }

@@ -1,14 +1,16 @@
 import { SafeAreaView } from "react-native-safe-area-context";
-import { StyleSheet, View, type ViewProps } from "react-native";
+import { StyleSheet, useWindowDimensions, View, type ViewProps } from "react-native";
 
 import { useTheme } from "@/theme/theme-provider";
 
 export function Screen({ children, style, ...props }: ViewProps) {
   const theme = useTheme();
+  const { width } = useWindowDimensions();
+  const horizontalPadding = width < 360 ? 14 : width < 768 ? 18 : 28;
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-      <View style={[styles.content, style]} {...props}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={[styles.safeArea, { backgroundColor: theme.background }]}>
+      <View style={[styles.content, { paddingHorizontal: horizontalPadding }, style]} {...props}>
         {children}
       </View>
     </SafeAreaView>
@@ -21,6 +23,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 24
+    paddingBottom: 18,
+    paddingTop: 18
   }
 });

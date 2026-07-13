@@ -1,11 +1,13 @@
 import { useEffect } from "react";
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { MobileWhatsAppAccount } from "@/api/mobileWhatsApp";
 import { useWhatsAppStore } from "@/features/whatsapp/whatsappStore";
 import { mapWhatsAppStatus, type WhatsAppStatusTone } from "@/features/whatsapp/whatsappStatus";
+import { Badge, IconBadge, PageHeader, SectionTitle, StatCard, SurfaceCard } from "@/components/ui";
 import { EmptyState } from "@/components/state/empty-state";
 import { ErrorState } from "@/components/state/error-state";
 import { LoadingState } from "@/components/state/loading-state";
@@ -18,19 +20,14 @@ import type { WhatsAppStackParamList } from "@/types/navigation";
 
 type WhatsAppNavigation = NativeStackNavigationProp<WhatsAppStackParamList>;
 
-function toneColor(tone: WhatsAppStatusTone) {
-  if (tone === "success") return colors.success;
-  if (tone === "danger") return colors.danger;
-  if (tone === "warning") return colors.orange;
-  return colors.slate;
+function badgeTone(tone: WhatsAppStatusTone) {
+  if (tone === "success") return "success" as const;
+  if (tone === "danger") return "danger" as const;
+  if (tone === "warning") return "warning" as const;
+  return "default" as const;
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return "-";
-  return new Intl.DateTimeFormat("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));
-}
-
-function AccountAction({ label, onPress, danger = false, loading = false }: { label: string; onPress: () => void; danger?: boolean; loading?: boolean }) {
+function AccountAction({ label, icon, onPress, danger = false, loading = false }: { label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void; danger?: boolean; loading?: boolean }) {
   const theme = useTheme();
   return (
     <Pressable
@@ -42,6 +39,7 @@ function AccountAction({ label, onPress, danger = false, loading = false }: { la
         { borderColor: danger ? colors.danger : theme.border, opacity: pressed || loading ? 0.72 : 1 }
       ]}
     >
+      <Ionicons name={icon} size={17} color={danger ? colors.danger : theme.text} />
       <Text style={[styles.actionText, { color: danger ? colors.danger : theme.text }]}>{label}</Text>
     </Pressable>
   );
@@ -51,9 +49,10 @@ function AccountCard({ account }: { account: MobileWhatsAppAccount }) {
   const theme = useTheme();
   const { t } = useTranslation();
   const { reconnect, archive, remove, actionLoadingId } = useWhatsAppStore();
-  const status = mapWhatsAppStatus(account.status);
-  const displayName = account.displayName || account.label || account.phoneNumber || t("unknown");
+  const status = mapWhatsAppStatus(account.status, account.lastError);
+  const phoneNumber = account.phoneNumber || t("unknown");
   const loading = actionLoadingId === account.id;
+  const connectionTone = badgeTone(status.tone);
 
   const confirmAction = (title: string, message: string, action: () => Promise<void>) => {
     Alert.alert(title, message, [
@@ -63,55 +62,44 @@ function AccountCard({ account }: { account: MobileWhatsAppAccount }) {
   };
 
   return (
-    <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+    <SurfaceCard style={styles.card}>
       <View style={styles.cardHeader}>
+        <IconBadge icon="logo-whatsapp" tone={connectionTone} />
         <View style={styles.titleBlock}>
-          <Text style={[styles.accountName, { color: theme.text }]}>{displayName}</Text>
-          <Text style={[styles.phone, { color: theme.muted }]}>
-            {t("phone")}: {account.phoneNumber ?? "-"}
-          </Text>
+          <Text style={[styles.phone, { color: theme.text }]} numberOfLines={1}>{phoneNumber}</Text>
         </View>
-        <View style={[styles.statusPill, { backgroundColor: `${toneColor(status.tone)}20` }]}>
-          <Text style={[styles.statusText, { color: toneColor(status.tone) }]}>{t(status.labelKey)}</Text>
-        </View>
+        <Badge label={t(status.labelKey)} tone={connectionTone} />
       </View>
 
-      <View style={styles.statsRow}>
-        <View style={styles.stat}>
+      <View style={[styles.groupStatPanel, { borderColor: theme.border }]}>
+        <View style={styles.groupStatContent}>
           <Text style={[styles.statValue, { color: theme.text }]}>{account.groupCount}</Text>
           <Text style={[styles.statLabel, { color: theme.muted }]}>{t("connectedGroups")}</Text>
         </View>
-        <View style={styles.stat}>
-          <Text style={[styles.statValue, { color: theme.text }]}>{formatDate(account.lastSyncedAt)}</Text>
-          <Text style={[styles.statLabel, { color: theme.muted }]}>{t("lastSync")}</Text>
-        </View>
-        <View style={styles.stat}>
-          <Text style={[styles.statValue, { color: toneColor(status.tone) }]}>{t(status.labelKey)}</Text>
-          <Text style={[styles.statLabel, { color: theme.muted }]}>{t("connectionState")}</Text>
-        </View>
       </View>
-
-      {account.lastError ? <Text style={[styles.errorText, { color: colors.danger }]}>{account.lastError}</Text> : null}
 
       <View style={styles.actions}>
         <AccountAction
+          icon="refresh-outline"
           label={t("reconnect")}
           loading={loading}
           onPress={() => confirmAction(t("reconnect"), t("reconnectConfirmation"), () => reconnect(account.id))}
         />
         <AccountAction
+          icon="archive-outline"
           label={t("archive")}
           loading={loading}
           onPress={() => confirmAction(t("archive"), t("archiveConfirmation"), () => archive(account.id))}
         />
         <AccountAction
+          icon="trash-outline"
           label={t("delete")}
           danger
           loading={loading}
           onPress={() => confirmAction(t("delete"), t("deleteConfirmation"), () => remove(account.id))}
         />
       </View>
-    </View>
+    </SurfaceCard>
   );
 }
 
@@ -119,11 +107,15 @@ export function WhatsAppScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<WhatsAppNavigation>();
-  const { accounts, loading, refreshing, error, load, refresh, resetConnection } = useWhatsAppStore();
+  const { accounts, loading, refreshing, loadAttempted, error, load, refresh, resetConnection } = useWhatsAppStore();
+  const connectedCount = accounts.filter((account) => account.status === "CONNECTED").length;
+  const groupCount = accounts.reduce((total, account) => total + account.groupCount, 0);
+  const contactCount = accounts.reduce((total, account) => total + account.contactCount, 0);
+  const failedCount = accounts.filter((account) => account.status === "FAILED" || account.lastError).length;
 
   useEffect(() => {
-    if (accounts.length === 0 && !loading) void load();
-  }, [accounts.length, load, loading]);
+    if (accounts.length === 0 && !loading && !loadAttempted && !error) void load();
+  }, [accounts.length, error, load, loadAttempted, loading]);
 
   if (loading && accounts.length === 0) {
     return (
@@ -136,7 +128,7 @@ export function WhatsAppScreen() {
   if (error && accounts.length === 0) {
     return (
       <Screen>
-        <ErrorState title={t("whatsappAccounts")} onRetry={() => void load()} />
+        <ErrorState title={error || t("whatsappAccountsLoadFailed")} onRetry={() => void load()} />
       </Screen>
     );
   }
@@ -148,14 +140,22 @@ export function WhatsAppScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={theme.primary} />}
         contentContainerStyle={styles.content}
       >
-        <View style={styles.header}>
-          <Text style={[styles.eyebrow, { color: theme.primary }]}>{t("whatsappAccounts")}</Text>
-          <Text style={[styles.title, { color: theme.text }]}>{t("whatsappAccounts")}</Text>
-          <Text style={[styles.subtitle, { color: theme.muted }]}>{t("accountActionsPrepared")}</Text>
+        <PageHeader
+          eyebrow="WhatsApp"
+          title={t("whatsappAccounts")}
+          description={t("whatsappScreenSubtitle")}
+        />
+
+        <View style={styles.grid}>
+          <StatCard icon="checkmark-circle-outline" label={t("statusConnected")} value={connectedCount} tone="success" />
+          <StatCard icon="people-outline" label={t("groups")} value={groupCount} />
+          <StatCard icon="person-add-outline" label={t("contacts")} value={contactCount} />
+          <StatCard icon="alert-circle-outline" label={t("warnings")} value={failedCount} tone={failedCount ? "danger" : "default"} />
         </View>
 
         <View style={styles.connectionButtons}>
           <PrimaryButton
+            icon="qr-code-outline"
             title={t("connectWithQr")}
             onPress={() => {
               resetConnection("qr");
@@ -173,12 +173,14 @@ export function WhatsAppScreen() {
               { backgroundColor: theme.card, borderColor: theme.border, opacity: pressed ? 0.82 : 1 }
             ]}
           >
+            <Ionicons name="call-outline" size={19} color={theme.text} />
             <Text style={[styles.secondaryButtonText, { color: theme.text }]}>{t("connectWithPhoneCode")}</Text>
           </Pressable>
         </View>
 
+        <SectionTitle title={t("whatsappAccounts")} />
         {accounts.length === 0 ? (
-          <EmptyState title={t("noWhatsAppAccountFound")} description={t("connectAccount")} />
+          <EmptyState title={t("noWhatsAppAccountFound")} description={t("accountActionsPrepared")} />
         ) : (
           accounts.map((account) => <AccountCard key={account.id} account={account} />)
         )}
@@ -195,90 +197,66 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingBottom: 32
   },
-  header: {
-    gap: 6
-  },
-  eyebrow: {
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    textTransform: "uppercase"
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: "900"
-  },
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    fontWeight: "600"
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12
   },
   connectionButtons: {
     gap: 12
   },
   secondaryButton: {
-    minHeight: 56,
-    borderRadius: 18,
-    borderWidth: 1,
     alignItems: "center",
-    justifyContent: "center"
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 56,
+    paddingHorizontal: 18
   },
   secondaryButtonText: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "800"
   },
   card: {
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: 18,
-    gap: 18
+    gap: 16
   },
   cardHeader: {
-    flexDirection: "row",
     alignItems: "flex-start",
-    justifyContent: "space-between",
+    flexDirection: "row",
     gap: 12
   },
   titleBlock: {
     flex: 1,
-    gap: 4
-  },
-  accountName: {
-    fontSize: 20,
-    fontWeight: "900"
+    justifyContent: "center",
+    minHeight: 42
   },
   phone: {
-    fontSize: 14,
-    fontWeight: "600"
-  },
-  statusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8
-  },
-  statusText: {
-    fontSize: 12,
+    fontSize: 18,
     fontWeight: "900"
   },
-  statsRow: {
+  groupStatPanel: {
+    alignItems: "center",
+    borderRadius: 16,
+    borderWidth: 1,
     flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12
+    justifyContent: "center",
+    minHeight: 82,
+    paddingHorizontal: 16,
+    paddingVertical: 14
   },
-  stat: {
-    flex: 1
+  groupStatContent: {
+    alignItems: "center",
+    gap: 4
   },
   statValue: {
-    fontSize: 15,
+    fontSize: 28,
     fontWeight: "900"
   },
   statLabel: {
-    fontSize: 12,
-    fontWeight: "700"
-  },
-  errorText: {
     fontSize: 13,
-    fontWeight: "700"
+    fontWeight: "800"
   },
   actions: {
     flexDirection: "row",
@@ -286,13 +264,16 @@ const styles = StyleSheet.create({
     gap: 10
   },
   actionButton: {
-    borderWidth: 1,
+    alignItems: "center",
     borderRadius: 14,
-    paddingHorizontal: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 13,
     paddingVertical: 10
   },
   actionText: {
     fontSize: 14,
-    fontWeight: "800"
+    fontWeight: "900"
   }
 });

@@ -12,7 +12,7 @@ export function WhatsAppNavigator() {
   const { t } = useTranslation();
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: true }}>
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="WhatsAppAccounts" component={WhatsAppScreen} options={{ title: t("whatsappAccounts") }} />
       <Stack.Screen name="WhatsAppQR" component={WhatsAppQRScreen} options={{ title: t("connectWithQr") }} />
       <Stack.Screen name="WhatsAppPhoneConnect" component={WhatsAppPhoneConnectScreen} options={{ title: t("connectWithPhoneCode") }} />

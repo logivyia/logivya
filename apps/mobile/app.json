@@ -3,14 +3,19 @@
     "name": "Logivya",
     "slug": "logivya-mobile",
     "scheme": "logivya",
-    "version": "1.0.0",
+    "version": "1.0.88",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
-    "icon": "./assets/icons/icon.png",
+    "icon": "./assets/logivya/mobillogo1.png",
     "userInterfaceStyle": "automatic",
+    "jsEngine": "hermes",
+    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash/splash-icon.png",
+      "image": "./assets/logivya/mobillogo1.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0f172a"
+      "backgroundColor": "#FFFFFF"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -27,10 +32,12 @@
     },
     "android": {
       "package": "com.logivya.mobile",
+      "versionCode": 118,
       "googleServicesFile": "./google-services.json",
+      "icon": "./assets/logivya/mobillogo1.png",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icons/adaptive-icon.png",
-        "backgroundColor": "#0f172a"
+        "foregroundImage": "./assets/logivya/mobillogo1.png",
+        "backgroundColor": "#FFFFFF"
       },
       "permissions": [
         "INTERNET",
@@ -39,14 +46,20 @@
     },
     "extra": {
       "apiBaseUrl": "https://www.logivya.com",
+      "apiFallbackBaseUrls": [
+        "https://logivya.com",
+        "https://logivya.vercel.app"
+      ],
+      "buildMarker": "PROFESSIONAL_CONTACT_SYNC_TENANT_ISOLATION_V118",
       "sentryDsn": "",
       "eas": {
-        "projectId": ""
+        "projectId": "fc2a52e8-5771-4b1a-bd58-b555c651e596"
       }
     },
     "plugins": [
       "expo-secure-store",
       "expo-notifications",
+      "@react-native-community/datetimepicker",
       "@react-native-firebase/app",
       "@react-native-firebase/analytics",
       [

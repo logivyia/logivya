@@ -1,0 +1,32 @@
+import type { AdminModuleKey } from "@/api/mobileAdmin";
+import type { TranslationKey } from "@/i18n/translations";
+
+export const adminModuleTranslationKeys: Record<AdminModuleKey, { title: TranslationKey; description: TranslationKey }> = {
+  dashboard: { title: "adminDashboardModule", description: "adminDashboardDescription" },
+  companies: { title: "adminCompaniesModule", description: "adminCompaniesDescription" },
+  users: { title: "adminUsersModule", description: "adminUsersDescription" },
+  roles: { title: "adminRolesModule", description: "adminRolesDescription" },
+  billing: { title: "adminBillingModule", description: "adminBillingDescription" },
+  subscriptions: { title: "adminSubscriptionsModule", description: "adminSubscriptionsDescription" },
+  invoices: { title: "adminInvoicesModule", description: "adminInvoicesDescription" },
+  payments: { title: "adminPaymentsModule", description: "adminPaymentsDescription" },
+  whatsappAccounts: { title: "adminWhatsAppModule", description: "adminWhatsAppDescription" },
+  campaigns: { title: "adminCampaignsModule", description: "adminCampaignsDescription" },
+  support: { title: "adminSupportModule", description: "adminSupportDescription" },
+  security: { title: "adminSecurityModule", description: "adminSecurityDescription" },
+  compliance: { title: "adminComplianceModule", description: "adminComplianceDescription" },
+  audit: { title: "adminAuditModule", description: "adminAuditDescription" },
+  activity: { title: "adminActivityModule", description: "adminActivityDescription" },
+  notifications: { title: "adminNotificationsModule", description: "adminNotificationsDescription" },
+  dataRequests: { title: "adminDataRequestsModule", description: "adminDataRequestsDescription" },
+  metrics: { title: "adminMetricsModule", description: "adminMetricsDescription" },
+  systemHealth: { title: "adminSystemHealthModule", description: "adminSystemHealthDescription" },
+  backups: { title: "adminBackupsModule", description: "adminBackupsDescription" },
+  disasterRecovery: { title: "adminDisasterRecoveryModule", description: "adminDisasterRecoveryDescription" },
+  settings: { title: "adminSettingsModule", description: "adminSettingsDescription" },
+  featureFlags: { title: "adminFeatureFlagsModule", description: "adminFeatureFlagsDescription" },
+  announcements: { title: "adminAnnouncementsModule", description: "adminAnnouncementsDescription" },
+  apiUsage: { title: "adminApiUsageModule", description: "adminApiUsageDescription" },
+  webhooks: { title: "adminWebhooksModule", description: "adminWebhooksDescription" },
+  platformSettings: { title: "adminPlatformSettingsModule", description: "adminPlatformSettingsDescription" },
+};

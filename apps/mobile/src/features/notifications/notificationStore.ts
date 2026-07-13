@@ -7,6 +7,7 @@ import {
   markMobileNotificationAsRead,
   type MobileNotification
 } from "@/api/mobileNotifications";
+import { translateCurrent } from "@/i18n/runtime";
 
 type NotificationState = {
   notifications: MobileNotification[];
@@ -60,7 +61,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         error: null
       });
     } catch (error) {
-      set({ loading: false, refreshing: false, error: error instanceof Error ? error.message : "Bildirimler alınamadı." });
+      set({ loading: false, refreshing: false, error: error instanceof Error ? error.message : translateCurrent("notificationsLoadFailed") });
     }
   },
   loadMore: async () => {
@@ -76,7 +77,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         loadingMore: false
       }));
     } catch (error) {
-      set({ loadingMore: false, error: error instanceof Error ? error.message : "Daha fazla bildirim alınamadı." });
+      set({ loadingMore: false, error: error instanceof Error ? error.message : translateCurrent("notificationsLoadMoreFailed") });
     }
   },
   refreshUnreadCount: async () => {
@@ -94,7 +95,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     try {
       await markMobileNotificationAsRead(id);
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Bildirim güncellenemedi." });
+      set({ error: error instanceof Error ? error.message : translateCurrent("notificationUpdateFailed") });
       await get().refreshUnreadCount();
     }
   },
@@ -103,7 +104,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     try {
       await markAllMobileNotificationsAsRead();
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Bildirimler güncellenemedi." });
+      set({ error: error instanceof Error ? error.message : translateCurrent("notificationsUpdateFailed") });
       await get().loadNotifications({ refresh: true });
     }
   },
@@ -120,5 +121,6 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 }));
 
 function normalizeNotification(notification: MobileNotification): MobileNotification {
-  return { ...notification, isRead: notification.isRead ?? Boolean(notification.read), read: notification.read ?? notification.isRead };
+  const isRead = notification.isRead ?? Boolean(notification.read);
+  return { ...notification, isRead, read: notification.read ?? isRead };
 }

@@ -1,7 +1,9 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { detectDeviceLocale, normalizeLocale, type Locale } from "@/i18n/config";
 
 type ThemePreference = "light" | "dark" | "system";
-type Locale = "tr" | "en";
 
 type SettingsState = {
   theme: ThemePreference;
@@ -10,17 +12,36 @@ type SettingsState = {
   notificationsEnabled: boolean;
   setTheme: (theme: ThemePreference) => void;
   setLocale: (locale: Locale) => void;
+  applyAccountLocale: (locale: string | null | undefined) => void;
   setBiometricEnabled: (enabled: boolean) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
 };
 
-export const useSettingsStore = create<SettingsState>((set) => ({
-  theme: "system",
-  locale: "tr",
-  biometricEnabled: false,
-  notificationsEnabled: true,
-  setTheme: (theme) => set({ theme }),
-  setLocale: (locale) => set({ locale }),
-  setBiometricEnabled: (biometricEnabled) => set({ biometricEnabled }),
-  setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled })
-}));
+export const useSettingsStore = create<SettingsState>()(
+  persist(
+    (set) => ({
+      theme: "system",
+      locale: detectDeviceLocale(),
+      biometricEnabled: false,
+      notificationsEnabled: true,
+      setTheme: (theme) => set({ theme }),
+      setLocale: (locale) => set({ locale }),
+      applyAccountLocale: (value) => {
+        const locale = normalizeLocale(value);
+        if (locale) set({ locale });
+      },
+      setBiometricEnabled: (biometricEnabled) => set({ biometricEnabled }),
+      setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
+    }),
+    {
+      name: "logivya.mobile.settings.v2",
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        theme: state.theme,
+        locale: state.locale,
+        biometricEnabled: state.biometricEnabled,
+        notificationsEnabled: state.notificationsEnabled,
+      }),
+    },
+  ),
+);

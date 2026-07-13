@@ -1,19 +1,40 @@
 import { apiClient } from "@/api/client";
 import { getMobilePlatform } from "@/utils/device";
-import type { AuthSessionPayload, MobileCompany, MobileUser } from "@/types/api";
+import type { AuthSessionPayload, AuthTokens, MobileCompany, MobileUser } from "@/types/api";
 
 export type MobileMePayload = {
   user: Omit<MobileUser, "role"> & { role?: string };
   company: MobileCompany;
   role: string;
+  isAdmin?: boolean;
+  isPlatformAdmin?: boolean;
   permissions: string[];
 };
+
+function normalizeIdentifier(identifier: string) {
+  return identifier.trim().toLowerCase();
+}
 
 export function loginRequest(input: { identifier: string; password: string; deviceId: string; appVersion?: string }) {
   return apiClient.post<AuthSessionPayload>("/api/mobile/auth/login", {
     ...input,
+    identifier: normalizeIdentifier(input.identifier),
     platform: getMobilePlatform()
   }, { auth: false });
+}
+
+export function acceptInvitationRequest(invitationToken: string) {
+  return apiClient.post<{ status: "ACCEPTED"; companyId: string; role: string; tokens: AuthTokens }>(
+    `/api/mobile/company/invitations/${encodeURIComponent(invitationToken)}/accept`,
+    { action: "ACCEPT" },
+  );
+}
+
+export function acceptInvitationCodeRequest(invitationCode: string) {
+  return apiClient.post<{ status: "ACCEPTED"; companyId: string; role: string; tokens: AuthTokens }>(
+    "/api/mobile/company/invitations/code/accept",
+    { code: invitationCode.trim() },
+  );
 }
 
 export function registerRequest(input: {
@@ -27,25 +48,29 @@ export function registerRequest(input: {
   acceptPrivacy: boolean;
   acceptKvkk: boolean;
   marketingConsent?: boolean;
+  invitationToken?: string;
+  invitationCode?: string;
   deviceId: string;
 }) {
   return apiClient.post<AuthSessionPayload>("/api/mobile/auth/register", {
     name: input.fullName,
-    email: input.email,
-    phone: input.phone,
+    email: input.email.trim().toLowerCase(),
+    phone: input.phone?.trim(),
     password: input.password,
     passwordConfirmation: input.passwordConfirmation,
     termsAccepted: input.acceptTerms,
     privacyAccepted: input.acceptPrivacy,
     kvkkAccepted: input.acceptKvkk,
     referralCode: undefined,
+    invitationToken: input.invitationToken,
+    invitationCode: input.invitationCode,
     deviceId: input.deviceId,
     platform: getMobilePlatform()
   }, { auth: false });
 }
 
 export function forgotPasswordRequest(identifier: string) {
-  return apiClient.post<{ message: string }>("/api/mobile/auth/forgot-password", { emailOrPhone: identifier }, { auth: false });
+  return apiClient.post<{ message: string }>("/api/mobile/auth/forgot-password", { identifier: normalizeIdentifier(identifier) }, { auth: false });
 }
 
 export function resetPasswordRequest(input: {
@@ -54,7 +79,12 @@ export function resetPasswordRequest(input: {
   password: string;
   confirmPassword: string;
 }) {
-  return apiClient.post<{ message: string }>("/api/mobile/auth/reset-password", input, { auth: false });
+  return apiClient.post<{ message: string }>("/api/mobile/auth/reset-password", {
+    identifier: normalizeIdentifier(input.identifier),
+    code: input.code.trim(),
+    password: input.password,
+    passwordConfirmation: input.confirmPassword
+  }, { auth: false });
 }
 
 export function meRequest() {

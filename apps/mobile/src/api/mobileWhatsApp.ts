@@ -23,15 +23,37 @@ export type MobileWhatsAppAccount = {
   pairingCodeExpiresAt?: string | null;
   groupCount: number;
   contactCount: number;
+  healthScore: number;
+  healthLabel?: "healthy" | "attention" | "risk" | "critical" | string;
+  recoveryLevel?: number;
   lastConnectedAt: string | null;
   lastDisconnectedAt: string | null;
   lastSyncedAt: string | null;
+  lastHeartbeatAt?: string | null;
+  lastPingAt?: string | null;
+  lastPongAt?: string | null;
+  lastMessageAt?: string | null;
+  lastGroupSyncAt?: string | null;
+  sessionRestoredAt?: string | null;
+  sessionSnapshotAt?: string | null;
   archivedAt: string | null;
   lastError: string | null;
 };
 
+export type MobileWhatsAppUnifiedStatus = {
+  connectedCount: number;
+  reconnectingCount: number;
+  healthyCount: number;
+  totalGroupCount: number;
+  accounts: MobileWhatsAppAccount[];
+};
+
 export function getMobileWhatsAppAccounts() {
   return apiClient.request<{ accounts: MobileWhatsAppAccount[] }>("/api/mobile/whatsapp/accounts");
+}
+
+export function getMobileWhatsAppStatus() {
+  return apiClient.request<{ status: MobileWhatsAppUnifiedStatus }>("/api/mobile/whatsapp/status");
 }
 
 export function createMobileWhatsAppQrSession() {

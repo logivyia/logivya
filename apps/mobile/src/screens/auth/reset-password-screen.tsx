@@ -3,6 +3,7 @@ import { Alert, StyleSheet, Text, View } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RouteProp } from "@react-navigation/native";
+import { validatePasswordPolicy } from "@logivya/validation/password-policy";
 
 import { resetPasswordRequest } from "@/api/auth-api";
 import { BrandHeader } from "@/components/brand-header";
@@ -23,15 +24,25 @@ export function ResetPasswordScreen() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const passwordPolicy = validatePasswordPolicy(password);
+  const passwordsMatch = password === confirmPassword;
 
   async function handleReset() {
+    if (!passwordPolicy.valid) {
+      Alert.alert(t("passwordUpdateFailed"), t(passwordPolicy.code === "PASSWORD_REQUIRED" ? "passwordRequired" : passwordPolicy.code === "PASSWORD_TOO_SHORT" ? "passwordTooShort" : "passwordInvalidType"));
+      return;
+    }
+    if (!passwordsMatch) {
+      Alert.alert(t("passwordUpdateFailed"), t("passwordConfirmationMismatch"));
+      return;
+    }
     setLoading(true);
     try {
       await resetPasswordRequest({ identifier, code, password, confirmPassword });
-      Alert.alert("Parola güncellendi", "Yeni parolanızla giriş yapabilirsiniz.");
+      Alert.alert(t("passwordUpdated"), t("passwordUpdatedDescription"));
       navigation.navigate("Login");
     } catch (error) {
-      Alert.alert("Parola güncellenemedi", error instanceof Error ? error.message : "Lütfen tekrar deneyin.");
+      Alert.alert(t("passwordUpdateFailed"), error instanceof Error ? error.message : t("tryAgain"));
     } finally {
       setLoading(false);
     }
@@ -43,10 +54,12 @@ export function ResetPasswordScreen() {
       <View style={styles.form}>
         <Text style={[styles.title, { color: theme.text }]}>{t("resetPasswordTitle")}</Text>
         <TextField label={t("emailOrPhone")} autoCapitalize="none" value={identifier} onChangeText={setIdentifier} />
-        <TextField label="Doğrulama kodu" keyboardType="number-pad" value={code} onChangeText={setCode} />
-        <TextField label="Yeni parola" secureTextEntry value={password} onChangeText={setPassword} />
-        <TextField label="Yeni parola tekrarı" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
-        <PrimaryButton title="Parolayı güncelle" loading={loading} disabled={!identifier || !code || !password || !confirmPassword} onPress={handleReset} />
+        <TextField label={t("verificationCode")} keyboardType="number-pad" value={code} onChangeText={setCode} />
+        <TextField label={t("newPassword")} secureTextEntry value={password} onChangeText={setPassword} />
+        <Text style={[styles.passwordHint, { color: theme.muted }]}>{t("passwordPolicy")}</Text>
+        <TextField label={t("passwordConfirmation")} secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
+        {confirmPassword && !passwordsMatch ? <Text style={styles.validationError}>{t("passwordConfirmationMismatch")}</Text> : null}
+        <PrimaryButton title={t("updatePassword")} loading={loading} disabled={!identifier || !code || !passwordPolicy.valid || !passwordsMatch} onPress={handleReset} />
       </View>
     </Screen>
   );
@@ -62,5 +75,16 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 30,
     fontWeight: "800"
+  },
+  passwordHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: -8
+  },
+  validationError: {
+    color: "#dc2626",
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: -8
   }
 });

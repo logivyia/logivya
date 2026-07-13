@@ -1,19 +1,25 @@
+import type { NavigatorScreenParams } from "@react-navigation/native";
+
+import type { AdminModuleKey } from "@/api/mobileAdmin";
+
 export type AuthStackParamList = {
   Splash: undefined;
-  Login: undefined;
-  Register: undefined;
+  Login: { invitationToken?: string; invitationCode?: string } | undefined;
+  Register: { invitationToken?: string; invitationCode?: string } | undefined;
   ForgotPassword: undefined;
   ResetPassword: { identifier?: string } | undefined;
 };
 
 export type AppTabParamList = {
   Dashboard: undefined;
-  WhatsApp: undefined;
+  WhatsApp: NavigatorScreenParams<WhatsAppStackParamList> | undefined;
   Groups: undefined;
-  Categories: undefined;
   Messaging: undefined;
-  Support: undefined;
-  Profile: undefined;
+  MessageHistory: undefined;
+  More: undefined;
+  Categories: NavigatorScreenParams<CategoriesStackParamList> | undefined;
+  Support: NavigatorScreenParams<SupportStackParamList> | undefined;
+  Profile: NavigatorScreenParams<ProfileStackParamList> | undefined;
 };
 
 export type WhatsAppStackParamList = {
@@ -40,4 +46,7 @@ export type ProfileStackParamList = {
   Notifications: undefined;
   Feedback: undefined;
   Settings: undefined;
+  AccountDeletion: undefined;
+  TeamUsers: undefined;
+  PlatformModule: { moduleKey: AdminModuleKey; title?: string; eyebrow?: string; description?: string; ticketId?: string };
 };

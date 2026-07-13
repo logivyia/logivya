@@ -11,7 +11,7 @@ export function CategoriesNavigator() {
   const { t } = useTranslation();
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: true }}>
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="CategoriesList" component={CategoriesScreen} options={{ title: t("categories") }} />
       <Stack.Screen name="CategoryDetail" component={CategoryDetailScreen} options={{ title: t("categoryDetail") }} />
     </Stack.Navigator>

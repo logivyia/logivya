@@ -3,30 +3,40 @@ import "react-native-gesture-handler";
 import { NavigationContainer } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { useRef } from "react";
+import { useEffect } from "react";
 import { useColorScheme } from "react-native";
 
+import { useSettingsStore } from "@/auth/settings-store";
+import { useAuthStore } from "@/auth/auth-store";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { RootNavigator } from "@/navigation/root-navigator";
 import { useAuthBootstrap } from "@/hooks/use-auth-bootstrap";
 import { useProductionServices } from "@/hooks/use-production-services";
-import { useSettingsStore } from "@/auth/settings-store";
+import { linking } from "@/navigation/linking";
+import { RootNavigator } from "@/navigation/root-navigator";
 import { getActiveRouteName, trackScreenView } from "@/services/analytics";
 import { initCrashReporting, wrapWithCrashReporting } from "@/services/crash-reporting";
-import { linking } from "@/navigation/linking";
 import { OfflineQueryProvider } from "@/services/offline-query";
+import { installGlobalStartupGuards } from "@/services/startup-guards";
 import { darkNavigationTheme, lightNavigationTheme } from "@/theme/navigation";
 import { ThemeProvider } from "@/theme/theme-provider";
 
+installGlobalStartupGuards();
 initCrashReporting();
 
 function App() {
   const systemScheme = useColorScheme();
   const preferredTheme = useSettingsStore((state) => state.theme);
+  const accountLocale = useAuthStore((state) => state.user?.locale);
+  const applyAccountLocale = useSettingsStore((state) => state.applyAccountLocale);
   const themeMode = preferredTheme === "system" ? systemScheme ?? "light" : preferredTheme;
   const routeNameRef = useRef<string | undefined>(undefined);
 
   useAuthBootstrap();
   useProductionServices();
+
+  useEffect(() => {
+    applyAccountLocale(accountLocale);
+  }, [accountLocale, applyAccountLocale]);
 
   return (
     <ErrorBoundary>

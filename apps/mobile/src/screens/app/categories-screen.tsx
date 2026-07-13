@@ -4,11 +4,13 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { PrimaryButton } from "@/components/primary-button";
+import { CategoryColorPicker, DEFAULT_CATEGORY_COLOR, isValidCategoryColor, normalizeCategoryColor } from "@/components/category-color-picker";
 import { Screen } from "@/components/screen";
 import { EmptyState } from "@/components/state/empty-state";
 import { ErrorState } from "@/components/state/error-state";
 import { LoadingState } from "@/components/state/loading-state";
 import { TextField } from "@/components/text-field";
+import { PageHeader, SectionTitle, StatCard } from "@/components/ui";
 import { useCategoriesStore } from "@/features/categories/categoriesStore";
 import { useTranslation } from "@/i18n/use-translation";
 import { useTheme } from "@/theme/theme-provider";
@@ -25,7 +27,7 @@ type FormState = {
 const defaultForm: FormState = {
   name: "",
   description: "",
-  color: "#f97316"
+  color: DEFAULT_CATEGORY_COLOR
 };
 
 export function CategoriesScreen() {
@@ -36,6 +38,10 @@ export function CategoriesScreen() {
   const [formVisible, setFormVisible] = useState(false);
   const [form, setForm] = useState<FormState>(defaultForm);
   const [formError, setFormError] = useState<string | null>(null);
+  const assignedTargetsCount = categories.reduce(
+    (total, category) => total + (category._count?.groups ?? 0) + (category._count?.contacts ?? 0),
+    0,
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -54,31 +60,27 @@ export function CategoriesScreen() {
   };
 
   const startEdit = (category: MobileCategory) => {
-    setForm({
-      id: category.id,
-      name: category.name,
-      description: category.description ?? "",
-      color: category.color ?? "#f97316"
-    });
+    setFormVisible(false);
+    setForm(defaultForm);
     setFormError(null);
-    setFormVisible(true);
+    navigation.navigate("CategoryDetail", { categoryId: category.id });
   };
 
   const submit = async () => {
     const name = form.name.trim();
-    const color = form.color.trim();
+    const color = form.color.trim() || DEFAULT_CATEGORY_COLOR;
     if (name.length < 2) {
       setFormError(t("categoryNameValidation"));
       return;
     }
-    if (!/^#[0-9a-f]{6}$/i.test(color)) {
+    if (!isValidCategoryColor(color)) {
       setFormError(t("categoryColorValidation"));
       return;
     }
 
     const ok = form.id
-      ? await updateCategory(form.id, { name, description: form.description.trim() || null, color })
-      : await createCategory({ name, description: form.description.trim() || undefined, color });
+      ? await updateCategory(form.id, { name, description: form.description.trim() || null, color: normalizeCategoryColor(color) })
+      : await createCategory({ name, description: form.description.trim() || undefined, color: normalizeCategoryColor(color) });
 
     if (ok) {
       setFormVisible(false);
@@ -117,11 +119,14 @@ export function CategoriesScreen() {
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.primary} />}
           keyboardShouldPersistTaps="handled"
-          ListHeaderComponent={
-            <View style={styles.header}>
-              <Text style={[styles.eyebrow, { color: theme.primary }]}>{t("categoriesEyebrow")}</Text>
-              <Text style={[styles.title, { color: theme.text }]}>{t("categoriesTitle")}</Text>
-              <Text style={[styles.subtitle, { color: theme.muted }]}>{t("categoriesSubtitle")}</Text>
+        ListHeaderComponent={
+          <View style={styles.header}>
+              <PageHeader eyebrow={t("categoriesEyebrow")} title={t("categoriesTitle")} description={t("categoriesSubtitle")} />
+              <View style={styles.summaryGrid}>
+                <StatCard icon="pricetags-outline" label={t("categoryDetail")} value={categories.length} />
+                <StatCard icon="people-outline" label={t("assignedTargets")} value={assignedTargetsCount} tone="success" />
+                <StatCard icon="color-palette-outline" label={t("segmentColor")} value={t("active")} tone="warning" />
+              </View>
               {error ? <Feedback text={error} tone="error" /> : null}
               {success ? <Feedback text={success} tone="success" /> : null}
               {formVisible ? (
@@ -129,8 +134,15 @@ export function CategoriesScreen() {
                   <Text style={[styles.formTitle, { color: theme.text }]}>{form.id ? t("editCategory") : t("createCategory")}</Text>
                   <TextField label={t("categoryName")} value={form.name} onChangeText={(name) => setForm((state) => ({ ...state, name }))} />
                   <TextField label={t("categoryDescription")} value={form.description} onChangeText={(description) => setForm((state) => ({ ...state, description }))} multiline />
-                  <TextField label={t("categoryColor")} value={form.color} onChangeText={(color) => setForm((state) => ({ ...state, color }))} autoCapitalize="none" />
-                  {formError ? <Text style={[styles.validation, { color: "#dc2626" }]}>{formError}</Text> : null}
+                  <CategoryColorPicker
+                    value={form.color}
+                    onChange={(color) => setForm((state) => ({ ...state, color }))}
+                    label={t("categoryColor")}
+                    changeLabel={t("changeCategoryColor")}
+                    selectedLabel={t("selectedCategoryColor")}
+                    optionsLabel={t("categoryColorOptions")}
+                  />
+                  {formError ? <Text style={[styles.validation, { color: theme.danger }]}>{formError}</Text> : null}
                   <View style={styles.formActions}>
                     <Pressable accessibilityRole="button" onPress={() => setFormVisible(false)} style={[styles.secondaryButton, { borderColor: theme.border }]}>
                       <Text style={[styles.secondaryButtonText, { color: theme.text }]}>{t("cancel")}</Text>
@@ -139,8 +151,9 @@ export function CategoriesScreen() {
                   </View>
                 </View>
               ) : (
-                <PrimaryButton title={t("createCategory")} onPress={startCreate} />
+                <PrimaryButton icon="add-outline" title={t("createCategory")} onPress={startCreate} />
               )}
+              <SectionTitle title={t("categoryList")} />
             </View>
           }
           ListEmptyComponent={<EmptyState title={t("noCategoriesFound")} description={t("noCategoriesFoundDescription")} />}
@@ -185,25 +198,36 @@ function CategoryCard({
           {category.description ? <Text style={[styles.cardDescription, { color: theme.muted }]}>{category.description}</Text> : null}
         </View>
       </View>
-      <Text style={[styles.cardMeta, { color: theme.muted }]}>
-        {category._count?.groups ?? 0} {t("assignedGroups")}
-      </Text>
+      <Text style={[styles.cardMeta, { color: theme.muted }]}>{formatCategoryAudience(category, t)}</Text>
       <View style={styles.cardActions}>
         <Pressable accessibilityRole="button" onPress={onEdit} style={[styles.actionButton, { borderColor: theme.border }]}>
           <Text style={[styles.actionButtonText, { color: theme.text }]}>{t("edit")}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" disabled={deleting} onPress={onDelete} style={[styles.actionButton, { borderColor: theme.border, opacity: deleting ? 0.6 : 1 }]}>
-          <Text style={[styles.actionButtonText, { color: "#dc2626" }]}>{t("delete")}</Text>
+          <Text style={[styles.actionButtonText, { color: theme.danger }]}>{t("delete")}</Text>
         </Pressable>
       </View>
     </Pressable>
   );
 }
 
+function formatCategoryAudience(category: MobileCategory, t: ReturnType<typeof useTranslation>["t"]) {
+  const groups = category.assignedGroupCount ?? category._count?.groups ?? 0;
+  const contacts = category.assignedContactCount ?? category._count?.contacts ?? 0;
+  if (groups && contacts) return `${t("groupMetric", { count: groups })} · ${t("contactMetric", { count: contacts })}`;
+  if (groups) return t("groupMetric", { count: groups });
+  if (contacts) return t("contactMetric", { count: contacts });
+  return t("noAssignedAudience");
+}
+
 function Feedback({ text, tone }: { text: string; tone: "success" | "error" }) {
+  const theme = useTheme();
+  const backgroundColor = tone === "success" ? theme.successSoft : theme.dangerSoft;
+  const color = tone === "success" ? theme.success : theme.danger;
+
   return (
-    <View style={[styles.feedback, { backgroundColor: tone === "success" ? "#dcfce7" : "#fee2e2" }]}>
-      <Text style={[styles.feedbackText, { color: tone === "success" ? "#047857" : "#b91c1c" }]}>{text}</Text>
+    <View style={[styles.feedback, { backgroundColor }]}>
+      <Text style={[styles.feedbackText, { color }]}>{text}</Text>
     </View>
   );
 }
@@ -223,6 +247,11 @@ const styles = StyleSheet.create({
   header: {
     gap: 14,
     marginBottom: 4
+  },
+  summaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12
   },
   eyebrow: {
     fontSize: 12,

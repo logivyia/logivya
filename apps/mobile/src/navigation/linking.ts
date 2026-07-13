@@ -30,7 +30,8 @@ export const linking = {
           ProfileHome: "",
           Notifications: "notifications",
           Subscription: "subscription",
-          Settings: "settings"
+          Settings: "settings",
+          PlatformModule: "admin/:moduleKey/:ticketId?"
         }
       }
     }

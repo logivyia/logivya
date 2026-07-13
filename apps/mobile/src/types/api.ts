@@ -20,6 +20,9 @@ export type AuthTokens = {
   refreshToken: string;
   accessTokenExpiresAt: string;
   refreshTokenExpiresAt: string;
+  expiresIn?: number;
+  refreshExpiresAt?: string | Date;
+  tokenType?: string;
 };
 
 export type MobileUser = {
@@ -27,12 +30,25 @@ export type MobileUser = {
   name: string;
   email: string;
   phone?: string | null;
+  locale?: string | null;
+  timezone?: string | null;
   role: string;
+  isAdmin?: boolean;
+  isPlatformAdmin?: boolean;
 };
 
 export type MobileCompany = {
   id: string;
   name: string;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  taxOffice?: string | null;
+  taxNumber?: string | null;
+  city?: string | null;
+  district?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
 };
 
 export type AuthSessionPayload = {
@@ -40,4 +56,6 @@ export type AuthSessionPayload = {
   user: MobileUser;
   company: MobileCompany;
   permissions: string[];
+  isAdmin?: boolean;
+  isPlatformAdmin?: boolean;
 };

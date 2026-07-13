@@ -24,22 +24,45 @@ export function getSentry() {
 export function initCrashReporting() {
   const instance = getSentry();
   if (!instance?.init || !config.sentryDsn) return;
-  instance.init({
-    dsn: config.sentryDsn,
-    tracesSampleRate: 0.2,
-    enableAutoSessionTracking: true,
-    environment: __DEV__ ? "development" : "production"
-  });
+  try {
+    instance.init({
+      dsn: config.sentryDsn,
+      tracesSampleRate: 0.2,
+      enableAutoSessionTracking: true,
+      environment: config.environment
+    });
+  } catch {
+    sentry = null;
+  }
 }
 
 export function captureAppError(error: unknown, context?: Record<string, unknown>) {
-  getSentry()?.captureException?.(error, { extra: context });
+  if (!config.sentryDsn) return;
+
+  try {
+    getSentry()?.captureException?.(error, { extra: context });
+  } catch {
+    sentry = null;
+  }
 }
 
 export function setCrashUser(user: { id?: string; email?: string } | null) {
-  getSentry()?.setUser?.(user);
+  if (!config.sentryDsn) return;
+
+  try {
+    getSentry()?.setUser?.(user);
+  } catch {
+    sentry = null;
+  }
 }
 
 export function wrapWithCrashReporting<T>(component: T): T {
-  return getSentry()?.wrap?.(component) ?? component;
+  if (!config.sentryDsn) return component;
+
+  try {
+    return getSentry()?.wrap?.(component) ?? component;
+  } catch {
+    sentry = null;
+    return component;
+  }
 }

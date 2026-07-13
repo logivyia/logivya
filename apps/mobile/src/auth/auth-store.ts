@@ -9,14 +9,18 @@ type AuthState = {
   user: MobileUser | null;
   company: MobileCompany | null;
   permissions: string[];
+  isPlatformAdmin: boolean;
   tokens: AuthTokens | null;
   setBooting: () => void;
   setSession: (session: {
     user: MobileUser;
     company: MobileCompany;
     permissions: string[];
+    isAdmin?: boolean;
+    isPlatformAdmin?: boolean;
     tokens: AuthTokens;
   }) => void;
+  setCompany: (company: MobileCompany) => void;
   setTokens: (tokens: AuthTokens) => void;
   clearSession: () => void;
 };
@@ -26,6 +30,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   company: null,
   permissions: [],
+  isPlatformAdmin: false,
   tokens: null,
   setBooting: () => set({ status: "booting" }),
   setSession: (session) =>
@@ -34,8 +39,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       user: session.user,
       company: session.company,
       permissions: session.permissions,
+      isPlatformAdmin: session.isAdmin === true || session.isPlatformAdmin === true || session.user.isAdmin === true || session.user.isPlatformAdmin === true,
       tokens: session.tokens
     }),
+  setCompany: (company) => set({ company }),
   setTokens: (tokens) => set({ tokens }),
   clearSession: () =>
     set({
@@ -43,6 +50,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       user: null,
       company: null,
       permissions: [],
+      isPlatformAdmin: false,
       tokens: null
     })
 }));
