@@ -25,15 +25,17 @@ type ContactPage = {
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 async function main() {
-  const [{ prisma }, { createAccessToken }, { subscriptionAccess }, { resolveCurrentWhatsAppAccount }] = await Promise.all([
+  const [{ prisma }, { createAccessToken }, { subscriptionAccess }, { resolveCurrentWhatsAppAccount }, { hashOpaqueToken }] = await Promise.all([
     import("../src/server/db"),
     import("../src/server/mobile/auth"),
     import("../src/server/billing/subscription-access"),
     import("../src/server/whatsapp/account-scope"),
+    import("../src/server/security/authentication"),
   ]);
   const apiBaseUrl = (process.env.CONTACT_SYNC_API_BASE_URL || "https://www.logivya.com").replace(/\/$/, "");
   const requestedAccountPrefix = process.env.CONTACT_SYNC_PROOF_ACCOUNT_PREFIX?.trim();
   let temporarySessionId: string | null = null;
+  let temporaryWebSessionId: string | null = null;
 
   try {
     const memberships = await prisma.companyUser.findMany({
@@ -85,6 +87,18 @@ async function main() {
       sessionId: session.id,
       role: actor.role,
     });
+    const webSessionToken = randomBytes(32).toString("base64url");
+    const webSession = await prisma.userSession.create({
+      data: {
+        userId: actor.userId,
+        companyId: actor.companyId,
+        sessionTokenHash: hashOpaqueToken(webSessionToken),
+        ipAddress: "production-contact-sync-proof",
+        userAgent: "production-contact-sync-proof",
+        expiresAt: new Date(Date.now() + 10 * 60_000),
+      },
+    });
+    temporaryWebSessionId = webSession.id;
 
     async function api<T>(requestPath: string, init: RequestInit = {}) {
       const response = await fetch(`${apiBaseUrl}${requestPath}`, {
@@ -145,6 +159,22 @@ async function main() {
       page += 1;
     } while (page <= totalPages);
 
+    const webContactIds = new Set<string>();
+    let webPage = 1;
+    let webTotal = 0;
+    let webTotalPages = 1;
+    do {
+      const response = await fetch(`${apiBaseUrl}/api/whatsapp/contacts?accountId=${encodeURIComponent(actor.accountId)}&page=${webPage}&limit=100`, {
+        headers: { cookie: `logivya_session=${webSessionToken}` },
+      });
+      if (!response.ok) throw new Error(`Web contact API failed: HTTP_${response.status}`);
+      const directory = await response.json() as ContactPage;
+      webTotal = directory.pageInfo.total;
+      webTotalPages = directory.pageInfo.totalPages;
+      for (const contact of directory.contacts) webContactIds.add(contact.id);
+      webPage += 1;
+    } while (webPage <= webTotalPages);
+
     const [account, after, fallbackCount] = await Promise.all([
       prisma.whatsAppAccount.findUnique({ where: { id: actor.accountId }, select: { status: true } }),
       prisma.contact.count({
@@ -162,8 +192,8 @@ async function main() {
       }),
     ]);
     if (account?.status !== "CONNECTED") throw new Error(`Contact sync downgraded account status to ${account?.status ?? "MISSING"}.`);
-    if (allContactIds.size !== total || total !== after || run.persistedCount !== after) {
-      throw new Error(`Directory count mismatch: API=${allContactIds.size}/${total}, DB=${after}, run=${run.persistedCount}.`);
+    if (allContactIds.size !== total || webContactIds.size !== webTotal || total !== webTotal || total !== after || run.persistedCount !== after) {
+      throw new Error(`Directory count mismatch: mobile=${allContactIds.size}/${total}, web=${webContactIds.size}/${webTotal}, DB=${after}, run=${run.persistedCount}.`);
     }
 
     console.log(JSON.stringify({
@@ -175,6 +205,7 @@ async function main() {
       contactsBefore: before,
       contactsAfter: after,
       apiVisibleContacts: allContactIds.size,
+      webApiVisibleContacts: webContactIds.size,
       namedContacts: after - fallbackCount,
       phoneFallbackContacts: fallbackCount,
       crossAccountTargetDenied,
@@ -182,6 +213,7 @@ async function main() {
     }, null, 2));
   } finally {
     if (temporarySessionId) await prisma.mobileDeviceSession.deleteMany({ where: { id: temporarySessionId } }).catch(() => undefined);
+    if (temporaryWebSessionId) await prisma.userSession.deleteMany({ where: { id: temporaryWebSessionId } }).catch(() => undefined);
     await prisma.$disconnect();
   }
 }
