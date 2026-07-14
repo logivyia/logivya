@@ -351,7 +351,7 @@ export function CategoriesManagementPage() {
                     return (
                       <label key={contact.id} className={cn("flex min-h-14 items-center gap-3 rounded-lg border p-3 text-sm", selected && "border-primary bg-accent text-accent-foreground")}>
                         <input type="checkbox" checked={selected} onChange={() => toggleContact(contact.id)} className="size-4" />
-                        <span className="min-w-0"><b className="block truncate">{contact.displayName || contact.name}</b><small className="text-muted">+{contact.phone}</small></span>
+                        <span className="min-w-0"><b className="block truncate">{contact.displayName || contact.name}</b>{contact.phone ? <small className="text-muted">+{contact.phone}</small> : null}</span>
                       </label>
                     );
                   })}

@@ -588,7 +588,7 @@ export function MessagingScreen() {
                       <SelectableRow
                         key={contact.id}
                         label={displayName}
-                        meta={`+${contact.phone}`}
+                        meta={contact.phone ? `+${contact.phone}` : undefined}
                         selected={selectedContacts.includes(contact.id)}
                         onPress={() => toggle(contact.id, selectedContacts, setSelectedContacts)}
                       />
@@ -626,7 +626,7 @@ function formatCategoryTargetCount(category: MobileCategory, t: ReturnType<typeo
   return t("noAssignedAudience");
 }
 
-function SelectableRow({ label, meta, selected, onPress }: { label: string; meta: string; selected: boolean; onPress: () => void }) {
+function SelectableRow({ label, meta, selected, onPress }: { label: string; meta: string | undefined; selected: boolean; onPress: () => void }) {
   const theme = useTheme();
   return (
     <Pressable
@@ -640,7 +640,7 @@ function SelectableRow({ label, meta, selected, onPress }: { label: string; meta
     >
       <Ionicons name={selected ? "checkbox" : "square-outline"} size={21} color={selected ? theme.primary : theme.muted} />
       <Text style={[styles.selectableLabel, { color: theme.text }]} numberOfLines={2}>{label}</Text>
-      <Text style={[styles.selectableMeta, { color: theme.muted }]}>{meta}</Text>
+      {meta ? <Text style={[styles.selectableMeta, { color: theme.muted }]}>{meta}</Text> : null}
     </Pressable>
   );
 }

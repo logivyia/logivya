@@ -88,13 +88,17 @@ export function resolveWhatsAppContactDisplayName(contact: ContactDisplayFields)
 export function normalizeWhatsAppContactJid(value: string | null | undefined) {
   const candidate = value?.trim().toLowerCase();
   if (!candidate || candidate.endsWith("@g.us") || candidate.endsWith("@broadcast") || candidate === "status@broadcast") return null;
+  if (candidate.endsWith("@lid")) {
+    const lid = candidate.slice(0, -"@lid".length).replace(/:\d+$/, "").replace(/\D/g, "");
+    return lid.length >= 5 ? { jid: `${lid}@lid`, phone: "", addressType: "LID" as const } : null;
+  }
   if (candidate.endsWith("@s.whatsapp.net")) {
     const phone = candidate.slice(0, -"@s.whatsapp.net".length).replace(/\D/g, "");
-    return phone.length >= 7 ? { jid: `${phone}@s.whatsapp.net`, phone } : null;
+    return phone.length >= 7 ? { jid: `${phone}@s.whatsapp.net`, phone, addressType: "PN" as const } : null;
   }
   if (/^\+?\d{7,20}$/.test(candidate)) {
     const phone = candidate.replace(/\D/g, "");
-    return { jid: `${phone}@s.whatsapp.net`, phone };
+    return { jid: `${phone}@s.whatsapp.net`, phone, addressType: "PN" as const };
   }
   return null;
 }
@@ -106,6 +110,7 @@ export function normalizeProviderContact(contact: ProviderContactRecord) {
   const notifyName = usableDisplayName(contact.notify, normalized.phone);
   const verifiedName = usableDisplayName(contact.verifiedName, normalized.phone);
   const pushName = notifyName || verifiedName;
+  if (normalized.addressType === "LID" && !name && !notifyName && !verifiedName) return null;
   const identity = resolveWhatsAppContactDisplayIdentity({
     phone: normalized.phone,
     name,

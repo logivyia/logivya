@@ -526,7 +526,7 @@ export function CampaignComposerPage() {
                         checked={selectedContacts.includes(contact.id)}
                         onChange={(event) => setSelectedContacts((value) => event.target.checked ? [...new Set([...value, contact.id])] : value.filter((id) => id !== contact.id))}
                       />
-                      <span className="min-w-0"><b className="block truncate">{displayName}</b><small className="text-muted">+{contact.phone}</small></span>
+                      <span className="min-w-0"><b className="block truncate">{displayName}</b>{contact.phone ? <small className="text-muted">+{contact.phone}</small> : null}</span>
                     </label>
                   ))}
                 </div>

@@ -76,7 +76,7 @@ const CONTACT_HISTORY_FALLBACK_COOLDOWN_MS = Number(process.env.WHATSAPP_CONTACT
 const CONTACT_EVENT_BUFFER_WAIT_MS = Number(process.env.WHATSAPP_CONTACT_EVENT_BUFFER_WAIT_MS || 25_000);
 const CONTACT_OPEN_SYNC_STALE_MS = Number(process.env.WHATSAPP_CONTACT_OPEN_SYNC_STALE_MS || 6 * 60 * 60_000);
 const CONTACT_APP_STATE_COLLECTIONS = ["critical_unblock_low", "regular"] as const;
-const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V11_FULL_LID_APP_STATE";
+const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V12_NATIVE_LID_TARGETS";
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -1729,6 +1729,9 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       });
       await flushContactPersistence(accountId);
       snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
+      if (snapshot.length) {
+        await persistWhatsAppContacts(accountId, snapshot, { source: "BAILEYS_FULL_APP_STATE", fullSync: true });
+      }
       directoryStats = await persistedContactStats(accountId, account.userId);
       await backupWhatsAppSessionToDatabase(accountId, "contact.full_sync.app_state_synced").catch((error) =>
         logger.error("whatsapp.contacts.bootstrap_backup_failed", error, { accountId, strategy: syncStrategy }),
@@ -1788,17 +1791,23 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       });
     }
     snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
+    const unresolvedLidCount = snapshot.filter((contact) => contact.id.endsWith("@lid") && !contact.jid?.endsWith("@s.whatsapp.net")).length;
+    const lidMappingCount = contactPhoneJidsByLid.get(accountId)?.size ?? 0;
     logger.info("whatsapp.contacts.full_sync_finished", {
       accountId,
       persistedCount: directoryStats.total,
       namedCount: directoryStats.named,
       snapshotCount: snapshot.length,
+      unresolvedLidCount,
+      lidMappingCount,
       strategy: syncStrategy,
     });
     await auditAccount(accountId, directoryStats.total > 0 ? "whatsapp.contacts.full_sync_completed" : "whatsapp.contacts.full_sync_empty", {
       persistedCount: directoryStats.total,
       namedCount: directoryStats.named,
       snapshotCount: snapshot.length,
+      unresolvedLidCount,
+      lidMappingCount,
       strategy: syncStrategy,
     }).catch((error) => logger.warn("whatsapp.contacts.bootstrap_audit_failed", { accountId, reason: errorMessage(error) }));
 
@@ -1816,7 +1825,8 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       verifiedCount += page.length;
       contactCursor = page.at(-1)?.id;
       for (let offset = 0; offset < page.length; offset += 100) {
-        const batch = page.slice(offset, offset + 100);
+        const batch = page.slice(offset, offset + 100).filter((contact) => !contact.externalContactId.endsWith("@lid"));
+        if (!batch.length) continue;
         try {
           const availability = await socket.onWhatsApp(...batch.map((contact) => contact.externalContactId)) ?? [];
           const availabilityByJid = new Map<string, boolean>();

@@ -327,7 +327,7 @@ function AssignableContact({ contact, selected, onToggle }: { contact: CategoryC
       <SelectionBox selected={selected} />
       <View style={styles.groupBody}>
         <Text style={[styles.groupTitle, { color: theme.text }]} numberOfLines={2}>{displayName}</Text>
-        <Text style={[styles.meta, { color: theme.muted }]}>+{contact.phone}</Text>
+        {contact.phone ? <Text style={[styles.meta, { color: theme.muted }]}>+{contact.phone}</Text> : null}
       </View>
     </Pressable>
   );

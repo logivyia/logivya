@@ -61,12 +61,16 @@ assert(canActivateMembershipSeat(downgradedFull, "INVITED"), "Legacy invited mem
 
 assert(normalizeWhatsAppContactJid("+905551112233")?.jid === "905551112233@s.whatsapp.net", "Phone numbers must normalize to a WhatsApp contact JID.");
 assert(normalizeWhatsAppContactJid("905551112233@s.whatsapp.net")?.phone === "905551112233", "Existing contact JIDs must be preserved.");
+assert(normalizeWhatsAppContactJid("123456789@lid")?.jid === "123456789@lid", "Modern LID contact targets must remain sendable without exposing the opaque ID as a phone number.");
 assert(normalizeWhatsAppContactJid("120363000000@g.us") === null, "Group JIDs must never enter the contact model.");
 assert(normalizeWhatsAppContactJid("status@broadcast") === null, "Broadcast JIDs must never enter the contact model.");
 assert(
   normalizeProviderContact({ id: "123456789@lid", phoneNumber: "905551112233@s.whatsapp.net", name: "Saved Name" })?.name === "Saved Name",
   "Modern LID contacts must normalize through their phone-number JID without losing the saved name.",
 );
+const nativeLidContact = normalizeProviderContact({ id: "123456789@lid", name: "Saved LID Name" });
+assert(nativeLidContact?.externalContactId === "123456789@lid" && nativeLidContact.phone === "" && nativeLidContact.displayName === "Saved LID Name", "Named LID contacts must remain selectable and sendable while their phone alias is unavailable.");
+assert(normalizeProviderContact({ id: "123456789@lid" }) === null, "Unnamed opaque LID records must not create blank contact rows.");
 assert(normalizeProviderContact({ id: "905551112233@s.whatsapp.net", notify: "  Test Kişisi  " })?.pushName === "Test Kişisi", "Contact display data must be trimmed and normalized.");
 assert(normalizeProviderContact({ id: "905551112233@s.whatsapp.net", name: "+90 555 111 22 33" })?.name === null, "Raw phone numbers must never become contact display names.");
 assert(normalizeProviderContact({ id: "905551112233@s.whatsapp.net", notify: "905551112233@s.whatsapp.net" })?.pushName === null, "Raw WhatsApp JIDs must never become contact display names.");
@@ -155,7 +159,7 @@ assert(contacts.includes("contactSyncRun"), "Contact refresh requests must have 
 assert(!contacts.includes('{ OR: [{ name: { not: null } }, { pushName: { not: null } }] }'), "Phone-fallback contacts must not be removed from the user-facing directory.");
 
 const baileysProvider = read("src/worker/baileys-provider.ts");
-assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V11_FULL_LID_APP_STATE"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
+assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V12_NATIVE_LID_TARGETS"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
 assert(baileysProvider.includes('mode === "PAIR_PHONE" || mode === "PAIR_QR"'), "Every fresh QR or phone pairing must request complete contact history.");
 assert(baileysProvider.includes("syncFullHistory: syncContactHistory"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
 assert(baileysProvider.includes('CONTACT_APP_STATE_COLLECTIONS = ["critical_unblock_low", "regular"]'), "Contact bootstrap must fetch both saved contacts and PN-for-LID aliases.");
@@ -169,6 +173,8 @@ assert(baileysProvider.includes('"whatsapp.contacts.full_sync_started"'), "A man
 assert(baileysProvider.includes("contactPhoneJidsByLid"), "Contact sync must retain LID-to-phone mappings across partial events.");
 assert(baileysProvider.includes('keys.set({ "lid-mapping": values })'), "LID-to-phone mappings must survive worker restarts in the account-owned auth state.");
 assert(baileysProvider.includes("hydrateLidMappingsFromSession"), "Restored sessions must resolve buffered LID contacts from persistent reverse mappings.");
+assert(baileysProvider.includes('source: "BAILEYS_FULL_APP_STATE", fullSync: true'), "A complete app-state snapshot must persist named native LID targets and deactivate superseded aliases.");
+assert(baileysProvider.includes('!contact.externalContactId.endsWith("@lid")'), "Opaque LID targets must not be misinterpreted as phone numbers by availability lookup.");
 assert(baileysProvider.includes('on(event: "lid-mapping.update"'), "The worker must consume official Baileys LID mapping events for every account.");
 assert(baileysProvider.includes('socket.ev.on("chats.phoneNumberShare"'), "Phone-number share events must resolve modern LID contacts.");
 assert(baileysProvider.includes("bootstrap_deferred_active_delivery"), "Contact bootstrap must not interrupt an active message delivery.");
@@ -188,6 +194,8 @@ assert(pairingFlow.includes("resetWhatsAppContactDirectoryIfIdentityChanged"), "
 
 const baileysPatch = read("scripts/patch-baileys-contact-jid.mjs");
 assert(baileysPatch.includes("LOGIVYA_CONTACT_PN_JID_COMPAT"), "The pinned Baileys 6.x build must retain modern contactAction PN JIDs.");
+const baileysMessageSend = read("node_modules/@whiskeysockets/baileys/lib/Socket/messages-send.js");
+assert(baileysMessageSend.includes("const isLid = server === 'lid'"), "The pinned Baileys transport must support direct native LID message targets.");
 assert(baileysPatch.includes("LOGIVYA_HISTORY_LID_PN_COMPAT"), "History contacts must resolve official phone-number-to-LID mappings.");
 assert(baileysPatch.includes("LOGIVYA_LID_MAPPING_EVENT_COMPAT"), "Modern app-state PN-for-LID actions must be exported to the worker.");
 assert(baileysPatch.includes("LOGIVYA_HISTORY_LID_MAPPING_EXPORT"), "Every history LID mapping must be exported for persistent storage.");
