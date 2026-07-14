@@ -75,8 +75,8 @@ const CONTACT_HISTORY_FALLBACK_MIN_NAMED = Number(process.env.WHATSAPP_CONTACT_H
 const CONTACT_HISTORY_FALLBACK_COOLDOWN_MS = Number(process.env.WHATSAPP_CONTACT_HISTORY_FALLBACK_COOLDOWN_MS || 6 * 60 * 60_000);
 const CONTACT_EVENT_BUFFER_WAIT_MS = Number(process.env.WHATSAPP_CONTACT_EVENT_BUFFER_WAIT_MS || 25_000);
 const CONTACT_OPEN_SYNC_STALE_MS = Number(process.env.WHATSAPP_CONTACT_OPEN_SYNC_STALE_MS || 6 * 60 * 60_000);
-const CONTACT_APP_STATE_COLLECTION = "critical_unblock_low" as const;
-const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V10_PERSISTENT_LID_MAPPING";
+const CONTACT_APP_STATE_COLLECTIONS = ["critical_unblock_low", "regular"] as const;
+const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V11_FULL_LID_APP_STATE";
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -1719,9 +1719,9 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     try {
       await waitForBaileysEventBuffer(accountId, socket);
       await socket.authState.keys.set({
-        "app-state-sync-version": { [CONTACT_APP_STATE_COLLECTION]: null },
+        "app-state-sync-version": Object.fromEntries(CONTACT_APP_STATE_COLLECTIONS.map((collection) => [collection, null])),
       });
-      await socket.resyncAppState([CONTACT_APP_STATE_COLLECTION], true);
+      await socket.resyncAppState([...CONTACT_APP_STATE_COLLECTIONS], true);
       const eventBufferFlushed = socket.ev.flush();
       logger.info("whatsapp.contacts.app_state_event_buffer_flushed", {
         whatsappAccountId: accountId,
