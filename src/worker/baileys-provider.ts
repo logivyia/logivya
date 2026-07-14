@@ -14,7 +14,7 @@ import { canExposePhonePairingCode } from "@/server/whatsapp/pairing-code-state"
 import { hasActivePhonePairing, isPhonePairingActive } from "@/server/whatsapp/pairing-guard";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
-import { persistWhatsAppContacts, resetWhatsAppContactDirectoryIfIdentityChanged, type ProviderContactRecord } from "@/server/whatsapp/contacts";
+import { normalizeProviderContact, persistWhatsAppContacts, resetWhatsAppContactDirectoryIfIdentityChanged, type ProviderContactRecord } from "@/server/whatsapp/contacts";
 import { collectGroupParticipantContacts } from "@/server/whatsapp/group-participant-contacts";
 import {
   backupWhatsAppSessionToDatabase,
@@ -76,7 +76,7 @@ const CONTACT_HISTORY_FALLBACK_COOLDOWN_MS = Number(process.env.WHATSAPP_CONTACT
 const CONTACT_EVENT_BUFFER_WAIT_MS = Number(process.env.WHATSAPP_CONTACT_EVENT_BUFFER_WAIT_MS || 25_000);
 const CONTACT_OPEN_SYNC_STALE_MS = Number(process.env.WHATSAPP_CONTACT_OPEN_SYNC_STALE_MS || 6 * 60 * 60_000);
 const CONTACT_APP_STATE_COLLECTIONS = ["critical_unblock_low", "regular"] as const;
-const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V12_NATIVE_LID_TARGETS";
+const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V13_PERSISTENCE_DIAGNOSTICS";
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -1716,6 +1716,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     if (!sessionBackedUp) return { count: directoryStats.total, implementation: CONTACT_SYNC_IMPLEMENTATION };
 
     let syncStrategy = "APP_STATE";
+    let appStateSyncError: string | null = null;
     try {
       await waitForBaileysEventBuffer(accountId, socket);
       await socket.authState.keys.set({
@@ -1737,7 +1738,8 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         logger.error("whatsapp.contacts.bootstrap_backup_failed", error, { accountId, strategy: syncStrategy }),
       );
     } catch (error) {
-      logger.warn("whatsapp.contacts.app_state_sync_failed", { accountId, reason: errorMessage(error) });
+      appStateSyncError = errorMessage(error).slice(0, 200);
+      logger.warn("whatsapp.contacts.app_state_sync_failed", { accountId, reason: appStateSyncError });
     }
 
     try {
@@ -1793,6 +1795,11 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
     const unresolvedLidCount = snapshot.filter((contact) => contact.id.endsWith("@lid") && !contact.jid?.endsWith("@s.whatsapp.net")).length;
     const lidMappingCount = contactPhoneJidsByLid.get(accountId)?.size ?? 0;
+    const lidMappingUniquePhoneCount = new Set(contactPhoneJidsByLid.get(accountId)?.values() ?? []).size;
+    const normalizedSnapshot = snapshot.map(normalizeProviderContact).filter((contact): contact is NonNullable<typeof contact> => Boolean(contact));
+    const normalizableSnapshotCount = normalizedSnapshot.length;
+    const uniqueNormalizedAddressCount = new Set(normalizedSnapshot.map((contact) => contact.externalContactId)).size;
+    const nativeLidTargetCount = normalizedSnapshot.filter((contact) => contact.externalContactId.endsWith("@lid")).length;
     logger.info("whatsapp.contacts.full_sync_finished", {
       accountId,
       persistedCount: directoryStats.total,
@@ -1800,6 +1807,11 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       snapshotCount: snapshot.length,
       unresolvedLidCount,
       lidMappingCount,
+      lidMappingUniquePhoneCount,
+      normalizableSnapshotCount,
+      uniqueNormalizedAddressCount,
+      nativeLidTargetCount,
+      appStateSyncError,
       strategy: syncStrategy,
     });
     await auditAccount(accountId, directoryStats.total > 0 ? "whatsapp.contacts.full_sync_completed" : "whatsapp.contacts.full_sync_empty", {
@@ -1808,6 +1820,11 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       snapshotCount: snapshot.length,
       unresolvedLidCount,
       lidMappingCount,
+      lidMappingUniquePhoneCount,
+      normalizableSnapshotCount,
+      uniqueNormalizedAddressCount,
+      nativeLidTargetCount,
+      appStateSyncError,
       strategy: syncStrategy,
     }).catch((error) => logger.warn("whatsapp.contacts.bootstrap_audit_failed", { accountId, reason: errorMessage(error) }));
 

@@ -159,7 +159,7 @@ assert(contacts.includes("contactSyncRun"), "Contact refresh requests must have 
 assert(!contacts.includes('{ OR: [{ name: { not: null } }, { pushName: { not: null } }] }'), "Phone-fallback contacts must not be removed from the user-facing directory.");
 
 const baileysProvider = read("src/worker/baileys-provider.ts");
-assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V12_NATIVE_LID_TARGETS"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
+assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V13_PERSISTENCE_DIAGNOSTICS"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
 assert(baileysProvider.includes('mode === "PAIR_PHONE" || mode === "PAIR_QR"'), "Every fresh QR or phone pairing must request complete contact history.");
 assert(baileysProvider.includes("syncFullHistory: syncContactHistory"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
 assert(baileysProvider.includes('CONTACT_APP_STATE_COLLECTIONS = ["critical_unblock_low", "regular"]'), "Contact bootstrap must fetch both saved contacts and PN-for-LID aliases.");
@@ -175,6 +175,8 @@ assert(baileysProvider.includes('keys.set({ "lid-mapping": values })'), "LID-to-
 assert(baileysProvider.includes("hydrateLidMappingsFromSession"), "Restored sessions must resolve buffered LID contacts from persistent reverse mappings.");
 assert(baileysProvider.includes('source: "BAILEYS_FULL_APP_STATE", fullSync: true'), "A complete app-state snapshot must persist named native LID targets and deactivate superseded aliases.");
 assert(baileysProvider.includes('!contact.externalContactId.endsWith("@lid")'), "Opaque LID targets must not be misinterpreted as phone numbers by availability lookup.");
+assert(baileysProvider.includes("normalizableSnapshotCount"), "Production contact sync must expose privacy-safe normalization diagnostics.");
+assert(baileysProvider.includes("appStateSyncError"), "Production contact sync must make app-state persistence failures auditable.");
 assert(baileysProvider.includes('on(event: "lid-mapping.update"'), "The worker must consume official Baileys LID mapping events for every account.");
 assert(baileysProvider.includes('socket.ev.on("chats.phoneNumberShare"'), "Phone-number share events must resolve modern LID contacts.");
 assert(baileysProvider.includes("bootstrap_deferred_active_delivery"), "Contact bootstrap must not interrupt an active message delivery.");
