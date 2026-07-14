@@ -32,6 +32,7 @@ async function main() {
     import("../src/server/whatsapp/account-scope"),
   ]);
   const apiBaseUrl = (process.env.CONTACT_SYNC_API_BASE_URL || "https://www.logivya.com").replace(/\/$/, "");
+  const requestedAccountPrefix = process.env.CONTACT_SYNC_PROOF_ACCOUNT_PREFIX?.trim();
   let temporarySessionId: string | null = null;
 
   try {
@@ -48,7 +49,17 @@ async function main() {
     let actor: { companyId: string; userId: string; role: string; accountId: string } | null = null;
     for (const membership of memberships) {
       if (!(await subscriptionAccess.canUseContactMessaging(membership.companyId))) continue;
-      const account = await resolveCurrentWhatsAppAccount({ companyId: membership.companyId, userId: membership.userId });
+      const account = requestedAccountPrefix
+        ? await prisma.whatsAppAccount.findFirst({
+            where: {
+              id: { startsWith: requestedAccountPrefix },
+              companyId: membership.companyId,
+              userId: membership.userId,
+              archivedAt: null,
+              status: "CONNECTED",
+            },
+          })
+        : await resolveCurrentWhatsAppAccount({ companyId: membership.companyId, userId: membership.userId });
       if (account?.status === "CONNECTED") {
         actor = { ...membership, accountId: account.id };
         break;
@@ -157,6 +168,7 @@ async function main() {
 
     console.log(JSON.stringify({
       apiBaseUrl,
+      accountPrefix: actor.accountId.slice(0, 8),
       ownershipModel: "USER_OWNED_WHATSAPP_ACCOUNT",
       syncStatus: run.status,
       accountStatusAfterSync: account.status,
