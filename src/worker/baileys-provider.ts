@@ -29,6 +29,12 @@ import type { DeleteContactMessageInput, DeleteGroupMessageInput, DeleteResult, 
 type SessionMode = "PAIR_QR" | "PAIR_PHONE" | "RESTORE" | "RECONNECT";
 type StartSessionOptions = { syncContactHistory?: boolean };
 type BaileysContactRecord = Partial<BaileysContact> & { id?: string; phoneNumber?: string | null };
+type LidPnMapping = { lid: string; pn: string };
+type RuntimeSignalKeyStore = {
+  get(type: string, ids: string[]): Promise<Record<string, unknown>>;
+  set(data: Record<string, Record<string, unknown | null>>): Promise<void>;
+};
+type LidMappingEvent = Partial<LidPnMapping> & { mappings?: LidPnMapping[] };
 type WhatsAppWebVersion = [number, number, number];
 type WhatsAppVersionInfo = {
   version: WhatsAppWebVersion;
@@ -50,6 +56,8 @@ const pairingRetryScheduledAt = new Map<string, number>();
 const contactSnapshots = new Map<string, Map<string, ProviderContactRecord>>();
 const contactPhoneJidsByLid = new Map<string, Map<string, string>>();
 const contactPersistenceTails = new Map<string, Promise<void>>();
+const contactMappingPersistenceTails = new Map<string, Promise<void>>();
+const contactMappingBackupTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const contactHistoryBootstrapAttempts = new Map<string, number>();
 const SOCKET_INITIALIZATION_TIMEOUT_MS = Number(process.env.WHATSAPP_SOCKET_INITIALIZATION_TIMEOUT_MS || 30_000);
 const PAIRING_SOCKET_BOOTSTRAP_MS = Number(process.env.WHATSAPP_PAIRING_SOCKET_BOOTSTRAP_MS || 5_000);
@@ -68,7 +76,7 @@ const CONTACT_HISTORY_FALLBACK_COOLDOWN_MS = Number(process.env.WHATSAPP_CONTACT
 const CONTACT_EVENT_BUFFER_WAIT_MS = Number(process.env.WHATSAPP_CONTACT_EVENT_BUFFER_WAIT_MS || 25_000);
 const CONTACT_OPEN_SYNC_STALE_MS = Number(process.env.WHATSAPP_CONTACT_OPEN_SYNC_STALE_MS || 6 * 60 * 60_000);
 const CONTACT_APP_STATE_COLLECTION = "critical_unblock_low" as const;
-const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V9_BUFFERED_APP_STATE_FLUSH";
+const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V10_PERSISTENT_LID_MAPPING";
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -89,6 +97,42 @@ const WHATSAPP_COMPANION_PLATFORM_DISPLAY = `${WHATSAPP_BROWSER[1]} (${WHATSAPP_
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeLidJid(value: string | null | undefined) {
+  const candidate = value?.trim().toLowerCase();
+  if (!candidate?.endsWith("@lid")) return null;
+  const user = candidate.split("@")[0]?.split(":")[0]?.replace(/\D/g, "");
+  return user ? `${user}@lid` : null;
+}
+
+function normalizePhoneJid(value: string | null | undefined) {
+  const candidate = value?.trim().toLowerCase();
+  if (!candidate?.endsWith("@s.whatsapp.net")) return null;
+  const user = candidate.split("@")[0]?.split(":")[0]?.replace(/\D/g, "");
+  return user ? `${user}@s.whatsapp.net` : null;
+}
+
+function normalizeLidPnMappings(mappings: LidPnMapping[]) {
+  const byLid = new Map<string, LidPnMapping>();
+  for (const mapping of mappings) {
+    const lid = normalizeLidJid(mapping.lid);
+    const pn = normalizePhoneJid(mapping.pn);
+    if (lid && pn) byLid.set(lid, { lid, pn });
+  }
+  return [...byLid.values()];
+}
+
+function scheduleContactMappingBackup(accountId: string, source: string) {
+  const current = contactMappingBackupTimers.get(accountId);
+  if (current) clearTimeout(current);
+  const timer = setTimeout(() => {
+    contactMappingBackupTimers.delete(accountId);
+    void backupWhatsAppSessionToDatabase(accountId, `contact.lid_mapping.${source}`).catch((error) =>
+      logger.error("whatsapp.contacts.lid_mapping_backup_failed", error, { accountId, source }),
+    );
+  }, 5_000);
+  contactMappingBackupTimers.set(accountId, timer);
 }
 
 async function waitForPersistedContacts(
@@ -149,7 +193,100 @@ function queueContactPersistence(accountId: string, contacts: ProviderContactRec
   });
 }
 
+async function persistLidMappings(
+  accountId: string,
+  keys: RuntimeSignalKeyStore,
+  rawMappings: LidPnMapping[],
+  source: string,
+) {
+  const mappings = normalizeLidPnMappings(rawMappings);
+  if (!mappings.length) return { stored: 0, resolved: 0 };
+
+  const values: Record<string, string> = {};
+  for (const { lid, pn } of mappings) {
+    const lidUser = lid.split("@")[0];
+    const pnUser = pn.split("@")[0];
+    values[pnUser] = lidUser;
+    values[`${lidUser}_reverse`] = pnUser;
+  }
+  await keys.set({ "lid-mapping": values });
+
+  const phoneJidsByLid = contactPhoneJidsByLid.get(accountId) ?? new Map<string, string>();
+  const snapshot = contactSnapshots.get(accountId);
+  const resolvedContacts: BaileysContactRecord[] = [];
+  for (const { lid, pn } of mappings) {
+    phoneJidsByLid.set(lid, pn);
+    const unresolved = snapshot?.get(lid);
+    if (unresolved) {
+      resolvedContacts.push({
+        id: lid,
+        lid,
+        jid: pn,
+        phoneNumber: pn,
+        name: unresolved.name ?? undefined,
+        notify: unresolved.notify ?? undefined,
+        verifiedName: unresolved.verifiedName ?? undefined,
+      });
+    }
+  }
+  contactPhoneJidsByLid.set(accountId, phoneJidsByLid);
+  if (resolvedContacts.length) rememberContacts(accountId, resolvedContacts, `${source}_RESOLVED`);
+  scheduleContactMappingBackup(accountId, source);
+  logger.info("whatsapp.contacts.lid_mappings_persisted", {
+    accountId,
+    source,
+    mappingCount: mappings.length,
+    resolvedSnapshotCount: resolvedContacts.length,
+  });
+  return { stored: mappings.length, resolved: resolvedContacts.length };
+}
+
+function queueLidMappingPersistence(
+  accountId: string,
+  keys: RuntimeSignalKeyStore,
+  mappings: LidPnMapping[],
+  source: string,
+) {
+  if (!mappings.length) return;
+  const previous = contactMappingPersistenceTails.get(accountId) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(async () => {
+      await persistLidMappings(accountId, keys, mappings, source);
+    })
+    .catch((error) => {
+      logger.error("whatsapp.contacts.lid_mapping_persist_failed", error, { accountId, source, mappingCount: mappings.length });
+    });
+  contactMappingPersistenceTails.set(accountId, next);
+  void next.finally(() => {
+    if (contactMappingPersistenceTails.get(accountId) === next) contactMappingPersistenceTails.delete(accountId);
+  });
+}
+
+async function hydrateLidMappingsFromSession(accountId: string, keys: RuntimeSignalKeyStore, source: string) {
+  const snapshot = contactSnapshots.get(accountId);
+  if (!snapshot?.size) return { stored: 0, resolved: 0 };
+  const lids = [...snapshot.keys()].map(normalizeLidJid).filter((lid): lid is string => Boolean(lid));
+  if (!lids.length) return { stored: 0, resolved: 0 };
+  const reverseKeys = [...new Set(lids.map((lid) => `${lid.split("@")[0]}_reverse`))];
+  const stored = await keys.get("lid-mapping", reverseKeys);
+  const mappings: LidPnMapping[] = [];
+  for (const lid of lids) {
+    const pnUser = stored[`${lid.split("@")[0]}_reverse`];
+    if (typeof pnUser === "string" && pnUser.replace(/\D/g, "")) {
+      mappings.push({ lid, pn: `${pnUser.replace(/\D/g, "")}@s.whatsapp.net` });
+    }
+  }
+  return persistLidMappings(accountId, keys, mappings, source);
+}
+
 async function flushContactPersistence(accountId: string) {
+  while (true) {
+    const pending = contactMappingPersistenceTails.get(accountId);
+    if (!pending) break;
+    await pending;
+    if (contactMappingPersistenceTails.get(accountId) === pending) break;
+  }
   while (true) {
     const pending = contactPersistenceTails.get(accountId);
     if (!pending) return;
@@ -174,9 +311,13 @@ async function waitForBaileysEventBuffer(accountId: string, socket: WASocket) {
 
 async function clearContactRuntimeState(accountId: string, source: string) {
   await flushContactPersistence(accountId);
+  const backupTimer = contactMappingBackupTimers.get(accountId);
+  if (backupTimer) clearTimeout(backupTimer);
   contactSnapshots.delete(accountId);
   contactPhoneJidsByLid.delete(accountId);
   contactPersistenceTails.delete(accountId);
+  contactMappingPersistenceTails.delete(accountId);
+  contactMappingBackupTimers.delete(accountId);
   logger.info("whatsapp.contacts.runtime_state_cleared", { accountId, source });
 }
 
@@ -1029,8 +1170,18 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       }
       await backupWhatsAppSessionToDatabase(accountId, "creds.update").catch((error) => logger.error("whatsapp.session.backup_failed", error, { accountId }));
     });
-    socket.ev.on("messaging-history.set", ({ contacts }) => {
-      rememberContacts(accountId, contacts, "BAILEYS_HISTORY");
+    const runtimeKeys = state.keys as unknown as RuntimeSignalKeyStore;
+    const lidMappingEvents = socket.ev as unknown as {
+      on(event: "lid-mapping.update", listener: (event: LidMappingEvent) => void): void;
+    };
+    lidMappingEvents.on("lid-mapping.update", (event) => {
+      const mappings = event.mappings ?? (event.lid && event.pn ? [{ lid: event.lid, pn: event.pn }] : []);
+      queueLidMappingPersistence(accountId, runtimeKeys, mappings, "BAILEYS_LID_MAPPING_EVENT");
+    });
+    socket.ev.on("messaging-history.set", (payload) => {
+      rememberContacts(accountId, payload.contacts, "BAILEYS_HISTORY");
+      const mappings = (payload as typeof payload & { lidPnMappings?: LidPnMapping[] }).lidPnMappings ?? [];
+      queueLidMappingPersistence(accountId, runtimeKeys, mappings, "BAILEYS_HISTORY_MAPPING");
     });
     socket.ev.on("contacts.upsert", (contacts) => {
       rememberContacts(accountId, contacts, "BAILEYS_UPSERT");
@@ -1039,6 +1190,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       rememberContacts(accountId, contacts, "BAILEYS_UPDATE");
     });
     socket.ev.on("chats.phoneNumberShare", ({ lid, jid }) => {
+      queueLidMappingPersistence(accountId, runtimeKeys, [{ lid, pn: jid }], "BAILEYS_PHONE_NUMBER_SHARE");
       rememberContacts(accountId, [{ id: lid, lid, jid, phoneNumber: jid }], "BAILEYS_PHONE_NUMBER_SHARE");
     });
     socket.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
@@ -1525,6 +1677,9 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     if (!account || account.archivedAt || !account.userId) throw new Error("WHATSAPP_ACCOUNT_NOT_FOUND");
     if (!sockets.get(accountId)?.user) await restoreWhatsAppSessionFromDatabase(accountId);
     let socket = await this.ensureConnectedSocket(accountId);
+    const runtimeKeys = socket.authState.keys as unknown as RuntimeSignalKeyStore;
+    await hydrateLidMappingsFromSession(accountId, runtimeKeys, "SESSION_LID_MAPPING");
+    await flushContactPersistence(accountId);
     let snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
     if (snapshot.length) await persistWhatsAppContacts(accountId, snapshot, { source: "BAILEYS_MANUAL_SYNC" });
 

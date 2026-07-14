@@ -155,7 +155,7 @@ assert(contacts.includes("contactSyncRun"), "Contact refresh requests must have 
 assert(!contacts.includes('{ OR: [{ name: { not: null } }, { pushName: { not: null } }] }'), "Phone-fallback contacts must not be removed from the user-facing directory.");
 
 const baileysProvider = read("src/worker/baileys-provider.ts");
-assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V9_BUFFERED_APP_STATE_FLUSH"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
+assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V10_PERSISTENT_LID_MAPPING"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
 assert(baileysProvider.includes('mode === "PAIR_PHONE" || mode === "PAIR_QR"'), "Every fresh QR or phone pairing must request complete contact history.");
 assert(baileysProvider.includes("syncFullHistory: syncContactHistory"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
 assert(baileysProvider.includes('CONTACT_APP_STATE_COLLECTION = "critical_unblock_low"'), "Contact bootstrap must use the Baileys collection that carries contact actions.");
@@ -167,6 +167,9 @@ assert(baileysProvider.includes("collectGroupParticipantContacts(metadata"), "Ap
 assert(baileysProvider.includes('this.startSession(accountId, "RECONNECT", { syncContactHistory: true })'), "A missing persistent contact directory must use the isolated contact-history reconnect path.");
 assert(baileysProvider.includes('"whatsapp.contacts.full_sync_started"'), "A manual refresh must run a full contact app-state sync even when fallback contacts already exist.");
 assert(baileysProvider.includes("contactPhoneJidsByLid"), "Contact sync must retain LID-to-phone mappings across partial events.");
+assert(baileysProvider.includes('keys.set({ "lid-mapping": values })'), "LID-to-phone mappings must survive worker restarts in the account-owned auth state.");
+assert(baileysProvider.includes("hydrateLidMappingsFromSession"), "Restored sessions must resolve buffered LID contacts from persistent reverse mappings.");
+assert(baileysProvider.includes('on(event: "lid-mapping.update"'), "The worker must consume official Baileys LID mapping events for every account.");
 assert(baileysProvider.includes('socket.ev.on("chats.phoneNumberShare"'), "Phone-number share events must resolve modern LID contacts.");
 assert(baileysProvider.includes("bootstrap_deferred_active_delivery"), "Contact bootstrap must not interrupt an active message delivery.");
 assert(baileysProvider.includes("CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS"), "Only recent active deliveries may defer contact bootstrap.");
@@ -186,6 +189,9 @@ assert(pairingFlow.includes("resetWhatsAppContactDirectoryIfIdentityChanged"), "
 const baileysPatch = read("scripts/patch-baileys-contact-jid.mjs");
 assert(baileysPatch.includes("LOGIVYA_CONTACT_PN_JID_COMPAT"), "The pinned Baileys 6.x build must retain modern contactAction PN JIDs.");
 assert(baileysPatch.includes("LOGIVYA_HISTORY_LID_PN_COMPAT"), "History contacts must resolve official phone-number-to-LID mappings.");
+assert(baileysPatch.includes("LOGIVYA_LID_MAPPING_EVENT_COMPAT"), "Modern app-state PN-for-LID actions must be exported to the worker.");
+assert(baileysPatch.includes("LOGIVYA_HISTORY_LID_MAPPING_EXPORT"), "Every history LID mapping must be exported for persistent storage.");
+assert(baileysPatch.includes("LOGIVYA_LID_MIGRATION_MAPPING_SYNC_COMPAT"), "The pinned Baileys build must decode the official LID migration payload.");
 assert(read("package.json").includes("node scripts/patch-baileys-contact-jid.mjs"), "Dependency installation must fail closed unless the Baileys contact compatibility patch applies.");
 assert(read("Dockerfile.worker").includes("COPY scripts/patch-baileys-contact-jid.mjs"), "The production worker image must include the Baileys compatibility patch before npm ci.");
 
