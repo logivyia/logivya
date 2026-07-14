@@ -155,10 +155,13 @@ assert(contacts.includes("contactSyncRun"), "Contact refresh requests must have 
 assert(!contacts.includes('{ OR: [{ name: { not: null } }, { pushName: { not: null } }] }'), "Phone-fallback contacts must not be removed from the user-facing directory.");
 
 const baileysProvider = read("src/worker/baileys-provider.ts");
-assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V8_TENANT_SAFE_FULL_SYNC"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
-assert(baileysProvider.includes("syncFullHistory: Boolean(options.syncContactHistory)"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
+assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V9_BUFFERED_APP_STATE_FLUSH"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
+assert(baileysProvider.includes('mode === "PAIR_PHONE" || mode === "PAIR_QR"'), "Every fresh QR or phone pairing must request complete contact history.");
+assert(baileysProvider.includes("syncFullHistory: syncContactHistory"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
 assert(baileysProvider.includes('CONTACT_APP_STATE_COLLECTION = "critical_unblock_low"'), "Contact bootstrap must use the Baileys collection that carries contact actions.");
 assert(baileysProvider.includes("socket.resyncAppState([CONTACT_APP_STATE_COLLECTION], true)"), "Existing sessions must request a fresh contact app-state snapshot before reconnect fallback.");
+assert(baileysProvider.indexOf("socket.ev.flush()", baileysProvider.indexOf("socket.resyncAppState([CONTACT_APP_STATE_COLLECTION], true)")) > baileysProvider.indexOf("socket.resyncAppState([CONTACT_APP_STATE_COLLECTION], true)"), "Manual app-state sync must flush Baileys buffered contact events before reading persistence results.");
+assert(baileysProvider.includes("whatsapp.contacts.connection_open_sync_queued"), "Connected accounts must automatically enqueue background contact synchronization without an admin-only branch.");
 assert(baileysProvider.includes("flushContactPersistence(accountId)"), "A completed app-state request must wait for every contact persistence batch.");
 assert(baileysProvider.includes("collectGroupParticipantContacts(metadata"), "App-state contacts must be supplemented with account-owned group participant metadata.");
 assert(baileysProvider.includes('this.startSession(accountId, "RECONNECT", { syncContactHistory: true })'), "A missing persistent contact directory must use the isolated contact-history reconnect path.");

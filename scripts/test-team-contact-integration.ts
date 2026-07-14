@@ -77,7 +77,10 @@ async function expectError(action: () => Promise<unknown>, expectedMessage: stri
 
 async function main() {
   assertLocalTestDatabase();
-  const request = new Request("http://localhost:3000/api/company/invitations", { method: "POST" });
+  const request = new Request("http://localhost:3000/api/company/invitations", {
+    method: "POST",
+    headers: { "x-logivya-locale": "tr" },
+  });
 
   const starter = await createWorkspace("starter", `Starter Integration ${Date.now()}`);
   const starterInvitee = await createUser("starter-member");

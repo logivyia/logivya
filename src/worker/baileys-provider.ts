@@ -65,8 +65,10 @@ const CONTACT_BOOTSTRAP_QUIET_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP
 const CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS = Number(process.env.WHATSAPP_CONTACT_BOOTSTRAP_ACTIVE_DELIVERY_WINDOW_MS || 5 * 60_000);
 const CONTACT_HISTORY_FALLBACK_MIN_NAMED = Number(process.env.WHATSAPP_CONTACT_HISTORY_FALLBACK_MIN_NAMED || 25);
 const CONTACT_HISTORY_FALLBACK_COOLDOWN_MS = Number(process.env.WHATSAPP_CONTACT_HISTORY_FALLBACK_COOLDOWN_MS || 6 * 60 * 60_000);
+const CONTACT_EVENT_BUFFER_WAIT_MS = Number(process.env.WHATSAPP_CONTACT_EVENT_BUFFER_WAIT_MS || 25_000);
+const CONTACT_OPEN_SYNC_STALE_MS = Number(process.env.WHATSAPP_CONTACT_OPEN_SYNC_STALE_MS || 6 * 60 * 60_000);
 const CONTACT_APP_STATE_COLLECTION = "critical_unblock_low" as const;
-const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V8_TENANT_SAFE_FULL_SYNC";
+const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V9_BUFFERED_APP_STATE_FLUSH";
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -154,6 +156,20 @@ async function flushContactPersistence(accountId: string) {
     await pending;
     if (contactPersistenceTails.get(accountId) === pending) return;
   }
+}
+
+async function waitForBaileysEventBuffer(accountId: string, socket: WASocket) {
+  const deadline = Date.now() + CONTACT_EVENT_BUFFER_WAIT_MS;
+  while (socket.ev.isBuffering() && Date.now() < deadline) await sleep(250);
+  if (!socket.ev.isBuffering()) return;
+
+  const forcedFlush = socket.ev.flush();
+  logger.warn("whatsapp.contacts.event_buffer_forced_flush", {
+    whatsappAccountId: accountId,
+    waitedMs: CONTACT_EVENT_BUFFER_WAIT_MS,
+    flushed: forcedFlush,
+  });
+  await flushContactPersistence(accountId);
 }
 
 async function clearContactRuntimeState(accountId: string, source: string) {
@@ -927,6 +943,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     const { state, saveCreds } = await useMultiFileAuthState(directory);
     const versionInfo = await fetchCurrentWhatsAppWebVersion();
     const { version } = versionInfo;
+    const syncContactHistory = Boolean(options.syncContactHistory || mode === "PAIR_PHONE" || mode === "PAIR_QR");
     if (!state.creds.registered && mode !== "PAIR_QR" && mode !== "PAIR_PHONE") {
       logger.warn("whatsapp.restore.credentials_missing", { accountId, mode });
       await this.handleMissingCredentials(accountId, `start_session_missing_credentials:${mode}`);
@@ -954,7 +971,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       waVersionSource: versionInfo.source,
       waVersionIsLatest: versionInfo.isLatest,
       waVersionFallbackReason: versionInfo.fallbackReason,
-      syncContactHistory: Boolean(options.syncContactHistory),
+      syncContactHistory,
     });
     logger.info("whatsapp.session.starting", {
       accountId,
@@ -969,7 +986,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       waVersionSource: versionInfo.source,
       waVersionIsLatest: versionInfo.isLatest,
       waVersionFallbackReason: versionInfo.fallbackReason,
-      syncContactHistory: Boolean(options.syncContactHistory),
+      syncContactHistory,
     });
     const socket = makeWASocket({
       auth: state,
@@ -978,7 +995,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
       printQRInTerminal: false,
       markOnlineOnConnect: false,
-      syncFullHistory: Boolean(options.syncContactHistory),
+      syncFullHistory: syncContactHistory,
       ...(mode === "PAIR_PHONE" ? { qrTimeout: PHONE_PAIRING_QR_REF_TIMEOUT_MS } : {}),
     });
     sockets.set(accountId, socket);
@@ -1088,12 +1105,29 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           await auditAccount(accountId, "whatsapp.connected", { phoneNumber: maskPhoneNumber(phoneNumber), mode: currentMode });
           settleInitialized();
           await this.syncGroups(accountId);
-          if (identityReset.changed) {
+          const contactState = await prisma.whatsAppAccount.findUnique({
+            where: { id: accountId },
+            select: { lastContactSyncAt: true, _count: { select: { contacts: true } } },
+          });
+          const contactSyncStale = !contactState?.lastContactSyncAt
+            || Date.now() - contactState.lastContactSyncAt.getTime() >= CONTACT_OPEN_SYNC_STALE_MS;
+          if (identityReset.changed || !contactState?._count.contacts || contactSyncStale) {
             await enqueueWhatsAppJob(
               "sync-contacts",
               { action: "sync-contacts", accountId },
-              { jobId: `sync-contacts-identity-${accountId}-${Date.now()}`, delay: 2_000, removeOnComplete: 50, removeOnFail: 100 },
+              {
+                jobId: `sync-contacts-open-${accountId}-${Math.floor(Date.now() / 60_000)}`,
+                delay: 5_000,
+                removeOnComplete: 50,
+                removeOnFail: 100,
+              },
             );
+            logger.info("whatsapp.contacts.connection_open_sync_queued", {
+              whatsappAccountId: accountId,
+              identityChanged: identityReset.changed,
+              existingCount: contactState?._count.contacts ?? 0,
+              stale: contactSyncStale,
+            });
           }
         }
         if (connection === "close") {
@@ -1528,10 +1562,16 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
 
     let syncStrategy = "APP_STATE";
     try {
+      await waitForBaileysEventBuffer(accountId, socket);
       await socket.authState.keys.set({
         "app-state-sync-version": { [CONTACT_APP_STATE_COLLECTION]: null },
       });
       await socket.resyncAppState([CONTACT_APP_STATE_COLLECTION], true);
+      const eventBufferFlushed = socket.ev.flush();
+      logger.info("whatsapp.contacts.app_state_event_buffer_flushed", {
+        whatsappAccountId: accountId,
+        flushed: eventBufferFlushed,
+      });
       await flushContactPersistence(accountId);
       snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
       directoryStats = await persistedContactStats(accountId, account.userId);
