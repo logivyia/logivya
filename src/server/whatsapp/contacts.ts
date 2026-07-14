@@ -14,6 +14,7 @@ import {
 export { normalizeProviderContact, normalizeWhatsAppContactJid, type ProviderContactRecord } from "@/server/whatsapp/contact-normalization";
 
 type ContactScope = { companyId: string; userId: string; accountId?: string };
+const CONTACT_PERSISTENCE_BATCH_SIZE = 40;
 
 export function normalizeWhatsAppAccountIdentity(value: string | null | undefined) {
   const identity = value?.split(":")[0]?.split("@")[0]?.replace(/\D/g, "") ?? "";
@@ -86,8 +87,8 @@ export async function persistWhatsAppContacts(accountId: string, contacts: Provi
     return { count: 0, namedCount: 0, fallbackCount: 0, syncedAt: null };
   }
 
-  for (let offset = 0; offset < normalizedContacts.length; offset += 100) {
-    const batch = normalizedContacts.slice(offset, offset + 100);
+  for (let offset = 0; offset < normalizedContacts.length; offset += CONTACT_PERSISTENCE_BATCH_SIZE) {
+    const batch = normalizedContacts.slice(offset, offset + CONTACT_PERSISTENCE_BATCH_SIZE);
     const existing = await prisma.contact.findMany({
       where: { accountId, externalContactId: { in: batch.map((contact) => contact.externalContactId) } },
       select: {

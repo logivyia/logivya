@@ -156,10 +156,11 @@ assert(contacts.includes("contact.name ?? previous?.name"), "Partial provider pa
 assert(contacts.includes("contact.pushName ?? previous?.pushName"), "Partial provider payloads must not erase an existing WhatsApp push name.");
 assert(contacts.includes("displayNameSource"), "The backend must persist the authoritative contact display-name source.");
 assert(contacts.includes("contactSyncRun"), "Contact refresh requests must have durable synchronization-run state.");
+assert(contacts.includes("CONTACT_PERSISTENCE_BATCH_SIZE = 40"), "Large contact directories must persist in transaction-safe batches without imposing a total-contact limit.");
 assert(!contacts.includes('{ OR: [{ name: { not: null } }, { pushName: { not: null } }] }'), "Phone-fallback contacts must not be removed from the user-facing directory.");
 
 const baileysProvider = read("src/worker/baileys-provider.ts");
-assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V13_PERSISTENCE_DIAGNOSTICS"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
+assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V14_TRANSACTION_SAFE_BATCHING"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
 assert(baileysProvider.includes('mode === "PAIR_PHONE" || mode === "PAIR_QR"'), "Every fresh QR or phone pairing must request complete contact history.");
 assert(baileysProvider.includes("syncFullHistory: syncContactHistory"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
 assert(baileysProvider.includes('CONTACT_APP_STATE_COLLECTIONS = ["critical_unblock_low", "regular"]'), "Contact bootstrap must fetch both saved contacts and PN-for-LID aliases.");
