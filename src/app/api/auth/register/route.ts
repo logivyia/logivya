@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 import { authPasswordErrorCode, registerSchema } from "@/features/auth/schemas";
 import { getRequestLocale, getServerTranslator } from "@/i18n/server";
 import { createSession } from "@/server/auth/session";
-import { ensureSevenDayTrial } from "@/server/billing/trial-service";
+import { issueEmailVerification } from "@/server/auth/email-verification";
+import { createPendingTrialEntitlement } from "@/server/billing/trial-service";
 import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
 import { requestCorrelationId } from "@/server/observability/request-id";
@@ -66,6 +67,16 @@ export async function POST(request: Request) {
       windowMs: 60 * 60 * 1000,
       request,
     });
+    const deviceId = request.headers.get("x-logivya-device-id")?.trim();
+    if (deviceId) {
+      await enforceOperationRateLimit({
+        scope: "web-register-device",
+        subject: deviceId,
+        maxAttempts: 3,
+        windowMs: 24 * 60 * 60 * 1000,
+        request,
+      });
+    }
 
     const duplicate = await prisma.user.findFirst({ where: { OR: [{ email: normalizedEmail }, { phone: normalizedPhone }] } });
     if (duplicate) {
@@ -84,9 +95,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "INVITATION_EMAIL_MISMATCH" }, { status: 403 });
     }
 
-    const trial = invitation ? null : await prisma.plan.findUnique({ where: { slug: "trial" } });
-    if (!invitation && !trial) return NextResponse.json({ error: "auth.trialUnavailable" }, { status: 503 });
-
     const passwordHash = await hashPassword(input.password, process.env.PASSWORD_PEPPER ?? "");
     const result = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -97,6 +105,7 @@ export async function POST(request: Request) {
           email: normalizedEmail,
           passwordHash,
           locale: requestedLocale,
+          emailVerifiedAt: invitation ? new Date() : undefined,
         },
       });
 
@@ -114,7 +123,13 @@ export async function POST(request: Request) {
           data: { name: defaultCompanyName, ownerId: user.id, email: user.email, phone: user.phone },
         });
         await tx.companyUser.create({ data: { companyId: company.id, userId: user.id, role: "OWNER" } });
-        await ensureSevenDayTrial(tx, { companyId: company.id, planId: trial!.id, userId: user.id });
+        await createPendingTrialEntitlement(tx, {
+          companyId: company.id,
+          userId: user.id,
+          registrationPhone: normalizedPhone,
+          ipAddress,
+          deviceFingerprint: deviceId,
+        });
         await tx.companyBillingProfile.create({
           data: {
             companyId: company.id,
@@ -162,6 +177,10 @@ export async function POST(request: Request) {
     });
 
     await createSession(result.user.id, result.company.id, request);
+    if (!invitation) {
+      await issueEmailVerification(request, { userId: result.user.id, companyId: result.company.id, email: result.user.email })
+        .catch((error) => logger.error("EMAIL_VERIFICATION_ISSUE_FAILED", error, { correlationId, userId: result.user.id, companyId: result.company.id }));
+    }
     logger.info("REGISTRATION_SUCCEEDED", {
       correlationId,
       route,

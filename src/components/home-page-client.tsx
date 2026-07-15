@@ -20,8 +20,8 @@ const featureKeys = [
 const planKeys = ["trial", "starter", "professional"] as const;
 const planFeatureCounts: Record<(typeof planKeys)[number], number> = {
   trial: 7,
-  starter: 6,
-  professional: 6,
+  starter: 7,
+  professional: 7,
 };
 
 export function HomePageClient() {

@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     await assertWhatsAppWorkerReachable();
     let account = await findReusableWhatsAppAccount(company.id, user.id);
     if (!account) {
-      const access = await subscriptionAccess.canConnectWhatsAppAccount(company.id);
+      const access = await subscriptionAccess.canConnectWhatsAppAccount(company.id, user.id);
       if (!access.allowed) account = await findSingleSlotWhatsAppAccount(company.id, user.id, access.limit);
       if (!account && !access.allowed) return mobileError("SUBSCRIPTION_LOCKED", "Aboneliğiniz aktif değil. WhatsApp hesabı bağlamak için aboneliğinizi yenileyin.", { status: 403, details: { reason: access.reason, limit: access.limit } });
     }

@@ -186,6 +186,24 @@ async function main() {
   assert(adminList.tickets.some((ticket: JsonObject) => ticket.id === user1Ticket.id) && adminList.tickets.some((ticket: JsonObject) => ticket.id === user2Ticket.id), "Admin did not receive all tenant tickets.");
   const adminMobileList = await request("/api/admin/support/tickets?limit=20", { bearer: admin.mobileToken, expected: 200 });
   assert(adminMobileList.tickets.length >= 2, "Mobile admin could not list platform tickets.");
+  await request(`/api/admin/support/tickets/${user1Ticket.publicId}/assignment`, {
+    method: "PATCH",
+    cookie: admin.webToken,
+    body: { assignedAdminUserId: "SELF" },
+    expected: 200,
+  });
+  const assignedToMe = await request("/api/admin/support/tickets?assignedAdminId=ME", { cookie: admin.webToken, expected: 200 });
+  assert(assignedToMe.tickets.some((ticket: JsonObject) => ticket.id === user1Ticket.id), "Assigned-to-me filter omitted the assigned ticket.");
+  await request(`/api/admin/support/tickets/${user1Ticket.publicId}/assignment`, {
+    method: "PATCH",
+    cookie: admin.webToken,
+    body: { assignedAdminUserId: null },
+    expected: 200,
+  });
+  const unassigned = await request("/api/admin/support/tickets?unassigned=true", { cookie: admin.webToken, expected: 200 });
+  assert(unassigned.tickets.some((ticket: JsonObject) => ticket.id === user1Ticket.id), "Unassigned filter omitted the ticket.");
+  const messageSearch = await request("/api/admin/support/tickets?search=invoice%20details", { cookie: admin.webToken, expected: 200 });
+  assert(messageSearch.tickets.length === 1 && messageSearch.tickets[0].id === user2Ticket.id, "Admin message-body search returned incorrect results.");
 
   const adminDetail = await request(`/api/admin/support/tickets/${user1Ticket.publicId}`, { cookie: admin.webToken, expected: 200 });
   assert(adminDetail.messages.length === 1, "Admin could not open the initial conversation.");
@@ -227,6 +245,8 @@ async function main() {
   assert(adminAfterInternal.messages.some((message: JsonObject) => message.clientMessageId === "admin-note-1"), "Internal note was not visible to admin.");
 
   await request(`/api/admin/support/tickets/${user1Ticket.publicId}/priority`, { method: "PATCH", cookie: admin.webToken, body: { priority: "URGENT" }, expected: 200 });
+  const prioritySorted = await request("/api/admin/support/tickets?sort=PRIORITY", { cookie: admin.webToken, expected: 200 });
+  assert(prioritySorted.tickets[0].id === user1Ticket.id, "Priority sorting did not put the urgent ticket first.");
   await request(`/api/admin/support/tickets/${user1Ticket.publicId}/status`, { method: "PATCH", cookie: admin.webToken, body: { status: "IN_PROGRESS" }, expected: 200 });
   await request(`/api/admin/support/tickets/${user1Ticket.publicId}/status`, { method: "PATCH", cookie: admin.webToken, body: { status: "RESOLVED" }, expected: 200 });
   await request(`/api/support/tickets/${user1Ticket.publicId}/messages`, {

@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
     let account = await findReusableWhatsAppAccount(company.id, user.id);
     if (!account) {
-      const access = await subscriptionAccess.canConnectWhatsAppAccount(company.id);
+      const access = await subscriptionAccess.canConnectWhatsAppAccount(company.id, user.id);
       if (!access.allowed) account = await findSingleSlotWhatsAppAccount(company.id, user.id, access.limit);
       if (!account && !access.allowed) return NextResponse.json({ error: whatsappUserMessage(new Error(access.reason || "subscription.inactive"), "pairing"), reason: access.reason, limit: access.limit }, { status: 403 });
     }

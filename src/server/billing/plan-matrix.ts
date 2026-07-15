@@ -7,6 +7,7 @@ export type PurchasablePlanCode = (typeof PURCHASABLE_PLAN_CODES)[number];
 export type CorePlanRule = {
   monthlyPriceTry: number;
   totalUserSeats: number;
+  whatsappConnections: number;
   groupMessaging: boolean;
   contactMessaging: boolean;
   scheduledMessaging: boolean;
@@ -20,6 +21,7 @@ export const CORE_PLAN_MATRIX: Record<CorePlanCode, CorePlanRule> = {
   trial: {
     monthlyPriceTry: 0,
     totalUserSeats: 1,
+    whatsappConnections: 1,
     groupMessaging: true,
     contactMessaging: true,
     scheduledMessaging: true,
@@ -31,6 +33,7 @@ export const CORE_PLAN_MATRIX: Record<CorePlanCode, CorePlanRule> = {
   starter: {
     monthlyPriceTry: 280,
     totalUserSeats: 2,
+    whatsappConnections: 2,
     groupMessaging: true,
     contactMessaging: false,
     scheduledMessaging: true,
@@ -42,6 +45,7 @@ export const CORE_PLAN_MATRIX: Record<CorePlanCode, CorePlanRule> = {
   professional: {
     monthlyPriceTry: 380,
     totalUserSeats: 3,
+    whatsappConnections: 3,
     groupMessaging: true,
     contactMessaging: true,
     scheduledMessaging: true,

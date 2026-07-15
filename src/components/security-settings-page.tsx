@@ -1,0 +1,105 @@
+"use client";
+
+import Image from "next/image";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { Copy, KeyRound, LoaderCircle, RefreshCw, ShieldCheck, ShieldOff, Smartphone, Trash2 } from "lucide-react";
+
+import { apiErrorMessage } from "@/i18n/api-error";
+import { useI18n } from "@/i18n/provider";
+
+type SecurityStatus = {
+  enabled: boolean;
+  required: boolean;
+  enabledAt?: string | null;
+  recoveryCodesRemaining: number;
+  trustedDevices: Array<{ id: string; deviceName?: string | null; ipAddress: string; trustedAt: string; lastUsedAt?: string | null; expiresAt: string }>;
+  recentEvents: Array<{ id: string; type: string; severity: string; message: string; ipAddress?: string | null; createdAt: string }>;
+};
+
+type Enrollment = { secret: string; qrCodeDataUrl: string; recoveryCodes: string[] };
+
+export function SecuritySettingsPage() {
+  const { t, locale } = useI18n();
+  const [data, setData] = useState<SecurityStatus | null>(null);
+  const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    const response = await fetch("/api/auth/mfa/status", { cache: "no-store" });
+    if (response.ok) setData(await response.json());
+  }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  async function startEnrollment() {
+    setBusy(true); setMessage("");
+    const response = await fetch("/api/auth/mfa/enroll", { method: "POST" });
+    const result = await response.json();
+    if (response.ok) { setEnrollment(result); setRecoveryCodes(result.recoveryCodes); }
+    else setMessage(apiErrorMessage(t, result));
+    setBusy(false);
+  }
+
+  async function confirmEnrollment(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setMessage("");
+    const response = await fetch("/api/auth/mfa/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code }) });
+    const result = await response.json();
+    if (response.ok) { setEnrollment(null); setCode(""); setMessage(t("security.enabledSuccess")); await load(); }
+    else setMessage(apiErrorMessage(t, result));
+    setBusy(false);
+  }
+
+  async function disable(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setMessage("");
+    const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const response = await fetch("/api/auth/mfa/disable", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(values) });
+    const result = await response.json();
+    if (response.ok) { window.location.assign("/login"); return; }
+    setMessage(apiErrorMessage(t, result)); setBusy(false);
+  }
+
+  async function regenerate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setMessage("");
+    const codeValue = new FormData(event.currentTarget).get("code");
+    const response = await fetch("/api/auth/mfa/recovery-codes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: codeValue }) });
+    const result = await response.json();
+    if (response.ok) { setRecoveryCodes(result.recoveryCodes); setMessage(t("security.recoveryRegenerated")); await load(); }
+    else setMessage(apiErrorMessage(t, result));
+    setBusy(false);
+  }
+
+  async function revokeDevice(id: string) {
+    setBusy(true);
+    const response = await fetch(`/api/auth/mfa/trusted-devices/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (response.ok) await load();
+    else setMessage(apiErrorMessage(t, await response.json()));
+    setBusy(false);
+  }
+
+  if (!data) return <LoaderCircle className="size-6 animate-spin text-primary" />;
+  return <>
+    <header className="mb-7"><p className="text-xs font-semibold uppercase tracking-[.2em] text-primary">{t("security.eyebrow")}</p><h1 className="mt-2 text-3xl font-semibold">{t("security.title")}</h1><p className="mt-2 text-sm text-muted">{t("security.description")}</p></header>
+    <div className="grid gap-6">
+      <section className="rounded-2xl border bg-card p-6 shadow-[var(--shadow-soft)]">
+        <div className="flex flex-wrap items-start justify-between gap-4"><div className="flex gap-3"><span className="grid size-11 place-items-center rounded-full bg-primary/10 text-primary">{data.enabled ? <ShieldCheck className="size-5" /> : <ShieldOff className="size-5" />}</span><div><h2 className="text-lg font-semibold">{t("security.authenticator")}</h2><p className="mt-1 text-sm text-muted">{t(data.enabled ? "security.enabled" : "security.disabled")}</p></div></div>{!data.enabled && !enrollment ? <button disabled={busy} onClick={startEnrollment} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-60"><KeyRound className="size-4" />{t("security.enable")}</button> : null}</div>
+        {enrollment ? <form onSubmit={confirmEnrollment} className="mt-6 grid gap-5 border-t pt-6 md:grid-cols-[240px_1fr]">
+          <div className="rounded-lg bg-white p-2"><Image unoptimized src={enrollment.qrCodeDataUrl} alt={t("auth.mfaQrAlt")} width={224} height={224} className="size-56" /></div>
+          <div className="grid content-start gap-4"><div><p className="text-xs font-semibold text-muted">{t("auth.mfaManualKey")}</p><code className="mt-1 block break-all rounded-lg bg-input p-3 text-sm">{enrollment.secret}</code></div><label><span className="mb-2 block text-xs font-medium">{t("auth.mfaCode")}</span><input required value={code} onChange={(event) => setCode(event.target.value)} autoComplete="one-time-code" className="w-full rounded-xl border bg-input px-3 py-3 font-mono text-lg outline-none focus:border-primary" /></label><button disabled={busy || code.trim().length < 6} className="inline-flex w-fit items-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-60"><ShieldCheck className="size-4" />{t("security.confirmEnable")}</button></div>
+        </form> : null}
+        {data.enabled ? <form onSubmit={disable} className="mt-6 grid gap-4 border-t pt-6 md:grid-cols-2"><label><span className="mb-2 block text-xs font-medium">{t("auth.password")}</span><input required name="password" type="password" autoComplete="current-password" className="w-full rounded-xl border bg-input px-3 py-3 outline-none focus:border-primary" /></label><label><span className="mb-2 block text-xs font-medium">{t("auth.mfaCode")}</span><input required name="code" className="w-full rounded-xl border bg-input px-3 py-3 font-mono outline-none focus:border-primary" /></label><button disabled={busy} className="inline-flex w-fit items-center gap-2 rounded-xl border border-red-300 px-4 py-3 text-sm font-semibold text-danger disabled:opacity-60 md:col-span-2"><ShieldOff className="size-4" />{t("security.disable")}</button></form> : null}
+      </section>
+
+      {(recoveryCodes.length > 0 || data.enabled) ? <section className="rounded-2xl border bg-card p-6"><div className="flex items-center gap-3"><KeyRound className="size-5 text-primary" /><div><h2 className="font-semibold">{t("security.recoveryTitle")}</h2><p className="text-sm text-muted">{t("security.recoveryRemaining", { count: data.recoveryCodesRemaining })}</p></div></div>{recoveryCodes.length ? <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><pre className="grid grid-cols-1 gap-1 whitespace-pre-wrap font-mono text-sm sm:grid-cols-2">{recoveryCodes.join("\n")}</pre><button type="button" onClick={() => void navigator.clipboard.writeText(recoveryCodes.join("\n"))} className="mt-3 inline-flex items-center gap-2 text-sm font-semibold"><Copy className="size-4" />{t("security.copyCodes")}</button></div> : null}{data.enabled ? <form onSubmit={regenerate} className="mt-4 flex flex-wrap items-end gap-3"><label className="min-w-64 flex-1"><span className="mb-2 block text-xs font-medium">{t("auth.mfaCode")}</span><input required name="code" className="w-full rounded-xl border bg-input px-3 py-3 font-mono outline-none focus:border-primary" /></label><button disabled={busy} className="inline-flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold"><RefreshCw className="size-4" />{t("security.regenerate")}</button></form> : null}</section> : null}
+
+      <section><div className="mb-3 flex items-center gap-2"><Smartphone className="size-5 text-primary" /><h2 className="text-lg font-semibold">{t("security.trustedDevices")}</h2></div><div className="grid gap-3">{data.trustedDevices.length ? data.trustedDevices.map((device) => <article key={device.id} className="flex items-center justify-between gap-4 rounded-xl border bg-card p-4"><div><p className="font-semibold">{device.deviceName || t("security.unknownDevice")}</p><p className="mt-1 text-xs text-muted">{device.ipAddress} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(device.lastUsedAt || device.trustedAt))}</p></div><button disabled={busy} onClick={() => void revokeDevice(device.id)} title={t("security.revokeDevice")} className="grid size-10 place-items-center rounded-lg border text-danger"><Trash2 className="size-4" /></button></article>) : <p className="rounded-xl border border-dashed p-4 text-sm text-muted">{t("security.noTrustedDevices")}</p>}</div></section>
+
+      <section><h2 className="mb-3 text-lg font-semibold">{t("security.activity")}</h2><div className="overflow-hidden rounded-xl border bg-card">{data.recentEvents.length ? data.recentEvents.map((event) => <div key={event.id} className="flex flex-wrap justify-between gap-3 border-b p-4 last:border-b-0"><div><p className="text-sm font-semibold">{event.message}</p><p className="mt-1 text-xs text-muted">{event.type}{event.ipAddress ? ` · ${event.ipAddress}` : ""}</p></div><time className="text-xs text-muted">{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.createdAt))}</time></div>) : <p className="p-4 text-sm text-muted">{t("security.noActivity")}</p>}</div></section>
+      {message ? <p role="status" className="rounded-xl border bg-card p-4 text-sm">{message}</p> : null}
+    </div>
+  </>;
+}

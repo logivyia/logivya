@@ -7,6 +7,7 @@ import { NotificationsScreen } from "@/screens/app/notifications-screen";
 import { PlatformModuleScreen } from "@/screens/app/platform-module-screen";
 import { ProfileScreen } from "@/screens/app/profile-screen";
 import { SettingsScreen } from "@/screens/app/settings-screen";
+import { SecurityScreen } from "@/screens/app/security-screen";
 import { SubscriptionScreen } from "@/screens/app/subscription-screen";
 import { TeamUsersScreen } from "@/screens/app/team-users-screen";
 import { useTranslation } from "@/i18n/use-translation";
@@ -25,6 +26,7 @@ export function ProfileNavigator() {
       <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: t("notifications") }} />
       <Stack.Screen name="Feedback" component={FeedbackScreen} options={{ title: t("feedback") }} />
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: t("settings") }} />
+      <Stack.Screen name="Security" component={SecurityScreen} options={{ title: t("security") }} />
       <Stack.Screen name="TeamUsers" component={TeamUsersScreen} options={{ title: t("users") }} />
       <Stack.Screen name="AccountDeletion" component={AccountDeletionScreen} options={{ title: t("deleteAccount") }} />
       <Stack.Screen name="PlatformModule" component={PlatformModuleScreen} options={({ route }) => ({ title: route.params.title ?? t("module") })} />

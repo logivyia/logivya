@@ -58,4 +58,19 @@ export type AuthSessionPayload = {
   permissions: string[];
   isAdmin?: boolean;
   isPlatformAdmin?: boolean;
+  trustedDeviceToken?: string;
 };
+
+export type MfaLoginChallengePayload = {
+  mfaRequired: true;
+  mfaSetupRequired: boolean;
+  challengeToken: string;
+  expiresAt: string;
+  credentialId?: string;
+  secret?: string;
+  otpauthUrl?: string;
+  qrCodeDataUrl?: string;
+  recoveryCodes?: string[];
+};
+
+export type LoginResponsePayload = AuthSessionPayload | MfaLoginChallengePayload;

@@ -1,3 +1,45 @@
-import { NextResponse } from "next/server";import { z } from "zod";import { requireApiSession } from "@/server/auth/session";import { prisma } from "@/server/db";import { hashOpaqueToken } from "@/server/security/authentication";import { verifyTotp } from "@/server/security/mfa";
-const schema=z.object({code:z.string().min(6).max(20)});
-export async function POST(request:Request){try{const{user}=await requireApiSession(),body=schema.parse(await request.json()),credential=await prisma.mfaCredential.findFirst({where:{userId:user.id,revokedAt:null},orderBy:{createdAt:"desc"}});if(!credential)return NextResponse.json({error:"MFA_NOT_ENROLLED"},{status:404});const recoveryHash=hashOpaqueToken(body.code.toUpperCase()),recovery=credential.recoveryCodesHashed.includes(recoveryHash),valid=recovery||verifyTotp(credential.secretEncrypted,body.code);if(!valid)return NextResponse.json({error:"MFA_INVALID"},{status:401});await prisma.$transaction([prisma.mfaCredential.update({where:{id:credential.id},data:{verifiedAt:credential.verifiedAt||new Date(),recoveryCodesHashed:recovery?credential.recoveryCodesHashed.filter(x=>x!==recoveryHash):undefined}}),prisma.platformAdmin.updateMany({where:{userId:user.id,isActive:true},data:{lastElevatedAt:new Date()}}),prisma.adminAccessLog.create({data:{userId:user.id,path:"/api/auth/mfa/verify",method:"POST",purpose:"ADMIN_ELEVATION",permission:"critical_action",sensitive:true,ipAddress:request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),userAgent:request.headers.get("user-agent")}})]);return NextResponse.json({ok:true,elevatedForMinutes:10})}catch(error){return NextResponse.json({error:error instanceof Error?error.message:"MFA_ERROR"},{status:400})}}
+import { NextResponse } from "next/server";
+import { z } from "zod";
+
+import { recordMfaSecurityEvent, revokeUserSecuritySessions } from "@/server/auth/mfa-challenge";
+import { requireApiSession } from "@/server/auth/session";
+import { prisma } from "@/server/db";
+import { activateMfaCredential, verifyAndConsumeMfaCode } from "@/server/security/mfa";
+import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
+
+const schema = z.object({ code: z.string().trim().min(6).max(64) });
+
+export async function POST(request: Request) {
+  try {
+    const context = await requireApiSession();
+    const body = schema.parse(await request.json());
+    await enforceOperationRateLimit({ scope: "mfa-enrollment-verify", subject: context.user.id, maxAttempts: 5, windowMs: 10 * 60_000, request });
+    const verification = await verifyAndConsumeMfaCode({ userId: context.user.id, code: body.code, allowUnverifiedCredential: true });
+    if (!verification.ok) {
+      await recordMfaSecurityEvent({
+        request,
+        userId: context.user.id,
+        companyId: context.company.id,
+        type: "MFA_ENROLLMENT_FAILED",
+        message: "Iki adimli dogrulama kurulum kodu reddedildi.",
+        severity: "MEDIUM",
+        metadata: { reason: verification.reason },
+      });
+      return NextResponse.json({ error: verification.reason }, { status: 401 });
+    }
+    await activateMfaCredential(context.user.id, verification.credentialId);
+    await prisma.userSession.update({ where: { id: context.session.id }, data: { mfaVerifiedAt: new Date() } });
+    await revokeUserSecuritySessions(context.user.id, { webSessionId: context.session.id });
+    await recordMfaSecurityEvent({
+      request,
+      userId: context.user.id,
+      companyId: context.company.id,
+      type: "MFA_ENABLED",
+      message: "Iki adimli dogrulama etkinlestirildi.",
+    });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "MFA_ERROR";
+    return NextResponse.json({ error: code }, { status: code === "RATE_LIMITED" ? 429 : 400 });
+  }
+}

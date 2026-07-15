@@ -8,13 +8,17 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     const page = Math.max(1, Number(params.get("page") || 1));
     const query = params.get("q") || "";
-    const where = query ? {
-      OR: [
-        { name: { contains: query, mode: "insensitive" as const } },
-        { email: { contains: query, mode: "insensitive" as const } },
-        { phone: { contains: query, mode: "insensitive" as const } },
-      ],
-    } : undefined;
+    const status = params.get("status")?.trim().toUpperCase();
+    const where = {
+      ...(status && ["ACTIVE", "SUSPENDED", "INVITED"].includes(status) ? { status: status as "ACTIVE" | "SUSPENDED" | "INVITED" } : {}),
+      ...(query ? {
+        OR: [
+          { name: { contains: query, mode: "insensitive" as const } },
+          { email: { contains: query, mode: "insensitive" as const } },
+          { phone: { contains: query, mode: "insensitive" as const } },
+        ],
+      } : {}),
+    };
     const [users, total] = await Promise.all([
       prisma.user.findMany({
         where,

@@ -12,19 +12,22 @@ import {
   verifyPaytrWebhook,
   verifyStripeWebhook,
 } from "../src/server/billing/payment-webhook-verification";
-import { companyInvitationErrorStatus, generateInvitationCode, normalizeInvitationCode } from "../src/server/team/company-invitations";
+import { companyInvitationErrorStatus } from "../src/server/team/company-invitations";
 
 const root = process.cwd();
 const read = (file: string) => readFileSync(path.join(root, file), "utf8");
 
 assert.equal(CORE_PLAN_MATRIX.trial.totalUserSeats, 1);
+assert.equal(CORE_PLAN_MATRIX.trial.whatsappConnections, 1);
 assert.equal(CORE_PLAN_MATRIX.trial.contactMessaging, true);
 assert.equal(CORE_PLAN_MATRIX.starter.monthlyPriceTry, 280);
 assert.equal(CORE_PLAN_MATRIX.starter.totalUserSeats, 2);
+assert.equal(CORE_PLAN_MATRIX.starter.whatsappConnections, 2);
 assert.equal(CORE_PLAN_MATRIX.starter.contactMessaging, false);
 assert.equal(CORE_PLAN_MATRIX.starter.advertisingEnabled, true);
 assert.equal(CORE_PLAN_MATRIX.professional.monthlyPriceTry, 380);
 assert.equal(CORE_PLAN_MATRIX.professional.totalUserSeats, 3);
+assert.equal(CORE_PLAN_MATRIX.professional.whatsappConnections, 3);
 assert.equal(CORE_PLAN_MATRIX.professional.contactMessaging, true);
 assert.equal(CORE_PLAN_MATRIX.professional.advertisingEnabled, false);
 assert.deepEqual([...CORE_PLAN_CODES], ["trial", "starter", "professional"]);
@@ -49,13 +52,8 @@ assert.throws(
     && error.details.targetSeatLimit === 2,
 );
 
-for (let index = 0; index < 100; index += 1) {
-  const code = generateInvitationCode();
-  assert.match(code, /^[A-Z2-9]{4}(?:-[A-Z2-9]{4}){3}$/);
-  assert.equal(normalizeInvitationCode(code), code.replaceAll("-", ""));
-}
-assert.equal(normalizeInvitationCode("abcd efgh-jklm-npqr"), "ABCDEFGHIJKLMNOPQR".replace(/[IO]/g, ""), "Normalization must remove separators and uppercase the code.");
 assert.equal(companyInvitationErrorStatus("INVITATION_ALREADY_USED"), 409);
+assert.equal(companyInvitationErrorStatus("INVITATION_ALREADY_PENDING"), 409);
 assert.equal(companyInvitationErrorStatus("SEAT_LIMIT_REACHED"), 409);
 assert.equal(companyInvitationErrorStatus("RATE_LIMITED"), 429);
 
@@ -74,6 +72,22 @@ assert.equal(stripeEvent.observedAmount, 380);
 assert.equal(stripeEvent.observedCurrency, "TRY");
 assert.throws(() => verifyStripeWebhook(stripePayload, `t=${stripeTimestamp},v1=invalid`, stripeSecret, stripeTimestamp * 1000), /INVALID_SIGNATURE/);
 assert.throws(() => verifyStripeWebhook(stripePayload, `t=${stripeTimestamp},v1=${stripeSignature}`, stripeSecret, (stripeTimestamp + 301) * 1000), /STALE_WEBHOOK/);
+const stripeRefundPayload = JSON.stringify({
+  id: "evt_enterprise_refund",
+  type: "charge.refunded",
+  data: { object: { id: "ch_enterprise_1", payment_intent: "pi_enterprise_1", amount_refunded: 38_000, currency: "try" } },
+});
+const stripeRefundSignature = createHmac("sha256", stripeSecret).update(`${stripeTimestamp}.${stripeRefundPayload}`).digest("hex");
+const stripeRefund = verifyStripeWebhook(stripeRefundPayload, `t=${stripeTimestamp},v1=${stripeRefundSignature}`, stripeSecret, stripeTimestamp * 1000);
+assert.equal(stripeRefund.status, "REFUNDED");
+assert.equal(stripeRefund.providerPaymentId, "pi_enterprise_1");
+const stripeChargebackPayload = JSON.stringify({
+  id: "evt_enterprise_chargeback",
+  type: "charge.dispute.created",
+  data: { object: { id: "dp_enterprise_1", payment_intent: "pi_enterprise_1", amount: 38_000, currency: "try" } },
+});
+const stripeChargebackSignature = createHmac("sha256", stripeSecret).update(`${stripeTimestamp}.${stripeChargebackPayload}`).digest("hex");
+assert.equal(verifyStripeWebhook(stripeChargebackPayload, `t=${stripeTimestamp},v1=${stripeChargebackSignature}`, stripeSecret, stripeTimestamp * 1000).status, "CHARGEBACK");
 
 const paytrKey = "paytr-key";
 const paytrSalt = "paytr-salt";
@@ -131,13 +145,16 @@ assert(billingUpgradeSource.includes("PURCHASABLE_PLAN_CODES"));
 assert(mobileBillingUpgradeSource.includes("PURCHASABLE_PLAN_CODES"));
 assert(!billingPageSource.includes('plan.slug === "enterprise"'));
 assert(webhookSource.includes("activateCompanySubscription"));
+assert(webhookSource.includes('event.status === "REFUNDED" || event.status === "CHARGEBACK"'));
 assert(activationSource.includes("TransactionIsolationLevel.Serializable"));
 assert(activationSource.includes("DOWNGRADE_SEAT_RECONCILIATION_REQUIRED"));
 assert(activationSource.includes("provider_providerPaymentId"));
 assert(!webhookSource.includes('verification: "placeholder"'));
 
 const invitationSource = read("src/server/team/company-invitations.ts");
-assert(invitationSource.includes("shortCodeHash"));
+assert(invitationSource.includes("shortCodeHash: null"));
+assert(invitationSource.includes("queueInvitationDelivery"));
+assert(invitationSource.includes("resendCompanyInvitation"));
 assert(!/serializeCompanyInvitation[\s\S]{0,700}shortCodeHash/.test(invitationSource), "Serialized invitation lists must never expose credential hashes.");
 
-console.log("Enterprise plan matrix, downgrade safety, secure invitation codes and signed payment webhook contracts passed.");
+console.log("Enterprise plan matrix, downgrade safety, one-time invitation links and signed payment webhook contracts passed.");

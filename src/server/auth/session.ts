@@ -7,10 +7,15 @@ import { hashOpaqueToken } from "@/server/security/authentication";
 export const SESSION_COOKIE = "logivya_session";
 const SESSION_DAYS = 30;
 
-export async function createSession(userId: string, companyId: string, request: Request) {
+export async function createSession(
+  userId: string,
+  companyId: string,
+  request: Request,
+  options: { mfaVerified?: boolean } = {},
+) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
-  await prisma.userSession.create({
+  const session = await prisma.userSession.create({
     data: {
       userId,
       companyId,
@@ -18,6 +23,7 @@ export async function createSession(userId: string, companyId: string, request: 
       ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown",
       userAgent: request.headers.get("user-agent"),
       expiresAt,
+      mfaVerifiedAt: options.mfaVerified ? new Date() : null,
     },
   });
   const cookieStore = await cookies();
@@ -28,6 +34,7 @@ export async function createSession(userId: string, companyId: string, request: 
     path: "/",
     expires: expiresAt,
   });
+  return session;
 }
 
 export async function destroySession() {
@@ -50,6 +57,7 @@ export async function getSessionContext() {
     include: { user: true },
   });
   if (!session || session.revokedAt || session.expiresAt <= new Date() || !session.companyId) return null;
+  if (session.user.mfaRequired && !session.mfaVerifiedAt) return null;
   const membership = await prisma.companyUser.findUnique({
     where: { companyId_userId: { companyId: session.companyId, userId: session.userId } },
     include: { company: true },

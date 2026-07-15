@@ -50,8 +50,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       invitation: serializeCompanyInvitation(result.invitation),
-      acceptUrl: result.acceptUrl,
-      inviteCode: result.inviteCode,
       emailSent: result.emailSent,
     }, { status: 201 });
   } catch (error) {

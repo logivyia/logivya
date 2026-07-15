@@ -46,6 +46,7 @@ export type ProfileStackParamList = {
   Notifications: undefined;
   Feedback: undefined;
   Settings: undefined;
+  Security: undefined;
   AccountDeletion: undefined;
   TeamUsers: undefined;
   PlatformModule: { moduleKey: AdminModuleKey; title?: string; eyebrow?: string; description?: string; ticketId?: string };

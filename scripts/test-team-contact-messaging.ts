@@ -130,8 +130,9 @@ const invitations = read("src/server/team/company-invitations.ts");
 assert(invitations.includes("FOR UPDATE"), "Seat reservation and acceptance must lock the company row.");
 assert(invitations.includes("randomBytes(32)"), "Invitation tokens must use at least 256 bits of randomness.");
 assert(invitations.includes("tokenHash"), "Only the invitation token hash may be stored.");
-assert(invitations.includes("shortCodeHash"), "Manual invitation codes must be stored only as hashes.");
-assert(invitations.includes("INVITATION_CODE_LENGTH = 16"), "Manual invitation codes must retain at least 80 bits from the restricted alphabet.");
+assert(invitations.includes("shortCodeHash: null"), "New invitations must not issue manual invitation codes.");
+assert(invitations.includes("queueInvitationDelivery"), "Invitation email delivery must be committed through an outbox.");
+assert(invitations.includes("INVITATION_LIFETIME_MS = 72"), "Invitation links must expire after 72 hours.");
 assert(invitations.includes('status: "EXPIRED"'), "Expired pending invitations must release their seats.");
 assert(invitations.includes('"INVITATION_ALREADY_USED"'), "Accepted invitations must be rejected on reuse.");
 assert(invitations.includes('"SEAT_LIMIT_REACHED"'), "Seat overflow must use an explicit machine-readable error.");
@@ -141,7 +142,8 @@ assert(!invitations.includes("temporaryPassword"), "Invitation creation must nev
 for (const registration of ["src/app/api/auth/register/route.ts", "src/app/api/mobile/auth/register/route.ts"]) {
   const source = read(registration);
   assert(source.includes("acceptCompanyInvitationInTransaction"), `${registration} must join the invited company transactionally.`);
-  assert(source.includes("invitation ? null"), `${registration} must not require or create a separate trial for an invited member.`);
+  assert(source.includes("createPendingTrialEntitlement"), `${registration} must use the identity-bound trial candidate service for new owners.`);
+  assert(source.indexOf("await createPendingTrialEntitlement") > source.indexOf("if (invitation)"), `${registration} must not create a trial candidate in the invitation branch.`);
 }
 
 const contacts = read("src/server/whatsapp/contacts.ts");

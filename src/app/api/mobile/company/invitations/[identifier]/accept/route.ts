@@ -4,6 +4,7 @@ import { createMobileSession, requireMobileAuth } from "@/server/mobile/auth";
 import { prisma } from "@/server/db";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
+import { writeAuditLog } from "@/server/security/audit";
 import { acceptCompanyInvitation, companyInvitationErrorStatus, declineCompanyInvitation } from "@/server/team/company-invitations";
 
 const schema = z.object({ action: z.enum(["ACCEPT", "DECLINE"]).default("ACCEPT") });
@@ -22,7 +23,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ ide
     const parsed = schema.safeParse(await request.json().catch(() => ({})));
     if (!parsed.success) return mobileValidationError(parsed.error);
     if (parsed.data.action === "DECLINE") {
-      await declineCompanyInvitation({ token: identifier, userId: context.user.id, email: context.user.email });
+      const invitation = await declineCompanyInvitation({ token: identifier, userId: context.user.id, email: context.user.email });
+      await writeAuditLog(request, {
+        companyId: invitation.companyId,
+        userId: context.user.id,
+        action: "mobile.company.invitation.declined",
+        entityType: "CompanyInvitation",
+        entityId: invitation.id,
+      });
       return mobileSuccess({ status: "DECLINED" as const });
     }
 
@@ -36,6 +44,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ ide
       userAgent: request.headers.get("user-agent"),
     });
     await prisma.mobileDeviceSession.updateMany({ where: { id: context.sessionId, revokedAt: null }, data: { revokedAt: new Date() } });
+    await writeAuditLog(request, {
+      companyId: result.companyId,
+      userId: context.user.id,
+      action: "mobile.company.invitation.accepted",
+      entityType: "CompanyInvitation",
+      entityId: result.invitation.id,
+      after: { role: result.membership.role },
+    });
     return mobileSuccess({ status: "ACCEPTED" as const, companyId: result.companyId, role: result.membership.role, tokens });
   } catch (error) {
     if (error instanceof Error) {

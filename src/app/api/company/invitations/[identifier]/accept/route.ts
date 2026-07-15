@@ -40,6 +40,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ ide
 
     if (parsed.data.action === "DECLINE") {
       const invitation = await declineCompanyInvitation({ token: identifier, userId: user.id, email: user.email });
+      await writeAuditLog(request, {
+        companyId: invitation.companyId,
+        userId: user.id,
+        action: "company.invitation.declined",
+        entityType: "CompanyInvitation",
+        entityId: invitation.id,
+      });
       return NextResponse.json({ ok: true, status: "DECLINED", invitationId: invitation.id });
     }
 

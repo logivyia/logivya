@@ -16,6 +16,9 @@ type ApiOptions = RequestInit & {
 };
 
 function messageForApiError(code: string, status: number, fallback?: string) {
+  if (code === "MFA_INVALID" || code === "MFA_CODE_REUSED") return translateCurrent("mfaSubtitle");
+  if (code === "MFA_CHALLENGE_INVALID") return translateCurrent("loginFailed");
+  if (code === "MFA_CHALLENGE_LOCKED" || code === "RATE_LIMITED") return translateCurrent("operationFailedError");
   if (code === "PASSWORD_REQUIRED") return translateCurrent("passwordRequired");
   if (code === "PASSWORD_TOO_SHORT") return translateCurrent("passwordTooShort");
   if (code === "PASSWORD_CONFIRMATION_MISMATCH") return translateCurrent("passwordConfirmationMismatch");
@@ -57,7 +60,7 @@ function methodFor(options: ApiOptions) {
 function canUseHostFallback(path: string, options: ApiOptions) {
   if (options.hostFallback === false) return false;
   const method = methodFor(options);
-  if (path === "/api/mobile/auth/login") return true;
+  if (path === "/api/mobile/auth/login" || path === "/api/mobile/auth/mfa/verify") return true;
   return method === "GET";
 }
 

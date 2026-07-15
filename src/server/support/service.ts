@@ -8,6 +8,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { NOTIFICATION_TYPES } from "@/server/notifications/service";
+import { logger } from "@/server/observability/logger";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 import {
   canAdminTransitionSupportStatus,
@@ -46,6 +47,8 @@ export type AdminTicketListFilters = TicketListFilters & {
   userId?: string | null;
   userEmail?: string | null;
   assignedAdminId?: string | null;
+  unassignedOnly?: boolean;
+  sort?: string | null;
   unreadOnly?: boolean;
   unansweredOnly?: boolean;
   createdFrom?: string | null;
@@ -59,6 +62,13 @@ type ReplyInput = {
   clientMessageId?: string | null;
   attachmentUrl?: string | null;
 };
+
+function supportPriorityRank(priority: SupportTicketPriority) {
+  if (priority === "URGENT") return 4;
+  if (priority === "HIGH") return 3;
+  if (priority === "LOW") return 1;
+  return 2;
+}
 
 const messageSelect = {
   id: true,
@@ -174,7 +184,8 @@ function normalizeAttachmentUrl(value?: string | null) {
 
 function normalizeStatusFilter(value?: string | null): SupportTicketStatus | null {
   if (!value || value === "ALL") return null;
-  const status = canonicalSupportStatus(value.trim().toUpperCase());
+  const requested = value.trim().toUpperCase();
+  const status = canonicalSupportStatus(requested === "NEW" ? "WAITING_FOR_ADMIN" : requested);
   return canonicalSupportStatuses.includes(status as (typeof canonicalSupportStatuses)[number]) ? status : null;
 }
 
@@ -206,6 +217,7 @@ function ticketIdentifierWhere(identifier: string): Prisma.SupportTicketWhereInp
 function ownedTicketWhere(actor: SupportActor, identifier?: string): Prisma.SupportTicketWhereInput {
   return {
     AND: [
+      { companyId: actor.company.id },
       { OR: [{ createdById: actor.user.id }, { userId: actor.user.id }] },
       ...(identifier ? [ticketIdentifierWhere(identifier)] : []),
     ],
@@ -314,20 +326,26 @@ async function createAudit(
   return tx.supportTicketAudit.create({ data: input });
 }
 
-function adminNotificationPayload(publicId: string) {
+function adminNotificationPayload(input: { ticketId: string; publicId: string; messageId?: string; eventKind: "ticket_created" | "user_reply" }) {
   return {
-    publicId,
-    deepLink: `logivya://profile/admin/support/${encodeURIComponent(publicId)}`,
+    ticketId: input.ticketId,
+    publicId: input.publicId,
+    messageId: input.messageId,
+    eventKind: input.eventKind,
+    deepLink: `logivya://profile/admin/support/${encodeURIComponent(input.publicId)}`,
     route: "AdminSupportTicketDetail",
   };
 }
 
-function userNotificationPayload(publicId: string, status?: SupportTicketStatus) {
+function userNotificationPayload(input: { ticketId: string; publicId: string; messageId?: string; status?: SupportTicketStatus; eventKind: "admin_reply" | "status_changed" }) {
   return {
-    publicId,
-    deepLink: `logivya://support/${encodeURIComponent(publicId)}`,
+    ticketId: input.ticketId,
+    publicId: input.publicId,
+    messageId: input.messageId,
+    eventKind: input.eventKind,
+    deepLink: `logivya://support/${encodeURIComponent(input.publicId)}`,
     route: "SupportTicketDetail",
-    ...(status ? { status } : {}),
+    ...(input.status ? { status: input.status } : {}),
   };
 }
 
@@ -426,10 +444,22 @@ export async function createSupportTicket(input: {
             title: "New support request",
             message: `Support request ${ticket.publicId} was created.`,
             emailTemplate: "support_created",
-            payload: adminNotificationPayload(ticket.publicId),
+            payload: adminNotificationPayload({
+              ticketId: ticket.id,
+              publicId: ticket.publicId,
+              messageId: message.id,
+              eventKind: "ticket_created",
+            }),
           });
         }
         return { ticket, message };
+      });
+      logger.info("support_ticket_created", {
+        ticketId: result.ticket.id,
+        companyId: result.ticket.companyId,
+        userId: result.ticket.createdById,
+        correlationId,
+        source,
       });
       return {
         ticket: { ...serializeTicketBase(result.ticket), messages: [serializeMessage(result.message)] },
@@ -615,9 +645,21 @@ export async function addUserSupportMessage(input: {
         title: "New user reply",
         message: `A user replied to support request ${ticket.publicId}.`,
         emailTemplate: "support_replied",
-        payload: adminNotificationPayload(ticket.publicId),
+        payload: adminNotificationPayload({
+          ticketId: ticket.id,
+          publicId: ticket.publicId,
+          messageId: message.id,
+          eventKind: "user_reply",
+        }),
       });
     }
+    logger.info("support_message_created", {
+      ticketId: ticket.id,
+      companyId: ticket.companyId,
+      userId: input.actor.user.id,
+      correlationId,
+      senderType: "USER",
+    });
     return { message: serializeMessage(message), ticket: serializeTicketBase(updated), duplicate: false };
   });
 }
@@ -643,6 +685,7 @@ function adminListWhere(filters: AdminTicketListFilters): Prisma.SupportTicketWh
       { createdBy: { email: { contains: search, mode: "insensitive" } } },
       { createdBy: { name: { contains: search, mode: "insensitive" } } },
       { company: { name: { contains: search, mode: "insensitive" } } },
+      { messages: { some: { message: { contains: search, mode: "insensitive" }, isInternal: false, deletedAt: null } } },
     ] });
   }
   return {
@@ -651,6 +694,7 @@ function adminListWhere(filters: AdminTicketListFilters): Prisma.SupportTicketWh
     ...(category ? { category } : {}),
     ...(filters.companyId ? { companyId: filters.companyId } : {}),
     ...(filters.assignedAdminId ? { assignedToAdminId: filters.assignedAdminId } : {}),
+    ...(filters.unassignedOnly ? { assignedToAdminId: null } : {}),
     ...(filters.unreadOnly ? { adminUnreadCount: { gt: 0 } } : {}),
     ...(filters.unansweredOnly ? { lastAdminMessageAt: null } : {}),
     ...(createdFrom || createdTo ? { createdAt: { ...(createdFrom ? { gte: createdFrom } : {}), ...(createdTo ? { lte: createdTo } : {}) } } : {}),
@@ -661,15 +705,28 @@ function adminListWhere(filters: AdminTicketListFilters): Prisma.SupportTicketWh
 
 export async function listAdminSupportTickets(filters: AdminTicketListFilters = {}) {
   const limit = normalizeLimit(filters.limit, 30);
+  const sort = filters.sort?.trim().toUpperCase();
+  const orderBy: Prisma.SupportTicketOrderByWithRelationInput[] = sort === "NEWEST"
+    ? [{ createdAt: "desc" }, { id: "desc" }]
+    : sort === "OLDEST"
+      ? [{ createdAt: "asc" }, { id: "asc" }]
+      : sort === "PRIORITY"
+        ? [{ priorityRank: "desc" }, { lastMessageAt: "desc" }, { id: "desc" }]
+        : [{ lastMessageAt: "desc" }, { id: "desc" }];
   const rows = await prisma.supportTicket.findMany({
     where: adminListWhere(filters),
     select: ticketSummarySelect,
-    orderBy: [{ lastMessageAt: "desc" }, { id: "desc" }],
+    orderBy,
     ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
     take: limit + 1,
   });
   const hasMore = rows.length > limit;
   const page = rows.slice(0, limit);
+  logger.info("admin_support_list_loaded", {
+    resultCount: page.length,
+    hasMore,
+    sort: sort || "LAST_ACTIVITY",
+  });
   return {
     tickets: page.map((row) => serializeTicketSummary(row, true)),
     pageInfo: { hasMore, nextCursor: hasMore ? page.at(-1)?.id ?? null : null },
@@ -812,9 +869,21 @@ export async function addAdminSupportMessage(input: {
         title: "New support reply",
         message: `The support team replied to request ${ticket.publicId}.`,
         emailTemplate: "support_replied",
-        payload: userNotificationPayload(ticket.publicId),
+        payload: userNotificationPayload({
+          ticketId: ticket.id,
+          publicId: ticket.publicId,
+          messageId: message.id,
+          eventKind: "admin_reply",
+        }),
       });
     }
+    logger.info("support_message_created", {
+      ticketId: ticket.id,
+      companyId: ticket.companyId,
+      userId: input.actor.user.id,
+      correlationId,
+      senderType: isInternal ? "ADMIN_INTERNAL" : "ADMIN",
+    });
     return { message: serializeMessage(message), ticket: serializeTicketBase(updated), duplicate: false };
   });
 }
@@ -883,7 +952,12 @@ export async function changeAdminSupportStatus(input: {
         title: "Support request updated",
         message: `Support request ${ticket.publicId} was updated.`,
         emailTemplate: "support_replied",
-        payload: userNotificationPayload(ticket.publicId, nextStatus),
+        payload: userNotificationPayload({
+          ticketId: ticket.id,
+          publicId: ticket.publicId,
+          status: nextStatus,
+          eventKind: "status_changed",
+        }),
       });
     }
     return { ticket: serializeTicketBase(updated), unchanged: false };
@@ -910,7 +984,7 @@ export async function changeAdminSupportPriority(input: {
     if (previousPriority === priority) return { ticket: serializeTicketBase(ticket), unchanged: true };
     const updated = await tx.supportTicket.update({
       where: { id: ticket.id },
-      data: { priority, assignedToAdminId: input.actor.user.id },
+      data: { priority, priorityRank: supportPriorityRank(priority), assignedToAdminId: input.actor.user.id },
       select: ticketBaseSelect,
     });
     await createAudit(tx, {
@@ -934,7 +1008,8 @@ export async function assignAdminSupportTicket(input: {
 }) {
   const identifier = normalizeIdentifier(input.identifier);
   const owner = await resolvePlatformSupportRecipient();
-  const assignedAdminUserId = input.assignedAdminUserId?.trim() || null;
+  const requestedAdminUserId = input.assignedAdminUserId?.trim() || null;
+  const assignedAdminUserId = requestedAdminUserId === "SELF" ? input.actor.user.id : requestedAdminUserId;
   if (assignedAdminUserId && assignedAdminUserId !== owner?.userId) {
     throw new SupportDomainError("SUPPORT_INVALID_ASSIGNEE", 400);
   }
@@ -993,12 +1068,13 @@ export async function closeOwnedSupportTicket(input: {
 export async function getAdminSupportMetrics() {
   const startOfToday = new Date();
   startOfToday.setUTCHours(0, 0, 0, 0);
-  const [byStatus, urgent, unread, resolvedToday, failedNotifications, responseTimes] = await Promise.all([
+  const [byStatus, urgent, unread, resolvedToday, failedNotifications, failedEmails, responseTimes] = await Promise.all([
     prisma.supportTicket.groupBy({ by: ["status"], _count: { _all: true } }),
     prisma.supportTicket.count({ where: { priority: "URGENT", status: { notIn: ["RESOLVED", "CLOSED"] } } }),
     prisma.supportTicket.count({ where: { adminUnreadCount: { gt: 0 } } }),
     prisma.supportTicket.count({ where: { resolvedAt: { gte: startOfToday } } }),
     prisma.supportNotificationOutbox.count({ where: { status: "FAILED" } }),
+    prisma.supportNotificationOutbox.count({ where: { status: "FAILED", template: { endsWith: ".email" } } }),
     prisma.$queryRaw<Array<{ average_first_response_seconds: number | null }>>`
       SELECT AVG(EXTRACT(EPOCH FROM ("firstAdminReplyAt" - "createdAt")))::float8 AS "average_first_response_seconds"
       FROM "SupportTicket"
@@ -1016,6 +1092,7 @@ export async function getAdminSupportMetrics() {
     urgent,
     unread,
     failedNotifications,
+    failedEmails,
     averageFirstResponseSeconds: responseTimes[0]?.average_first_response_seconds ?? null,
   };
 }

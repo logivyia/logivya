@@ -1,2 +1,25 @@
-import { NextResponse } from "next/server";import { requireApiSession } from "@/server/auth/session";import { prisma } from "@/server/db";import { createMfaEnrollment } from "@/server/security/mfa";
-export async function POST(){try{const{user}=await requireApiSession(),value=createMfaEnrollment(user.email);await prisma.mfaCredential.updateMany({where:{userId:user.id,revokedAt:null},data:{revokedAt:new Date()}});const credential=await prisma.mfaCredential.create({data:{userId:user.id,type:"TOTP",secretEncrypted:value.secretEncrypted,recoveryCodesHashed:value.recoveryCodesHashed}});return NextResponse.json({credentialId:credential.id,secret:value.secret,otpauthUrl:value.otpauthUrl,recoveryCodes:value.recoveryCodes})}catch(error){return NextResponse.json({error:error instanceof Error?error.message:"MFA_ERROR"},{status:400})}}
+import { NextResponse } from "next/server";
+
+import { recordMfaSecurityEvent } from "@/server/auth/mfa-challenge";
+import { requireApiSession } from "@/server/auth/session";
+import { createAndStoreMfaEnrollment } from "@/server/security/mfa";
+import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
+
+export async function POST(request: Request) {
+  try {
+    const context = await requireApiSession();
+    await enforceOperationRateLimit({ scope: "mfa-enroll", subject: context.user.id, maxAttempts: 3, windowMs: 15 * 60_000, request });
+    const enrollment = await createAndStoreMfaEnrollment(context.user.id, context.user.email);
+    await recordMfaSecurityEvent({
+      request,
+      userId: context.user.id,
+      companyId: context.company.id,
+      type: "MFA_ENROLLMENT_STARTED",
+      message: "Iki adimli dogrulama kurulumu baslatildi.",
+    });
+    return NextResponse.json(enrollment);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "MFA_ERROR";
+    return NextResponse.json({ error: code }, { status: code === "RATE_LIMITED" ? 429 : 400 });
+  }
+}

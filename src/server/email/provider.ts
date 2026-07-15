@@ -1,5 +1,6 @@
 import { sendEmail } from "@/lib/email/send-email";
 import { passwordResetCodeTemplate } from "@/lib/email/templates/password-reset-code";
+import { supportCreatedEmail, supportReplyEmail } from "@/lib/email/templates/support-ticket";
 
 export type EmailTemplate =
   | "welcome"
@@ -14,7 +15,8 @@ export type EmailTemplate =
   | "support_created"
   | "support_replied"
   | "team_invitation"
-  | "whatsapp_disconnected";
+  | "whatsapp_disconnected"
+  | "security_alert";
 
 export type EmailInput = { to: string; subject: string; html: string; text?: string };
 export type TemplateEmailInput = { to: string; template: EmailTemplate; variables: Record<string, string> };
@@ -41,6 +43,14 @@ class TransactionalEmailProvider implements EmailProvider {
   async sendTemplateEmail(input: TemplateEmailInput) {
     if (input.template === "password_reset") {
       return this.sendEmail({ to: input.to, ...await passwordResetCodeTemplate(input.variables.code, input.variables.locale) });
+    }
+
+    if (input.template === "support_created") {
+      return this.sendEmail({ to: input.to, ...supportCreatedEmail(input.variables) });
+    }
+
+    if (input.template === "support_replied") {
+      return this.sendEmail({ to: input.to, ...supportReplyEmail(input.variables) });
     }
 
     const title = input.variables.title || "Logivya notification";

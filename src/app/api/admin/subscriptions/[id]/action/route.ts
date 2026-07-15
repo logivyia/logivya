@@ -46,7 +46,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (data.action === "SUSPEND") update = { status: "SUSPENDED" };
     if (data.action === "CANCEL") update = { status: "CANCELED", cancelledAt: new Date(), cancelAtPeriodEnd: false };
     if (data.action === "EXTEND") update = { status: "ACTIVE", endsAt: data.endsAt, currentPeriodEndsAt: data.endsAt, expiredAt: null };
-    const subscription = await prisma.subscription.update({ where: { id: subscriptionId }, data: update });
+    const subscription = await prisma.$transaction(async (tx) => {
+      const changed = await tx.subscription.update({ where: { id: subscriptionId }, data: update });
+      await tx.subscriptionAuditLog.create({
+        data: {
+          companyId: before.companyId,
+          subscriptionId,
+          actorUserId: user.id,
+          eventType: `ADMIN_${data.action}`,
+          previousState: { status: before.status, plan: before.plan.slug, endsAt: before.endsAt?.toISOString() ?? null },
+          newState: { status: changed.status, endsAt: changed.endsAt?.toISOString() ?? null, reason: data.reason },
+          correlationId: id,
+        },
+      });
+      return changed;
+    });
     await writeAuditLog(request, { companyId: before.companyId, userId: user.id, action: `admin.subscription.${data.action.toLowerCase()}`, entityType: "Subscription", entityId: subscriptionId, before: { status: before.status, plan: before.plan.slug, endsAt: before.endsAt }, after: { ...data, status: subscription.status } });
     return NextResponse.json({ ok: true, subscription, requestId: id });
   } catch (error) {

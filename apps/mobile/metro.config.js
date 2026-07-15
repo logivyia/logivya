@@ -9,6 +9,10 @@ const workspaceRoot = path.resolve(__dirname, "../..");
 config.watchFolders = [...new Set([...(config.watchFolders || []), workspaceRoot])];
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (platform === "web" && moduleName === "zustand/middleware") {
+    return context.resolveRequest(context, require.resolve("zustand/middleware"), platform);
+  }
+
   if (moduleName.startsWith("@logivya/validation/")) {
     return context.resolveRequest(
       context,

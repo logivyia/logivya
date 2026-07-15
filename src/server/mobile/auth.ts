@@ -94,6 +94,7 @@ export async function createMobileSession(input: {
   platform: MobilePlatform;
   appVersion?: string | null;
   userAgent?: string | null;
+  mfaVerified?: boolean;
 }) {
   const refresh = createRefreshToken();
   await prisma.mobileDeviceSession.updateMany({
@@ -110,6 +111,7 @@ export async function createMobileSession(input: {
       userAgent: input.userAgent,
       refreshTokenHash: refresh.tokenHash,
       expiresAt: refresh.expiresAt,
+      mfaVerifiedAt: input.mfaVerified ? new Date() : null,
     },
   });
   const access = createAccessToken({ userId: input.userId, companyId: input.companyId, sessionId: session.id, role: input.role });
@@ -147,6 +149,7 @@ export async function rotateRefreshToken(refreshToken: string, request: Request)
     where: { companyId_userId: { companyId: existing.companyId, userId: existing.userId } },
   });
   if (!membership || membership.status !== "ACTIVE" || existing.user.status !== "ACTIVE") throw new Error("UNAUTHORIZED");
+  if (existing.user.mfaRequired && !existing.mfaVerifiedAt) throw new Error("UNAUTHORIZED");
   const session = await prisma.mobileDeviceSession.update({
     where: { id: existing.id },
     data: { refreshTokenHash: refresh.tokenHash, expiresAt: refresh.expiresAt, lastUsedAt: new Date() },
@@ -179,6 +182,7 @@ export async function requireMobileAuth(request: Request): Promise<MobileAuthCon
   });
   if (!session || session.revokedAt || session.expiresAt <= new Date()) throw new Error("UNAUTHORIZED");
   if (session.userId !== payload.sub || session.companyId !== payload.companyId || session.user.status !== "ACTIVE") throw new Error("UNAUTHORIZED");
+  if (session.user.mfaRequired && !session.mfaVerifiedAt) throw new Error("UNAUTHORIZED");
   const membership = await prisma.companyUser.findUnique({
     where: { companyId_userId: { companyId: session.companyId, userId: session.userId } },
   });

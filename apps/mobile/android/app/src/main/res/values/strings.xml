@@ -2,6 +2,6 @@
   <string name="app_name">Logivya</string>
   <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
   <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
-  <string name="expo_runtime_version">1.0.88</string>
-  <string name="build_marker" translatable="false">PROFESSIONAL_CONTACT_SYNC_TENANT_ISOLATION_V118</string>
+  <string name="expo_runtime_version">1.0.93</string>
+  <string name="build_marker" translatable="false">SUBSCRIPTION_SEAT_INVITATION_TRIAL_GOVERNANCE_V123</string>
 </resources>

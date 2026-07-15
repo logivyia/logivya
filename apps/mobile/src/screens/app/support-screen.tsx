@@ -26,7 +26,9 @@ export function SupportScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load])
+      const timer = setInterval(() => void refresh(), 20_000);
+      return () => clearInterval(timer);
+    }, [load, refresh])
   );
 
   if (loading && tickets.length === 0) {

@@ -23,6 +23,23 @@ enum MembershipStatus {
   ACTIVE
   INVITED
   SUSPENDED
+  REMOVED
+}
+
+enum TrialEntitlementStatus {
+  PENDING_IDENTITY
+  ACTIVE
+  CONSUMED
+  INELIGIBLE
+  BLOCKED
+  PAID_USAGE
+}
+
+enum InvitationDeliveryStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
 }
 
 enum CompanyInvitationStatus {
@@ -448,6 +465,7 @@ model User {
   name                           String
   username                       String                      @unique
   email                          String                      @unique
+  emailVerifiedAt                DateTime?
   phone                          String?
   passwordHash                   String
   avatarUrl                      String?
@@ -456,6 +474,8 @@ model User {
   country                        String                      @default("TR")
   theme                          String                      @default("system")
   status                         UserStatus                  @default(ACTIVE)
+  mfaRequired                    Boolean                     @default(false)
+  mfaRequiredAt                  DateTime?
   ownedCompanies                 Company[]                   @relation("CompanyOwner")
   memberships                    CompanyUser[]
   campaigns                      MessageCampaign[]
@@ -481,6 +501,7 @@ model User {
   passwordResetTokens            PasswordResetToken[]
   emailVerificationTokens        EmailVerificationToken[]
   mfaCredentials                 MfaCredential[]
+  mfaLoginChallenges             MfaLoginChallenge[]
   createdSupportTickets          SupportTicket[]             @relation("SupportTicketCreator")
   assignedSupportTickets         SupportTicket[]             @relation("SupportTicketAssignee")
   supportMessages                SupportTicketMessage[]
@@ -497,6 +518,8 @@ model User {
   categoryContactAssignments     CategoryContact[]
   sentCompanyInvitations         CompanyInvitation[]         @relation("CompanyInvitationInviter")
   acceptedCompanyInvitations     CompanyInvitation[]         @relation("CompanyInvitationAcceptedUser")
+  trialEntitlements              TrialEntitlement[]
+  subscriptionAuditLogs          SubscriptionAuditLog[]      @relation("SubscriptionAuditActor")
   platformAdmin                  PlatformAdmin?
   adminAccessLogs                AdminAccessLog[]
   adminSessionEvents             AdminSessionEvent[]
@@ -522,6 +545,8 @@ model Company {
   owner                      User                        @relation("CompanyOwner", fields: [ownerId], references: [id])
   members                    CompanyUser[]
   invitations                CompanyInvitation[]
+  trialEntitlements          TrialEntitlement[]
+  subscriptionAuditLogs      SubscriptionAuditLog[]
   subscriptions              Subscription[]
   accounts                   WhatsAppAccount[]
   groups                     WhatsAppGroup[]
@@ -597,7 +622,12 @@ model CompanyUser {
   status              MembershipStatus        @default(ACTIVE)
   company             Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt            DateTime                @default(now())
+  seatActivatedAt     DateTime?               @default(now())
+  suspendedAt         DateTime?
+  removedAt           DateTime?
   createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
   permissionOverrides CompanyUserPermission[]
 
   @@unique([companyId, userId])
@@ -605,30 +635,56 @@ model CompanyUser {
 }
 
 model CompanyInvitation {
-  id               String                  @id @default(cuid())
+  id               String                     @id @default(cuid())
   companyId        String
   invitedByUserId  String
   acceptedByUserId String?
   email            String
   name             String
-  role             CompanyRole             @default(OPERATOR)
-  status           CompanyInvitationStatus @default(PENDING)
-  tokenHash        String                  @unique
-  shortCodeHash    String?                 @unique
+  role             CompanyRole                @default(OPERATOR)
+  status           CompanyInvitationStatus    @default(PENDING)
+  tokenHash        String                     @unique
+  shortCodeHash    String?                    @unique
   expiresAt        DateTime
   acceptedAt       DateTime?
   declinedAt       DateTime?
   revokedAt        DateTime?
-  company          Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  invitedBy        User                    @relation("CompanyInvitationInviter", fields: [invitedByUserId], references: [id], onDelete: Cascade)
-  acceptedBy       User?                   @relation("CompanyInvitationAcceptedUser", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
+  reservedSeat     Boolean                    @default(true)
+  sentAt           DateTime?
+  resendCount      Int                        @default(0)
+  lastResentAt     DateTime?
+  company          Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invitedBy        User                       @relation("CompanyInvitationInviter", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+  acceptedBy       User?                      @relation("CompanyInvitationAcceptedUser", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+  deliveries       InvitationDeliveryOutbox[]
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
 
   @@index([companyId, status, expiresAt])
   @@index([email, status])
   @@index([invitedByUserId])
   @@index([acceptedByUserId])
+}
+
+model InvitationDeliveryOutbox {
+  id             String                   @id @default(cuid())
+  eventKey       String                   @unique
+  invitationId   String
+  recipient      String
+  appBaseUrl     String
+  tokenEncrypted String?
+  locale         String                   @default("tr")
+  status         InvitationDeliveryStatus @default(PENDING)
+  attempts       Int                      @default(0)
+  availableAt    DateTime                 @default(now())
+  deliveredAt    DateTime?
+  lastError      String?
+  invitation     CompanyInvitation        @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  @@index([status, availableAt])
+  @@index([invitationId, createdAt])
 }
 
 model Plan {
@@ -666,37 +722,109 @@ model Plan {
 }
 
 model Subscription {
-  id                        String               @id @default(cuid())
+  id                        String                 @id @default(cuid())
   companyId                 String
   planId                    String
-  status                    SubscriptionStatus   @default(TRIALING)
-  billingPeriod             BillingPeriod        @default(TRIAL)
+  status                    SubscriptionStatus     @default(TRIALING)
+  billingPeriod             BillingPeriod          @default(TRIAL)
   startsAt                  DateTime?
   endsAt                    DateTime?
   trialStartsAt             DateTime?
   trialEndsAt               DateTime?
   currentPeriodStartsAt     DateTime?
   currentPeriodEndsAt       DateTime?
-  cancelAtPeriodEnd         Boolean              @default(false)
+  cancelAtPeriodEnd         Boolean                @default(false)
   cancelledAt               DateTime?
   expiredAt                 DateTime?
   pastDueAt                 DateTime?
   manuallyActivatedByUserId String?
-  source                    SubscriptionSource   @default(TRIAL)
-  provider                  BillingProvider      @default(MANUAL)
+  source                    SubscriptionSource     @default(TRIAL)
+  provider                  BillingProvider        @default(MANUAL)
   providerSubscriptionId    String?
-  company                   Company              @relation(fields: [companyId], references: [id])
-  plan                      Plan                 @relation(fields: [planId], references: [id])
-  manuallyActivatedBy       User?                @relation("ManualSubscriptionActivator", fields: [manuallyActivatedByUserId], references: [id])
-  createdAt                 DateTime             @default(now())
-  updatedAt                 DateTime             @default(now()) @updatedAt
+  company                   Company                @relation(fields: [companyId], references: [id])
+  plan                      Plan                   @relation(fields: [planId], references: [id])
+  manuallyActivatedBy       User?                  @relation("ManualSubscriptionActivator", fields: [manuallyActivatedByUserId], references: [id])
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @default(now()) @updatedAt
   invoices                  Invoice[]
   payments                  Payment[]
   events                    SubscriptionEvent[]
+  auditLogs                 SubscriptionAuditLog[]
   appliedCoupons            SubscriptionCoupon[]
 
   @@index([companyId, status])
   @@index([status, currentPeriodEndsAt])
+}
+
+model SubscriptionAuditLog {
+  id             String        @id @default(cuid())
+  companyId      String
+  subscriptionId String?
+  actorUserId    String?
+  eventType      String
+  previousState  Json?
+  newState       Json?
+  correlationId  String?
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  actorUser      User?         @relation("SubscriptionAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([subscriptionId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model BillingWebhookReceipt {
+  id                String          @id @default(cuid())
+  provider          BillingProvider
+  eventId           String
+  eventType         String
+  providerPaymentId String?
+  payloadHash       String
+  status            String          @default("RECEIVED")
+  attempts          Int             @default(1)
+  lastError         String?
+  processedAt       DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([provider, eventId])
+  @@index([status, createdAt])
+  @@index([providerPaymentId, createdAt])
+}
+
+model TrialEntitlement {
+  id                    String                 @id @default(cuid())
+  companyId             String
+  userId                String
+  whatsappAccountId     String?                @unique
+  status                TrialEntitlementStatus @default(PENDING_IDENTITY)
+  phoneEncrypted        String?
+  phoneHash             String?
+  whatsappIdentityHash  String?
+  registrationPhoneHash String?
+  registrationIpHash    String?
+  deviceFingerprintHash String?
+  riskScore             Int                    @default(0)
+  riskSignals           Json?
+  decisionCode          String?
+  startedAt             DateTime?
+  endsAt                DateTime?
+  consumedAt            DateTime?
+  company               Company                @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  whatsappAccount       WhatsAppAccount?       @relation(fields: [whatsappAccountId], references: [id], onDelete: SetNull)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@unique([companyId, userId])
+  @@index([phoneHash, status])
+  @@index([whatsappIdentityHash, status])
+  @@index([registrationPhoneHash, status])
+  @@index([registrationIpHash, status])
+  @@index([deviceFingerprintHash, status])
+  @@index([status, createdAt])
 }
 
 model WhatsAppAccount {
@@ -741,6 +869,7 @@ model WhatsAppAccount {
   contactSyncRuns            ContactSyncRun[]
   categoryContactAssignments CategoryContact[]
   recipients                 MessageRecipient[]
+  trialEntitlement           TrialEntitlement?
   createdAt                  DateTime           @default(now())
   updatedAt                  DateTime           @updatedAt
 
@@ -1747,6 +1876,7 @@ model UserSession {
   lastActiveAt      DateTime  @default(now())
   expiresAt         DateTime
   revokedAt         DateTime?
+  mfaVerifiedAt     DateTime?
   createdAt         DateTime  @default(now())
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1766,6 +1896,7 @@ model MobileDeviceSession {
   lastUsedAt       DateTime       @default(now())
   expiresAt        DateTime
   revokedAt        DateTime?
+  mfaVerifiedAt    DateTime?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1827,6 +1958,9 @@ model TrustedDevice {
   deviceName        String?
   ipAddress         String
   userAgent         String?
+  tokenHash         String?   @unique
+  expiresAt         DateTime?
+  lastUsedAt        DateTime?
   trustedAt         DateTime  @default(now())
   revokedAt         DateTime?
   createdAt         DateTime  @default(now())
@@ -1870,12 +2004,35 @@ model MfaCredential {
   secretEncrypted     String
   recoveryCodesHashed String[]
   verifiedAt          DateTime?
+  lastUsedCounter     Int?
   revokedAt           DateTime?
   createdAt           DateTime                @default(now())
   user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   recoveryCodes       TwoFactorRecoveryCode[]
 
   @@index([userId, revokedAt])
+}
+
+model MfaLoginChallenge {
+  id         String    @id @default(cuid())
+  userId     String
+  companyId  String
+  tokenHash  String    @unique
+  channel    String
+  purpose    String    @default("LOGIN")
+  deviceId   String?
+  platform   String?
+  appVersion String?
+  ipAddress  String?
+  userAgent  String?
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt, expiresAt])
+  @@index([companyId, createdAt])
 }
 
 model IdempotencyKey {
@@ -1997,6 +2154,7 @@ model SupportTicket {
   source             String                      @default("WEB")
   status             SupportTicketStatus         @default(OPEN)
   priority           SupportTicketPriority       @default(NORMAL)
+  priorityRank       Int                         @default(2)
   lastMessageAt      DateTime                    @default(now())
   lastUserMessageAt  DateTime?
   lastAdminMessageAt DateTime?
@@ -2038,6 +2196,7 @@ model SupportTicket {
   @@index([createdById, lastMessageAt, id])
   @@index([assignedToAdminId, status, lastMessageAt])
   @@index([priority, status, lastMessageAt])
+  @@index([priorityRank, lastMessageAt, id])
 }
 
 model SupportTicketMessage {

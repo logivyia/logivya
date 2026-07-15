@@ -8,7 +8,7 @@ export type VerifiedPaymentWebhook = {
   eventType: string;
   providerPaymentId: string;
   externalPaymentId?: string;
-  status: "SUCCEEDED" | "FAILED" | "IGNORED";
+  status: "SUCCEEDED" | "FAILED" | "REFUNDED" | "CHARGEBACK" | "IGNORED";
   observedAmount?: number;
   observedCurrency?: string;
   failureReason?: string;
@@ -63,13 +63,18 @@ export function verifyStripeWebhook(payload: string, signatureHeader: string | n
   const object = data?.object && typeof data.object === "object" && !Array.isArray(data.object) ? data.object as Record<string, unknown> : null;
   if (!object) throw new PaymentWebhookVerificationError("INVALID_WEBHOOK_PAYLOAD");
 
-  if (!["payment_intent.succeeded", "payment_intent.payment_failed", "checkout.session.completed"].includes(eventType)) {
+  if (!["payment_intent.succeeded", "payment_intent.payment_failed", "checkout.session.completed", "charge.refunded", "charge.dispute.created"].includes(eventType)) {
     return { provider: "STRIPE", eventId, eventType, providerPaymentId: eventId, status: "IGNORED" };
   }
-  const providerPaymentId = eventType === "checkout.session.completed"
+  const isReversal = eventType === "charge.refunded" || eventType === "charge.dispute.created";
+  const providerPaymentId = eventType === "checkout.session.completed" || isReversal
     ? requiredString(object.payment_intent)
     : requiredString(object.id);
-  const amountMinor = Number(eventType === "checkout.session.completed" ? object.amount_total : object.amount_received ?? object.amount);
+  const amountMinor = Number(eventType === "checkout.session.completed"
+    ? object.amount_total
+    : eventType === "charge.refunded"
+      ? object.amount_refunded
+      : object.amount_received ?? object.amount);
   const observedAmount = Number.isFinite(amountMinor) ? amountMinor / 100 : undefined;
   const observedCurrency = typeof object.currency === "string" ? object.currency.toUpperCase() : undefined;
   if (eventType !== "payment_intent.payment_failed" && (observedAmount === undefined || !observedCurrency)) {
@@ -81,7 +86,13 @@ export function verifyStripeWebhook(payload: string, signatureHeader: string | n
     eventType,
     providerPaymentId,
     externalPaymentId: requiredString(object.id),
-    status: eventType === "payment_intent.payment_failed" ? "FAILED" : "SUCCEEDED",
+    status: eventType === "payment_intent.payment_failed"
+      ? "FAILED"
+      : eventType === "charge.refunded"
+        ? "REFUNDED"
+        : eventType === "charge.dispute.created"
+          ? "CHARGEBACK"
+          : "SUCCEEDED",
     observedAmount,
     observedCurrency,
     failureReason: eventType === "payment_intent.payment_failed" ? "STRIPE_PAYMENT_FAILED" : undefined,
@@ -120,6 +131,7 @@ export function verifyIyzicoWebhook(payload: string, signatureHeader: string | n
   const event = parseJsonObject(payload);
   const eventType = requiredString(event.iyziEventType);
   const status = requiredString(event.status);
+  const normalizedEventType = eventType.toUpperCase();
   const conversationId = requiredString(event.paymentConversationId);
   const directPaymentId = event.paymentId ? requiredString(event.paymentId) : null;
   const hppPaymentId = event.iyziPaymentId ? requiredString(event.iyziPaymentId) : null;
@@ -146,7 +158,15 @@ export function verifyIyzicoWebhook(payload: string, signatureHeader: string | n
     eventType,
     providerPaymentId: conversationId,
     externalPaymentId,
-    status: status === "SUCCESS" ? "SUCCEEDED" : status === "FAILURE" ? "FAILED" : "IGNORED",
+    status: normalizedEventType.includes("CHARGEBACK")
+      ? "CHARGEBACK"
+      : normalizedEventType.includes("REFUND") && status === "SUCCESS"
+        ? "REFUNDED"
+        : status === "SUCCESS"
+          ? "SUCCEEDED"
+          : status === "FAILURE"
+            ? "FAILED"
+            : "IGNORED",
     failureReason: status === "FAILURE" ? "IYZICO_PAYMENT_FAILED" : undefined,
   };
 }

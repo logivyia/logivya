@@ -9,6 +9,7 @@ import {
   getCompanySeatUsage,
 } from "../src/server/team/company-invitations";
 import { listOwnedWhatsAppContacts, persistWhatsAppContacts, resolveOwnedWhatsAppContacts } from "../src/server/whatsapp/contacts";
+import { hashOpaqueToken } from "../src/server/security/authentication";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -59,9 +60,9 @@ async function createWorkspace(planSlug: "starter" | "professional", label: stri
   return { owner, ownerMembership, company, plan };
 }
 
-function invitationToken(acceptUrl: string) {
-  const token = new URL(acceptUrl).searchParams.get("invitation");
-  assert(token, "Invitation response must include the one-time raw token in its accept URL.");
+async function invitationToken(invitationId: string) {
+  const token = randomBytes(32).toString("base64url");
+  await prisma.companyInvitation.update({ where: { id: invitationId }, data: { tokenHash: hashOpaqueToken(token) } });
   return token;
 }
 
@@ -88,28 +89,28 @@ async function main() {
     companyId: starter.company.id,
     actorUserId: starter.owner.id,
     actorRole: starter.ownerMembership.role,
-  }, { name: starterInvitee.name, email: starterInvitee.email, role: "OPERATOR" });
+  }, { name: starterInvitee.name, email: starterInvitee.email });
   let seats = await getCompanySeatUsage(starter.company.id);
   assert(seats.limit === 2 && seats.used === 2 && seats.pendingInvitations === 1, "Starter pending invitation must reserve the second seat.");
   await expectError(() => createCompanyInvitation(request, {
     companyId: starter.company.id,
     actorUserId: starter.owner.id,
     actorRole: starter.ownerMembership.role,
-  }, { name: "Blocked member", email: "blocked-starter@example.test", role: "OPERATOR" }), "SEAT_LIMIT_REACHED");
+  }, { name: "Blocked member", email: "blocked-starter@example.test" }), "SEAT_LIMIT_REACHED");
   await expectError(() => createCompanyInvitation(request, {
     companyId: starter.company.id,
     actorUserId: starterInvitee.id,
     actorRole: "OPERATOR",
-  }, { name: "Unauthorized member", email: "unauthorized@example.test", role: "VIEWER" }), "FORBIDDEN");
+  }, { name: "Unauthorized member", email: "unauthorized@example.test" }), "FORBIDDEN");
 
   const starterAccepted = await acceptCompanyInvitation({
-    code: starterInvitation.inviteCode,
+    token: await invitationToken(starterInvitation.invitation.id),
     userId: starterInvitee.id,
     email: starterInvitee.email,
   });
   assert(starterAccepted.membership.status === "ACTIVE" && starterAccepted.companyId === starter.company.id, "Starter invitee must join the owner's company.");
-  await expectError(() => acceptCompanyInvitation({
-    token: invitationToken(starterInvitation.acceptUrl),
+  await expectError(async () => acceptCompanyInvitation({
+    token: await invitationToken(starterInvitation.invitation.id),
     userId: starterInvitee.id,
     email: starterInvitee.email,
   }), "INVITATION_ALREADY_USED");
@@ -134,8 +135,26 @@ async function main() {
     actorUserId: starter.owner.id,
     actorRole: "OWNER",
   }, starterAccepted.membership.id);
-  assert(!(await prisma.companyUser.findUnique({ where: { id: starterAccepted.membership.id } })), "Removed member must lose the company membership.");
+  assert((await prisma.companyUser.findUnique({ where: { id: starterAccepted.membership.id } }))?.status === "REMOVED", "Removed member must retain an auditable membership record without company access.");
   assert((await prisma.userSession.findUniqueOrThrow({ where: { id: memberSession.id } })).revokedAt, "Removed member's company session must be revoked.");
+
+  const concurrentStarter = await createWorkspace("starter", `Concurrent Starter ${Date.now()}`);
+  const concurrentResults = await Promise.allSettled([
+    createCompanyInvitation(request, {
+      companyId: concurrentStarter.company.id,
+      actorUserId: concurrentStarter.owner.id,
+      actorRole: "OWNER",
+    }, { name: "Concurrent One", email: `concurrent-one-${Date.now()}@example.test` }),
+    createCompanyInvitation(request, {
+      companyId: concurrentStarter.company.id,
+      actorUserId: concurrentStarter.owner.id,
+      actorRole: "OWNER",
+    }, { name: "Concurrent Two", email: `concurrent-two-${Date.now()}@example.test` }),
+  ]);
+  assert(concurrentResults.filter((result) => result.status === "fulfilled").length === 1, "Exactly one concurrent invitation may reserve the final Starter seat.");
+  assert(concurrentResults.some((result) => result.status === "rejected" && result.reason instanceof Error && result.reason.message === "SEAT_LIMIT_REACHED"), "The losing concurrent invitation must receive SEAT_LIMIT_REACHED.");
+  const concurrentSeats = await getCompanySeatUsage(concurrentStarter.company.id);
+  assert(concurrentSeats.used === 2 && concurrentSeats.pendingInvitations === 1, "Concurrent requests must never overbook the Starter company.");
 
   const professional = await createWorkspace("professional", `Professional Integration ${Date.now()}`);
   const professionalMember = await createUser("professional-member");
@@ -144,21 +163,21 @@ async function main() {
     companyId: professional.company.id,
     actorUserId: professional.owner.id,
     actorRole: "OWNER",
-  }, { name: professionalMember.name, email: professionalMember.email, role: "OPERATOR" });
+  }, { name: professionalMember.name, email: professionalMember.email });
   await createCompanyInvitation(request, {
     companyId: professional.company.id,
     actorUserId: professional.owner.id,
     actorRole: "OWNER",
-  }, { name: secondProfessionalMember.name, email: secondProfessionalMember.email, role: "VIEWER" });
+  }, { name: secondProfessionalMember.name, email: secondProfessionalMember.email });
   seats = await getCompanySeatUsage(professional.company.id);
   assert(seats.limit === 3 && seats.used === 3 && seats.pendingInvitations === 2, "Professional must reserve exactly two invited seats.");
   await expectError(() => createCompanyInvitation(request, {
     companyId: professional.company.id,
     actorUserId: professional.owner.id,
     actorRole: "OWNER",
-  }, { name: "Fourth company user", email: "blocked-professional@example.test", role: "OPERATOR" }), "SEAT_LIMIT_REACHED");
+  }, { name: "Fourth company user", email: "blocked-professional@example.test" }), "SEAT_LIMIT_REACHED");
   const professionalAccepted = await acceptCompanyInvitation({
-    token: invitationToken(firstProfessionalInvitation.acceptUrl),
+    token: await invitationToken(firstProfessionalInvitation.invitation.id),
     userId: professionalMember.id,
     email: professionalMember.email,
   });

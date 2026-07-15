@@ -23,7 +23,8 @@ allprojects {
 
 def shouldDisableNativeTaskTracking = { task ->
     def taskName = task.name.toLowerCase(Locale.ROOT)
-    return taskName.contains("cmake") ||
+    return taskName.contains("generatecodegenschemafromjavascript") ||
+            taskName.contains("cmake") ||
             taskName.contains("externalnativebuild") ||
             taskName.contains("nativelibs") ||
             taskName.contains("jnilibs") ||
@@ -32,7 +33,7 @@ def shouldDisableNativeTaskTracking = { task ->
 
 def disableNativeTaskTracking = { task ->
   if (shouldDisableNativeTaskTracking(task)) {
-    task.doNotTrackState("Windows NDK outputs can be hardlinks/reparse points; Gradle snapshotting fails on these files.")
+    task.doNotTrackState("Windows and OneDrive can expose build inputs or NDK outputs as reparse points that Gradle cannot snapshot.")
   }
 }
 

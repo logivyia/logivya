@@ -23,7 +23,10 @@ export function isSupportSuperAdmin(user: { email?: string | null }) {
 
 export function supportTicketOwnerWhere(context: TicketSession): Prisma.SupportTicketWhereInput {
   return {
-    OR: [{ userId: context.user.id }, { createdById: context.user.id }],
+    AND: [
+      { companyId: context.company.id },
+      { OR: [{ userId: context.user.id }, { createdById: context.user.id }] },
+    ],
   };
 }
 

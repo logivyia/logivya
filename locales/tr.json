@@ -378,24 +378,26 @@
   "home.plan.starter.price": "280 TL",
   "home.plan.starter.period": "Aylık",
   "home.plan.starter.description": "Temel mesajlaşma ve grup yönetimi ihtiyaçları için uygun plan.",
-  "home.plan.starter.feature1": "2 hesap",
+  "home.plan.starter.feature1": "2 kullanıcı koltuğu",
   "home.plan.starter.feature2": "Reklamlı gönderim",
   "home.plan.starter.feature3": "Zamanlı ve tekrarlı mesaj",
   "home.plan.starter.feature4": "Herkesten silme",
   "home.plan.starter.feature5": "Gruplarınıza mesaj gönderimi",
   "home.plan.starter.feature6": "Gelişmiş destek",
+  "home.plan.starter.feature7": "En fazla 2 WhatsApp bağlantısı",
   "home.plan.starter.cta": "Başlangıç seç",
   "home.plan.professional.name": "Profesyonel",
   "home.plan.professional.badge": "Popüler",
   "home.plan.professional.price": "380 TL",
   "home.plan.professional.period": "Aylık",
   "home.plan.professional.description": "Reklamsız ve gelişmiş mesajlaşma operasyonları için profesyonel plan.",
-  "home.plan.professional.feature1": "3 hesap",
+  "home.plan.professional.feature1": "3 kullanıcı koltuğu",
   "home.plan.professional.feature2": "Reklamsız gönderim",
   "home.plan.professional.feature3": "Kişilerinize ve gruplarınıza mesaj gönderimi",
   "home.plan.professional.feature4": "Herkesten silme",
   "home.plan.professional.feature5": "Zamanlı ve tekrarlı gönderim",
   "home.plan.professional.feature6": "Gelişmiş destek",
+  "home.plan.professional.feature7": "En fazla 3 WhatsApp bağlantısı",
   "home.plan.professional.cta": "Profesyonel seç",
   "home.link.privacy": "Gizlilik Politikası",
   "home.link.terms": "Kullanım Koşulları",
@@ -745,6 +747,9 @@
   "users.emailNotSent": "Gönderilemedi; kodu veya bağlantıyı güvenli biçimde paylaşın.",
   "users.pendingInvitations": "Bekleyen davetler",
   "users.revokeInvitation": "Daveti iptal et",
+  "users.resendInvitation": "Daveti yeniden gönder",
+  "users.invitationResent": "Davet bağlantısı yenilendi ve yeniden gönderildi.",
+  "users.standardUser": "Standart Kullanıcı",
   "common.yes": "Evet",
   "common.no": "Hayır",
   "adminNotifications.eyebrow": "Operasyon Farkındalığı",
@@ -1122,6 +1127,7 @@
   "admin.menu.campaigns": "Kampanyalar",
   "admin.menu.support": "Destek",
   "admin.menu.security": "Güvenlik",
+  "admin.menu.trialRisk": "Deneme riski",
   "admin.menu.compliance": "Uyumluluk",
   "admin.menu.audit": "Denetim merkezi",
   "admin.menu.activity": "Aktivite merkezi",
@@ -1216,6 +1222,9 @@
   "email.passwordReset.intro": "Parolanızı sıfırlamak için aşağıdaki doğrulama kodunu Logivya ekranına girin.",
   "email.teamInvitation.subject": "Logivya ekip daveti",
   "email.teamInvitation.message": "{name}, bir Logivya şirket çalışma alanına davet edildiniz. Davet kodunuz: {code}. Daveti kabul etmek için {url} adresini açın.",
+  "email.teamInvitation.linkMessage": "{name}, bir Logivya şirket çalışma alanına davet edildiniz. Güvenli daveti kabul etmek için bu tek kullanımlık bağlantıyı açın: {url}",
+  "email.verification.subject": "Logivya e-posta doğrulama",
+  "email.verification.message": "E-posta adresinizi doğrulamak için bu tek kullanımlık bağlantıyı açın: {url}",
   "notification.message.ACCOUNT_ARCHIVED": "WhatsApp hesabı arşive taşındı.",
   "notification.message.PAYMENT_RECEIVED": "Ödemeniz başarıyla kaydedildi.",
   "notification.message.PAYMENT_REJECTED": "Ödeme talebiniz reddedildi. Fatura bilgilerinizi inceleyin.",
@@ -1278,4 +1287,50 @@
   "notification.message.support.user_replied": "Bir kullanıcı destek talebine yanıt verdi.",
   "notification.title.support.status_changed": "Destek talebi güncellendi",
   "notification.message.support.status_changed": "Destek talebinizin durumu güncellendi."
+  ,"auth.mfaTitle": "Iki adimli dogrulama"
+  ,"auth.mfaDescription": "Authenticator uygulamanizdaki 6 haneli kodu girin."
+  ,"auth.mfaSetupTitle": "Authenticator kurulumu"
+  ,"auth.mfaSetupDescription": "QR kodu Authenticator uygulamanizla tarayin, sonra olusan kodu girin."
+  ,"auth.mfaQrAlt": "Authenticator kurulum QR kodu"
+  ,"auth.mfaManualKey": "Manuel kurulum anahtari"
+  ,"auth.mfaRecoveryCodes": "Kurtarma kodlari"
+  ,"auth.mfaRecoveryWarning": "Bu kodlari guvenli bir yerde saklayin. Her kod yalnizca bir kez kullanilir."
+  ,"auth.mfaCode": "Dogrulama veya kurtarma kodu"
+  ,"auth.mfaRememberDevice": "Bu cihaza 30 gun guven"
+  ,"auth.mfaVerify": "Dogrula ve giris yap"
+  ,"auth.mfaBack": "Giris ekranina don"
+  ,"settings.security": "Guvenlik"
+  ,"security.eyebrow": "Hesap korumasi"
+  ,"security.title": "Guvenlik"
+  ,"security.description": "Iki adimli dogrulamayi, kurtarma kodlarini ve guvenilir cihazlari yonetin."
+  ,"security.authenticator": "Authenticator dogrulamasi"
+  ,"security.enabled": "Etkin ve hesabinizi koruyor"
+  ,"security.disabled": "Su anda etkin degil"
+  ,"security.enable": "Etkinlestir"
+  ,"security.confirmEnable": "Kurulumu onayla"
+  ,"security.disable": "Iki adimli dogrulamayi kapat"
+  ,"security.enabledSuccess": "Iki adimli dogrulama etkinlestirildi."
+  ,"security.recoveryTitle": "Kurtarma kodlari"
+  ,"security.recoveryRemaining": "Kalan tek kullanimlik kod: {count}"
+  ,"security.recoveryRegenerated": "Kurtarma kodlari yenilendi."
+  ,"security.copyCodes": "Kodlari kopyala"
+  ,"security.regenerate": "Kodlari yenile"
+  ,"security.trustedDevices": "Guvenilir cihazlar"
+  ,"security.unknownDevice": "Bilinmeyen cihaz"
+  ,"security.revokeDevice": "Cihaz guvenini kaldir"
+  ,"security.noTrustedDevices": "Guvenilir cihaz bulunmuyor."
+  ,"security.activity": "Guvenlik etkinligi"
+  ,"security.noActivity": "Henuz guvenlik olayi yok."
+  ,"billing.verifyEmailTitle": "E-posta adresinizi doğrulayın"
+  ,"billing.verifyEmailTrialDescription": "7 günlük deneme, e-posta doğrulaması ve ilk başarılı WhatsApp bağlantısından sonra başlar."
+  ,"billing.resendVerificationEmail": "Doğrulama e-postasını yeniden gönder"
+  ,"billing.verificationEmailSent": "Doğrulama e-postası gönderildi."
+  ,"billing.emailAlreadyVerified": "E-posta adresiniz zaten doğrulanmış."
+  ,"billing.trialReadyTitle": "7 günlük denemeniz hazır"
+  ,"billing.trialReadyDescription": "Deneme süreniz, WhatsApp hesabınız ilk kez başarıyla bağlandığında başlar."
+  ,"users.whatsappConnections": "WhatsApp bağlantıları"
+  ,"billing.trialIneligibleTitle": "Ücretsiz deneme kullanılmış"
+  ,"billing.trialIdentityUsedDescription": "Bu WhatsApp hesabı daha önce ücretsiz deneme hakkını kullanmıştır. Devam etmek için bir paket seçmeniz gerekir."
+  ,"billing.trialReviewTitle": "Deneme uygunluğu inceleniyor"
+  ,"billing.trialReviewDescription": "Güvenlik kontrolleri nedeniyle deneme hakkınız incelemeye alındı. Ücretli paket satın almanıza engel yoktur."
 }

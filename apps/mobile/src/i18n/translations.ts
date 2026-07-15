@@ -413,9 +413,12 @@ const baseTranslations = {
     memberStatusActive: "Aktif",
     memberStatusInvited: "Davetli",
     memberStatusSuspended: "Askıda",
+    memberStatusRemoved: "Kaldırıldı",
+    userType: "Kullanıcı tipi",
+    standardUser: "Standart Kullanıcı",
     inviteUser: "Kullanıcı davet et",
     invitationReady: "Davet hazır",
-    invitationOneTimeNotice: "Kod ve bağlantı güvenlik nedeniyle yalnızca şimdi gösterilir.",
+    invitationOneTimeNotice: "Tek kullanımlık güvenli bağlantı yalnızca şimdi gösterilir.",
     invitationCode: "Davet kodu",
     invitationLink: "Davet bağlantısı",
     emailSent: "Gönderildi",
@@ -426,6 +429,8 @@ const baseTranslations = {
     usersLoading: "Kullanıcılar yükleniyor...",
     userInviteCreated: "Kullanıcı daveti oluşturuldu.",
     invitationFailed: "Davet gönderilemedi.",
+    resendInvitation: "Daveti yeniden gönder",
+    invitationResent: "Davet bağlantısı yenilendi ve yeniden gönderildi.",
     userUpdated: "Kullanıcı güncellendi.",
     userUpdateFailed: "Kullanıcı güncellenemedi.",
     removeUser: "Kullanıcıyı kaldır",
@@ -582,6 +587,7 @@ const baseTranslations = {
     adminCampaignsModule: "Kampanyalar",
     adminSupportModule: "Destek",
     adminSecurityModule: "Güvenlik",
+    adminTrialRiskModule: "Deneme Riski",
     adminComplianceModule: "Uyumluluk",
     adminAuditModule: "Denetim Merkezi",
     adminActivityModule: "Aktivite Merkezi",
@@ -609,6 +615,7 @@ const baseTranslations = {
     ,adminCampaignsDescription: "Mesaj ve kampanya operasyonları."
     ,adminSupportDescription: "Platform destek talepleri."
     ,adminSecurityDescription: "Güvenlik olayları ve erişim denetimi."
+    ,adminTrialRiskDescription: "Deneme uygunluğu, risk sinyalleri ve manuel inceleme kararları."
     ,adminComplianceDescription: "İzinler ve veri sahibi süreçleri."
     ,adminAuditDescription: "Denetim kayıtları ve izlenebilirlik."
     ,adminActivityDescription: "Platform aktivite akışı."
@@ -680,6 +687,46 @@ const baseTranslations = {
     ,colorYellow: "Sarı"
     ,colorGray: "Gri"
     ,colorBlack: "Siyah"
+    ,mfaTitle: "Iki adimli dogrulama"
+    ,mfaSubtitle: "Authenticator uygulamanizdaki 6 haneli kodu girin."
+    ,mfaSetupTitle: "Authenticator kurulumu"
+    ,mfaSetupSubtitle: "QR kodu Authenticator uygulamanizla tarayin, sonra olusan kodu girin."
+    ,mfaCode: "Dogrulama veya kurtarma kodu"
+    ,mfaVerify: "Dogrula ve giris yap"
+    ,mfaRememberDevice: "Bu cihaza 30 gun guven"
+    ,mfaManualKey: "Manuel kurulum anahtari"
+    ,mfaRecoveryCodes: "Kurtarma kodlari"
+    ,mfaRecoveryWarning: "Bu kodlari guvenli bir yerde saklayin. Her kod yalnizca bir kez kullanilir."
+    ,mfaBackToLogin: "Giris ekranina don"
+    ,security: "Guvenlik"
+    ,mfaSecurityDescription: "Iki adimli dogrulamayi, kurtarma kodlarini ve guvenilir cihazlari yonetin."
+    ,mfaEnabled: "Etkin ve hesabinizi koruyor"
+    ,mfaDisabled: "Su anda etkin degil"
+    ,mfaEnable: "Etkinlestir"
+    ,mfaConfirmEnable: "Kurulumu onayla"
+    ,mfaDisable: "Iki adimli dogrulamayi kapat"
+    ,mfaEnabledSuccess: "Iki adimli dogrulama etkinlestirildi."
+    ,mfaRecoveryRemaining: "Kalan tek kullanimlik kod: {count}"
+    ,mfaCopyCodes: "Kodlari kopyala"
+    ,mfaRegenerate: "Kodlari yenile"
+    ,mfaTrustedDevices: "Guvenilir cihazlar"
+    ,mfaUnknownDevice: "Bilinmeyen cihaz"
+    ,mfaNoTrustedDevices: "Guvenilir cihaz bulunmuyor."
+    ,mfaActivity: "Guvenlik etkinligi"
+    ,mfaNoActivity: "Henuz guvenlik olayi yok."
+    ,verifyEmailTitle: "E-posta adresinizi dogrulayin"
+    ,verifyEmailTrialDescription: "7 gunluk deneme, e-posta dogrulamasi ve ilk basarili WhatsApp baglantisindan sonra baslar."
+    ,resendVerificationEmail: "Dogrulama e-postasini yeniden gonder"
+    ,verificationEmailSent: "Dogrulama e-postasi gonderildi."
+    ,emailAlreadyVerified: "E-posta adresiniz zaten dogrulanmis."
+    ,trialReadyTitle: "7 gunluk denemeniz hazir"
+    ,trialReadyDescription: "Deneme sureniz, WhatsApp hesabiniz ilk kez basariyla baglandiginda baslar."
+    ,userSeats: "Kullanici koltugu"
+    ,whatsappConnections: "WhatsApp baglantisi"
+    ,trialIneligibleTitle: "Ucretsiz deneme kullanilmis"
+    ,trialIdentityUsedDescription: "Bu WhatsApp hesabi daha once ucretsiz deneme hakkini kullanmistir. Devam etmek icin bir paket secmeniz gerekir."
+    ,trialReviewTitle: "Deneme uygunlugu inceleniyor"
+    ,trialReviewDescription: "Guvenlik kontrolleri nedeniyle deneme hakkiniz incelemeye alindi. Ucretli paket satin almaniza engel yoktur."
   },
   en: {
     loginTitle: "Welcome back",
@@ -1085,9 +1132,12 @@ const baseTranslations = {
     memberStatusActive: "Active",
     memberStatusInvited: "Invited",
     memberStatusSuspended: "Suspended",
+    memberStatusRemoved: "Removed",
+    userType: "User type",
+    standardUser: "Standard User",
     inviteUser: "Invite user",
     invitationReady: "Invitation ready",
-    invitationOneTimeNotice: "For security, the code and link are shown only now.",
+    invitationOneTimeNotice: "The one-time secure link is shown only now.",
     invitationCode: "Invitation code",
     invitationLink: "Invitation link",
     emailSent: "Sent",
@@ -1098,6 +1148,8 @@ const baseTranslations = {
     usersLoading: "Loading users...",
     userInviteCreated: "User invitation created.",
     invitationFailed: "Invitation could not be sent.",
+    resendInvitation: "Resend invitation",
+    invitationResent: "The invitation link was renewed and sent again.",
     userUpdated: "User updated.",
     userUpdateFailed: "User could not be updated.",
     removeUser: "Remove user",
@@ -1254,6 +1306,7 @@ const baseTranslations = {
     adminCampaignsModule: "Campaigns",
     adminSupportModule: "Support",
     adminSecurityModule: "Security",
+    adminTrialRiskModule: "Trial Risk",
     adminComplianceModule: "Compliance",
     adminAuditModule: "Audit Center",
     adminActivityModule: "Activity Center",
@@ -1281,6 +1334,7 @@ const baseTranslations = {
     ,adminCampaignsDescription: "Message and campaign operations."
     ,adminSupportDescription: "Platform support tickets."
     ,adminSecurityDescription: "Security events and access controls."
+    ,adminTrialRiskDescription: "Trial eligibility, risk signals, and manual review decisions."
     ,adminComplianceDescription: "Consent and data subject workflows."
     ,adminAuditDescription: "Audit records and traceability."
     ,adminActivityDescription: "Platform activity stream."
@@ -1352,6 +1406,46 @@ const baseTranslations = {
     ,colorYellow: "Yellow"
     ,colorGray: "Gray"
     ,colorBlack: "Black"
+    ,mfaTitle: "Two-step verification"
+    ,mfaSubtitle: "Enter the 6-digit code from your authenticator app."
+    ,mfaSetupTitle: "Set up Authenticator"
+    ,mfaSetupSubtitle: "Scan the QR code with your authenticator app, then enter the generated code."
+    ,mfaCode: "Verification or recovery code"
+    ,mfaVerify: "Verify and sign in"
+    ,mfaRememberDevice: "Trust this device for 30 days"
+    ,mfaManualKey: "Manual setup key"
+    ,mfaRecoveryCodes: "Recovery codes"
+    ,mfaRecoveryWarning: "Store these codes securely. Each code can be used only once."
+    ,mfaBackToLogin: "Back to sign in"
+    ,security: "Security"
+    ,mfaSecurityDescription: "Manage two-step verification, recovery codes, and trusted devices."
+    ,mfaEnabled: "Enabled and protecting your account"
+    ,mfaDisabled: "Not enabled"
+    ,mfaEnable: "Enable"
+    ,mfaConfirmEnable: "Confirm setup"
+    ,mfaDisable: "Disable two-step verification"
+    ,mfaEnabledSuccess: "Two-step verification is enabled."
+    ,mfaRecoveryRemaining: "Single-use codes remaining: {count}"
+    ,mfaCopyCodes: "Copy codes"
+    ,mfaRegenerate: "Regenerate codes"
+    ,mfaTrustedDevices: "Trusted devices"
+    ,mfaUnknownDevice: "Unknown device"
+    ,mfaNoTrustedDevices: "No trusted devices."
+    ,mfaActivity: "Security activity"
+    ,mfaNoActivity: "No security activity yet."
+    ,verifyEmailTitle: "Verify your email address"
+    ,verifyEmailTrialDescription: "Your 7-day trial starts after email verification and the first successful WhatsApp connection."
+    ,resendVerificationEmail: "Resend verification email"
+    ,verificationEmailSent: "Verification email sent."
+    ,emailAlreadyVerified: "Your email address is already verified."
+    ,trialReadyTitle: "Your 7-day trial is ready"
+    ,trialReadyDescription: "Your trial starts when your WhatsApp account connects successfully for the first time."
+    ,userSeats: "User seats"
+    ,whatsappConnections: "WhatsApp connections"
+    ,trialIneligibleTitle: "Free trial already used"
+    ,trialIdentityUsedDescription: "This WhatsApp account has already used its free trial. Select a paid plan to continue."
+    ,trialReviewTitle: "Trial eligibility under review"
+    ,trialReviewDescription: "Your trial eligibility requires a security review. You can still purchase a paid plan."
   }
 } as const;
 

@@ -42,6 +42,11 @@ async function main() {
   assert.match(schema, /@@unique\(\[ticketId, clientMessageId\]\)/);
   assert.match(schema, /model SupportTicketAudit/);
   assert.match(schema, /model SupportNotificationOutbox/);
+  const notificationService = await source("src/server/support/notifications.ts");
+  assert.match(notificationService, /messageId/);
+  assert.match(notificationService, /EMAIL_CONFIGURATION_MISSING/);
+  assert.match(notificationService, /support_email_sent/);
+  assert.match(await source("src/lib/email/templates/support-ticket.ts"), /supportCreatedEmail/);
   assert.match(schema, /userUnreadCount\s+Int\s+@default\(0\)/);
   assert.match(schema, /adminUnreadCount\s+Int\s+@default\(0\)/);
 

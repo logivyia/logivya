@@ -27,6 +27,7 @@ export type CompanyEntitlements = {
   advertisingEnabled: boolean;
   advancedSupport: boolean;
   teamSeats: number;
+  whatsappConnections: number;
 };
 
 function latestDate(...dates: Array<Date | null | undefined>) {
@@ -70,25 +71,38 @@ export function deriveCompanyEntitlements(plan: Plan | null | undefined, active:
     advertisingEnabled,
     advancedSupport: Boolean(active && (rule?.advancedSupport ?? true)),
     teamSeats: active ? Math.max(1, rule?.totalUserSeats ?? plan?.maxTeamUsers ?? 1) : 0,
+    whatsappConnections: active ? Math.max(1, rule?.whatsappConnections ?? plan?.maxWhatsappAccounts ?? 1) : 0,
   };
 }
 
-export async function resolveCompanyEntitlementSummary(companyId: string, now = new Date()) {
+export async function resolveCompanyEntitlementSummary(
+  companyId: string,
+  now = new Date(),
+  actor?: { userId?: string; role?: string },
+) {
   const current = await resolveCompanyEntitlements(companyId, prisma as unknown as SubscriptionReader, now);
-  const [activeSeatCount, invitedMembershipCount, pendingInvitationCount] = await Promise.all([
+  const [activeSeatCount, invitedMembershipCount, pendingInvitationCount, whatsappConnectionsUsed, trialEntitlement] = await Promise.all([
     prisma.companyUser.count({ where: { companyId, status: "ACTIVE" } }),
     prisma.companyUser.count({ where: { companyId, status: "INVITED" } }),
-    prisma.companyInvitation.count({ where: { companyId, status: "PENDING", expiresAt: { gt: now } } }),
+    prisma.companyInvitation.count({ where: { companyId, status: "PENDING", reservedSeat: true, expiresAt: { gt: now } } }),
+    prisma.whatsAppAccount.count({ where: { companyId, archivedAt: null } }),
+    prisma.trialEntitlement.findFirst({
+      where: { companyId, ...(actor?.userId ? { userId: actor.userId } : {}) },
+      orderBy: { createdAt: "asc" },
+      select: { status: true, decisionCode: true, startedAt: true, endsAt: true },
+    }),
   ]);
   const totalSeatLimit = current?.entitlements.teamSeats ?? 0;
   const usedSeatCount = activeSeatCount + invitedMembershipCount + pendingInvitationCount;
   const availableSeats = Math.max(0, totalSeatLimit - usedSeatCount);
   const entitlements = current?.entitlements ?? deriveCompanyEntitlements(null, false);
+  const pendingIdentityVerification = !current?.valid && trialEntitlement?.status === "PENDING_IDENTITY";
+  const whatsappConnectionLimit = current?.entitlements.whatsappConnections ?? (pendingIdentityVerification ? 1 : 0);
 
   return {
     planCode: current?.plan.slug ?? null,
     planName: current?.plan.name ?? null,
-    subscriptionStatus: current?.subscription.status ?? "EXPIRED",
+    subscriptionStatus: current?.subscription.status ?? (pendingIdentityVerification ? "PENDING_IDENTITY" : "EXPIRED"),
     isTrial: current?.plan.slug === "trial" || current?.subscription.source === "TRIAL",
     startsAt: current?.subscription.currentPeriodStartsAt ?? current?.subscription.startsAt ?? current?.subscription.trialStartsAt ?? null,
     endsAt: current?.subscription.currentPeriodEndsAt ?? current?.subscription.endsAt ?? current?.subscription.trialEndsAt ?? null,
@@ -97,9 +111,15 @@ export async function resolveCompanyEntitlementSummary(companyId: string, now = 
     activeSeatCount,
     pendingInvitationCount: pendingInvitationCount + invitedMembershipCount,
     availableSeats,
+    seatLimit: totalSeatLimit,
+    seatsUsed: usedSeatCount,
+    pendingInviteSeats: pendingInvitationCount,
     seatReconciliationRequired: usedSeatCount > totalSeatLimit,
     canInviteMembers: Boolean(current?.valid && availableSeats > 0),
-    canConnectWhatsApp: entitlements.whatsappConnect,
+    whatsappConnectionLimit,
+    whatsappConnectionsUsed,
+    whatsappConnectionsAvailable: Math.max(0, whatsappConnectionLimit - whatsappConnectionsUsed),
+    canConnectWhatsApp: entitlements.whatsappConnect || (pendingIdentityVerification && whatsappConnectionsUsed < 1),
     canSendToGroups: entitlements.groupMessaging,
     canSendToContacts: entitlements.contactMessaging,
     canScheduleMessages: entitlements.scheduledMessages,
@@ -107,6 +127,12 @@ export async function resolveCompanyEntitlementSummary(companyId: string, now = 
     canDeleteForEveryone: entitlements.deleteForEveryone,
     isAdvertisingEnabled: entitlements.advertisingEnabled,
     canAccessAdvancedSupport: entitlements.advancedSupport,
+    canManageBilling: actor?.role === "OWNER",
+    canManageTeam: actor?.role === "OWNER",
+    trialEligibilityStatus: trialEntitlement?.status ?? null,
+    trialDecisionCode: trialEntitlement?.decisionCode ?? null,
+    trialStartsAt: trialEntitlement?.startedAt ?? null,
+    trialEndsAt: trialEntitlement?.endsAt ?? null,
   };
 }
 

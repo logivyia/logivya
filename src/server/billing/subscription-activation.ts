@@ -151,6 +151,9 @@ export async function activateCompanySubscription(input: CompanySubscriptionActi
         ) {
           throw new SubscriptionActivationError("PAYMENT_SCOPE_MISMATCH");
         }
+        if (pendingPayment.status === "REFUNDED" || pendingPayment.status === "CANCELED") {
+          throw new SubscriptionActivationError("PAYMENT_ALREADY_REVERSED");
+        }
         if (["SUCCEEDED", "PAID"].includes(pendingPayment.status) && pendingPayment.subscription) {
           return { subscription: pendingPayment.subscription, payment: pendingPayment, invoice: pendingPayment.invoice, previousPlan: null, idempotent: true };
         }
@@ -166,12 +169,12 @@ export async function activateCompanySubscription(input: CompanySubscriptionActi
       const now = new Date();
       await tx.companyInvitation.updateMany({
         where: { companyId: company.id, status: "PENDING", expiresAt: { lte: now } },
-        data: { status: "EXPIRED" },
+        data: { status: "EXPIRED", reservedSeat: false },
       });
       const [activeMembers, legacyInvitedMembers, pendingInvitations] = await Promise.all([
         tx.companyUser.count({ where: { companyId: company.id, status: "ACTIVE" } }),
         tx.companyUser.count({ where: { companyId: company.id, status: "INVITED" } }),
-        tx.companyInvitation.count({ where: { companyId: company.id, status: "PENDING", expiresAt: { gt: now } } }),
+        tx.companyInvitation.count({ where: { companyId: company.id, status: "PENDING", reservedSeat: true, expiresAt: { gt: now } } }),
       ]);
       const usedSeats = activeMembers + legacyInvitedMembers + pendingInvitations;
       const targetSeatLimit = deriveCompanyEntitlements(plan, true).teamSeats;
@@ -318,6 +321,24 @@ export async function activateCompanySubscription(input: CompanySubscriptionActi
             startsAt: input.startsAt.toISOString(),
             endsAt: input.endsAt.toISOString(),
           },
+        },
+      });
+      await tx.subscriptionAuditLog.create({
+        data: {
+          companyId: company.id,
+          subscriptionId: subscription.id,
+          actorUserId: input.actorUserId,
+          eventType: input.source === "MANUAL_ADMIN" ? "PLAN_ASSIGNED_BY_ADMIN" : "PLAN_PURCHASED",
+          previousState: previous ? { plan: previous.plan.slug, status: previous.status, endsAt: previous.endsAt?.toISOString() ?? null } : undefined,
+          newState: {
+            plan: plan.slug,
+            status: subscription.status,
+            startsAt: input.startsAt.toISOString(),
+            endsAt: input.endsAt.toISOString(),
+            usedSeats,
+            seatLimit: targetSeatLimit,
+          },
+          correlationId: input.correlationId,
         },
       });
 

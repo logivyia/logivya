@@ -14,6 +14,7 @@ import { canExposePhonePairingCode } from "@/server/whatsapp/pairing-code-state"
 import { hasActivePhonePairing, isPhonePairingActive } from "@/server/whatsapp/pairing-guard";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
+import { safelyEvaluateTrialAfterConnection } from "@/server/billing/trial-service";
 import { normalizeProviderContact, persistWhatsAppContacts, resetWhatsAppContactDirectoryIfIdentityChanged, type ProviderContactRecord } from "@/server/whatsapp/contacts";
 import { collectGroupParticipantContacts } from "@/server/whatsapp/group-participant-contacts";
 import {
@@ -1256,6 +1257,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           logger.info("WA_ACCOUNT_CONNECTED", { accountId, mode: currentMode, phoneNumber: maskPhoneNumber(phoneNumber) });
           await auditAccount(accountId, "whatsapp.connected", { phoneNumber: maskPhoneNumber(phoneNumber), mode: currentMode });
           settleInitialized();
+          void safelyEvaluateTrialAfterConnection(accountId);
           await this.syncGroups(accountId);
           const contactState = await prisma.whatsAppAccount.findUnique({
             where: { id: accountId },

@@ -1,4 +1,19 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+
+function loadEnvFile(filePath: string) {
+  if (!existsSync(filePath)) return;
+  for (const line of readFileSync(filePath, "utf8").split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+    const [key, ...parts] = trimmed.split("=");
+    if (key && !process.env[key]) process.env[key] = parts.join("=").replace(/^["']|["']$/gu, "");
+  }
+}
+
+loadEnvFile(path.join(process.cwd(), ".env.local"));
+loadEnvFile(path.join(process.cwd(), ".env"));
 
 import { prisma } from "@/server/db";
 import { hashOpaqueToken } from "@/server/security/authentication";
@@ -193,7 +208,22 @@ async function main() {
 
   const inviter = webUsers[2].user;
   const inviterCompany = await prisma.company.findFirstOrThrow({ where: { ownerId: inviter.id } });
-  await prisma.subscription.updateMany({ where: { companyId: inviterCompany.id }, data: { planId: invitationPlan.id } });
+  const invitationSubscriptionStartsAt = new Date();
+  const invitationSubscriptionEndsAt = new Date(invitationSubscriptionStartsAt.getTime() + 30 * 86_400_000);
+  await prisma.subscription.create({
+    data: {
+      companyId: inviterCompany.id,
+      planId: invitationPlan.id,
+      status: "ACTIVE",
+      billingPeriod: "MONTHLY",
+      startsAt: invitationSubscriptionStartsAt,
+      endsAt: invitationSubscriptionEndsAt,
+      currentPeriodStartsAt: invitationSubscriptionStartsAt,
+      currentPeriodEndsAt: invitationSubscriptionEndsAt,
+      source: "MANUAL_ADMIN",
+      provider: "MANUAL",
+    },
+  });
   const invitationToken = `integration-invitation-${runId}-abcdefghijklmnopqrstuvwxyz`;
   const invited = credentials(31, "qwertyui");
   await prisma.companyInvitation.create({

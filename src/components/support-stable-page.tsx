@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ChevronDown, MessageSquare, Plus, RefreshCw, Send } from "lucide-react";
+import { ChevronDown, ExternalLink, MessageSquare, Plus, RefreshCw, Send } from "lucide-react";
 import { apiErrorMessage } from "@/i18n/api-error";
 import { formatDateTime } from "@/i18n/format";
 import { useI18n } from "@/i18n/provider";
@@ -10,6 +10,7 @@ type SupportMessage = {
   id: string;
   senderType: string;
   message: string;
+  attachmentUrl?: string | null;
   createdAt: string;
 };
 
@@ -85,6 +86,7 @@ export function SupportStablePage({ initialPublicId }: { initialPublicId?: strin
   const [pageInfo, setPageInfo] = useState<PageInfo>({ hasMore: false, nextCursor: null });
   const [selected, setSelected] = useState<SupportTicket | null>(null);
   const [replyText, setReplyText] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -94,12 +96,13 @@ export function SupportStablePage({ initialPublicId }: { initialPublicId?: strin
   const [replying, setReplying] = useState(false);
   const pendingReply = useRef<{ body: string; id: string } | null>(null);
 
-  const load = useCallback(async (cursor?: string | null) => {
+  const load = useCallback(async (cursor?: string | null, silent = false) => {
     if (cursor) setLoadingMore(true);
-    else setLoading(true);
-    setError("");
+    else if (!silent) setLoading(true);
+    if (!silent) setError("");
     try {
       const query = new URLSearchParams({ limit: "20" });
+      if (statusFilter !== "ALL") query.set("status", statusFilter);
       if (cursor) query.set("cursor", cursor);
       const response = await fetch(`/api/support/tickets?${query}`, { cache: "no-store" });
       const payload = await response.json();
@@ -107,16 +110,16 @@ export function SupportStablePage({ initialPublicId }: { initialPublicId?: strin
       setTickets((current) => cursor ? [...current, ...(payload.tickets || [])] : payload.tickets || []);
       setPageInfo(payload.pageInfo || { hasMore: false, nextCursor: null });
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : t("support.loadFailed"));
+      if (!silent) setError(loadError instanceof Error ? loadError.message : t("support.loadFailed"));
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [t]);
+  }, [statusFilter, t]);
 
-  const openTicket = useCallback(async (identifier: string, updateUrl = true) => {
-    setDetailLoading(true);
-    setError("");
+  const openTicket = useCallback(async (identifier: string, options: { updateUrl?: boolean; silent?: boolean } = {}) => {
+    if (!options.silent) setDetailLoading(true);
+    if (!options.silent) setError("");
     try {
       const response = await fetch(`/api/support/tickets/${encodeURIComponent(identifier)}?limit=50`, { cache: "no-store" });
       const payload = await response.json();
@@ -127,11 +130,11 @@ export function SupportStablePage({ initialPublicId }: { initialPublicId?: strin
         : ticket));
       setReplyText("");
       pendingReply.current = null;
-      if (updateUrl) window.history.replaceState(null, "", `/support/${encodeURIComponent(payload.ticket.publicId)}`);
+      if (options.updateUrl !== false) window.history.replaceState(null, "", `/support/${encodeURIComponent(payload.ticket.publicId)}`);
     } catch (openError) {
-      setError(openError instanceof Error ? openError.message : t("support.accessDenied"));
+      if (!options.silent) setError(openError instanceof Error ? openError.message : t("support.accessDenied"));
     } finally {
-      setDetailLoading(false);
+      if (!options.silent) setDetailLoading(false);
     }
   }, [t]);
 
@@ -142,9 +145,17 @@ export function SupportStablePage({ initialPublicId }: { initialPublicId?: strin
 
   useEffect(() => {
     if (!initialPublicId) return;
-    const timer = window.setTimeout(() => void openTicket(initialPublicId, false), 0);
+    const timer = window.setTimeout(() => void openTicket(initialPublicId, { updateUrl: false }), 0);
     return () => window.clearTimeout(timer);
   }, [initialPublicId, openTicket]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void load(undefined, true);
+      if (selected?.publicId) void openTicket(selected.publicId, { updateUrl: false, silent: true });
+    }, 20_000);
+    return () => window.clearInterval(timer);
+  }, [load, openTicket, selected?.publicId]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -195,7 +206,7 @@ export function SupportStablePage({ initialPublicId }: { initialPublicId?: strin
       pendingReply.current = null;
       setReplyText("");
       setNotice(t("support.replySent"));
-      await Promise.all([load(), openTicket(selected.publicId || selected.id, false)]);
+      await Promise.all([load(), openTicket(selected.publicId || selected.id, { updateUrl: false })]);
     } catch (replyError) {
       setError(replyError instanceof Error ? replyError.message : t("support.replyFailed"));
     } finally {
@@ -226,6 +237,14 @@ export function SupportStablePage({ initialPublicId }: { initialPublicId?: strin
       <div aria-live="polite">
         {error ? <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm font-semibold text-red-600">{error}</p> : null}
         {notice ? <p className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-600">{notice}</p> : null}
+      </div>
+
+      <div className="mb-4 flex flex-wrap gap-2" aria-label={locale === "tr" ? "Talep durumu" : "Ticket status"}>
+        {["ALL", "WAITING_FOR_ADMIN", "WAITING_FOR_USER", "RESOLVED", "CLOSED"].map((value) => (
+          <button key={value} type="button" className={statusFilter === value ? primaryButton : secondaryButton} onClick={() => setStatusFilter(value)}>
+            {value === "ALL" ? (locale === "tr" ? "Tümü" : "All") : statusLabel(value, t)}
+          </button>
+        ))}
       </div>
 
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,480px)]">
@@ -290,6 +309,7 @@ export function SupportStablePage({ initialPublicId }: { initialPublicId?: strin
                       <p className="text-xs text-muted">{formatDateTime(message.createdAt, locale)}</p>
                     </div>
                     <p className="whitespace-pre-wrap break-words text-sm leading-6">{message.message}</p>
+                    {message.attachmentUrl ? <a href={message.attachmentUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-primary"><ExternalLink className="size-4" />{locale === "tr" ? "Eki aç" : "Open attachment"}</a> : null}
                   </article>
                 ))}
               </div>

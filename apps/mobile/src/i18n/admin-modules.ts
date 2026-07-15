@@ -14,6 +14,7 @@ export const adminModuleTranslationKeys: Record<AdminModuleKey, { title: Transla
   campaigns: { title: "adminCampaignsModule", description: "adminCampaignsDescription" },
   support: { title: "adminSupportModule", description: "adminSupportDescription" },
   security: { title: "adminSecurityModule", description: "adminSecurityDescription" },
+  trialRisk: { title: "adminTrialRiskModule", description: "adminTrialRiskDescription" },
   compliance: { title: "adminComplianceModule", description: "adminComplianceDescription" },
   audit: { title: "adminAuditModule", description: "adminAuditDescription" },
   activity: { title: "adminActivityModule", description: "adminActivityDescription" },

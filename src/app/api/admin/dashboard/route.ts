@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { prisma } from "@/server/db";
 
@@ -11,25 +12,27 @@ export async function GET(request: Request) {
     const inSevenDays = new Date(Date.now() + 7 * 24 * 60 * 60_000);
 
     const [
-      companies,
-      users,
-      activeSubscriptions,
-      trials,
+      companyStates,
+      userStates,
+      subscriptionStates,
       pendingSubscriptionRequests,
       expiringInSevenDays,
-      confirmedPayments,
-      accounts,
-      connected,
-      campaigns,
+      monthlyPayments,
+      allPayments,
+      accountStates,
+      campaignStates,
       messages,
+      supportStates,
+      urgentTickets,
+      criticalSecurityAlerts,
       securityEvents,
       tickets,
       billingEvents,
+      recentAdminActions,
     ] = await Promise.all([
-      prisma.company.count(),
-      prisma.user.count(),
-      prisma.subscription.count({ where: { status: "ACTIVE" } }),
-      prisma.subscription.count({ where: { status: "TRIALING" } }),
+      prisma.company.groupBy({ by: ["securityStatus"], _count: { _all: true } }),
+      prisma.user.groupBy({ by: ["status"], _count: { _all: true } }),
+      prisma.subscription.groupBy({ by: ["status"], _count: { _all: true } }),
       prisma.subscription.count({ where: { status: { in: ["MANUAL_PENDING", "PAYMENT_PENDING"] } } }),
       prisma.subscription.count({
         where: {
@@ -40,39 +43,74 @@ export async function GET(request: Request) {
           ],
         },
       }),
-      prisma.payment.aggregate({
-        where: { status: "MANUALLY_CONFIRMED", paidAt: { gte: month }, currency: "TRY" },
+      prisma.payment.groupBy({
+        by: ["currency", "status"],
+        where: { status: { in: ["PAID", "SUCCEEDED", "MANUALLY_CONFIRMED"] }, paidAt: { gte: month } },
         _sum: { amount: true },
+        _count: { _all: true },
       }),
-      prisma.whatsAppAccount.count({ where: { archivedAt: null } }),
-      prisma.whatsAppAccount.count({ where: { status: { in: ["CONNECTED", "CONNECTING", "DISCONNECTED", "RECONNECT_REQUIRED"] }, archivedAt: null, NOT: { lastError: { in: ["WHATSAPP_LOGGED_OUT", "WHATSAPP_CREDENTIALS_MISSING"] } } } }),
-      prisma.messageCampaign.count({ where: { deletedAt: null } }),
+      prisma.payment.groupBy({ by: ["status"], _count: { _all: true } }),
+      prisma.whatsAppAccount.groupBy({ by: ["status"], where: { archivedAt: null }, _count: { _all: true } }),
+      prisma.messageCampaign.groupBy({ by: ["status"], where: { deletedAt: null }, _count: { _all: true } }),
       prisma.messageRecipient.count({ where: { status: "SENT" } }),
+      prisma.supportTicket.groupBy({ by: ["status"], _count: { _all: true } }),
+      prisma.supportTicket.count({ where: { priority: "URGENT", status: { notIn: ["RESOLVED", "CLOSED"] } } }),
+      prisma.securityEvent.count({ where: { severity: "CRITICAL", resolvedAt: null } }),
       prisma.securityEvent.findMany({ where: { severity: { in: ["HIGH", "CRITICAL"] } }, orderBy: { createdAt: "desc" }, take: 5 }),
       prisma.supportTicket.findMany({ orderBy: { lastMessageAt: "desc" }, take: 5 }),
       prisma.subscriptionEvent.findMany({ orderBy: { createdAt: "desc" }, take: 5 }),
+      prisma.adminAccessLog.findMany({ orderBy: { createdAt: "desc" }, take: 5, select: { id: true, path: true, method: true, permission: true, createdAt: true } }),
     ]);
 
-    return NextResponse.json({
-      metrics: {
-        companies,
-        users,
-        activeSubscriptions,
-        trials,
-        pendingSubscriptionRequests,
-        expiringInSevenDays,
-        monthlyConfirmedPaymentTotal: confirmedPayments._sum.amount?.toString() ?? "0",
-        accounts,
-        connected,
-        disconnected: accounts - connected,
-        campaigns,
-        messages,
-      },
-      securityEvents,
-      tickets,
-      billingEvents,
-    });
+    const metrics: Record<string, string | number> = {
+      companies: totalGroups(companyStates),
+      activeCompanies: groupCount(companyStates, "securityStatus", "ACTIVE"),
+      suspendedCompanies: groupCount(companyStates, "securityStatus", "DISABLED"),
+      companiesUnderInvestigation: groupCount(companyStates, "securityStatus", "UNDER_INVESTIGATION"),
+      users: totalGroups(userStates),
+      activeUsers: groupCount(userStates, "status", "ACTIVE"),
+      suspendedUsers: groupCount(userStates, "status", "SUSPENDED"),
+      activeSubscriptions: groupCount(subscriptionStates, "status", "ACTIVE"),
+      trials: groupCount(subscriptionStates, "status", "TRIALING"),
+      expiredSubscriptions: groupCount(subscriptionStates, "status", "EXPIRED"),
+      suspendedSubscriptions: groupCount(subscriptionStates, "status", "SUSPENDED"),
+      pendingSubscriptionRequests,
+      expiringInSevenDays,
+      successfulPayments: ["PAID", "SUCCEEDED", "MANUALLY_CONFIRMED"].reduce((sum, status) => sum + groupCount(allPayments, "status", status), 0),
+      failedPayments: groupCount(allPayments, "status", "FAILED"),
+      pendingPayments: groupCount(allPayments, "status", "PENDING"),
+      refundedPayments: groupCount(allPayments, "status", "REFUNDED"),
+      accounts: totalGroups(accountStates),
+      connectedAccounts: groupCount(accountStates, "status", "CONNECTED"),
+      reconnectingAccounts: groupCount(accountStates, "status", "CONNECTING") + groupCount(accountStates, "status", "RECONNECT_REQUIRED"),
+      failedAccounts: groupCount(accountStates, "status", "FAILED") + groupCount(accountStates, "status", "ERROR"),
+      campaigns: totalGroups(campaignStates),
+      queuedCampaigns: groupCount(campaignStates, "status", "QUEUED") + groupCount(campaignStates, "status", "SCHEDULED"),
+      runningCampaigns: groupCount(campaignStates, "status", "SENDING"),
+      completedCampaigns: groupCount(campaignStates, "status", "COMPLETED"),
+      failedCampaigns: groupCount(campaignStates, "status", "FAILED"),
+      messages,
+      openSupportTickets: supportStates.filter((row) => !["RESOLVED", "CLOSED"].includes(row.status)).reduce((sum, row) => sum + row._count._all, 0),
+      urgentTickets,
+      criticalSecurityAlerts,
+    };
+    for (const payment of monthlyPayments) {
+      metrics[`monthlyRevenue_${payment.currency}`] = Number(metrics[`monthlyRevenue_${payment.currency}`] ?? 0) + Number(payment._sum.amount ?? 0);
+    }
+    metrics.monthlyConfirmedPaymentTotal = String(metrics.monthlyRevenue_TRY ?? 0);
+    metrics.connected = metrics.connectedAccounts;
+    metrics.disconnected = Number(metrics.accounts) - Number(metrics.connectedAccounts);
+
+    return NextResponse.json({ metrics, securityEvents, tickets, billingEvents, recentAdminActions, generatedAt: new Date().toISOString() });
   } catch {
     return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   }
+}
+
+function groupCount<T extends Record<string, unknown>>(rows: Array<T & { _count: { _all: number } }>, key: keyof T, value: string) {
+  return rows.find((row) => String(row[key]) === value)?._count._all ?? 0;
+}
+
+function totalGroups(rows: Array<{ _count: { _all: number } }>) {
+  return rows.reduce((sum, row) => sum + row._count._all, 0);
 }

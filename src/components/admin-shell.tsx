@@ -21,6 +21,7 @@ const nav = [
   ["/admin/campaigns", "campaigns", Activity],
   ["/admin/support", "support", Ticket],
   ["/admin/security", "security", ShieldAlert],
+  ["/admin/trial-risk", "trialRisk", ShieldAlert],
   ["/admin/compliance", "compliance", ClipboardCheck],
   ["/admin/audit", "audit", FileClock],
   ["/admin/activity", "activity", Activity],

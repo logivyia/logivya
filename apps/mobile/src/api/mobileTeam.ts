@@ -1,7 +1,7 @@
 import { apiClient } from "@/api/client";
 
 export type TeamUserRole = "OWNER" | "ADMIN" | "OPERATOR" | "VIEWER";
-export type TeamUserStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
+export type TeamUserStatus = "ACTIVE" | "INVITED" | "SUSPENDED" | "REMOVED";
 
 export type MobileTeamUser = {
   id: string;
@@ -20,7 +20,6 @@ export type MobileTeamUser = {
 export type InviteTeamUserInput = {
   name: string;
   email: string;
-  role: Exclude<TeamUserRole, "OWNER">;
 };
 
 export type MobileCompanyInvitation = {
@@ -45,6 +44,9 @@ export type TeamSeatUsage = {
   available: number;
   planSlug: string;
   planName: string;
+  whatsappConnectionLimit: number;
+  whatsappConnectionsUsed: number;
+  whatsappConnectionsAvailable: number;
 };
 
 export type UpdateTeamUserInput = Partial<{
@@ -57,10 +59,14 @@ export function getMobileTeamUsers() {
 }
 
 export function inviteMobileTeamUser(input: InviteTeamUserInput) {
-  return apiClient.request<{ invitation: MobileCompanyInvitation; acceptUrl: string; inviteCode: string; emailSent: boolean }>("/api/mobile/team/users", {
+  return apiClient.request<{ invitation: MobileCompanyInvitation; emailSent: boolean }>("/api/mobile/team/users", {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function resendMobileTeamInvitation(id: string) {
+  return apiClient.post<{ invitation: MobileCompanyInvitation; emailSent: boolean }>(`/api/mobile/team/invitations/${id}/resend`, {});
 }
 
 export function revokeMobileTeamInvitation(id: string) {

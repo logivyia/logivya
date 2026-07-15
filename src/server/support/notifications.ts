@@ -7,6 +7,7 @@ import { LOGIVYA_PLATFORM_OWNER_EMAIL } from "@/server/auth/platform-owner";
 import { prisma } from "@/server/db";
 import { sendTemplateEmailSafely } from "@/server/email/service";
 import type { EmailTemplate } from "@/server/email/provider";
+import { logger } from "@/server/observability/logger";
 import {
   localizeNotificationRecord,
   sendPushToUserStrict,
@@ -35,6 +36,16 @@ type EnqueueSupportNotificationInput = {
   emailTemplate: EmailTemplate;
   payload: NotificationPayload;
 };
+
+type SupportEmailEventKind = "ticket_created" | "user_reply" | "admin_reply" | "status_changed";
+const SUPPORT_EMAIL_EVENT_KINDS = new Set<SupportEmailEventKind>(["ticket_created", "user_reply", "admin_reply", "status_changed"]);
+
+function inferEventKind(notificationType: string, emailTemplate: EmailTemplate): SupportEmailEventKind {
+  if (emailTemplate === "support_created" || notificationType === "support.admin_new_ticket") return "ticket_created";
+  if (notificationType === "support.user_replied") return "user_reply";
+  if (notificationType === "support.status_changed" || notificationType === "support.ticket_closed" || notificationType === "support.ticket_reopened") return "status_changed";
+  return "admin_reply";
+}
 
 function asObject(value: Prisma.JsonValue): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -105,11 +116,25 @@ export async function enqueueSupportNotification(
     skipDuplicates: true,
   });
 
+  logger.info("support_notification_created", {
+    ticketId: input.ticketId,
+    companyId: input.recipient.companyId,
+    userId: input.recipient.userId,
+    notificationType: input.type,
+  });
+  logger.info("support_email_queued", {
+    ticketId: input.ticketId,
+    companyId: input.recipient.companyId,
+    userId: input.recipient.userId,
+    notificationType: input.type,
+  });
+
   return notification;
 }
 
 async function deliverOutboxRow(row: {
   id: string;
+  ticketId: string;
   companyId: string;
   recipientUserId: string | null;
   notificationId: string | null;
@@ -118,14 +143,28 @@ async function deliverOutboxRow(row: {
 }) {
   if (!row.recipientUserId || !row.notificationId) throw new Error("SUPPORT_NOTIFICATION_RECIPIENT_MISSING");
 
-  const [recipient, notification] = await Promise.all([
+  const [recipient, notification, ticket] = await Promise.all([
     prisma.user.findUnique({
       where: { id: row.recipientUserId },
       select: { email: true, locale: true },
     }),
     prisma.notification.findUnique({ where: { id: row.notificationId } }),
+    prisma.supportTicket.findUnique({
+      where: { id: row.ticketId },
+      select: {
+        publicId: true,
+        subject: true,
+        category: true,
+        priority: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        company: { select: { name: true } },
+        createdBy: { select: { name: true, email: true } },
+      },
+    }),
   ]);
-  if (!recipient || !notification) throw new Error("SUPPORT_NOTIFICATION_TARGET_MISSING");
+  if (!recipient || !notification || !ticket) throw new Error("SUPPORT_NOTIFICATION_TARGET_MISSING");
 
   const payload = asObject(row.payload);
   const localized = await localizeNotificationRecord(notification, recipient.locale);
@@ -144,19 +183,61 @@ async function deliverOutboxRow(row: {
 
   if (row.template.endsWith(".email")) {
     const provider = getEmailProviderStatus();
-    if (!provider.configured) return;
+    if (!provider.configured) throw new Error("EMAIL_CONFIGURATION_MISSING");
     const requestedTemplate = payload.emailTemplate;
     const emailTemplate = typeof requestedTemplate === "string" && EMAIL_TEMPLATES.has(requestedTemplate as EmailTemplate)
       ? requestedTemplate as EmailTemplate
       : "support_replied";
+    const messageId = typeof payload.messageId === "string" ? payload.messageId : null;
+    const eventKind = typeof payload.eventKind === "string" && SUPPORT_EMAIL_EVENT_KINDS.has(payload.eventKind as SupportEmailEventKind)
+      ? payload.eventKind as SupportEmailEventKind
+      : inferEventKind(notification.type, emailTemplate);
+    const message = messageId
+      ? await prisma.supportTicketMessage.findFirst({
+        where: { id: messageId, ticketId: row.ticketId, isInternal: false, deletedAt: null },
+        select: { message: true, createdAt: true },
+      })
+      : null;
+    const fallbackMessage = eventKind === "status_changed"
+      ? { message: localized.message, createdAt: ticket.updatedAt }
+      : await prisma.supportTicketMessage.findFirst({
+        where: { ticketId: row.ticketId, isInternal: false, deletedAt: null },
+        orderBy: eventKind === "ticket_created" ? { createdAt: "asc" } : { createdAt: "desc" },
+        select: { message: true, createdAt: true },
+      });
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "https://www.logivya.com").replace(/\/$/, "");
+    const adminDestination = `${baseUrl}/admin/support/${encodeURIComponent(ticket.publicId)}`;
+    const userDestination = `${baseUrl}/support/${encodeURIComponent(ticket.publicId)}`;
     const result = await sendTemplateEmailSafely({
       to: recipient.email,
       template: emailTemplate,
       companyId: row.companyId,
       userId: row.recipientUserId,
-      variables: { title: localized.title, message: localized.message, locale: recipient.locale },
+      variables: {
+        title: localized.title,
+        locale: recipient.locale || "tr",
+        eventKind,
+        ticketNumber: ticket.publicId,
+        ticketSubject: ticket.subject,
+        ticketCategory: ticket.category,
+        ticketPriority: ticket.priority,
+        ticketStatus: ticket.status,
+        userName: ticket.createdBy.name || ticket.createdBy.email,
+        userEmail: ticket.createdBy.email,
+        companyName: ticket.company.name,
+        createdAt: (message?.createdAt || fallbackMessage?.createdAt || ticket.updatedAt || ticket.createdAt).toISOString(),
+        message: message?.message || fallbackMessage?.message || localized.message,
+        openUrl: eventKind === "ticket_created" || eventKind === "user_reply" ? adminDestination : userDestination,
+      },
     });
     if (!result.sent) throw new Error(result.errorCode);
+    logger.info("support_email_sent", {
+      ticketId: row.ticketId,
+      companyId: row.companyId,
+      userId: row.recipientUserId,
+      eventKind,
+      outboxId: row.id,
+    });
     return;
   }
 
@@ -179,6 +260,7 @@ async function runSupportNotificationOutbox(limit: number): Promise<OutboxResult
     take: Math.min(100, Math.max(1, limit)),
     select: {
       id: true,
+      ticketId: true,
       companyId: true,
       recipientUserId: true,
       notificationId: true,
@@ -215,6 +297,23 @@ async function runSupportNotificationOutbox(limit: number): Promise<OutboxResult
         },
       });
       failed += 1;
+      logger.error("support_notification_failed", error, {
+        ticketId: row.ticketId,
+        companyId: row.companyId,
+        userId: row.recipientUserId ?? undefined,
+        outboxId: row.id,
+        channel: row.template.endsWith(".email") ? "email" : "push",
+        terminal: attempts >= MAX_DELIVERY_ATTEMPTS,
+      });
+      if (row.template.endsWith(".email")) {
+        logger.error("support_email_failed", error, {
+          ticketId: row.ticketId,
+          companyId: row.companyId,
+          userId: row.recipientUserId ?? undefined,
+          outboxId: row.id,
+          terminal: attempts >= MAX_DELIVERY_ATTEMPTS,
+        });
+      }
     }
   }
 
@@ -227,6 +326,27 @@ export function processSupportNotificationOutbox(limit = 25) {
     activeOutboxProcessing = null;
   });
   return activeOutboxProcessing;
+}
+
+export async function retryFailedSupportNotifications(limit = 100) {
+  const failed = await prisma.supportNotificationOutbox.findMany({
+    where: { status: "FAILED" },
+    orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
+    take: Math.min(500, Math.max(1, Math.trunc(limit))),
+    select: { id: true },
+  });
+  if (!failed.length) return { queued: 0 };
+  const result = await prisma.supportNotificationOutbox.updateMany({
+    where: { id: { in: failed.map((row) => row.id) }, status: "FAILED" },
+    data: {
+      status: "PENDING",
+      attempts: 0,
+      availableAt: new Date(),
+      deliveredAt: null,
+      lastError: "MANUAL_RETRY_REQUESTED",
+    },
+  });
+  return { queued: result.count };
 }
 
 export function scheduleSupportNotificationDelivery() {

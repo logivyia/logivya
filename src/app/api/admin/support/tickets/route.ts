@@ -9,7 +9,7 @@ function isTrue(value: string | null) {
 
 export async function GET(request: Request) {
   try {
-    await requireSupportSuperAdmin(request);
+    const context = await requireSupportSuperAdmin(request);
     const params = new URL(request.url).searchParams;
     const [result, metrics] = await Promise.all([
       listAdminSupportTickets({
@@ -22,7 +22,9 @@ export async function GET(request: Request) {
         companyId: params.get("companyId"),
         userId: params.get("userId"),
         userEmail: params.get("userEmail"),
-        assignedAdminId: params.get("assignedAdminId"),
+        assignedAdminId: params.get("assignedAdminId") === "ME" ? context.user.id : params.get("assignedAdminId"),
+        unassignedOnly: isTrue(params.get("unassigned")) || isTrue(params.get("unassignedOnly")),
+        sort: params.get("sort"),
         unreadOnly: isTrue(params.get("unread")) || isTrue(params.get("unreadOnly")),
         unansweredOnly: isTrue(params.get("unanswered")) || isTrue(params.get("unansweredOnly")),
         createdFrom: params.get("createdFrom"),

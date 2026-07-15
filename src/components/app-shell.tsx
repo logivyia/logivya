@@ -17,7 +17,7 @@ const nav = [
   ["/send-message", "nav.sendMessage", Send], ["/message-history", "nav.history", History],
   ["/support", "nav.support", CircleHelp],
 ] as const;
-const settingsNav = [["/settings/company","settings.company",Building2],["/settings/users","settings.users",UserCog],["/settings/subscriptions","settings.billing",CreditCard],["/settings/delete-account","settings.deleteAccount",Trash2]] as const;
+const settingsNav = [["/settings/company","settings.company",Building2],["/settings/users","settings.users",UserCog],["/settings/subscriptions","settings.billing",CreditCard],["/settings/security","settings.security",ShieldCheck],["/settings/delete-account","settings.deleteAccount",Trash2]] as const;
 
 type NoticeItem={id:string;title:string;message:string;isRead:boolean;createdAt:string};
 type ShellSubscription = {

@@ -22,7 +22,18 @@ export function SubscriptionScreen() {
   const { locale, t } = useTranslation();
   const navigation = useNavigation<SubscriptionNavigation>();
   const userRole = useAuthStore((state) => state.user?.role);
-  const { subscription, loading, requesting, error, success, load, requestUpgrade } = useSubscriptionStore();
+  const {
+    subscription,
+    entitlements,
+    loading,
+    requesting,
+    resendingVerification,
+    error,
+    success,
+    load,
+    requestUpgrade,
+    resendVerification,
+  } = useSubscriptionStore();
   const normalizedRole = userRole?.trim().toUpperCase();
   const canManageTeam = normalizedRole === "OWNER" || normalizedRole === "ADMIN";
 
@@ -75,6 +86,34 @@ export function SubscriptionScreen() {
             <InfoTile label={t("endDate")} value={subscription?.endsAt ? formatDate(subscription.endsAt, locale) : "-"} />
           </View>
         </SurfaceCard>
+
+        {entitlements?.emailVerificationRequired ? (
+          <SurfaceCard style={styles.card}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>{t("verifyEmailTitle")}</Text>
+            <Text style={[styles.meta, { color: theme.muted }]}>{t("verifyEmailTrialDescription")}</Text>
+            <PrimaryButton
+              icon="mail-outline"
+              title={t("resendVerificationEmail")}
+              loading={resendingVerification}
+              onPress={() => void resendVerification()}
+            />
+          </SurfaceCard>
+        ) : entitlements?.trialEligibilityStatus === "PENDING_IDENTITY" ? (
+          <SurfaceCard style={styles.card}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>{t("trialReadyTitle")}</Text>
+            <Text style={[styles.meta, { color: theme.muted }]}>{t("trialReadyDescription")}</Text>
+          </SurfaceCard>
+        ) : entitlements?.trialEligibilityStatus === "INELIGIBLE" ? (
+          <SurfaceCard style={styles.card}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>{t("trialIneligibleTitle")}</Text>
+            <Text style={[styles.meta, { color: theme.muted }]}>{t("trialIdentityUsedDescription")}</Text>
+          </SurfaceCard>
+        ) : entitlements?.trialEligibilityStatus === "BLOCKED" ? (
+          <SurfaceCard style={styles.card}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>{t("trialReviewTitle")}</Text>
+            <Text style={[styles.meta, { color: theme.muted }]}>{t("trialReviewDescription")}</Text>
+          </SurfaceCard>
+        ) : null}
 
         {canManageTeam ? (
           <SurfaceCard style={styles.card}>

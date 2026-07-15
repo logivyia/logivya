@@ -3,7 +3,7 @@
     "name": "Logivya",
     "slug": "logivya-mobile",
     "scheme": "logivya",
-    "version": "1.0.88",
+    "version": "1.0.93",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -32,7 +32,7 @@
     },
     "android": {
       "package": "com.logivya.mobile",
-      "versionCode": 118,
+      "versionCode": 123,
       "googleServicesFile": "./google-services.json",
       "icon": "./assets/logivya/mobillogo1.png",
       "adaptiveIcon": {
@@ -50,7 +50,7 @@
         "https://logivya.com",
         "https://logivya.vercel.app"
       ],
-      "buildMarker": "PROFESSIONAL_CONTACT_SYNC_TENANT_ISOLATION_V118",
+      "buildMarker": "SUBSCRIPTION_SEAT_INVITATION_TRIAL_GOVERNANCE_V123",
       "sentryDsn": "",
       "eas": {
         "projectId": "fc2a52e8-5771-4b1a-bd58-b555c651e596"

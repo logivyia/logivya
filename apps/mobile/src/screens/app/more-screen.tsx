@@ -39,6 +39,7 @@ const adminRows: AdminRow[] = [
   { key: "campaigns", icon: "send-outline", titleKey: "adminCampaignsModule", descriptionKey: "adminCampaignsDescription" },
   { key: "support", icon: "ticket-outline", titleKey: "adminSupportModule", descriptionKey: "adminSupportDescription" },
   { key: "security", icon: "shield-checkmark-outline", titleKey: "adminSecurityModule", descriptionKey: "adminSecurityDescription" },
+  { key: "trialRisk", icon: "warning-outline", titleKey: "adminTrialRiskModule", descriptionKey: "adminTrialRiskDescription" },
   { key: "compliance", icon: "checkmark-done-outline", titleKey: "adminComplianceModule", descriptionKey: "adminComplianceDescription" },
   { key: "audit", icon: "document-text-outline", titleKey: "adminAuditModule", descriptionKey: "adminAuditDescription" },
   { key: "activity", icon: "pulse-outline", titleKey: "adminActivityModule", descriptionKey: "adminActivityDescription" },

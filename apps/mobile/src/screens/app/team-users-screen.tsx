@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as Clipboard from "expo-clipboard";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,13 +17,13 @@ import {
   deleteMobileTeamUser,
   getMobileTeamUsers,
   inviteMobileTeamUser,
+  resendMobileTeamInvitation,
   revokeMobileTeamInvitation,
   updateMobileTeamUser,
   type InviteTeamUserInput,
   type MobileCompanyInvitation,
   type MobileTeamUser,
   type TeamSeatUsage,
-  type TeamUserRole,
   type TeamUserStatus,
 } from "@/api/mobileTeam";
 import { PrimaryButton } from "@/components/primary-button";
@@ -37,10 +36,8 @@ import { useTranslation } from "@/i18n/use-translation";
 import { useTheme } from "@/theme/theme-provider";
 
 type Notice = { type: "success" | "error"; text: string } | null;
-type IssuedInvitation = { inviteCode: string; acceptUrl: string; emailSent: boolean };
+type IssuedInvitation = { emailSent: boolean };
 
-const inviteRoles: InviteTeamUserInput["role"][] = ["OPERATOR", "ADMIN", "VIEWER"];
-const memberRoles: TeamUserRole[] = ["ADMIN", "OPERATOR", "VIEWER"];
 const memberStatuses: TeamUserStatus[] = ["ACTIVE", "SUSPENDED"];
 
 export function TeamUsersScreen() {
@@ -49,7 +46,7 @@ export function TeamUsersScreen() {
   const [users, setUsers] = useState<MobileTeamUser[]>([]);
   const [invitations, setInvitations] = useState<MobileCompanyInvitation[]>([]);
   const [seatUsage, setSeatUsage] = useState<TeamSeatUsage | null>(null);
-  const [invite, setInvite] = useState<InviteTeamUserInput>({ name: "", email: "", role: "OPERATOR" });
+  const [invite, setInvite] = useState<InviteTeamUserInput>({ name: "", email: "" });
   const [notice, setNotice] = useState<Notice>(null);
   const [issuedInvitation, setIssuedInvitation] = useState<IssuedInvitation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,16 +58,11 @@ export function TeamUsersScreen() {
     const invited = users.filter((item) => item.status === "INVITED").length;
     return { active, invited, total: users.length };
   }, [users]);
-  const roleLabel = (role: TeamUserRole) => ({
-    OWNER: t("roleOwner"),
-    ADMIN: t("roleAdmin"),
-    OPERATOR: t("roleOperator"),
-    VIEWER: t("roleViewer"),
-  })[role];
   const statusLabel = (status: TeamUserStatus) => ({
     ACTIVE: t("memberStatusActive"),
     INVITED: t("memberStatusInvited"),
     SUSPENDED: t("memberStatusSuspended"),
+    REMOVED: t("memberStatusRemoved"),
   })[status];
 
   async function load(mode: "initial" | "refresh" = "initial") {
@@ -96,7 +88,7 @@ export function TeamUsersScreen() {
   }, []);
 
   async function handleInvite() {
-    const input = { name: invite.name.trim(), email: invite.email.trim().toLowerCase(), role: invite.role };
+    const input = { name: invite.name.trim(), email: invite.email.trim().toLowerCase() };
     if (!input.name || !input.email) {
       setNotice({ type: "error", text: t("nameEmailRequired") });
       return;
@@ -105,23 +97,14 @@ export function TeamUsersScreen() {
     setSavingKey("invite");
     try {
       const result = await inviteMobileTeamUser(input);
-      setInvite({ name: "", email: "", role: "OPERATOR" });
-      setIssuedInvitation({ inviteCode: result.inviteCode, acceptUrl: result.acceptUrl, emailSent: result.emailSent });
+      setInvite({ name: "", email: "" });
+      setIssuedInvitation({ emailSent: result.emailSent });
       setNotice({ type: "success", text: t("userInviteCreated") });
       await load("refresh");
     } catch (error) {
       setNotice({ type: "error", text: error instanceof Error ? error.message : t("invitationFailed") });
     } finally {
       setSavingKey(null);
-    }
-  }
-
-  async function copyInvitation(value: string, label: string) {
-    try {
-      await Clipboard.setStringAsync(value);
-      setNotice({ type: "success", text: t("copiedToClipboard", { label }) });
-    } catch {
-      setNotice({ type: "error", text: t("copyFailed", { label }) });
     }
   }
 
@@ -176,6 +159,20 @@ export function TeamUsersScreen() {
     ]);
   }
 
+  async function resendInvitation(invitation: MobileCompanyInvitation) {
+    setSavingKey(invitation.id);
+    try {
+      const result = await resendMobileTeamInvitation(invitation.id);
+      setIssuedInvitation({ emailSent: result.emailSent });
+      setNotice({ type: "success", text: t("invitationResent") });
+      await load("refresh");
+    } catch (error) {
+      setNotice({ type: "error", text: error instanceof Error ? error.message : t("invitationFailed") });
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
   return (
     <Screen style={styles.screen}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.keyboard}>
@@ -212,6 +209,13 @@ export function TeamUsersScreen() {
             <SummaryPill label={t("invited")} value={summary.invited} />
           </View>
 
+          {seatUsage ? (
+            <View style={styles.summaryGrid}>
+              <SummaryPill label={t("userSeats")} value={seatUsage.limit} />
+              <SummaryPill label={t("whatsappConnections")} value={seatUsage.whatsappConnectionLimit} />
+            </View>
+          ) : null}
+
           <SurfaceCard style={styles.inviteCard}>
             <SectionTitle title={t("newUserInvite")} />
             <TextField label={t("fullName")} value={invite.name} placeholder={t("teamMemberNamePlaceholder")} onChangeText={(name) => setInvite((current) => ({ ...current, name }))} />
@@ -223,14 +227,6 @@ export function TeamUsersScreen() {
               keyboardType="email-address"
               onChangeText={(email) => setInvite((current) => ({ ...current, email }))}
             />
-            <View style={styles.optionBlock}>
-              <Text style={[styles.optionTitle, { color: theme.text }]}>{t("role")}</Text>
-              <View style={styles.options}>
-                {inviteRoles.map((role) => (
-                  <ChoiceChip key={role} label={roleLabel(role)} active={invite.role === role} onPress={() => setInvite((current) => ({ ...current, role }))} />
-                ))}
-              </View>
-            </View>
             <PrimaryButton title={t("inviteUser")} icon="person-add-outline" loading={savingKey === "invite"} disabled={Boolean(savingKey) || seatUsage?.available === 0} onPress={handleInvite} />
           </SurfaceCard>
 
@@ -238,8 +234,6 @@ export function TeamUsersScreen() {
             <SurfaceCard style={styles.inviteCard}>
               <SectionTitle title={t("invitationReady")} />
               <Text style={[styles.helperText, { color: theme.muted }]}>{t("invitationOneTimeNotice")}</Text>
-              <CopyInvitationRow label={t("invitationCode")} copyLabel={t("copyValue", { label: t("invitationCode") })} value={issuedInvitation.inviteCode} onCopy={() => void copyInvitation(issuedInvitation.inviteCode, t("invitationCode"))} />
-              <CopyInvitationRow label={t("invitationLink")} copyLabel={t("copyValue", { label: t("invitationLink") })} value={issuedInvitation.acceptUrl} onCopy={() => void copyInvitation(issuedInvitation.acceptUrl, t("invitationLink"))} />
               <Text style={[styles.helperText, { color: theme.muted }]}>{t("emailDelivery", { status: issuedInvitation.emailSent ? t("emailSent") : t("emailNotSent") })}</Text>
             </SurfaceCard>
           ) : null}
@@ -254,6 +248,9 @@ export function TeamUsersScreen() {
                     <Text style={[styles.memberEmail, { color: theme.muted }]} numberOfLines={1}>{item.email}</Text>
                     <Text style={[styles.memberEmail, { color: theme.muted }]}>{t("expiresAt", { date: formatDate(item.expiresAt, locale) })}</Text>
                   </View>
+                  <Pressable accessibilityRole="button" accessibilityLabel={t("resendInvitation")} disabled={savingKey !== null} onPress={() => void resendInvitation(item)} style={[styles.iconButton, { borderColor: theme.primary, backgroundColor: theme.cardMuted }]}>
+                    <Ionicons name="refresh-outline" size={19} color={theme.primary} />
+                  </Pressable>
                   <Pressable accessibilityRole="button" disabled={savingKey !== null} onPress={() => confirmRevoke(item)} style={[styles.iconButton, { borderColor: theme.danger, backgroundColor: theme.dangerSoft }]}>
                     <Ionicons name="mail-unread-outline" size={19} color={theme.danger} />
                   </Pressable>
@@ -285,12 +282,8 @@ export function TeamUsersScreen() {
                   </View>
 
                   <View style={styles.optionBlock}>
-                    <Text style={[styles.optionTitle, { color: theme.text }]}>{t("role")}</Text>
-                    <View style={styles.options}>
-                      {(member.role === "OWNER" ? ["OWNER" as const] : memberRoles).map((role) => (
-                        <ChoiceChip key={role} label={roleLabel(role)} active={member.role === role} disabled={savingKey !== null || member.role === "OWNER"} onPress={() => void patchMember(member.id, { role })} />
-                      ))}
-                    </View>
+                    <Text style={[styles.optionTitle, { color: theme.text }]}>{t("userType")}</Text>
+                    <Text style={[styles.helperText, { color: theme.muted }]}>{member.role === "OWNER" ? t("roleOwner") : t("standardUser")}</Text>
                   </View>
 
                   <View style={styles.optionBlock}>
@@ -342,21 +335,6 @@ function SummaryPill({ label, value }: { label: string; value: number }) {
   );
 }
 
-function CopyInvitationRow({ label, copyLabel, value, onCopy }: { label: string; copyLabel: string; value: string; onCopy: () => void }) {
-  const theme = useTheme();
-  return (
-    <View style={styles.copyBlock}>
-      <Text style={[styles.optionTitle, { color: theme.text }]}>{label}</Text>
-      <View style={[styles.copyRow, { borderColor: theme.border, backgroundColor: theme.cardMuted }]}>
-        <Text selectable style={[styles.copyValue, { color: theme.text }]}>{value}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={copyLabel} onPress={onCopy} style={[styles.iconButton, { borderColor: theme.border, backgroundColor: theme.card }]}>
-          <Ionicons name="copy-outline" size={19} color={theme.primary} />
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
 function ChoiceChip({ label, active, disabled, onPress }: { label: string; active: boolean; disabled?: boolean; onPress: () => void }) {
   const theme = useTheme();
   return (
@@ -397,9 +375,6 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 12, fontWeight: "800", marginTop: 4 },
   inviteCard: { gap: 14 },
   helperText: { fontSize: 13, fontWeight: "700", lineHeight: 19 },
-  copyBlock: { gap: 8 },
-  copyRow: { alignItems: "center", borderRadius: 14, borderWidth: 1, flexDirection: "row", gap: 10, padding: 10 },
-  copyValue: { flex: 1, fontSize: 13, fontWeight: "800", lineHeight: 18 },
   invitationRow: { alignItems: "center", borderTopWidth: 1, flexDirection: "row", gap: 12, paddingTop: 12 },
   iconButton: { alignItems: "center", borderRadius: 14, borderWidth: 1, height: 44, justifyContent: "center", width: 44 },
   loadingCard: { alignItems: "center", gap: 12, paddingVertical: 28 },

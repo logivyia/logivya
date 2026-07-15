@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Platform, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect, useRoute } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
 
@@ -43,7 +43,11 @@ export function TicketDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadTicket(ticketId);
-      return () => clearFeedback();
+      const timer = setInterval(() => void loadTicket(ticketId), 20_000);
+      return () => {
+        clearInterval(timer);
+        clearFeedback();
+      };
     }, [clearFeedback, loadTicket, ticketId])
   );
 
@@ -97,6 +101,7 @@ export function TicketDetailScreen() {
               <View style={[styles.bubble, { alignSelf: mine ? "flex-end" : "flex-start", backgroundColor: mine ? theme.primary : theme.card, borderColor: theme.border }]}>
                 <Text style={[styles.messageAuthor, { color: mine ? theme.primaryText : theme.muted }]}>{mine ? t("you") : t("logivyaSupport")}</Text>
                 <Text style={[styles.message, { color: mine ? theme.primaryText : theme.text }]}>{item.message}</Text>
+                {item.attachmentUrl ? <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(item.attachmentUrl!)}><Text style={[styles.attachment, { color: mine ? theme.primaryText : theme.primary }]}>{locale === "tr" ? "Eki aç" : "Open attachment"}</Text></Pressable> : null}
                 <Text style={[styles.messageDate, { color: mine ? theme.primaryText : theme.muted }]}>{formatDateTime(item.createdAt, locale)}</Text>
               </View>
             );
@@ -125,6 +130,7 @@ const styles = StyleSheet.create({
   bubble: { maxWidth: "86%", borderWidth: 1, borderRadius: 8, padding: 14, gap: 6 },
   messageAuthor: { fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
   message: { fontSize: 15, lineHeight: 21 },
+  attachment: { fontSize: 13, fontWeight: "800", textDecorationLine: "underline" },
   messageDate: { fontSize: 11, fontWeight: "700" },
   replyBox: { gap: 10 },
   closedNotice: { borderRadius: 14, fontSize: 13, fontWeight: "800", padding: 12 }

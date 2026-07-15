@@ -31,7 +31,6 @@ export function RegisterScreen() {
   const [acceptKvkk, setAcceptKvkk] = useState(false);
   const [loading, setLoading] = useState(false);
   const [invitationToken, setInvitationToken] = useState<string | undefined>(route.params?.invitationToken);
-  const [invitationCode, setInvitationCode] = useState(route.params?.invitationCode ?? "");
   const passwordPolicy = validatePasswordPolicy(password);
   const passwordsMatch = password === passwordConfirmation;
   const canSubmit = Boolean(fullName && email && phone && passwordPolicy.valid && passwordsMatch && acceptTerms && acceptPrivacy && acceptKvkk);
@@ -81,7 +80,6 @@ export function RegisterScreen() {
         acceptPrivacy,
         acceptKvkk,
         ...(invitationToken ? { invitationToken } : {}),
-        ...(!invitationToken && invitationCode.trim() ? { invitationCode: invitationCode.trim() } : {}),
       });
       setPassword("");
       setPasswordConfirmation("");
@@ -99,15 +97,6 @@ export function RegisterScreen() {
         <View style={styles.form}>
           <Text style={[styles.title, { color: theme.text }]}>{t("registerTitle")}</Text>
           {invitationToken ? <Text style={[styles.invitationNotice, { color: theme.primary }]}>{t("invitationRegistration")}</Text> : null}
-          {!invitationToken ? (
-            <TextField
-              label={t("invitationCodeOptional")}
-              autoCapitalize="characters"
-              value={invitationCode}
-              placeholder="ABCD-EFGH-JKLM-NPQR"
-              onChangeText={setInvitationCode}
-            />
-          ) : null}
           <TextField label={t("fullName")} value={fullName} onChangeText={setFullName} />
           <TextField label={t("email")} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
           <TextField label={t("phone")} keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
@@ -139,7 +128,7 @@ export function RegisterScreen() {
             />
           </View>
           <PrimaryButton title={t("register")} loading={loading} disabled={!canSubmit} onPress={handleRegister} />
-          <Pressable onPress={() => navigation.navigate("Login", invitationToken ? { invitationToken } : invitationCode.trim() ? { invitationCode: invitationCode.trim() } : undefined)} style={styles.centerLink}>
+          <Pressable onPress={() => navigation.navigate("Login", invitationToken ? { invitationToken } : undefined)} style={styles.centerLink}>
             <Text style={{ color: theme.muted }}>{t("alreadyHaveAccount")} <Text style={{ color: theme.primary }}>{t("signInAction")}</Text></Text>
           </Pressable>
         </View>

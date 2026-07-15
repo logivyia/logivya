@@ -8,9 +8,14 @@ function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     if (process.env.NODE_ENV === "production") throw new Error("DATABASE_URL is required in production");
-    return new PrismaClient({ adapter: new PrismaPg({ connectionString: "postgresql://postgres:postgres@127.0.0.1:5432/logivya" }) });
+    return new PrismaClient({
+      adapter: new PrismaPg(
+        { connectionString: "postgresql://postgres:postgres@127.0.0.1:5432/logivya" },
+        { schema: "public" },
+      ),
+    });
   }
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString }, { schema: "public" }) });
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();

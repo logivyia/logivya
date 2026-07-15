@@ -7,6 +7,7 @@ const ACCESS_TOKEN_KEY = "logivya.accessToken";
 const REFRESH_TOKEN_KEY = "logivya.refreshToken";
 const ACCESS_EXPIRES_KEY = "logivya.accessTokenExpiresAt";
 const REFRESH_EXPIRES_KEY = "logivya.refreshTokenExpiresAt";
+const MFA_TRUSTED_DEVICE_KEY = "logivya.mfaTrustedDeviceToken";
 
 export type StoredTokens = {
   accessToken: string;
@@ -104,4 +105,21 @@ export async function clearTokens() {
     SecureStore.deleteItemAsync(ACCESS_EXPIRES_KEY),
     SecureStore.deleteItemAsync(REFRESH_EXPIRES_KEY)
   ]);
+}
+
+export async function saveMfaTrustedDeviceToken(token: string) {
+  await setRequiredSecureItem(MFA_TRUSTED_DEVICE_KEY, token);
+}
+
+export async function readMfaTrustedDeviceToken() {
+  try {
+    return asStoredString(await SecureStore.getItemAsync(MFA_TRUSTED_DEVICE_KEY));
+  } catch (error) {
+    captureAppError(error, { source: "secure-store-read-mfa-trusted-device" });
+    return null;
+  }
+}
+
+export async function clearMfaTrustedDeviceToken() {
+  await SecureStore.deleteItemAsync(MFA_TRUSTED_DEVICE_KEY);
 }

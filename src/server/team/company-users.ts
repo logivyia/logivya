@@ -33,7 +33,7 @@ async function lockCompany(tx: TeamTransaction, companyId: string) {
 
 async function findManageableTarget(tx: TeamTransaction, context: CompanyUserContext, targetId: string) {
   const target = await tx.companyUser.findFirst({
-    where: { id: targetId, companyId: context.companyId },
+    where: { id: targetId, companyId: context.companyId, status: { not: "REMOVED" } },
     include: { user: true },
   });
   if (!target) throw new Error("NOT_FOUND");
@@ -46,7 +46,7 @@ async function assertActivationSeatAvailable(tx: TeamTransaction, companyId: str
   const now = new Date();
   await tx.companyInvitation.updateMany({
     where: { companyId, status: "PENDING", expiresAt: { lte: now } },
-    data: { status: "EXPIRED" },
+    data: { status: "EXPIRED", reservedSeat: false },
   });
   const current = await resolveCompanyEntitlements(companyId, tx, now);
   if (!current?.valid) throw new Error("subscription.inactive");
@@ -71,6 +71,9 @@ export function serializeCompanyMember(member: Awaited<ReturnType<typeof listCom
     role: member.role,
     status: member.status,
     createdAt: member.createdAt.toISOString(),
+    joinedAt: member.joinedAt.toISOString(),
+    seatActivatedAt: member.seatActivatedAt?.toISOString() ?? null,
+    suspendedAt: member.suspendedAt?.toISOString() ?? null,
     user: {
       id: member.user.id,
       name: member.user.name,
@@ -83,7 +86,7 @@ export function serializeCompanyMember(member: Awaited<ReturnType<typeof listCom
 
 export async function listCompanyUsers(companyId: string) {
   return prisma.companyUser.findMany({
-    where: { companyId },
+    where: { companyId, status: { not: "REMOVED" } },
     include: {
       user: {
         select: {
@@ -111,7 +114,15 @@ export async function updateCompanyUser(request: Request, context: CompanyUserCo
     const currentTarget = await findManageableTarget(tx, context, targetId);
     if (input.status === "ACTIVE") await assertActivationSeatAvailable(tx, context.companyId, currentTarget.status);
 
-    const updated = await tx.companyUser.update({ where: { id: targetId }, data: input });
+    const updated = await tx.companyUser.update({
+      where: { id: targetId },
+      data: {
+        role: "OPERATOR",
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.status === "ACTIVE" ? { seatActivatedAt: new Date(), suspendedAt: null, removedAt: null } : {}),
+        ...(input.status === "SUSPENDED" ? { suspendedAt: new Date() } : {}),
+      },
+    });
     if (input.status === "SUSPENDED") {
       const revokedAt = new Date();
       await tx.userSession.updateMany({
@@ -129,7 +140,7 @@ export async function updateCompanyUser(request: Request, context: CompanyUserCo
   await writeAuditLog(request, {
     companyId: context.companyId,
     userId: context.actorUserId,
-    action: input.status === "SUSPENDED" ? "company.user.suspended" : input.status === "ACTIVE" ? "company.user.reactivated" : "company.user.role_updated",
+    action: input.status === "SUSPENDED" ? "company.user.suspended" : input.status === "ACTIVE" ? "company.user.reactivated" : "company.user.standard_role_confirmed",
     entityType: "CompanyUser",
     entityId: targetId,
     before: { role: target.before.role, status: target.before.status },
@@ -142,8 +153,11 @@ export async function deleteCompanyUser(request: Request, context: CompanyUserCo
   const target = await prisma.$transaction(async (tx) => {
     await lockCompany(tx, context.companyId);
     const currentTarget = await findManageableTarget(tx, context, targetId);
-    await tx.companyUser.delete({ where: { id: targetId } });
     const revokedAt = new Date();
+    await tx.companyUser.update({
+      where: { id: targetId },
+      data: { status: "REMOVED", role: "OPERATOR", removedAt: revokedAt, suspendedAt: null },
+    });
     await tx.userSession.updateMany({
       where: { userId: currentTarget.userId, companyId: context.companyId, revokedAt: null },
       data: { revokedAt },

@@ -57,13 +57,39 @@ export type MobileSubscription = {
     platformDelete: boolean;
     adFreeMessaging: boolean;
     teamSeats: number;
+    whatsappConnections: number;
   };
   lockedFeatures: string[];
   upgradeRequired: boolean;
 };
 
+export type MobileCompanyEntitlementSummary = {
+  planCode: string | null;
+  planName: string | null;
+  subscriptionStatus: string;
+  isActive: boolean;
+  seatLimit: number;
+  seatsUsed: number;
+  pendingInviteSeats: number;
+  availableSeats: number;
+  whatsappConnectionLimit: number;
+  whatsappConnectionsUsed: number;
+  whatsappConnectionsAvailable: number;
+  canManageBilling: boolean;
+  canManageTeam: boolean;
+  canInviteMembers: boolean;
+  canConnectWhatsApp: boolean;
+  trialEligibilityStatus: string | null;
+  trialDecisionCode: string | null;
+  emailVerificationRequired: boolean;
+};
+
 export function getMobileSubscription() {
-  return apiClient.request<{ subscription: MobileSubscription }>("/api/mobile/subscription/status");
+  return apiClient.request<{ subscription: MobileSubscription; entitlements: MobileCompanyEntitlementSummary }>("/api/mobile/subscription/status");
+}
+
+export function resendMobileEmailVerification() {
+  return apiClient.post<{ sent?: boolean; alreadyVerified?: boolean }>("/api/mobile/auth/email-verification/resend", {});
 }
 
 export function requestMobileSubscriptionUpgrade(input: { planSlug: "starter" | "professional"; billingPeriod: "MONTHLY" | "YEARLY" }) {

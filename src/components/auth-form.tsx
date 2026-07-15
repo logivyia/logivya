@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowRight, LoaderCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, LoaderCircle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { MIN_PASSWORD_LENGTH, validatePasswordPolicy } from "@logivya/validation/password-policy";
@@ -12,6 +13,14 @@ import { useI18n } from "@/i18n/provider";
 import { apiErrorMessage } from "@/i18n/api-error";
 
 type Mode = "login" | "register";
+type MfaChallenge = {
+  mfaRequired: true;
+  mfaSetupRequired: boolean;
+  expiresAt: string;
+  secret?: string;
+  qrCodeDataUrl?: string;
+  recoveryCodes?: string[];
+};
 const loginFields = [{ name: "identifier", type: "text", required: true }, { name: "password", type: "password", required: true }] as const;
 const registerFields = [
   { name: "name", type: "text", required: true },
@@ -63,7 +72,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [invitationToken, setInvitationToken] = useState("");
-  const [invitationCode, setInvitationCode] = useState("");
+  const [mfaChallenge, setMfaChallenge] = useState<MfaChallenge | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [rememberDevice, setRememberDevice] = useState(false);
   const fields = mode === "login" ? loginFields : registerFields;
 
   useEffect(() => {
@@ -75,6 +86,34 @@ export function AuthForm({ mode }: { mode: Mode }) {
       window.history.replaceState({}, "", "/login");
     }
   }, [mode, t]);
+
+  function browserFingerprint() {
+    const key = "logivya.browserDeviceId";
+    const current = localStorage.getItem(key);
+    if (current) return current;
+    const created = crypto.randomUUID();
+    localStorage.setItem(key, created);
+    return created;
+  }
+
+  async function finishLogin() {
+    if (invitationToken) {
+      const invitationResponse = await fetch(`/api/company/invitations/${encodeURIComponent(invitationToken)}/accept`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "ACCEPT" }),
+      });
+      const invitationResult = await invitationResponse.json();
+      if (!invitationResponse.ok) {
+        setError(t(invitationMessages[invitationResult.error] ?? invitationResult.error ?? "errors.generic"));
+        return false;
+      }
+    }
+    localStorage.removeItem("logivya.selectedGroupIds");
+    router.push("/dashboard");
+    router.refresh();
+    return true;
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -95,7 +134,10 @@ export function AuthForm({ mode }: { mode: Mode }) {
       }
     }
     if (mode === "register" && invitationToken) body.invitationToken = invitationToken;
-    if (mode === "register" && !invitationToken && invitationCode.trim()) body.invitationCode = invitationCode.trim();
+    if (mode === "login") {
+      body.deviceFingerprint = browserFingerprint();
+      body.deviceName = navigator.userAgent.includes("Mobile") ? "Mobile Web" : "Web Browser";
+    }
 
     const response = await fetch(`/api/auth/${mode}`, {
       method: "POST",
@@ -109,25 +151,33 @@ export function AuthForm({ mode }: { mode: Mode }) {
       return;
     }
 
-    if (mode === "login" && (invitationToken || invitationCode.trim())) {
-      const invitationResponse = await fetch(invitationToken
-        ? `/api/company/invitations/${encodeURIComponent(invitationToken)}/accept`
-        : "/api/company/invitations/code/accept", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(invitationToken ? { action: "ACCEPT" } : { code: invitationCode.trim() }),
-      });
-      const invitationResult = await invitationResponse.json();
-      if (!invitationResponse.ok) {
-        setError(t(invitationMessages[invitationResult.error] ?? invitationResult.error ?? "errors.generic"));
-        setLoading(false);
-        return;
-      }
+    if (mode === "login" && result.mfaRequired === true) {
+      setMfaChallenge(result as MfaChallenge);
+      setLoading(false);
+      return;
     }
 
-    localStorage.removeItem("logivya.selectedGroupIds");
-    router.push("/dashboard");
-    router.refresh();
+    await finishLogin();
+    setLoading(false);
+  }
+
+  async function verifyMfa(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
+    const response = await fetch("/api/auth/mfa/login/verify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: mfaCode, rememberDevice, deviceFingerprint: browserFingerprint(), deviceName: navigator.userAgent.includes("Mobile") ? "Mobile Web" : "Web Browser" }),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      setError(apiErrorMessage(t, result));
+      setLoading(false);
+      return;
+    }
+    await finishLogin();
+    setLoading(false);
   }
 
   return <main className="auth-surface relative grid min-h-screen place-items-center p-4 sm:p-5">
@@ -141,18 +191,20 @@ export function AuthForm({ mode }: { mode: Mode }) {
           <p className="mt-2 text-sm text-slate-600">{t(`auth.${mode}Description`)}</p>
           {invitationToken ? <p className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm font-medium text-orange-800">{t("auth.continueWithInvitation")}</p> : null}
         </div>
-        <form className="grid gap-4 sm:grid-cols-2" onSubmit={submit}>
-          {!invitationToken ? <label className="sm:col-span-2">
-            <span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.invitationCodeOptional")}</span>
-            <input
-              value={invitationCode}
-              onChange={(event) => setInvitationCode(event.target.value.toUpperCase())}
-              autoCapitalize="characters"
-              autoComplete="off"
-              placeholder="ABCD-EFGH-JKLM-NPQR"
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-950 caret-slate-950 placeholder:text-slate-400 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100"
-            />
-          </label> : null}
+        {mfaChallenge ? <form className="grid gap-4" onSubmit={verifyMfa}>
+          <div className="flex items-center gap-3">
+            <span className="grid size-11 place-items-center rounded-full bg-orange-100 text-orange-700"><ShieldCheck className="size-5" /></span>
+            <div><h2 className="text-xl font-semibold text-slate-950">{t(mfaChallenge.mfaSetupRequired ? "auth.mfaSetupTitle" : "auth.mfaTitle")}</h2><p className="mt-1 text-sm text-slate-600">{t(mfaChallenge.mfaSetupRequired ? "auth.mfaSetupDescription" : "auth.mfaDescription")}</p></div>
+          </div>
+          {mfaChallenge.qrCodeDataUrl ? <div className="mx-auto rounded-lg border border-slate-200 bg-white p-2"><Image unoptimized width={224} height={224} src={mfaChallenge.qrCodeDataUrl} alt={t("auth.mfaQrAlt")} className="size-56" /></div> : null}
+          {mfaChallenge.secret ? <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-600">{t("auth.mfaManualKey")}</p><code className="mt-1 block break-all text-sm text-slate-950">{mfaChallenge.secret}</code></div> : null}
+          {mfaChallenge.recoveryCodes?.length ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-3"><p className="text-sm font-semibold text-amber-900">{t("auth.mfaRecoveryCodes")}</p><p className="mt-1 text-xs text-amber-800">{t("auth.mfaRecoveryWarning")}</p><pre className="mt-3 grid grid-cols-2 gap-1 whitespace-pre-wrap font-mono text-xs text-amber-950">{mfaChallenge.recoveryCodes.join("\n")}</pre></div> : null}
+          <label><span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.mfaCode")}</span><input required autoFocus value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} autoComplete="one-time-code" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-center font-mono text-lg tracking-[.2em] text-slate-950 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100" /></label>
+          <label className="flex items-center gap-3 text-sm text-slate-700"><input type="checkbox" checked={rememberDevice} onChange={(event) => setRememberDevice(event.target.checked)} className="size-4 accent-orange-500" />{t("auth.mfaRememberDevice")}</label>
+          {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-danger">{error}</p>}
+          <button disabled={loading || mfaCode.trim().length < 6} className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 font-semibold text-white disabled:opacity-60">{loading ? <LoaderCircle className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}{t("auth.mfaVerify")}</button>
+          <button type="button" onClick={() => { setMfaChallenge(null); setMfaCode(""); setError(""); }} className="inline-flex items-center justify-center gap-2 text-sm font-semibold text-slate-600"><ArrowLeft className="size-4" />{t("auth.mfaBack")}</button>
+        </form> : <form className="grid gap-4 sm:grid-cols-2" onSubmit={submit}>
           {fields.map((field) => <label key={field.name} className={mode === "login" ? "sm:col-span-2" : ""}>
             <span className="mb-2 block text-xs font-medium text-slate-700">{t(`auth.${field.name}`)}</span>
             <input
@@ -179,7 +231,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
           <button disabled={loading} className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 font-semibold text-white disabled:opacity-60 sm:col-span-2">
             {loading ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}{t(`auth.${mode}Action`)}
           </button>
-        </form>
+        </form>}
         <p className="mt-6 text-center text-sm text-slate-600">{t(`auth.${mode}Switch`)} <Link className="font-semibold text-orange-600" href={`${mode === "login" ? "/register" : "/login"}${invitationToken ? `?invitation=${encodeURIComponent(invitationToken)}` : ""}`}>{t(`auth.${mode}SwitchAction`)}</Link></p>
       </div>
     </section>

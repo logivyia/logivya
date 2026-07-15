@@ -5,9 +5,10 @@ import { authPasswordErrorCode, PASSWORD_CONFIRMATION_MISMATCH, passwordSchema }
 import { getRequestLocale, getServerTranslator } from "@/i18n/server";
 import { hasPermission, PERMISSIONS } from "@/server/auth/permissions";
 import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
-import { ensureSevenDayTrial } from "@/server/billing/trial-service";
+import { createPendingTrialEntitlement } from "@/server/billing/trial-service";
 import { prisma } from "@/server/db";
 import { createMobileSession, parseMobilePlatform } from "@/server/mobile/auth";
+import { issueEmailVerification } from "@/server/auth/email-verification";
 import { clientIp, enforceMobileRateLimit } from "@/server/mobile/rate-limit";
 import { readMobileJson } from "@/server/mobile/request-json";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
@@ -82,6 +83,13 @@ export async function POST(request: Request) {
     await enforceOperationRateLimit({ scope: "mobile-register", subject: ipAddress, maxAttempts: 8, windowMs: 60 * 60_000, request });
 
     const input = parsed.data;
+    await enforceOperationRateLimit({
+      scope: "mobile-register-device",
+      subject: input.deviceId,
+      maxAttempts: 3,
+      windowMs: 24 * 60 * 60_000,
+      request,
+    });
     const email = input.email.trim().toLowerCase();
     const phone = input.phone.replace(/\D/g, "");
     const duplicate = await prisma.user.findFirst({ where: { OR: [{ email }, { phone }] } });
@@ -98,9 +106,6 @@ export async function POST(request: Request) {
       return mobileError("INVITATION_EMAIL_MISMATCH", invitationMessages.INVITATION_EMAIL_MISMATCH, { status: 403 });
     }
 
-    const trial = invitation ? null : await prisma.plan.findUnique({ where: { slug: "trial" } });
-    if (!invitation && !trial) return mobileError("CONFIGURATION_ERROR", "Deneme paketi yapılandırılmamış.", { status: 503 });
-
     const passwordHash = await hashPassword(input.password, process.env.PASSWORD_PEPPER ?? "");
     const userAgent = request.headers.get("user-agent");
     const result = await prisma.$transaction(async (tx) => {
@@ -112,6 +117,7 @@ export async function POST(request: Request) {
           email,
           passwordHash,
           locale: requestedLocale,
+          emailVerifiedAt: invitation ? new Date() : undefined,
         },
       });
 
@@ -131,7 +137,13 @@ export async function POST(request: Request) {
           data: { name: t("registration.defaultCompanyName", { name: user.name }), ownerId: user.id, email: user.email, phone: user.phone },
         });
         membership = await tx.companyUser.create({ data: { companyId: company.id, userId: user.id, role: "OWNER" } });
-        await ensureSevenDayTrial(tx, { companyId: company.id, planId: trial!.id, userId: user.id });
+        await createPendingTrialEntitlement(tx, {
+          companyId: company.id,
+          userId: user.id,
+          registrationPhone: phone,
+          ipAddress,
+          deviceFingerprint: input.deviceId,
+        });
         await tx.companyBillingProfile.create({
           data: { companyId: company.id, billingType: "COMPANY", companyName: company.name, country: "TR", city: "-", addressLine1: "-", billingEmail: user.email },
         });
@@ -158,6 +170,10 @@ export async function POST(request: Request) {
       appVersion: input.appVersion,
       userAgent,
     });
+    if (!invitation) {
+      await issueEmailVerification(request, { userId: result.user.id, companyId: result.company.id, email: result.user.email })
+        .catch((error) => logger.error("EMAIL_VERIFICATION_ISSUE_FAILED", error, { correlationId, userId: result.user.id, companyId: result.company.id }));
+    }
     await writeAuditLog(request, {
       companyId: result.company.id,
       userId: result.user.id,

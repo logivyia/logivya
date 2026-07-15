@@ -24,6 +24,21 @@ export async function POST(request: Request) {
           message: item.status === "TRIALING" ? "Deneme süresi sona erdi." : "Abonelik süresi sona erdi.",
         },
       });
+      if (item.status === "TRIALING") {
+        await tx.trialEntitlement.updateMany({
+          where: { companyId: item.companyId, status: "ACTIVE" },
+          data: { status: "CONSUMED", decisionCode: "TRIAL_PERIOD_ENDED" },
+        });
+      }
+      await tx.subscriptionAuditLog.create({
+        data: {
+          companyId: item.companyId,
+          subscriptionId: item.id,
+          eventType: item.status === "TRIALING" ? "TRIAL_EXPIRED" : "SUBSCRIPTION_EXPIRED",
+          previousState: { status: item.status },
+          newState: { status: "EXPIRED", expiredAt: now.toISOString() },
+        },
+      });
       await tx.notification.create({
         data: {
           companyId: item.companyId,

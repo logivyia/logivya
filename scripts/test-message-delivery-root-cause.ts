@@ -47,14 +47,14 @@ assertIncludes(deliveryPipeline, 'traceMessageStage("auth.permission"', "deliver
 assertIncludes(deliveryPipeline, 'traceMessageStage("subscription.message_access"', "delivery tracing");
 assertIncludes(deliveryPipeline, 'traceMessageStage("queue.recipients.enqueue"', "delivery tracing");
 assertIncludes(deliveryPipeline, "message.queue.recipient.enqueued", "queue observability");
-assertIncludes(deliveryPipeline, "subscriptionAccess.canSendMessage", "shared subscription access");
+assertIncludes(deliveryPipeline, "subscriptionAccess.canSendTargets", "shared subscription access");
 assertIncludes(deliveryPipeline, "resolveSendableWhatsAppGroups", "shared group resolver");
 assertNotMatches(deliveryPipeline, /maxMessagesPerDay|maxMessagesPerMonth|maxGroups|dailyMessageLimit|monthlyMessageLimit/, "delivery pipeline");
 
 assertIncludes(subscriptionAccess, "return { allowed: true, limit: undefined", "message limits disabled");
-assertIncludes(subscriptionAccess, "return { allowed: true, reason: undefined, limit: undefined, used: 0 }", "whatsapp account limit disabled");
-assertNotMatches(subscriptionAccess, /canConnectWhatsAppAccount[\s\S]{0,800}whatsAppAccount\.count/, "whatsapp account connect access");
-assertNotMatches(subscriptionAccess, /canConnectWhatsAppAccount[\s\S]{0,800}accounts\.planLimit/, "whatsapp account connect access");
+assertIncludes(subscriptionAccess, "current.entitlements.whatsappConnections", "company WhatsApp connection limit");
+assertIncludes(subscriptionAccess, "prisma.whatsAppAccount.count", "company WhatsApp connection usage");
+assertIncludes(subscriptionAccess, "PENDING_IDENTITY", "verified-identity trial bootstrap connection");
 assertNotMatches(subscriptionAccess, /canSendMessage[\s\S]*maxMessagesPerDay|canSendMessage[\s\S]*maxMessagesPerMonth|canSendMessage[\s\S]*maxGroups/, "subscription send access");
 assertNotMatches(subscriptionAccess, /canUseScheduledMessages[\s\S]{0,200}plan\.hasScheduledMessages/, "scheduled feature gate");
 assertNotMatches(subscriptionAccess, /canUseRecurringMessages[\s\S]{0,200}plan\.hasRecurringMessages/, "recurring feature gate");

@@ -378,24 +378,26 @@
   "home.plan.starter.price": "280 TL",
   "home.plan.starter.period": "Monthly",
   "home.plan.starter.description": "A practical plan for essential messaging and group management.",
-  "home.plan.starter.feature1": "2 accounts",
+  "home.plan.starter.feature1": "2 user seats",
   "home.plan.starter.feature2": "Ad-supported messaging",
   "home.plan.starter.feature3": "Scheduled and recurring messages",
   "home.plan.starter.feature4": "Delete for Everyone",
   "home.plan.starter.feature5": "Message your groups",
   "home.plan.starter.feature6": "Advanced support",
+  "home.plan.starter.feature7": "Up to 2 WhatsApp connections",
   "home.plan.starter.cta": "Choose Starter",
   "home.plan.professional.name": "Professional",
   "home.plan.professional.badge": "Popular",
   "home.plan.professional.price": "380 TL",
   "home.plan.professional.period": "Monthly",
   "home.plan.professional.description": "Professional messaging operations with ad-free delivery and advanced tools.",
-  "home.plan.professional.feature1": "3 accounts",
+  "home.plan.professional.feature1": "3 user seats",
   "home.plan.professional.feature2": "Ad-free messaging",
   "home.plan.professional.feature3": "Message contacts and groups",
   "home.plan.professional.feature4": "Delete for Everyone",
   "home.plan.professional.feature5": "Scheduled and recurring delivery",
   "home.plan.professional.feature6": "Advanced support",
+  "home.plan.professional.feature7": "Up to 3 WhatsApp connections",
   "home.plan.professional.cta": "Choose Professional",
   "home.link.privacy": "Privacy Policy",
   "home.link.terms": "Terms of Service",
@@ -745,6 +747,9 @@
   "users.emailNotSent": "Could not be sent; share the code or link securely.",
   "users.pendingInvitations": "Pending invitations",
   "users.revokeInvitation": "Revoke invitation",
+  "users.resendInvitation": "Resend invitation",
+  "users.invitationResent": "The invitation link was renewed and sent again.",
+  "users.standardUser": "Standard User",
   "common.yes": "Yes",
   "common.no": "No",
   "adminNotifications.eyebrow": "Operational Awareness",
@@ -1122,6 +1127,7 @@
   "admin.menu.campaigns": "Campaigns",
   "admin.menu.support": "Support",
   "admin.menu.security": "Security",
+  "admin.menu.trialRisk": "Trial risk",
   "admin.menu.compliance": "Compliance",
   "admin.menu.audit": "Audit center",
   "admin.menu.activity": "Activity center",
@@ -1216,6 +1222,9 @@
   "email.passwordReset.intro": "Enter the verification code below on the Logivya screen to reset your password.",
   "email.teamInvitation.subject": "Logivya team invitation",
   "email.teamInvitation.message": "{name}, you have been invited to a Logivya company workspace. Your invitation code is {code}. Accept the invitation at {url}",
+  "email.teamInvitation.linkMessage": "{name}, you have been invited to a Logivya company workspace. Open this one-time secure link to accept the invitation: {url}",
+  "email.verification.subject": "Verify your Logivya email",
+  "email.verification.message": "Open this one-time link to verify your email address: {url}",
   "notification.message.ACCOUNT_ARCHIVED": "The WhatsApp account was moved to the archive.",
   "notification.message.PAYMENT_RECEIVED": "Your payment was recorded successfully.",
   "notification.message.PAYMENT_REJECTED": "Your payment request was rejected. Review your billing details.",
@@ -1278,4 +1287,50 @@
   "notification.message.support.user_replied": "A user replied to a support request.",
   "notification.title.support.status_changed": "Support request updated",
   "notification.message.support.status_changed": "The status of your support request was updated."
+  ,"auth.mfaTitle": "Two-step verification"
+  ,"auth.mfaDescription": "Enter the 6-digit code from your authenticator app."
+  ,"auth.mfaSetupTitle": "Set up Authenticator"
+  ,"auth.mfaSetupDescription": "Scan the QR code with your authenticator app, then enter the generated code."
+  ,"auth.mfaQrAlt": "Authenticator setup QR code"
+  ,"auth.mfaManualKey": "Manual setup key"
+  ,"auth.mfaRecoveryCodes": "Recovery codes"
+  ,"auth.mfaRecoveryWarning": "Store these codes securely. Each code can be used only once."
+  ,"auth.mfaCode": "Verification or recovery code"
+  ,"auth.mfaRememberDevice": "Trust this device for 30 days"
+  ,"auth.mfaVerify": "Verify and sign in"
+  ,"auth.mfaBack": "Back to sign in"
+  ,"settings.security": "Security"
+  ,"security.eyebrow": "Account protection"
+  ,"security.title": "Security"
+  ,"security.description": "Manage two-step verification, recovery codes, and trusted devices."
+  ,"security.authenticator": "Authenticator verification"
+  ,"security.enabled": "Enabled and protecting your account"
+  ,"security.disabled": "Not enabled"
+  ,"security.enable": "Enable"
+  ,"security.confirmEnable": "Confirm setup"
+  ,"security.disable": "Disable two-step verification"
+  ,"security.enabledSuccess": "Two-step verification is enabled."
+  ,"security.recoveryTitle": "Recovery codes"
+  ,"security.recoveryRemaining": "Single-use codes remaining: {count}"
+  ,"security.recoveryRegenerated": "Recovery codes were regenerated."
+  ,"security.copyCodes": "Copy codes"
+  ,"security.regenerate": "Regenerate codes"
+  ,"security.trustedDevices": "Trusted devices"
+  ,"security.unknownDevice": "Unknown device"
+  ,"security.revokeDevice": "Revoke device trust"
+  ,"security.noTrustedDevices": "No trusted devices."
+  ,"security.activity": "Security activity"
+  ,"security.noActivity": "No security activity yet."
+  ,"billing.verifyEmailTitle": "Verify your email address"
+  ,"billing.verifyEmailTrialDescription": "Your 7-day trial starts after email verification and the first successful WhatsApp connection."
+  ,"billing.resendVerificationEmail": "Resend verification email"
+  ,"billing.verificationEmailSent": "Verification email sent."
+  ,"billing.emailAlreadyVerified": "Your email address is already verified."
+  ,"billing.trialReadyTitle": "Your 7-day trial is ready"
+  ,"billing.trialReadyDescription": "Your trial starts when your WhatsApp account connects successfully for the first time."
+  ,"users.whatsappConnections": "WhatsApp connections"
+  ,"billing.trialIneligibleTitle": "Free trial already used"
+  ,"billing.trialIdentityUsedDescription": "This WhatsApp account has already used its free trial. Select a paid plan to continue."
+  ,"billing.trialReviewTitle": "Trial eligibility under review"
+  ,"billing.trialReviewDescription": "Your trial eligibility requires a security review. You can still purchase a paid plan."
 }

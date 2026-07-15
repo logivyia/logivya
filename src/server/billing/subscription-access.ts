@@ -12,8 +12,8 @@ export class SubscriptionAccessService {
     return resolveCompanyEntitlements(companyId);
   }
 
-  async getSummary(companyId: string) {
-    return resolveCompanyEntitlementSummary(companyId);
+  async getSummary(companyId: string, actor?: { userId?: string; role?: string }) {
+    return resolveCompanyEntitlementSummary(companyId, new Date(), actor);
   }
 
   async requireActive(companyId: string) {
@@ -22,10 +22,30 @@ export class SubscriptionAccessService {
     return current;
   }
 
-  async canConnectWhatsAppAccount(companyId: string) {
-    const current = await this.getCurrent(companyId);
-    if (!current?.valid) return { allowed: false, reason: "subscription.inactive", limit: 0 };
-    return { allowed: true, reason: undefined, limit: undefined, used: 0 };
+  async canConnectWhatsAppAccount(companyId: string, userId?: string) {
+    const [current, used] = await Promise.all([
+      this.getCurrent(companyId),
+      prisma.whatsAppAccount.count({ where: { companyId, archivedAt: null } }),
+    ]);
+    if (current?.valid) {
+      const limit = current.entitlements.whatsappConnections;
+      return {
+        allowed: used < limit,
+        reason: used < limit ? undefined : "subscription.whatsappAccountLimit",
+        limit,
+        used,
+      };
+    }
+    const pendingTrial = userId
+      ? await prisma.trialEntitlement.findUnique({ where: { companyId_userId: { companyId, userId } }, select: { status: true } })
+      : null;
+    const bootstrapAllowed = pendingTrial?.status === "PENDING_IDENTITY" && used < 1;
+    return {
+      allowed: bootstrapAllowed,
+      reason: bootstrapAllowed ? undefined : pendingTrial ? "trial.identityVerificationUnavailable" : "subscription.inactive",
+      limit: pendingTrial?.status === "PENDING_IDENTITY" ? 1 : 0,
+      used,
+    };
   }
 
   async canSendMessage(companyId: string, requestedRecipients = 0) {
@@ -69,7 +89,7 @@ export class SubscriptionAccessService {
     const [active, legacyInvited, pending] = await Promise.all([
       prisma.companyUser.count({ where: { companyId, status: "ACTIVE" } }),
       prisma.companyUser.count({ where: { companyId, status: "INVITED" } }),
-      prisma.companyInvitation.count({ where: { companyId, status: "PENDING", expiresAt: { gt: now } } }),
+      prisma.companyInvitation.count({ where: { companyId, status: "PENDING", reservedSeat: true, expiresAt: { gt: now } } }),
     ]);
     const used = active + legacyInvited + pending;
     return { allowed: used < current.entitlements.teamSeats, limit: current.entitlements.teamSeats, used, active, legacyInvited, pending };
@@ -81,7 +101,7 @@ export class SubscriptionAccessService {
   }
 
   async getAccountLimit(companyId: string) {
-    return (await this.getCurrent(companyId))?.plan.maxWhatsappAccounts ?? 0;
+    return (await this.getCurrent(companyId))?.entitlements.whatsappConnections ?? 0;
   }
 
   async getTeamUserLimit(companyId: string) {

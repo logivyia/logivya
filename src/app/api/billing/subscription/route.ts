@@ -6,10 +6,10 @@ import { prisma } from "@/server/db";
 
 export async function GET() {
   try {
-    const { company } = await requireApiSession();
+    const { company, membership, user } = await requireApiSession();
     const [current, entitlements] = await Promise.all([
       subscriptionAccess.getCurrent(company.id),
-      subscriptionAccess.getSummary(company.id),
+      subscriptionAccess.getSummary(company.id, { userId: user.id, role: membership.role }),
     ]);
     const subscription = current?.subscription
       ? await prisma.subscription.findUnique({
@@ -19,7 +19,7 @@ export async function GET() {
       : null;
     return NextResponse.json({
       subscription: subscription ? { ...subscription, ...serializeSubscription(subscription) } : null,
-      entitlements,
+      entitlements: { ...entitlements, emailVerificationRequired: !user.emailVerifiedAt },
     });
   } catch {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });

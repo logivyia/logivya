@@ -1,6 +1,6 @@
 import { apiClient } from "@/api/client";
 import { getMobilePlatform } from "@/utils/device";
-import type { AuthSessionPayload, AuthTokens, MobileCompany, MobileUser } from "@/types/api";
+import type { AuthSessionPayload, AuthTokens, LoginResponsePayload, MobileCompany, MobileUser } from "@/types/api";
 
 export type MobileMePayload = {
   user: Omit<MobileUser, "role"> & { role?: string };
@@ -15,11 +15,25 @@ function normalizeIdentifier(identifier: string) {
   return identifier.trim().toLowerCase();
 }
 
-export function loginRequest(input: { identifier: string; password: string; deviceId: string; appVersion?: string }) {
-  return apiClient.post<AuthSessionPayload>("/api/mobile/auth/login", {
+export function loginRequest(input: { identifier: string; password: string; deviceId: string; appVersion?: string; trustedDeviceToken?: string }) {
+  return apiClient.post<LoginResponsePayload>("/api/mobile/auth/login", {
     ...input,
     identifier: normalizeIdentifier(input.identifier),
     platform: getMobilePlatform()
+  }, { auth: false });
+}
+
+export function verifyMfaLoginRequest(input: {
+  challengeToken: string;
+  code: string;
+  rememberDevice: boolean;
+  deviceId: string;
+  deviceName?: string;
+  appVersion?: string;
+}) {
+  return apiClient.post<AuthSessionPayload>("/api/mobile/auth/mfa/verify", {
+    ...input,
+    platform: getMobilePlatform(),
   }, { auth: false });
 }
 

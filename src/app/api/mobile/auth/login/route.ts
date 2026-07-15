@@ -10,6 +10,13 @@ import { logger } from "@/server/observability/logger";
 import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
 import { writeAuditLog } from "@/server/security/audit";
 import { resolvePreferredLoginMembership } from "@/server/team/login-membership";
+import { createAndStoreMfaEnrollment } from "@/server/security/mfa";
+import {
+  findActiveMfaCredential,
+  issueMfaChallenge,
+  recordMfaSecurityEvent,
+  validateTrustedDevice,
+} from "@/server/auth/mfa-challenge";
 
 const schema = z.object({
   identifier: z.string().trim().min(3).max(254),
@@ -17,6 +24,7 @@ const schema = z.object({
   deviceId: z.string().min(3).max(160),
   platform: z.string().optional(),
   appVersion: z.string().max(40).optional(),
+  trustedDeviceToken: z.string().min(32).max(256).optional(),
 });
 
 export async function POST(request: Request) {
@@ -32,6 +40,10 @@ export async function POST(request: Request) {
 
     const identifier = parsed.data.identifier.toLowerCase();
     const phone = identifier.replace(/\D/g, "");
+    const recentFailures = await prisma.loginAttempt.count({
+      where: { email: identifier, ipAddress: ip, success: false, createdAt: { gte: new Date(Date.now() - 15 * 60_000) } },
+    });
+    if (recentFailures >= 5) return mobileError("RATE_LIMITED", "Cok fazla basarisiz giris denemesi yapildi.", { status: 429 });
     logger.info("Mobile login request received", {
       identifierType: identifier.includes("@") ? "email" : "phone",
       platform: parsed.data.platform,
@@ -68,6 +80,39 @@ export async function POST(request: Request) {
       return mobileError("FORBIDDEN", "Çalışma alanı bulunamadı.", { status: 403 });
     }
 
+    const activeCredential = await findActiveMfaCredential(user.id);
+    const trustedDevice = activeCredential
+      ? await validateTrustedDevice(user.id, parsed.data.trustedDeviceToken, parsed.data.deviceId)
+      : null;
+    if ((activeCredential || user.mfaRequired) && !trustedDevice) {
+      const purpose = activeCredential ? "LOGIN" as const : "SETUP" as const;
+      const challenge = await issueMfaChallenge({
+        userId: user.id,
+        companyId: membership.companyId,
+        channel: "MOBILE",
+        purpose,
+        request,
+        deviceId: parsed.data.deviceId,
+        platform: parsed.data.platform,
+        appVersion: parsed.data.appVersion,
+      });
+      const enrollment = purpose === "SETUP" ? await createAndStoreMfaEnrollment(user.id, user.email) : null;
+      await recordMfaSecurityEvent({
+        request,
+        userId: user.id,
+        companyId: membership.companyId,
+        type: purpose === "SETUP" ? "MFA_SETUP_REQUIRED" : "MFA_CHALLENGE_ISSUED",
+        message: purpose === "SETUP" ? "Mobil MFA kurulumu istendi." : "Mobil MFA kodu istendi.",
+      });
+      return mobileSuccess({
+        mfaRequired: true as const,
+        mfaSetupRequired: purpose === "SETUP",
+        challengeToken: challenge.token,
+        expiresAt: challenge.expiresAt.toISOString(),
+        ...(enrollment ?? {}),
+      });
+    }
+
     const tokens = await createMobileSession({
       userId: user.id,
       companyId: membership.companyId,
@@ -76,6 +121,7 @@ export async function POST(request: Request) {
       platform: parseMobilePlatform(parsed.data.platform),
       appVersion: parsed.data.appVersion,
       userAgent: request.headers.get("user-agent"),
+      mfaVerified: Boolean(activeCredential),
     });
     await prisma.loginAttempt.create({
       data: { userId: user.id, email: user.email, ipAddress: ip, userAgent: request.headers.get("user-agent"), success: true },

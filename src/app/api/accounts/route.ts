@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
     await assertWhatsAppWorkerReachable();
-    const access=await subscriptionAccess.canConnectWhatsAppAccount(company.id);
+    const access=await subscriptionAccess.canConnectWhatsAppAccount(company.id, user.id);
     if(!access.allowed)return NextResponse.json({error:access.reason,limit:access.limit},{status:403});
     const account = await prisma.whatsAppAccount.create({ data: { companyId: company.id, userId: user.id, label: parsed.data.label || null, provider: "baileys", status: AccountStatus.CREATED } });
     try {

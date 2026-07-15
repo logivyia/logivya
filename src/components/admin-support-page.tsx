@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ChevronDown, MessageSquare, RefreshCw, Search, Send, Ticket } from "lucide-react";
+import { ChevronDown, ExternalLink, MessageSquare, RefreshCw, Search, Send, Ticket, UserCheck, UserMinus } from "lucide-react";
 import { apiErrorMessage } from "@/i18n/api-error";
 import { formatDateTime } from "@/i18n/format";
 import { useI18n } from "@/i18n/provider";
@@ -11,6 +11,13 @@ type SupportMessage = {
   senderType: string;
   message: string;
   isInternal?: boolean;
+  attachmentUrl?: string | null;
+  createdAt: string;
+};
+
+type SupportAudit = {
+  id: string;
+  eventType: string;
   createdAt: string;
 };
 
@@ -25,6 +32,7 @@ type SupportTicket = {
   status: string;
   priority: string;
   createdAt: string;
+  updatedAt?: string;
   lastMessageAt?: string;
   adminUnreadCount?: number;
   unreadReplyCount?: number;
@@ -32,6 +40,7 @@ type SupportTicket = {
   createdBy?: { id: string; name: string | null; email: string } | null;
   assignedToAdmin?: { id: string; name: string | null; email: string } | null;
   messages?: SupportMessage[];
+  auditTrail?: SupportAudit[];
 };
 
 type Metrics = {
@@ -43,6 +52,8 @@ type Metrics = {
   resolvedToday: number;
   urgent: number;
   unread: number;
+  failedNotifications?: number;
+  failedEmails?: number;
   averageFirstResponseSeconds: number | null;
 };
 
@@ -51,6 +62,7 @@ type PageInfo = { hasMore: boolean; nextCursor: string | null };
 const statuses = ["ALL", "OPEN", "IN_PROGRESS", "WAITING_FOR_ADMIN", "WAITING_FOR_USER", "RESOLVED", "CLOSED"] as const;
 const priorities = ["ALL", "LOW", "NORMAL", "HIGH", "URGENT"] as const;
 const categories = ["ALL", "TECHNICAL", "WHATSAPP_CONNECTION", "MESSAGE_DELIVERY", "DELETE_FOR_EVERYONE", "ACCOUNT", "SUBSCRIPTION", "BILLING", "TEAM", "SECURITY", "FEATURE_REQUEST", "OTHER"] as const;
+const sorts = ["LAST_ACTIVITY", "NEWEST", "OLDEST", "PRIORITY"] as const;
 const categoryKeys: Record<string, string> = {
   TECHNICAL: "support.category.technical",
   WHATSAPP_CONNECTION: "support.category.whatsappConnection",
@@ -92,6 +104,10 @@ export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string
   const [category, setCategory] = useState("ALL");
   const [search, setSearch] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [assignment, setAssignment] = useState("ALL");
+  const [sort, setSort] = useState("LAST_ACTIVITY");
+  const [createdFrom, setCreatedFrom] = useState("");
+  const [createdTo, setCreatedTo] = useState("");
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [pageInfo, setPageInfo] = useState<PageInfo>({ hasMore: false, nextCursor: null });
   const [messagePageInfo, setMessagePageInfo] = useState<PageInfo>({ hasMore: false, nextCursor: null });
@@ -109,14 +125,19 @@ export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string
   const [notice, setNotice] = useState("");
   const pendingReply = useRef<{ body: string; id: string } | null>(null);
 
-  const load = useCallback(async (cursor?: string | null) => {
+  const load = useCallback(async (cursor?: string | null, silent = false) => {
     if (cursor) setLoadingMore(true);
-    else setLoading(true);
-    setError("");
+    else if (!silent) setLoading(true);
+    if (!silent) setError("");
     try {
       const query = new URLSearchParams({ limit: "30", status, priority, category });
       if (search.trim()) query.set("search", search.trim());
       if (unreadOnly) query.set("unread", "true");
+      if (assignment === "UNASSIGNED") query.set("unassigned", "true");
+      if (assignment === "ME") query.set("assignedAdminId", "ME");
+      query.set("sort", sort);
+      if (createdFrom) query.set("createdFrom", createdFrom);
+      if (createdTo) query.set("createdTo", createdTo);
       if (cursor) query.set("cursor", cursor);
       const response = await fetch(`/api/admin/support/tickets?${query}`, { cache: "no-store" });
       const payload = await response.json();
@@ -125,16 +146,16 @@ export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string
       setPageInfo(payload.pageInfo || { hasMore: false, nextCursor: null });
       setMetrics(payload.metrics || null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : t("support.loadFailed"));
+      if (!silent) setError(loadError instanceof Error ? loadError.message : t("support.loadFailed"));
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [category, priority, search, status, t, unreadOnly]);
+  }, [assignment, category, createdFrom, createdTo, priority, search, sort, status, t, unreadOnly]);
 
-  const openTicket = useCallback(async (identifier: string, options: { older?: boolean; updateUrl?: boolean; cursor?: string | null } = {}) => {
-    setDetailLoading(true);
-    setError("");
+  const openTicket = useCallback(async (identifier: string, options: { older?: boolean; updateUrl?: boolean; cursor?: string | null; silent?: boolean } = {}) => {
+    if (!options.silent) setDetailLoading(true);
+    if (!options.silent) setError("");
     try {
       const query = new URLSearchParams({ limit: "50" });
       if (options.older && options.cursor) query.set("cursor", options.cursor);
@@ -144,7 +165,7 @@ export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string
       if (options.older) {
         setSelected((current) => current ? { ...current, messages: [...(payload.messages || []), ...(current.messages || [])] } : payload.ticket);
       } else {
-        setSelected(payload.ticket);
+        setSelected({ ...payload.ticket, auditTrail: payload.auditTrail || [] });
         setStatusDraft(payload.ticket.status);
         setPriorityDraft(payload.ticket.priority);
         setTickets((current) => current.map((ticket) => ticket.publicId === payload.ticket.publicId
@@ -154,9 +175,9 @@ export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string
       }
       setMessagePageInfo(payload.pageInfo || { hasMore: false, nextCursor: null });
     } catch (detailError) {
-      setError(detailError instanceof Error ? detailError.message : t("support.openFailed"));
+      if (!options.silent) setError(detailError instanceof Error ? detailError.message : t("support.openFailed"));
     } finally {
-      setDetailLoading(false);
+      if (!options.silent) setDetailLoading(false);
     }
   }, [t]);
 
@@ -170,6 +191,14 @@ export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string
     const timer = window.setTimeout(() => void openTicket(initialPublicId, { updateUrl: false }), 0);
     return () => window.clearTimeout(timer);
   }, [initialPublicId, openTicket]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void load(undefined, true);
+      if (selected?.publicId) void openTicket(selected.publicId, { updateUrl: false, silent: true });
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [load, openTicket, selected?.publicId]);
 
   async function sendReply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -222,6 +251,28 @@ export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string
     }
   }
 
+  async function updateAssignment(assigned: boolean) {
+    if (!selected || saving) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/admin/support/tickets/${encodeURIComponent(selected.publicId || selected.id)}/assignment`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ assignedAdminUserId: assigned ? "SELF" : null }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(apiErrorMessage(t, payload, "support.updateFailed"));
+      setNotice(assigned ? "Ticket assigned." : "Assignment removed.");
+      await Promise.all([load(), openTicket(selected.publicId || selected.id, { updateUrl: false })]);
+    } catch (assignmentError) {
+      setError(assignmentError instanceof Error ? assignmentError.message : t("support.updateFailed"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const metricItems = metrics ? [
     ["support.metrics.open", metrics.totalOpen],
     ["support.metrics.waitingForAdmin", metrics.waitingForAdmin],
@@ -230,6 +281,7 @@ export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string
     ["support.metrics.resolvedToday", metrics.resolvedToday],
     ["support.metrics.urgent", metrics.urgent],
     ["support.metrics.unread", metrics.unread],
+    ["support.metrics.failedNotifications", metrics.failedNotifications || 0],
   ] as const : [];
 
   return (
@@ -244,14 +296,14 @@ export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string
         <div className="mb-5 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
           {metricItems.map(([label, value]) => (
             <div key={label} className="rounded-lg border bg-card p-3">
-              <p className="text-xs text-muted">{t(label)}</p>
+              <p className="text-xs text-muted">{label === "support.metrics.failedNotifications" ? (locale === "tr" ? "Başarısız bildirim" : "Failed notifications") : t(label)}</p>
               <p className="mt-1 text-xl font-semibold">{value}</p>
             </div>
           ))}
         </div>
       ) : null}
 
-      <div className="mb-5 grid gap-2 border-y py-4 md:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_180px_160px_180px_auto_auto]">
+      <div className="mb-5 grid gap-2 border-y py-4 md:grid-cols-2 xl:grid-cols-4">
         <label className="relative">
           <Search className="pointer-events-none absolute start-3 top-3 size-4 text-muted" />
           <input className={`${field} ps-9`} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("adminSupport.searchPlaceholder")} />
@@ -265,6 +317,16 @@ export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string
         <select className={field} value={category} onChange={(event) => setCategory(event.target.value)}>
           {categories.map((value) => <option key={value} value={value}>{value === "ALL" ? t("support.allCategories") : categoryLabel(value, t)}</option>)}
         </select>
+        <select className={field} value={sort} onChange={(event) => setSort(event.target.value)} aria-label={locale === "tr" ? "Sıralama" : "Sort"}>
+          {sorts.map((value) => <option key={value} value={value}>{({ LAST_ACTIVITY: locale === "tr" ? "Son aktivite" : "Last activity", NEWEST: locale === "tr" ? "En yeni" : "Newest", OLDEST: locale === "tr" ? "En eski" : "Oldest", PRIORITY: locale === "tr" ? "Öncelik" : "Priority" })[value]}</option>)}
+        </select>
+        <select className={field} value={assignment} onChange={(event) => setAssignment(event.target.value)} aria-label={locale === "tr" ? "Atama" : "Assignment"}>
+          <option value="ALL">{locale === "tr" ? "Tüm atamalar" : "All assignments"}</option>
+          <option value="ME">{locale === "tr" ? "Bana atanan" : "Assigned to me"}</option>
+          <option value="UNASSIGNED">{locale === "tr" ? "Atanmamış" : "Unassigned"}</option>
+        </select>
+        <label className="grid gap-1 text-xs font-semibold text-muted"><span>{locale === "tr" ? "Başlangıç tarihi" : "Created from"}</span><input type="date" className={field} value={createdFrom} onChange={(event) => setCreatedFrom(event.target.value)} /></label>
+        <label className="grid gap-1 text-xs font-semibold text-muted"><span>{locale === "tr" ? "Bitiş tarihi" : "Created to"}</span><input type="date" className={field} value={createdTo} onChange={(event) => setCreatedTo(event.target.value)} /></label>
         <button type="button" className={unreadOnly ? primaryButton : secondaryButton} onClick={() => setUnreadOnly((value) => !value)}>{t("support.unreadOnly")}</button>
         <button type="button" className={secondaryButton} onClick={() => void load()}><RefreshCw className="size-4" />{t("adminSupport.refresh")}</button>
       </div>
@@ -278,9 +340,9 @@ export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string
         <section className="min-w-0 rounded-lg border bg-card">
           <div className="border-b px-4 py-3 text-sm font-semibold text-muted">{loading ? t("common.loading") : t("adminSupport.ticketCount", { count: tickets.length })}</div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-sm">
+            <table className="w-full min-w-[1180px] text-sm">
               <thead><tr className="border-b text-start text-xs uppercase text-muted">
-                <th className="px-4 py-3">{t("adminSupport.ticket")}</th><th className="px-4 py-3">{t("common.company")}</th><th className="px-4 py-3">{t("adminSupport.userEmail")}</th><th className="px-4 py-3">{t("common.status")}</th><th className="px-4 py-3">{t("support.priority")}</th><th className="px-4 py-3">{t("adminSupport.lastMessage")}</th>
+                <th className="px-4 py-3">{t("adminSupport.ticket")}</th><th className="px-4 py-3">{t("common.company")}</th><th className="px-4 py-3">{t("adminSupport.userEmail")}</th><th className="px-4 py-3">{locale === "tr" ? "Kategori" : "Category"}</th><th className="px-4 py-3">{t("common.status")}</th><th className="px-4 py-3">{t("support.priority")}</th><th className="px-4 py-3">{locale === "tr" ? "Kaynak" : "Source"}</th><th className="px-4 py-3">{locale === "tr" ? "Atanan" : "Assignee"}</th><th className="px-4 py-3">{t("adminSupport.lastMessage")}</th>
               </tr></thead>
               <tbody>
                 {tickets.map((ticket) => {
@@ -288,7 +350,7 @@ export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string
                   return (
                     <tr key={ticket.id} onClick={() => void openTicket(ticket.publicId || ticket.id)} className={`cursor-pointer border-b transition last:border-0 hover:bg-primary/5 ${selected?.id === ticket.id ? "bg-primary/5" : ""}`}>
                       <td className="px-4 py-3"><div className="flex items-center gap-2"><span className="font-semibold">{ticket.title || ticket.subject}</span>{unread ? <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground">{unread}</span> : null}</div><p className="mt-1 text-xs text-muted">{ticket.publicId}</p></td>
-                      <td className="px-4 py-3">{ticket.company?.name || "-"}</td><td className="px-4 py-3">{ticket.createdBy?.email || "-"}</td><td className="px-4 py-3">{statusLabel(ticket.status, t)}</td><td className="px-4 py-3">{priorityLabel(ticket.priority, t)}</td><td className="px-4 py-3">{formatDateTime(ticket.lastMessageAt || ticket.createdAt, locale)}</td>
+                      <td className="px-4 py-3">{ticket.company?.name || "-"}</td><td className="px-4 py-3">{ticket.createdBy?.email || "-"}</td><td className="px-4 py-3">{categoryLabel(ticket.category || ticket.type, t)}</td><td className="px-4 py-3">{statusLabel(ticket.status, t)}</td><td className="px-4 py-3">{priorityLabel(ticket.priority, t)}</td><td className="px-4 py-3">{ticket.source || "-"}</td><td className="px-4 py-3">{ticket.assignedToAdmin?.name || ticket.assignedToAdmin?.email || (locale === "tr" ? "Atanmamış" : "Unassigned")}</td><td className="px-4 py-3">{formatDateTime(ticket.lastMessageAt || ticket.createdAt, locale)}</td>
                     </tr>
                   );
                 })}
@@ -309,10 +371,16 @@ export function AdminSupportPage({ initialPublicId }: { initialPublicId?: string
                 <div><label className="mb-1 block text-xs font-semibold text-muted">{t("adminSupport.ticketStatus")}</label><div className="flex gap-2"><select className={field} value={statusDraft} onChange={(event) => setStatusDraft(event.target.value)}>{statuses.filter((value) => value !== "ALL").map((value) => <option key={value} value={value}>{statusLabel(value, t)}</option>)}</select><button type="button" title={t("adminSupport.update")} className={primaryButton} disabled={saving || statusDraft === selected.status} onClick={() => void updateTicket("status")}>{t("common.save")}</button></div></div>
                 <div><label className="mb-1 block text-xs font-semibold text-muted">{t("support.priority")}</label><div className="flex gap-2"><select className={field} value={priorityDraft} onChange={(event) => setPriorityDraft(event.target.value)}>{priorities.filter((value) => value !== "ALL").map((value) => <option key={value} value={value}>{priorityLabel(value, t)}</option>)}</select><button type="button" title={t("adminSupport.update")} className={primaryButton} disabled={saving || priorityDraft === selected.priority} onClick={() => void updateTicket("priority")}>{t("common.save")}</button></div></div>
               </div>
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3">
+                <span className="me-auto text-sm text-muted">{selected.assignedToAdmin?.name || selected.assignedToAdmin?.email || (locale === "tr" ? "Atanmamış" : "Unassigned")}</span>
+                <button type="button" className={secondaryButton} disabled={saving} onClick={() => void updateAssignment(true)}><UserCheck className="size-4" />{locale === "tr" ? "Bana ata" : "Assign to me"}</button>
+                <button type="button" className={secondaryButton} disabled={saving || !selected.assignedToAdmin} onClick={() => void updateAssignment(false)}><UserMinus className="size-4" />{locale === "tr" ? "Atamayı kaldır" : "Unassign"}</button>
+              </div>
               <div className="grid max-h-[430px] gap-3 overflow-y-auto pe-1">
                 {messagePageInfo.hasMore ? <button type="button" className={secondaryButton} disabled={detailLoading} onClick={() => void openTicket(selected.publicId || selected.id, { older: true, updateUrl: false, cursor: messagePageInfo.nextCursor })}>{t("support.loadOlder")}</button> : null}
-                {(selected.messages || []).map((message) => <article key={message.id} className={`max-w-[92%] rounded-lg border p-3 ${message.isInternal ? "bg-amber-500/10" : message.senderType === "ADMIN" ? "ms-auto bg-primary/5" : "bg-background"}`}><div className="mb-2 flex justify-between gap-3 text-xs text-muted"><span className="font-semibold">{message.isInternal ? t("adminSupport.internalNote") : message.senderType === "ADMIN" ? t("adminSupport.adminReply") : t("adminSupport.userMessage")}</span><span>{formatDateTime(message.createdAt, locale)}</span></div><p className="whitespace-pre-wrap break-words text-sm leading-6">{message.message}</p></article>)}
+                {(selected.messages || []).map((message) => <article key={message.id} className={`max-w-[92%] rounded-lg border p-3 ${message.isInternal ? "bg-amber-500/10" : message.senderType === "ADMIN" ? "ms-auto bg-primary/5" : "bg-background"}`}><div className="mb-2 flex justify-between gap-3 text-xs text-muted"><span className="font-semibold">{message.isInternal ? t("adminSupport.internalNote") : message.senderType === "ADMIN" ? t("adminSupport.adminReply") : t("adminSupport.userMessage")}</span><span>{formatDateTime(message.createdAt, locale)}</span></div><p className="whitespace-pre-wrap break-words text-sm leading-6">{message.message}</p>{message.attachmentUrl ? <a href={message.attachmentUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-primary"><ExternalLink className="size-4" />{locale === "tr" ? "Eki aç" : "Open attachment"}</a> : null}</article>)}
               </div>
+              {selected.auditTrail?.length ? <details className="rounded-lg border p-3"><summary className="cursor-pointer text-sm font-semibold">{locale === "tr" ? "Denetim geçmişi" : "Audit history"}</summary><div className="mt-3 grid gap-2">{selected.auditTrail.map((audit) => <div key={audit.id} className="flex justify-between gap-3 border-t pt-2 text-xs text-muted"><span>{audit.eventType.replaceAll("_", " ")}</span><span>{formatDateTime(audit.createdAt, locale)}</span></div>)}</div></details> : null}
               {selected.status === "CLOSED" && !internalNote ? <p className="rounded-lg bg-muted/10 p-3 text-sm text-muted">{t("support.closedNoReply")}</p> : null}
               <form className="grid gap-3" onSubmit={sendReply}>
                 <label className="text-xs font-semibold uppercase text-muted">{t("adminSupport.writeReply")}</label>
