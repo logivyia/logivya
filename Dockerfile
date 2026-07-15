@@ -1,7 +1,7 @@
 FROM node:24-alpine AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 FROM node:24-alpine AS builder
 WORKDIR /app
@@ -9,6 +9,7 @@ ARG DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:5432/logivya_bui
 ENV DATABASE_URL=$DATABASE_URL
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
+RUN npm run postinstall
 RUN npm run build
 
 FROM node:24-alpine AS runner
