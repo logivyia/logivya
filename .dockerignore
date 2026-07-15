@@ -4,3 +4,13 @@ node_modules
 .env*
 npm-debug.log*
 docs
+.gradle
+**/.gradle
+**/build
+**/dist
+artifacts
+*.apk
+*.aab
+*.keystore
+apps/mobile/android/.cxx
+apps/mobile/android/app/.cxx
