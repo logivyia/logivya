@@ -6,7 +6,7 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const proxy = readFileSync("src/proxy.ts", "utf8");
-assert(proxy.includes('"/api/admin/:path*"'), "Proxy must protect all admin APIs");
+assert(proxy.includes('request.nextUrl.pathname.startsWith("/api/admin/")'), "Proxy must protect all admin APIs");
 assert(proxy.includes("CSRF_REJECTED"), "Proxy must reject cross-origin admin mutations");
 
 const guard = readFileSync("src/server/auth/platform-admin.ts", "utf8");

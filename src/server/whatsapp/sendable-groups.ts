@@ -4,6 +4,7 @@ import { hasRestorableWhatsAppCredentials } from "@/lib/whatsapp/session-manager
 import { logger } from "@/server/observability/logger";
 import { enqueueWhatsAppJob } from "@/server/queues/producer";
 import { isPhonePairingActive } from "@/server/whatsapp/pairing-guard";
+import { tryRecordSecurityEvent } from "@/server/security/events";
 
 type SendableGroupScope = {
   userId: string;
@@ -59,6 +60,17 @@ export async function resolveSendableWhatsAppGroups(companyId: string, requested
       whatsappAccountId: scope.accountId,
       requestedCount: uniqueIds.length,
       resolvedCount: candidateGroups.length,
+    });
+    void tryRecordSecurityEvent({
+      companyId,
+      userId: scope.userId,
+      severity: "HIGH",
+      type: "TENANT_ACCESS_DENIED",
+      message: "A WhatsApp group ownership validation failed.",
+      result: "DENIED",
+      source: "sendable-groups",
+      errorCode: "WHATSAPP_GROUP_OWNERSHIP_MISMATCH",
+      metadata: { targetType: "WhatsAppGroup", whatsappAccountId: scope.accountId, requestedCount: uniqueIds.length, resolvedCount: candidateGroups.length },
     });
     throw new Error("WHATSAPP_GROUP_OWNERSHIP_MISMATCH");
   }

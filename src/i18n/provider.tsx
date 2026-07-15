@@ -123,9 +123,6 @@ export function I18nProvider({
 
   const t = useCallback((key: string, variables: Record<string, string | number> = {}) => {
     const template = dictionary[key] ?? fallback[key] ?? englishDictionary[key as keyof typeof englishDictionary];
-    if (!template && process.env.NODE_ENV === "development") {
-      console.warn(`[i18n] missing translation key: ${key}`);
-    }
     const safeTemplate = template ?? readableMissingTranslation(key);
     return Object.entries(variables).reduce(
       (text, [name, value]) => text.replaceAll(

@@ -7,6 +7,7 @@ const extra = Constants.expoConfig?.extra as {
   apiBaseUrl?: string;
   apiFallbackBaseUrls?: string[];
   sentryDsn?: string;
+  buildMarker?: string;
   eas?: { projectId?: string };
 } | undefined;
 
@@ -25,6 +26,9 @@ export const config = {
     "https://logivya.vercel.app"
   ].map(normalizeBaseUrl).filter((url, index, urls) => url && url !== primaryApiBaseUrl && urls.indexOf(url) === index),
   sentryDsn: extra?.sentryDsn ?? runtimeEnv?.EXPO_PUBLIC_SENTRY_DSN ?? "",
+  appVersion: Constants.expoConfig?.version ?? "unknown",
+  versionCode: Constants.expoConfig?.android?.versionCode ?? 0,
+  buildMarker: extra?.buildMarker ?? "unknown",
   easProjectId: extra?.eas?.projectId ?? "",
   requestTimeoutMs: 15000,
   retryCount: 2,

@@ -19,6 +19,10 @@ import { prisma } from "@/server/db";
 import { verifyPassword } from "@/server/security/passwords";
 import { createAndStoreMfaEnrollment } from "@/server/security/mfa";
 import { resolvePreferredLoginMembership } from "@/server/team/login-membership";
+import { keyedIdentifierHash } from "@/server/observability/privacy";
+import { tryRecordSecurityEvent } from "@/server/security/events";
+import { writeAuditLog } from "@/server/security/audit";
+import { logger } from "@/server/observability/logger";
 
 const schema = loginSchema.extend({
   deviceFingerprint: z.string().trim().min(8).max(160).optional(),
@@ -36,7 +40,18 @@ export async function POST(request: Request) {
   const recentFailures = await prisma.loginAttempt.count({
     where: { email: identifier, ipAddress, success: false, createdAt: { gte: new Date(Date.now() - 15 * 60_000) } },
   });
-  if (recentFailures >= 5) return NextResponse.json({ error: "RATE_LIMITED" }, { status: 429 });
+  if (recentFailures >= 5) {
+    await tryRecordSecurityEvent({
+      request,
+      severity: "HIGH",
+      type: "AUTH_RATE_LIMITED",
+      message: "Authentication attempt was rate limited.",
+      result: "DENIED",
+      source: "web-login",
+      metadata: { identifierType: identifier.includes("@") ? "email" : "phone", identifierHash: keyedIdentifierHash(identifier) },
+    });
+    return NextResponse.json({ error: "RATE_LIMITED" }, { status: 429 });
+  }
   const user = await prisma.user.findFirst({
     where: { OR: [{ email: identifier }, ...(normalizedPhone.length >= 7 ? [{ phone: normalizedPhone }] : [])] },
   });
@@ -44,6 +59,17 @@ export async function POST(request: Request) {
   if (!user || user.status !== "ACTIVE" || !(await verifyPassword(user.passwordHash, parsed.data.password, process.env.PASSWORD_PEPPER ?? ""))) {
     await prisma.loginAttempt.create({
       data: { userId: user?.id, email: identifier, ipAddress, userAgent, success: false, failureReason: "INVALID_CREDENTIALS" },
+    });
+    await tryRecordSecurityEvent({
+      request,
+      userId: user?.id,
+      severity: "MEDIUM",
+      type: "AUTH_LOGIN_FAILED",
+      message: "Authentication credentials were rejected.",
+      result: "DENIED",
+      source: "web-login",
+      errorCode: "INVALID_CREDENTIALS",
+      metadata: { identifierType: identifier.includes("@") ? "email" : "phone", identifierHash: keyedIdentifierHash(identifier), knownUser: Boolean(user) },
     });
     return NextResponse.json({ error: "auth.invalidCredentials" }, { status: 401 });
   }
@@ -95,6 +121,29 @@ export async function POST(request: Request) {
   await prisma.loginAttempt.create({
     data: { userId: user.id, email: user.email, ipAddress, userAgent, success: true },
   });
+  await Promise.all([
+    tryRecordSecurityEvent({
+      request,
+      companyId: membership.companyId,
+      userId: user.id,
+      severity: "INFO",
+      type: "AUTH_LOGIN_SUCCEEDED",
+      message: "Authentication succeeded.",
+      result: "SUCCESS",
+      status: "RESOLVED",
+      source: "web-login",
+    }),
+    writeAuditLog(request, {
+      companyId: membership.companyId,
+      userId: user.id,
+      actorType: "USER",
+      actorEmail: user.email,
+      action: "AUTH_LOGIN_SUCCEEDED",
+      entityType: "UserSession",
+      result: "SUCCESS",
+      after: { platform: "web", mfaVerified: Boolean(activeCredential) },
+    }).catch((error) => logger.error("audit.auth_login_succeeded.write_failed", error, { companyId: membership.companyId, userId: user.id })),
+  ]);
 
   const isPlatformAdmin = isAuthorizedLogivyaPlatformAdmin({ email: user.email });
   if (isPlatformAdmin) {

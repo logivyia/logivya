@@ -5,7 +5,7 @@
 - Vercel: Next.js UI, authentication, tenant-scoped APIs, campaign creation.
 - Managed PostgreSQL: users, sessions, companies, accounts, groups, campaigns, reports.
 - Managed Redis: BullMQ sync and message queues.
-- VPS/Docker worker: persistent Baileys sockets, encrypted VPS disk/session volume, QR events, group sync, throttled sending.
+- Render Docker worker: persistent Baileys sockets, 10 GB session disk, QR events, group/contact sync, throttled sending and PostgreSQL-to-Redis queue recovery.
 - Cloudflare: DNS for `logivya.com` and `www.logivya.com`.
 
 Do not run Baileys inside Vercel Functions. WhatsApp sockets require a persistent process and filesystem.
@@ -42,13 +42,11 @@ npm run worker
 # Frontend/API
 vercel deploy --prod
 
-# Worker on a VPS
-docker compose build whatsapp-worker
-docker compose up -d postgres redis whatsapp-worker
-curl http://127.0.0.1:3001
+# Worker image validation before Render deploy
+docker build -f Dockerfile.worker -t logivya-worker:candidate .
 ```
 
-For managed PostgreSQL and Redis, remove the local services and point the worker to their TLS URLs. Back up the persistent WhatsApp session volume and restrict VPS access.
+Render receives managed PostgreSQL/Redis TLS URLs and mounts `/var/data/sessions`. PostgreSQL encrypted snapshots are authoritative recovery data; the disk is not the only backup. After Redis replacement, the worker reconciles pending/scheduled/recurring/delete jobs from PostgreSQL.
 
 ## Domain
 

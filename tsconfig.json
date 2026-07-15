@@ -20,6 +20,8 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
+      "@logivya/logging/*": ["./packages/logging/src/*"],
+      "@logivya/logging": ["./packages/logging/src/index.ts"],
       "@logivya/validation/*": ["./packages/validation/src/*"]
     }
   },

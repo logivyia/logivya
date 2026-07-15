@@ -83,6 +83,8 @@ next-env.d.ts
 
 # Android release artifacts and local signing/service configuration
 *.aab
+/artifacts/backups/
+/artifacts/restore-tests/
 *.apk
 /apps/mobile/google-services.json
 /apps/mobile/android/app/google-services.json

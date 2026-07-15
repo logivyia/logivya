@@ -1054,6 +1054,8 @@ model MessageCampaign {
   scheduleType                 ScheduleType                    @default(SEND_NOW)
   scheduledAt                  DateTime?
   recurringRule                Json?
+  nextRunAt                    DateTime?
+  recurringOccurrenceKey       String?                         @unique
   totalRecipients              Int                             @default(0)
   sentCount                    Int                             @default(0)
   failedCount                  Int                             @default(0)
@@ -1076,6 +1078,7 @@ model MessageCampaign {
   @@index([companyId, status, createdAt])
   @@index([companyId, createdAt])
   @@index([companyId, deletedAt])
+  @@index([scheduleType, status, nextRunAt])
 }
 
 model MessageRecipient {
@@ -1167,21 +1170,42 @@ model Notification {
 }
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  companyId  String
-  userId     String?
-  action     String
-  entityType String
-  entityId   String?
-  metadata   Json?
-  ipAddress  String?
-  userAgent  String?
-  company    Company  @relation(fields: [companyId], references: [id])
-  user       User?    @relation(fields: [userId], references: [id])
-  createdAt  DateTime @default(now())
+  id               String    @id @default(cuid())
+  companyId        String
+  userId           String?
+  actorType        String    @default("USER")
+  actorEmailMasked String?
+  action           String
+  result           String    @default("SUCCESS")
+  reason           String?
+  entityType       String
+  entityId         String?
+  requestId        String?
+  correlationId    String?
+  clientPlatform   String?
+  appVersion       String?
+  releaseVersion   String?
+  beforeState      Json?
+  afterState       Json?
+  metadata         Json?
+  ipAddress        String?
+  ipAddressMasked  String?
+  userAgent        String?
+  userAgentSummary String?
+  retainedUntil    DateTime?
+  company          Company   @relation(fields: [companyId], references: [id])
+  user             User?     @relation(fields: [userId], references: [id])
+  createdAt        DateTime  @default(now())
 
   @@index([companyId, entityType, entityId])
   @@index([companyId, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@index([actorType, createdAt])
+  @@index([entityType, createdAt])
+  @@index([action, createdAt])
+  @@index([result, createdAt])
+  @@index([correlationId])
 }
 
 // Generic communication core. WhatsApp-specific models remain as an MVP adapter
@@ -2073,22 +2097,66 @@ model ApiUsageLog {
 }
 
 model SecurityEvent {
-  id         String                @id @default(cuid())
-  companyId  String?
-  userId     String?
-  severity   SecurityEventSeverity
-  type       String
-  message    String
-  metadata   Json?
-  ipAddress  String?
-  userAgent  String?
-  createdAt  DateTime              @default(now())
-  resolvedAt DateTime?
-  company    Company?              @relation(fields: [companyId], references: [id])
-  user       User?                 @relation(fields: [userId], references: [id])
+  id                   String                @id @default(cuid())
+  companyId            String?
+  userId               String?
+  severity             SecurityEventSeverity
+  type                 String
+  message              String
+  result               String                @default("RECORDED")
+  status               String                @default("OPEN")
+  errorCode            String?
+  source               String?
+  requestId            String?
+  correlationId        String?
+  clientPlatform       String?
+  appVersion           String?
+  metadata             Json?
+  ipAddress            String?
+  ipAddressMasked      String?
+  userAgent            String?
+  userAgentSummary     String?
+  acknowledgedAt       DateTime?
+  acknowledgedByUserId String?
+  investigationNote    String?
+  retainedUntil        DateTime?
+  createdAt            DateTime              @default(now())
+  resolvedAt           DateTime?
+  company              Company?              @relation(fields: [companyId], references: [id])
+  user                 User?                 @relation(fields: [userId], references: [id])
 
   @@index([severity, resolvedAt, createdAt])
   @@index([companyId, createdAt])
+  @@index([createdAt])
+  @@index([type, createdAt])
+  @@index([status, severity, createdAt])
+  @@index([correlationId])
+}
+
+model OperationalAlert {
+  id                   String    @id @default(cuid())
+  dedupeKey            String    @unique
+  type                 String
+  severity             String
+  status               String    @default("OPEN")
+  service              String
+  environment          String
+  message              String
+  occurrenceCount      Int       @default(1)
+  firstSeenAt          DateTime  @default(now())
+  lastSeenAt           DateTime  @default(now())
+  correlationId        String?
+  metadata             Json?
+  acknowledgedAt       DateTime?
+  acknowledgedByUserId String?
+  resolvedAt           DateTime?
+  retainedUntil        DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([status, severity, lastSeenAt])
+  @@index([type, lastSeenAt])
+  @@index([service, environment, lastSeenAt])
 }
 
 model ConsentRecord {
@@ -2192,11 +2260,13 @@ model SupportTicket {
   @@index([lastMessageAt])
   @@index([source, createdAt])
   @@index([status, priority, lastMessageAt])
-  @@index([status, lastMessageAt, id])
-  @@index([createdById, lastMessageAt, id])
-  @@index([assignedToAdminId, status, lastMessageAt])
-  @@index([priority, status, lastMessageAt])
+  @@index([status, lastMessageAt(sort: Desc), id])
+  @@index([createdById, lastMessageAt(sort: Desc), id])
+  @@index([assignedToAdminId, status, lastMessageAt(sort: Desc)])
+  @@index([priority, status, lastMessageAt(sort: Desc)])
   @@index([priorityRank, lastMessageAt, id])
+  @@index([subject(ops: raw("gin_trgm_ops"))], type: Gin, map: "SupportTicket_subject_trgm_idx")
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "SupportTicket_title_trgm_idx")
 }
 
 model SupportTicketMessage {
@@ -2257,7 +2327,7 @@ model SupportNotificationOutbox {
   company         Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   recipientUser   User?               @relation("SupportNotificationRecipient", fields: [recipientUserId], references: [id], onDelete: SetNull)
   createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  updatedAt       DateTime            @default(now()) @updatedAt
 
   @@index([status, availableAt])
   @@index([ticketId, createdAt])

@@ -21,6 +21,22 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     );
   }
 
+  if (moduleName === "@logivya/logging") {
+    return context.resolveRequest(
+      context,
+      path.join(workspaceRoot, "packages", "logging", "src", "index.ts"),
+      platform
+    );
+  }
+
+  if (moduleName.startsWith("@logivya/logging/")) {
+    return context.resolveRequest(
+      context,
+      path.join(workspaceRoot, "packages", "logging", "src", moduleName.slice("@logivya/logging/".length)),
+      platform
+    );
+  }
+
   if (moduleName.startsWith("@/")) {
     return context.resolveRequest(context, path.join(sourceRoot, moduleName.slice(2)), platform);
   }

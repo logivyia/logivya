@@ -6,6 +6,7 @@ import { prisma } from "@/server/db";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
 import { writeAuditLog } from "@/server/security/audit";
+import { logger } from "@/server/observability/logger";
 
 const schema = z.object({
   name: z.string().min(2).max(80).optional(),
@@ -31,7 +32,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       entityId: id,
       after: { groupCount: category.assignedGroupCount, contactCount: category.assignedContactCount },
     }).catch((auditError) =>
-      console.error("mobile.category.audit_failed", { error: auditError instanceof Error ? auditError.message : String(auditError), categoryId: id }),
+      logger.error("mobile.category.audit_failed", auditError, { categoryId: id }),
     );
     return mobileSuccess({ category });
   } catch (error) {
@@ -48,7 +49,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const updated = await prisma.category.updateMany({ where: { id, companyId: company.id }, data: { archivedAt: new Date() } });
     if (!updated.count) return mobileError("NOT_FOUND", "Kategori bulunamadı.", { status: 404 });
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "mobile.category.archived", entityType: "Category", entityId: id }).catch((auditError) =>
-      console.error("mobile.category.audit_failed", { error: auditError instanceof Error ? auditError.message : String(auditError), categoryId: id }),
+      logger.error("mobile.category.audit_failed", auditError, { categoryId: id }),
     );
     return mobileSuccess({ archived: true });
   } catch (error) {

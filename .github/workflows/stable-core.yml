@@ -1,0 +1,82 @@
+name: Stable Core Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stable-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: logivya_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d logivya_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/logivya_ci
+      REDIS_URL: redis://127.0.0.1:6379
+      AUTH_SECRET: ci-auth-secret-at-least-thirty-two-characters
+      PASSWORD_PEPPER: ci-password-pepper-at-least-thirty-two-characters
+      SESSION_ENCRYPTION_KEY: ci-session-encryption-key-at-least-32-characters
+      FIELD_ENCRYPTION_ACTIVE_VERSION: v1
+      FIELD_ENCRYPTION_KEY_V1: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+      CRON_SECRET: ci-cron-secret-at-least-thirty-two-characters
+      WHATSAPP_PROVIDER: baileys
+      WHATSAPP_SESSION_DIR: ./artifacts/ci-sessions
+      ALLOW_LOCAL_PRODUCTION_WORKER: "0"
+      QUEUE_RECOVERY_INTEGRATION: "1"
+      WHATSAPP_SNAPSHOT_INTEGRATION: "1"
+      WORKER_RESTART_INTEGRATION: "1"
+      MIGRATION_FAILURE_INTEGRATION: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma validate
+      - run: npx prisma migrate deploy
+      - name: Verify database/schema drift
+        run: npx prisma migrate diff --from-config-datasource --to-schema=prisma/schema.prisma --exit-code
+      - run: npm run audit:database-integrity -- --strict-snapshot-metadata
+      - run: npm run audit:environment
+      - run: npm run test:worker-restart:integration
+      - run: npm run test:migration-failure:integration
+      - run: npm run test:queue-recovery:integration
+      - run: npm run test:whatsapp-session-restore:integration
+      - run: npm run typecheck
+      - run: npm run mobile:typecheck
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build

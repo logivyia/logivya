@@ -1,4 +1,5 @@
 import type { NavigationState, PartialState } from "@react-navigation/native";
+import { normalizeEventName, sanitizeLogMetadata } from "@logivya/logging";
 
 declare const require: (name: string) => unknown;
 
@@ -34,5 +35,16 @@ export async function trackScreenView(screenName?: string) {
 
 export async function trackEvent(name: string, params?: Record<string, unknown>) {
   const analytics = loadAnalytics();
-  await analytics?.logEvent?.(name, params).catch(() => undefined);
+  const eventName = normalizeEventName(name).replace(/[^A-Za-z0-9_]/g, "_").slice(0, 40);
+  const safeParams = Object.fromEntries(
+    Object.entries(sanitizeLogMetadata(params)).flatMap(([key, value]) => {
+      const safeKey = key.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 40);
+      if (!safeKey) return [];
+      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        return [[safeKey, value]];
+      }
+      return [[safeKey, JSON.stringify(value).slice(0, 100)]];
+    })
+  );
+  await analytics?.logEvent?.(eventName, safeParams).catch(() => undefined);
 }

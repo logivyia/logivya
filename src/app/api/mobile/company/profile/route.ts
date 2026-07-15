@@ -3,6 +3,7 @@ import { prisma } from "@/server/db";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
 import { writeAuditLog } from "@/server/security/audit";
+import { logger } from "@/server/observability/logger";
 
 const optionalText = (max: number) =>
   z
@@ -93,15 +94,14 @@ export async function PUT(request: Request) {
       entityId: company.id,
       after: { fields: Object.keys(parsed.data) },
     }).catch((auditError) =>
-      console.error("mobile.company.profile.audit_failed", {
+      logger.error("mobile.company.profile.audit_failed", auditError, {
         companyId: company.id,
-        error: auditError instanceof Error ? auditError.message : String(auditError),
       }),
     );
 
     return mobileSuccess({ success: true, company: serializeCompany(updatedCompany) });
   } catch (error) {
-    console.error("mobile.company.profile.update_failed", { error: error instanceof Error ? error.message : String(error) });
+    logger.error("mobile.company.profile.update_failed", error);
     return mobileSafeError(error, "Sirket bilgileri kaydedilemedi.");
   }
 }

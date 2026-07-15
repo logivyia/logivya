@@ -1,4 +1,5 @@
 import { config } from "@/constants/config";
+import { redactSensitive, serializeLogError } from "@logivya/logging";
 
 declare const require: (name: string) => unknown;
 
@@ -8,6 +9,8 @@ type SentryModule = {
   setUser?: (user: Record<string, unknown> | null) => void;
   wrap?: <T>(component: T) => T;
 };
+
+type SentryEvent = Record<string, unknown>;
 
 let sentry: SentryModule | null | undefined;
 
@@ -27,9 +30,14 @@ export function initCrashReporting() {
   try {
     instance.init({
       dsn: config.sentryDsn,
-      tracesSampleRate: 0.2,
+      tracesSampleRate: config.environment === "production" ? 0.05 : 0,
       enableAutoSessionTracking: true,
-      environment: config.environment
+      sendDefaultPii: false,
+      attachStacktrace: true,
+      environment: config.environment,
+      release: `com.logivya.mobile@${config.appVersion}`,
+      dist: String(config.versionCode),
+      beforeSend: (event: SentryEvent) => redactSensitive(event)
     });
   } catch {
     sentry = null;
@@ -40,17 +48,25 @@ export function captureAppError(error: unknown, context?: Record<string, unknown
   if (!config.sentryDsn) return;
 
   try {
-    getSentry()?.captureException?.(error, { extra: context });
+    getSentry()?.captureException?.(error, {
+      extra: redactSensitive({
+        ...context,
+        appVersion: config.appVersion,
+        versionCode: config.versionCode,
+        buildMarker: config.buildMarker,
+        safeError: serializeLogError(error)
+      })
+    });
   } catch {
     sentry = null;
   }
 }
 
-export function setCrashUser(user: { id?: string; email?: string } | null) {
+export function setCrashUser(user: { id?: string } | null) {
   if (!config.sentryDsn) return;
 
   try {
-    getSentry()?.setUser?.(user);
+    getSentry()?.setUser?.(user?.id ? { id: user.id } : null);
   } catch {
     sentry = null;
   }

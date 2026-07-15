@@ -94,8 +94,8 @@ async function assertSeatRotationAllowed(tx: InvitationTransaction, companyId: s
   const dailyLimit = configuredPositiveInteger("SEAT_ROTATION_MAX_PER_DAY", 5);
   const monthlyLimit = configuredPositiveInteger("SEAT_ROTATION_MAX_PER_MONTH", 20);
   const [daily, monthly] = await Promise.all([
-    tx.auditLog.count({ where: { companyId, action: "company.user.removed", createdAt: { gte: new Date(now.getTime() - 24 * 60 * 60_000) } } }),
-    tx.auditLog.count({ where: { companyId, action: "company.user.removed", createdAt: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60_000) } } }),
+    tx.auditLog.count({ where: { companyId, action: { in: ["company.user.removed", "COMPANY_USER_REMOVED"] }, createdAt: { gte: new Date(now.getTime() - 24 * 60 * 60_000) } } }),
+    tx.auditLog.count({ where: { companyId, action: { in: ["company.user.removed", "COMPANY_USER_REMOVED"] }, createdAt: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60_000) } } }),
   ]);
   if (daily >= dailyLimit || monthly >= monthlyLimit) {
     const error = new Error("SEAT_ROTATION_LIMIT_REACHED") as InvitationError;

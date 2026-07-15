@@ -4,9 +4,11 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { QUEUES, WHATSAPP_MESSAGE_JOB_OPTIONS } from "@/server/queues/contracts";
 import { BaileysWhatsAppProvider } from "@/worker/baileys-provider";
-import { nextRecurringRunAt, recurringJobId, type RecurringRule } from "@/server/queues/recurring";
-import { campaignQueue, deadLetterQueue, messageQueue, redisConnectionOptions, whatsappQueue } from "@/server/queues/client";
+import { parseRecurringRule } from "@/server/queues/recurring";
+import { deadLetterQueue, messageQueue, redisConnectionOptions, whatsappQueue } from "@/server/queues/client";
+import { reconcileDurableMessageQueues, scheduleFollowingRecurringRun } from "@/server/queues/recovery";
 import { logger } from "@/server/observability/logger";
+import { raiseOperationalAlert } from "@/server/observability/alerts";
 import { cleanupStuckWhatsAppAccounts } from "@/server/whatsapp/cleanup";
 import { withWhatsAppAccountLock } from "@/server/whatsapp/account-lock";
 import { writeWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
@@ -78,13 +80,24 @@ assertLocalWorkerDoesNotConsumeProductionQueues();
 const connection = redisConnectionOptions();
 const provider = new BaileysWhatsAppProvider();
 const workers: Worker[] = [];
+let shutdownStarted = false;
+
+async function reportFatalAndShutdown(type: string) {
+  await Promise.race([
+    raiseOperationalAlert({ type, severity: "CRITICAL", service: "logivya-worker", message: "Worker process encountered a fatal error.", metadata: { workerId } }),
+    new Promise((resolve) => setTimeout(resolve, 1_000)),
+  ]).catch((alertError) => logger.error("worker.fatal_alert.failed", alertError, { workerId, type }));
+  await shutdown(type, 1);
+}
 
 process.on("uncaughtException", (error) => {
-  logger.error("worker.crash.prevented", error, { workerId, type: "uncaughtException" });
+  logger.fatal("worker.process.uncaught_exception", error, { workerId, result: "FAILED" });
+  void reportFatalAndShutdown("WORKER_UNCAUGHT_EXCEPTION");
 });
 
 process.on("unhandledRejection", (reason) => {
-  logger.error("worker.crash.prevented", reason instanceof Error ? reason : new Error(String(reason)), { workerId, type: "unhandledRejection" });
+  logger.fatal("worker.process.unhandled_rejection", reason instanceof Error ? reason : new Error(String(reason)), { workerId, result: "FAILED" });
+  void reportFatalAndShutdown("WORKER_UNHANDLED_REJECTION");
 });
 
 function isRecoverableWhatsAppSendError(error: unknown) {
@@ -107,23 +120,46 @@ function registerWorker(name: string, worker: Worker) {
   worker.on("ready", () => logger.info("worker.queue.ready", { workerId, queue: name }));
   worker.on("active", (job) => {
     const data = job.data as { correlationId?: string };
-    logger.info("worker.job.received", { workerId, queue: name, jobId: job.id, jobName: job.name, correlationId: data.correlationId });
+    logger.debug("worker.job.received", { workerId, queue: name, jobId: job.id, jobName: job.name, correlationId: data.correlationId, attempt: job.attemptsMade + 1 });
     if (name === QUEUES.sync) {
       const data = job.data as { action?: string; accountId?: string };
       logger.info("whatsapp.worker.job.received", { workerId, queue: name, jobId: job.id, jobName: job.name, action: data.action, accountId: data.accountId });
     }
   });
-  worker.on("completed", (job) => logger.info("worker.job.completed", { workerId, queue: name, jobId: job.id, jobName: job.name, correlationId: (job.data as { correlationId?: string }).correlationId }));
-  worker.on("failed", (job, error) => logger.error("worker.job.failed", error, { workerId, queue: name, jobId: job?.id, jobName: job?.name, correlationId: (job?.data as { correlationId?: string } | undefined)?.correlationId }));
+  worker.on("completed", (job) => logger.info("worker.job.completed", { workerId, queue: name, jobId: job.id, jobName: job.name, correlationId: (job.data as { correlationId?: string }).correlationId, attempt: job.attemptsMade + 1, durationMs: job.processedOn ? Date.now() - job.processedOn : undefined, result: "SUCCESS" }));
+  worker.on("failed", (job, error) => {
+    const attempts = Number(job?.opts.attempts ?? 1);
+    const finalAttempt = !job || job.attemptsMade >= attempts;
+    const correlationId = (job?.data as { correlationId?: string } | undefined)?.correlationId;
+    logger.error("worker.job.failed", error, { workerId, queue: name, jobId: job?.id, jobName: job?.name, correlationId, attempt: job?.attemptsMade, finalAttempt, retryable: !finalAttempt, durationMs: job?.processedOn ? Date.now() - job.processedOn : undefined });
+    if (finalAttempt) {
+      void raiseOperationalAlert({ type: "WORKER_JOB_FINAL_FAILURE", severity: "HIGH", service: "logivya-worker", message: "A queue job exhausted its retry budget.", correlationId, metadata: { workerId, queueName: name, jobName: job?.name } })
+        .catch((alertError) => logger.error("worker.job_failure_alert.failed", alertError, { workerId, queue: name }));
+    }
+  });
   worker.on("error", (error) => logger.error("worker.queue.error", error, { workerId, queue: name }));
   return worker;
 }
 
 registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign, async (job) => {
-  const { templateCampaignId, companyId, correlationId: queuedCorrelationId } = job.data as { templateCampaignId: string; companyId: string; correlationId?: string };
+  const { templateCampaignId, companyId, correlationId: queuedCorrelationId, runAt: queuedRunAt } = job.data as { templateCampaignId: string; companyId: string; correlationId?: string; runAt?: string };
   const template = await prisma.messageCampaign.findFirst({ where: { id: templateCampaignId, companyId, deletedAt: null, scheduleType: "RECURRING" }, include: { recipients: true } });
   const templateCorrelationId = queuedCorrelationId ?? readCampaignCorrelationId(template?.contentJson);
   if (!template || ["CANCELED", "DELETED"].includes(template.status)) return;
+  const recurringRule = parseRecurringRule(template.recurringRule);
+  if (!recurringRule) {
+    logger.error("message.recurring.invalid_rule", new Error("RECURRING_RULE_INVALID"), { workerId, companyId, templateCampaignId, correlationId: templateCorrelationId });
+    return;
+  }
+  const parsedRunAt = queuedRunAt ? new Date(queuedRunAt) : template.nextRunAt ?? new Date();
+  if (Number.isNaN(parsedRunAt.getTime())) throw new Error("RECURRING_RUN_AT_INVALID");
+  await scheduleFollowingRecurringRun({
+    templateCampaignId,
+    companyId,
+    recurringRule,
+    currentRunAt: parsedRunAt,
+    correlationId: templateCorrelationId,
+  });
   if (!(await subscriptionAccess.canUseRecurringMessages(companyId))) {
     logger.warn("message.recurring.skipped_subscription", { workerId, companyId, templateCampaignId, correlationId: templateCorrelationId });
     return;
@@ -157,6 +193,7 @@ registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign, async (job) => {
     return;
   }
   const correlationId = createMessageCorrelationId();
+  const recurringOccurrenceKey = `${templateCampaignId}:${parsedRunAt.toISOString()}`;
   const occurrence = await prisma.messageCampaign.create({
     data: {
       companyId,
@@ -168,6 +205,7 @@ registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign, async (job) => {
       status: "QUEUED",
       scheduleType: "RECURRING",
       recurringRule: template.recurringRule ?? undefined,
+      recurringOccurrenceKey,
       totalRecipients: groups.length + contacts.length,
       recipients: {
         create: [
@@ -189,7 +227,14 @@ registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign, async (job) => {
       },
     },
     include: { recipients: true },
+  }).catch((error) => {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      logger.warn("message.recurring.duplicate_occurrence_skipped", { workerId, companyId, templateCampaignId, recurringOccurrenceKey, correlationId: templateCorrelationId });
+      return null;
+    }
+    throw error;
   });
+  if (!occurrence) return;
   const queue = messageQueue();
   try {
     for (const [index, recipient] of occurrence.recipients.entries()) {
@@ -202,14 +247,6 @@ registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign, async (job) => {
     }
   } finally {
     await queue.close().catch(() => undefined);
-  }
-  const recurringQueue = campaignQueue();
-  const nextRunAt = nextRecurringRunAt(template.recurringRule as RecurringRule);
-  const nextPayload = templateCorrelationId ? { companyId, templateCampaignId, correlationId: templateCorrelationId } : { companyId, templateCampaignId };
-  try {
-    await recurringQueue.add("recurring-run", nextPayload, { jobId: recurringJobId(templateCampaignId, nextRunAt), delay: Math.max(0, nextRunAt - Date.now()) });
-  } finally {
-    await recurringQueue.close().catch(() => undefined);
   }
 }, { connection, concurrency: 2 }));
 
@@ -405,7 +442,7 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
             },
           });
           if (!target) throw new Error("WHATSAPP_CONTACT_OWNERSHIP_MISMATCH");
-          logger.info("message.send.attempt", { ...baseLog, targetType, accountId: target.accountId, contactId: target.id, contactJid: target.externalContactId });
+          logger.debug("message.send.attempt", { ...baseLog, targetType, accountId: target.accountId, contactId: target.id });
           const result = await traceMessageStage("worker.baileys.contact_send", { ...baseLog, accountId: target.accountId, contactId: target.id }, async () =>
             withWhatsAppAccountLock(
               target.accountId,
@@ -434,7 +471,7 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
               await prisma.messageRecipient.update({ where: { id: recipient.id }, data: { groupId: target.id, accountId: target.accountId, recipientName: target.name, recipientExternalId: target.externalGroupId } });
             });
           }
-          logger.info("message.send.attempt", { ...baseLog, targetType, accountId: target.accountId, groupId: target.id, groupExternalId: target.externalGroupId });
+          logger.debug("message.send.attempt", { ...baseLog, targetType, accountId: target.accountId, groupId: target.id });
           const result = await traceMessageStage("worker.baileys.send", { ...baseLog, accountId: target.accountId, groupId: target.id, groupExternalId: target.externalGroupId }, async () =>
             withWhatsAppAccountLock(
               target.accountId,
@@ -474,7 +511,7 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
         },
       });
     });
-    logger.info("message.send.succeeded", { ...baseLog, targetType, accountId: sendOutcome.accountId, externalMessageId: sendResult.externalMessageId });
+    logger.debug("message.send.succeeded", { ...baseLog, targetType, accountId: sendOutcome.accountId });
   } catch (error) {
     const attempts = Number(job.opts.attempts ?? 1);
     const finalAttempt = job.attemptsMade + 1 >= attempts;
@@ -636,7 +673,7 @@ async function processDeleteForEveryoneJob(job: Job<DeleteForEveryoneJob>) {
     where: { id: recipient.id, deleteForEveryoneStatus: { in: ["PENDING", "FAILED"] } },
     data: { deleteForEveryoneStatus: "PROCESSING", deleteForEveryoneAttemptedAt: new Date(), deleteForEveryoneError: null },
   });
-  if (!claimed.count && recipient.deleteForEveryoneStatus !== "PROCESSING") {
+  if (!claimed.count) {
     logger.info("message.delete.claim_skipped", { ...baseLog, deleteForEveryoneStatus: recipient.deleteForEveryoneStatus });
     return;
   }
@@ -738,7 +775,7 @@ async function recoverSessions() {
     void provider.reconnect(account.id).catch((error) => logger.error("whatsapp.session.recovery_bootstrap_failed", error, { accountId: account.id }));
   }
 }
-void recoverSessions().catch((error) => console.error("WhatsApp session recovery bootstrap failed", error));
+void recoverSessions().catch((error) => logger.error("whatsapp.session.recovery_bootstrap_failed", error, { workerId }));
 setInterval(
   () => void recoverSessions().catch((error) => logger.error("whatsapp.session.periodic_recovery_failed", error, { workerId })),
   Number(process.env.WHATSAPP_SESSION_RECOVERY_INTERVAL_MS || 180_000),
@@ -750,18 +787,35 @@ async function cleanupStuckSessions() {
 }
 void cleanupStuckSessions().catch((error) => logger.error("whatsapp.stuck_sessions.cleanup_failed", error));
 setInterval(() => void cleanupStuckSessions().catch((error) => logger.error("whatsapp.stuck_sessions.cleanup_failed", error)), 60_000).unref();
+let queueRecoveryRunning = false;
+async function recoverDurableQueues() {
+  if (queueRecoveryRunning) return;
+  queueRecoveryRunning = true;
+  try {
+    await reconcileDurableMessageQueues();
+  } finally {
+    queueRecoveryRunning = false;
+  }
+}
+void recoverDurableQueues().catch((error) => logger.error("queue.recovery.failed", error, { workerId }));
+setInterval(
+  () => void recoverDurableQueues().catch((error) => logger.error("queue.recovery.failed", error, { workerId })),
+  Number(process.env.QUEUE_RECOVERY_INTERVAL_MS || 60_000),
+).unref();
 logger.info("worker.started", { workerId, queues: [QUEUES.campaign, QUEUES.sync, QUEUES.message] });
 void writeWorkerHeartbeat(workerId).catch((error) => logger.error("worker.heartbeat.failed", error));
 setInterval(() => void writeWorkerHeartbeat(workerId).catch((error) => logger.error("worker.heartbeat.failed", error)), Number(process.env.WORKER_HEARTBEAT_INTERVAL_MS || 30_000)).unref();
 
-console.log("Logivya WhatsApp worker is ready");
+logger.info("worker.ready", { workerId });
 
-async function shutdown(signal: string) {
+async function shutdown(signal: string, exitCode = 0) {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
   logger.warn("worker.shutdown.started", { workerId, signal });
   await Promise.all(workers.map((worker) => worker.close().catch((error) => logger.error("worker.shutdown.queue_failed", error, { workerId, queue: worker.name }))));
   await prisma.$disconnect();
   logger.warn("worker.shutdown.completed", { workerId, signal });
-  process.exit(0);
+  process.exit(exitCode);
 }
 
 process.once("SIGTERM", () => void shutdown("SIGTERM"));

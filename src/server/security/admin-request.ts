@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import IORedis from "ioredis";
+import { requestObservabilityIds } from "@/server/observability/request-id";
 
 let redis: IORedis | undefined;
 
@@ -42,7 +43,7 @@ async function readyRedisClient() {
 }
 
 export function requestId(request?: Request) {
-  return request?.headers.get("x-request-id")?.slice(0, 128) || randomUUID();
+  return request ? requestObservabilityIds(request).requestId : randomUUID();
 }
 
 export function assertAdminCsrf(request: Request) {

@@ -7,6 +7,8 @@ import { hasAdminPermission, isCriticalAdminPermission, normalizeAdminPermission
 import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
 import { requireMobileAuth, type MobileAuthContext } from "@/server/mobile/auth";
 import { assertAdminCsrf, enforceAdminRateLimit } from "@/server/security/admin-request";
+import { requestNetworkSummary } from "@/server/observability/privacy";
+import { tryRecordSecurityEvent } from "@/server/security/events";
 
 const ADMIN_SESSION_MAX_MS = 8 * 60 * 60_000;
 const RECENT_AUTH_MAX_MS = 10 * 60_000;
@@ -97,20 +99,20 @@ function createOwnerPlatformAdminRecord(userId: string, lastElevatedAt: Date): P
 }
 
 async function writeAdminAccessDeniedEvent(context: PlatformAdminAuthContext, permission: string, request?: Request) {
-  await prisma.securityEvent.create({
-    data: {
-      userId: context.user.id,
-      severity: "HIGH",
-      type: "ADMIN_ACCESS_DENIED",
-      message: "Unauthorized admin access was denied.",
-      ipAddress: request?.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
-      userAgent: request?.headers.get("user-agent"),
-      metadata: {
-        permission: normalizeAdminPermission(permission),
-        path: request ? new URL(request.url).pathname : undefined,
-      },
+  await tryRecordSecurityEvent({
+    request,
+    companyId: context.company.id,
+    userId: context.user.id,
+    severity: "HIGH",
+    type: "ADMIN_ACCESS_DENIED",
+    message: "Unauthorized administrator access was denied.",
+    result: "DENIED",
+    source: "platform-admin-guard",
+    metadata: {
+      permission: normalizeAdminPermission(permission),
+      route: request ? new URL(request.url).pathname : undefined,
     },
-  }).catch(() => undefined);
+  });
 }
 
 export async function requirePlatformAdmin(permission = "admin.dashboard.read", request?: Request) {
@@ -143,14 +145,19 @@ export async function requirePlatformAdmin(permission = "admin.dashboard.read", 
     if (isCriticalAdminPermission(permission) && (!record.lastElevatedAt || record.lastElevatedAt < new Date(Date.now() - RECENT_AUTH_MAX_MS))) {
       throw new Error("ADMIN_RECENT_AUTH_REQUIRED");
     }
+    const network = requestNetworkSummary(request);
+    const normalizedPermission = normalizeAdminPermission(permission);
+    const sensitive = /audit|security|payment|backup|restore|data|compliance/i.test(normalizedPermission);
     await prisma.adminAccessLog.create({
       data: {
         userId: context.user.id,
         path: new URL(request.url).pathname,
         method: request.method,
-        permission,
-        ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
-        userAgent: request.headers.get("user-agent"),
+        purpose: sensitive ? "SENSITIVE_ADMIN_READ_OR_MUTATION" : "ADMIN_ACCESS",
+        permission: normalizedPermission,
+        sensitive,
+        ipAddress: network.ipAddressMasked,
+        userAgent: network.userAgentSummary,
       },
     });
   }

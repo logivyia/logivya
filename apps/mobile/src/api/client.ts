@@ -15,6 +15,20 @@ type ApiOptions = RequestInit & {
   hostFallback?: boolean;
 };
 
+function createRequestId(prefix: string) {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function addObservabilityHeaders(headers: Headers) {
+  const requestId = headers.get("X-Request-Id") || createRequestId("mob");
+  headers.set("X-Request-Id", requestId);
+  headers.set("X-Correlation-Id", headers.get("X-Correlation-Id") || requestId);
+  headers.set("X-Client-Platform", "android");
+  headers.set("X-Logivya-App-Version", config.appVersion);
+  headers.set("X-Logivya-Version-Code", String(config.versionCode));
+  headers.set("X-Logivya-Build-Marker", config.buildMarker);
+}
+
 function messageForApiError(code: string, status: number, fallback?: string) {
   if (code === "MFA_INVALID" || code === "MFA_CODE_REUSED") return translateCurrent("mfaSubtitle");
   if (code === "MFA_CHALLENGE_INVALID") return translateCurrent("loginFailed");
@@ -104,6 +118,7 @@ class MobileApiClient {
     const locale = useSettingsStore.getState().locale;
     headers.set("Accept-Language", locale);
     headers.set("X-Logivya-Locale", locale);
+    addObservabilityHeaders(headers);
 
     if (shouldAuth) {
       let tokens = useAuthStore.getState().tokens ? await readTokens() : null;
@@ -148,6 +163,7 @@ class MobileApiClient {
     const locale = useSettingsStore.getState().locale;
     headers.set("Accept-Language", locale);
     headers.set("X-Logivya-Locale", locale);
+    addObservabilityHeaders(headers);
 
     if (shouldAuth) {
       let tokens = useAuthStore.getState().tokens ? await readTokens() : null;
@@ -321,8 +337,6 @@ class MobileApiClient {
       ...extra
     };
     void trackEvent("mobile_api_error", context);
-
-    console.warn("[mobile-api]", context, error.message);
 
     if (status === 0 || status === 401 || status >= 500) {
       captureAppError(error, context);

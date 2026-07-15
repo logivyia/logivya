@@ -4,6 +4,7 @@ import { I18nProvider } from "@/i18n/provider";
 import { getServerLocale, loadServerDictionary } from "@/i18n/server";
 import "./globals.css";
 import { CookieConsent } from "@/components/cookie-consent";
+import { WebObservability } from "@/components/web-observability";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.logivya.com"),
@@ -53,7 +54,7 @@ export default async function RootLayout({
   return (
     <html lang={locale} suppressHydrationWarning>
       <body>
-        <ThemeProvider><I18nProvider initialLocale={locale} initialDictionary={dictionary}>{children}<CookieConsent/></I18nProvider></ThemeProvider>
+        <ThemeProvider><I18nProvider initialLocale={locale} initialDictionary={dictionary}>{children}<CookieConsent/><WebObservability/></I18nProvider></ThemeProvider>
       </body>
     </html>
   );

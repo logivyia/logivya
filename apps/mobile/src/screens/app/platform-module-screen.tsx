@@ -22,6 +22,7 @@ import {
   runAdminUserAction,
   updateAdminSupportTicketPriority,
   updateAdminSupportTicketStatus,
+  updateAdminSecurityEvent,
   type AdminModuleItem,
   type AdminModuleViewData,
   type AdminCompanyOption,
@@ -306,6 +307,8 @@ export function PlatformModuleScreen() {
                   await rejectAdminPayment(selectedItem.id, reason);
                 } else if (params.moduleKey === "trialRisk" && (action === "APPROVE_REVIEW" || action === "BLOCK")) {
                   await runAdminTrialDecision(selectedItem.id, action, reason);
+                } else if (params.moduleKey === "security" && (action === "ACKNOWLEDGED" || action === "RESOLVED" || action === "DISMISSED")) {
+                  await updateAdminSecurityEvent(selectedItem.id, action, reason);
                 } else {
                   throw new Error(locale === "tr" ? "Bu işlem desteklenmiyor." : "This action is not supported.");
                 }
@@ -983,8 +986,8 @@ function adminStatusLabel(status: string, locale: ReturnType<typeof useTranslati
 }
 
 function adminActionLabel(action: string, locale: ReturnType<typeof useTranslation>["locale"]) {
-  const tr: Record<string, string> = { SUSPEND: "Askıya al", REACTIVATE: "Yeniden etkinleştir", FORCE_LOGOUT: "Oturumları kapat", RESET_MFA: "MFA sıfırla", REQUIRE_MFA: "MFA zorunlu kıl", ACTIVATE: "Etkinleştir", CANCEL: "İptal et", MARK_PAID: "Ödendi olarak işaretle", REJECT: "Reddet", APPROVE_REVIEW: "İncelemeyi onayla", BLOCK: "Engelle" };
-  const en: Record<string, string> = { SUSPEND: "Suspend", REACTIVATE: "Reactivate", FORCE_LOGOUT: "Revoke sessions", RESET_MFA: "Reset MFA", REQUIRE_MFA: "Require MFA", ACTIVATE: "Activate", CANCEL: "Cancel", MARK_PAID: "Mark paid", REJECT: "Reject", APPROVE_REVIEW: "Approve review", BLOCK: "Block" };
+  const tr: Record<string, string> = { SUSPEND: "Askıya al", REACTIVATE: "Yeniden etkinleştir", FORCE_LOGOUT: "Oturumları kapat", RESET_MFA: "MFA sıfırla", REQUIRE_MFA: "MFA zorunlu kıl", ACTIVATE: "Etkinleştir", CANCEL: "İptal et", MARK_PAID: "Ödendi olarak işaretle", REJECT: "Reddet", APPROVE_REVIEW: "İncelemeyi onayla", BLOCK: "Engelle", ACKNOWLEDGED: "İncelemeye al", RESOLVED: "Çözüldü", DISMISSED: "Geçersiz sinyal" };
+  const en: Record<string, string> = { SUSPEND: "Suspend", REACTIVATE: "Reactivate", FORCE_LOGOUT: "Revoke sessions", RESET_MFA: "Reset MFA", REQUIRE_MFA: "Require MFA", ACTIVATE: "Activate", CANCEL: "Cancel", MARK_PAID: "Mark paid", REJECT: "Reject", APPROVE_REVIEW: "Approve review", BLOCK: "Block", ACKNOWLEDGED: "Acknowledge", RESOLVED: "Resolve", DISMISSED: "Dismiss signal" };
   return (locale === "tr" ? tr : en)[action] ?? action.replace(/_/g, " ");
 }
 

@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { maskEmail } from "@logivya/logging";
 
 import { locales } from "@/i18n/config";
 import { CORE_PLAN_CODES, CORE_PLAN_MATRIX } from "@/server/billing/plan-matrix";
@@ -359,6 +360,7 @@ async function complianceSnapshot(query: SnapshotQuery) {
 async function auditSnapshot(query: SnapshotQuery) {
   const where: Prisma.AuditLogWhereInput = {
     ...(query.companyId ? { companyId: query.companyId } : {}),
+    ...(query.status ? { result: query.status } : {}),
     ...(query.search ? {
       OR: [
         { action: { contains: query.search, mode: "insensitive" } },
@@ -372,7 +374,24 @@ async function auditSnapshot(query: SnapshotQuery) {
   const [logs, total, adminAccess, sensitiveAccess] = await Promise.all([
     prisma.auditLog.findMany({
       where,
-      select: { id: true, action: true, entityType: true, entityId: true, createdAt: true, company: { select: { id: true, name: true } }, user: { select: { email: true, name: true } } },
+      select: {
+        id: true,
+        action: true,
+        actorType: true,
+        actorEmailMasked: true,
+        result: true,
+        reason: true,
+        entityType: true,
+        entityId: true,
+        correlationId: true,
+        clientPlatform: true,
+        appVersion: true,
+        beforeState: true,
+        afterState: true,
+        createdAt: true,
+        company: { select: { id: true, name: true } },
+        user: { select: { email: true, name: true } },
+      },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: offset(query),
       take: query.limit,
@@ -386,8 +405,22 @@ async function auditSnapshot(query: SnapshotQuery) {
     title: log.action,
     subtitle: `${log.entityType}${log.entityId ? ` · ${log.entityId}` : ""}`,
     createdAt: log.createdAt.toISOString(),
-    fields: { actor: log.user?.email ?? "SYSTEM", companyId: log.company.id, company: log.company.name, targetType: log.entityType, targetId: log.entityId ?? null },
-  })), ["companyId", "dateFrom", "dateTo"], true, "Audit records cannot be edited or deleted.");
+    status: log.result,
+    fields: {
+      actor: log.actorEmailMasked ?? maskEmail(log.user?.email) ?? log.actorType,
+      actorType: log.actorType,
+      companyId: log.company.id,
+      company: log.company.name,
+      targetType: log.entityType,
+      targetId: log.entityId ?? null,
+      reason: log.reason,
+      correlationId: log.correlationId,
+      clientPlatform: log.clientPlatform,
+      appVersion: log.appVersion,
+      beforeState: log.beforeState ? JSON.stringify(log.beforeState) : null,
+      afterState: log.afterState ? JSON.stringify(log.afterState) : null,
+    },
+  })), ["status", "companyId", "dateFrom", "dateTo"], true, "Audit records cannot be edited or deleted.");
 }
 
 async function notificationsSnapshot(query: SnapshotQuery) {

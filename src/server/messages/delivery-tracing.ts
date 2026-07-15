@@ -20,10 +20,10 @@ export async function traceMessageStage<T>(
   run: () => Promise<T>,
 ) {
   const startedAt = Date.now();
-  logger.info("message.delivery.stage.entered", { ...context, stage });
+  logger.debug("message.delivery.stage.entered", { ...context, stage });
   try {
     const value = await run();
-    logger.info("message.delivery.stage.exited", {
+    logger.debug("message.delivery.stage.exited", {
       ...context,
       stage,
       result: "success",

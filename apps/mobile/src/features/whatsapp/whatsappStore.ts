@@ -142,7 +142,6 @@ export const useWhatsAppStore = create<WhatsAppState>((set, get) => ({
       const message = getErrorMessage(error, translateCurrent("whatsappAccountsLoadFailed"));
       const code = error instanceof Error ? error.message : "UNKNOWN";
       const eventName = code === "WA_ACCOUNTS_UI_TIMEOUT" ? "WA_ACCOUNTS_UI_TIMEOUT" : "WA_ACCOUNTS_REQUEST_ERROR";
-      console.warn("[whatsapp-accounts]", eventName, { ...telemetry, error: code, durationMs: Date.now() - startedAt });
       void trackEvent(eventName, { ...telemetry, error: code, durationMs: Date.now() - startedAt });
       set({
         error: message,

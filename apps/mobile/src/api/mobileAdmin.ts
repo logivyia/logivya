@@ -234,7 +234,9 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     eyebrow: "Guvenlik",
     description: "Guvenlik olaylari ve erisim denetimi.",
     endpoint: "/api/admin/security/events",
-    coverage: "read-only",
+    coverage: "live",
+    searchable: true,
+    statusOptions: ["OPEN", "ACKNOWLEDGED", "RESOLVED", "DISMISSED", "CRITICAL", "HIGH", "MEDIUM", "LOW"],
     pagination: "page"
   },
   trialRisk: {
@@ -457,6 +459,13 @@ export function reauthenticatePlatformAdmin(password: string) {
   });
 }
 
+export function updateAdminSecurityEvent(id: string, status: "ACKNOWLEDGED" | "RESOLVED" | "DISMISSED", investigationNote: string) {
+  return apiClient.requestRaw<{ event: Record<string, unknown> }>(`/api/admin/security/events/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status, investigationNote }),
+  });
+}
+
 export function runAdminTrialDecision(id: string, action: "APPROVE_REVIEW" | "BLOCK", reason: string) {
   return apiClient.requestRaw<{ entitlement: Record<string, unknown> }>(`/api/admin/trial-entitlements/${id}/decision`, {
     method: "POST",
@@ -644,7 +653,31 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
     metrics = { payments: readNumber(record(raw.pagination), "total") ?? payments.length };
   } else if (definition.key === "security") {
     const events = records(raw.events);
-    items = events.map((event, index) => adminItem(event, `security-${index}`, ["message", "type"], ["severity"], ["type", "company", "user", "createdAt"]));
+    items = events.map((event, index) => {
+      const company = record(event.company);
+      const user = record(event.user);
+      return {
+        id: readText(event, "id") ?? `security-${index}`,
+        title: readText(event, "type") ?? readText(event, "message") ?? "-",
+        subtitle: [readText(company, "name"), readText(user, "emailMasked")].filter(Boolean).join(" · "),
+        status: readText(event, "status") ?? readText(event, "severity"),
+        createdAt: readText(event, "createdAt"),
+        fields: compactFields({
+          severity: readText(event, "severity"),
+          result: readText(event, "result"),
+          source: readText(event, "source"),
+          errorCode: readText(event, "errorCode"),
+          company: readText(company, "name"),
+          user: readText(user, "emailMasked"),
+          correlationId: readText(event, "correlationId"),
+          clientPlatform: readText(event, "clientPlatform"),
+          appVersion: readText(event, "appVersion"),
+          investigationNote: readText(event, "investigationNote"),
+          acknowledgedAt: readText(event, "acknowledgedAt"),
+          resolvedAt: readText(event, "resolvedAt"),
+        }),
+      };
+    });
     metrics = statusMetrics(events, "severity", "events");
   } else if (definition.key === "trialRisk") {
     const entitlements = records(raw.items);
@@ -728,6 +761,7 @@ function supportedActions(key: AdminModuleKey) {
   if (key === "subscriptions") return ["ACTIVATE", "SUSPEND", "CANCEL", "REACTIVATE"];
   if (key === "payments") return ["MARK_PAID", "REJECT"];
   if (key === "trialRisk") return ["APPROVE_REVIEW", "BLOCK"];
+  if (key === "security") return ["ACKNOWLEDGED", "RESOLVED", "DISMISSED"];
   return [];
 }
 

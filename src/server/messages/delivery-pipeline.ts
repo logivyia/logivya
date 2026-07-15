@@ -357,7 +357,11 @@ export async function createMessageDeliveryCampaign(
     ...traceContext,
     resolvedGroupCount: groups.length,
     resolvedContactCount: contacts.length,
-  }, async () => prisma.messageCampaign.create({
+  }, async () => {
+    const firstRecurringRunAt = scheduleType === "RECURRING"
+      ? new Date(nextRecurringRunAt(input.recurringRule as RecurringRule))
+      : undefined;
+    return prisma.messageCampaign.create({
     data: {
       companyId: actor.companyId,
       createdById: actor.userId,
@@ -368,6 +372,7 @@ export async function createMessageDeliveryCampaign(
       scheduleType,
       scheduledAt: scheduleType === "SCHEDULED" ? input.scheduledAt : undefined,
       recurringRule: scheduleType === "RECURRING" ? (input.recurringRule as Prisma.InputJsonValue) : undefined,
+      nextRunAt: firstRecurringRunAt,
       totalRecipients: groups.length + contacts.length,
       contentJson: withCampaignMetadata(undefined, {
         source: input.source,
@@ -400,19 +405,20 @@ export async function createMessageDeliveryCampaign(
       },
     },
     include: { recipients: true },
-  }));
+    });
+  });
 
   if (scheduleType === "RECURRING") {
     await traceMessageStage("queue.recurring.enqueue", { ...traceContext, campaignId: campaign.id }, async () => {
       const queue = campaignQueue();
-      const nextRunAt = nextRecurringRunAt(input.recurringRule as RecurringRule);
+      const nextRunAt = campaign.nextRunAt ?? new Date(nextRecurringRunAt(input.recurringRule as RecurringRule));
       try {
         const job = await queue.add(
           "recurring-run",
-          { companyId: actor.companyId, templateCampaignId: campaign.id, correlationId },
-          { jobId: recurringJobId(campaign.id, nextRunAt), delay: Math.max(0, nextRunAt - Date.now()) },
+          { companyId: actor.companyId, templateCampaignId: campaign.id, correlationId, runAt: nextRunAt.toISOString() },
+          { jobId: recurringJobId(campaign.id, nextRunAt.getTime()), delay: Math.max(0, nextRunAt.getTime() - Date.now()) },
         );
-        logger.info("message.queue.recurring.enqueued", { ...traceContext, campaignId: campaign.id, queueJobId: job.id, nextRunAt });
+        logger.info("message.queue.recurring.enqueued", { ...traceContext, campaignId: campaign.id, queueJobId: job.id, nextRunAt: nextRunAt.toISOString() });
       } finally {
         await queue.close().catch(() => undefined);
       }

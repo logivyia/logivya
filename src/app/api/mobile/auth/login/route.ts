@@ -17,6 +17,8 @@ import {
   recordMfaSecurityEvent,
   validateTrustedDevice,
 } from "@/server/auth/mfa-challenge";
+import { keyedIdentifierHash } from "@/server/observability/privacy";
+import { tryRecordSecurityEvent } from "@/server/security/events";
 
 const schema = z.object({
   identifier: z.string().trim().min(3).max(254),
@@ -43,7 +45,20 @@ export async function POST(request: Request) {
     const recentFailures = await prisma.loginAttempt.count({
       where: { email: identifier, ipAddress: ip, success: false, createdAt: { gte: new Date(Date.now() - 15 * 60_000) } },
     });
-    if (recentFailures >= 5) return mobileError("RATE_LIMITED", "Cok fazla basarisiz giris denemesi yapildi.", { status: 429 });
+    if (recentFailures >= 5) {
+      await tryRecordSecurityEvent({
+        request,
+        severity: "HIGH",
+        type: "AUTH_RATE_LIMITED",
+        message: "Mobile authentication attempt was rate limited.",
+        result: "DENIED",
+        source: "mobile-login",
+        clientPlatform: parsed.data.platform,
+        appVersion: parsed.data.appVersion,
+        metadata: { identifierType: identifier.includes("@") ? "email" : "phone", identifierHash: keyedIdentifierHash(identifier) },
+      });
+      return mobileError("RATE_LIMITED", "Cok fazla basarisiz giris denemesi yapildi.", { status: 429 });
+    }
     logger.info("Mobile login request received", {
       identifierType: identifier.includes("@") ? "email" : "phone",
       platform: parsed.data.platform,
@@ -70,6 +85,19 @@ export async function POST(request: Request) {
         userFound: Boolean(user),
         userStatus: user?.status,
         reason: !user ? "USER_NOT_FOUND" : user.status !== "ACTIVE" ? "USER_NOT_ACTIVE" : "INVALID_PASSWORD",
+      });
+      await tryRecordSecurityEvent({
+        request,
+        userId: user?.id,
+        severity: "MEDIUM",
+        type: "AUTH_LOGIN_FAILED",
+        message: "Mobile authentication credentials were rejected.",
+        result: "DENIED",
+        source: "mobile-login",
+        errorCode: "INVALID_CREDENTIALS",
+        clientPlatform: parsed.data.platform,
+        appVersion: parsed.data.appVersion,
+        metadata: { identifierType: identifier.includes("@") ? "email" : "phone", identifierHash: keyedIdentifierHash(identifier), knownUser: Boolean(user) },
       });
       return mobileError("UNAUTHORIZED", "E-posta/telefon veya parola hatalı.", { status: 401 });
     }
@@ -129,9 +157,25 @@ export async function POST(request: Request) {
     await writeAuditLog(request, {
       companyId: membership.companyId,
       userId: user.id,
-      action: "mobile.auth.login",
+      actorType: "USER",
+      actorEmail: user.email,
+      action: "AUTH_LOGIN_SUCCEEDED",
+      result: "SUCCESS",
       entityType: "MobileDeviceSession",
       after: { deviceId: parsed.data.deviceId, platform: parsed.data.platform },
+    });
+    await tryRecordSecurityEvent({
+      request,
+      companyId: membership.companyId,
+      userId: user.id,
+      severity: "INFO",
+      type: "AUTH_LOGIN_SUCCEEDED",
+      message: "Mobile authentication succeeded.",
+      result: "SUCCESS",
+      status: "RESOLVED",
+      source: "mobile-login",
+      clientPlatform: parsed.data.platform,
+      appVersion: parsed.data.appVersion,
     });
 
     const isPlatformAdmin = isAuthorizedLogivyaPlatformAdmin({ email: user.email });

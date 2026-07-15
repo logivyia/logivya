@@ -1,8 +1,30 @@
-# Production-critical WhatsApp connection subsystem
+# Production-critical stable core. Ownership is a review requirement, not a
+# prohibition on deliberate changes.
+/src/server/auth/ @logivyia
+/src/app/api/auth/ @logivyia
+/src/app/api/mobile/auth/ @logivyia
+/src/server/billing/ @logivyia
+/src/server/messages/ @logivyia
+/src/server/queues/ @logivyia
 /src/worker/baileys-provider.ts @logivyia
 /src/worker/index.ts @logivyia
 /src/lib/whatsapp/ @logivyia
 /src/server/whatsapp/ @logivyia
 /src/app/api/accounts/ @logivyia
+/src/app/api/campaigns/ @logivyia
+/src/app/api/messages/ @logivyia
+/src/app/api/mobile/messages/ @logivyia
+/src/app/api/support/ @logivyia
+/src/app/api/admin/support/ @logivyia
+/src/server/support/ @logivyia
+/src/server/subscriptions/ @logivyia
 /src/components/accounts-stable-page.tsx @logivyia
 /prisma/schema.prisma @logivyia
+/prisma/migrations/ @logivyia
+/apps/mobile/src/api/ @logivyia
+/apps/mobile/src/stores/ @logivyia
+/apps/mobile/android/app/build.gradle @logivyia
+/apps/mobile/app.json @logivyia
+/render.yaml @logivyia
+/Dockerfile.worker @logivyia
+/.github/workflows/ @logivyia

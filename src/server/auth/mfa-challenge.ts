@@ -163,16 +163,16 @@ export async function recordMfaSecurityEvent(input: {
   severity?: "INFO" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   metadata?: Record<string, string | number | boolean | null>;
 }) {
-  await prisma.securityEvent.create({
-    data: {
-      userId: input.userId,
-      companyId: input.companyId,
-      type: input.type,
-      message: input.message,
-      severity: input.severity ?? "INFO",
-      metadata: input.metadata,
-      ipAddress: requestIp(input.request),
-      userAgent: input.request.headers.get("user-agent"),
-    },
+  const { recordSecurityEvent } = await import("@/server/security/events");
+  await recordSecurityEvent({
+    request: input.request,
+    userId: input.userId,
+    companyId: input.companyId,
+    type: input.type,
+    message: input.message,
+    severity: input.severity ?? "INFO",
+    result: /FAILED|DENIED/i.test(input.type) ? "DENIED" : "RECORDED",
+    source: "mfa",
+    metadata: input.metadata,
   });
 }

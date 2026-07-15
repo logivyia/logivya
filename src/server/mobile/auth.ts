@@ -132,16 +132,16 @@ export async function rotateRefreshToken(refreshToken: string, request: Request)
   });
   if (!existing) throw new Error("UNAUTHORIZED");
   if (existing.revokedAt || existing.expiresAt <= new Date()) {
-    await prisma.securityEvent.create({
-      data: {
-        companyId: existing.companyId,
-        userId: existing.userId,
-        severity: "HIGH",
-        type: "MOBILE_REFRESH_TOKEN_REUSE_OR_EXPIRED",
-        message: "Mobil refresh token geçersiz veya daha önce iptal edilmiş.",
-        ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
-        userAgent: request.headers.get("user-agent"),
-      },
+    const { recordSecurityEvent } = await import("@/server/security/events");
+    await recordSecurityEvent({
+      request,
+      companyId: existing.companyId,
+      userId: existing.userId,
+      severity: "HIGH",
+      type: "AUTH_REFRESH_TOKEN_REJECTED",
+      message: "A revoked or expired mobile refresh token was rejected.",
+      result: "DENIED",
+      source: "mobile-auth",
     });
     throw new Error("UNAUTHORIZED");
   }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logger } from "@/server/observability/logger";
 
 export class SupportDomainError extends Error {
   constructor(
@@ -30,10 +31,7 @@ export function supportErrorFromUnknown(error: unknown, fallback = "SUPPORT_REQU
 export function supportErrorResponse(error: unknown, fallback?: string) {
   const resolved = supportErrorFromUnknown(error, fallback);
   if (resolved.status >= 500) {
-    console.error("support.request_failed", {
-      code: resolved.code,
-      cause: error instanceof Error ? error.message.slice(0, 160) : "UNKNOWN",
-    });
+    logger.error("support.request_failed", error, { errorCode: resolved.code });
   }
   const headers = resolved.retryAfter ? { "Retry-After": String(resolved.retryAfter) } : undefined;
   const developmentDetails = process.env.NODE_ENV !== "production" && error instanceof Error

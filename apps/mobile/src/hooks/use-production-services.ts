@@ -10,7 +10,7 @@ export function useProductionServices() {
   const user = useAuthStore((state) => state.user);
 
   useEffect(() => {
-    setCrashUser(user ? { id: user.id, email: user.email } : null);
+    setCrashUser(user ? { id: user.id } : null);
   }, [user]);
 
   useEffect(() => {

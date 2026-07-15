@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { translateForLocale } from "@/i18n/server";
 import { LOGIVYA_PLATFORM_OWNER_EMAIL } from "@/server/auth/platform-owner";
 import { prisma } from "@/server/db";
+import { logger } from "@/server/observability/logger";
 
 export const NOTIFICATION_TYPES = {
   WHATSAPP_CONNECTED: "whatsapp.connected",
@@ -256,10 +257,10 @@ async function sendPushToUser(input: {
         body: JSON.stringify(chunk)
       });
       if (!response.ok) {
-        console.error("expo.push.failed", { status: response.status, userId: input.userId, notificationId: input.notificationId });
+        logger.error("notification.expo_push.failed", new Error("EXPO_PUSH_REJECTED"), { statusCode: response.status, userId: input.userId, notificationId: input.notificationId });
       }
     } catch (error) {
-      console.error("expo.push.error", { error: error instanceof Error ? error.message : String(error), userId: input.userId, notificationId: input.notificationId });
+      logger.error("notification.expo_push.error", error, { userId: input.userId, notificationId: input.notificationId });
     }
   }
 }

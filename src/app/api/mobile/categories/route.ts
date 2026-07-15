@@ -6,6 +6,7 @@ import { prisma } from "@/server/db";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
 import { writeAuditLog } from "@/server/security/audit";
+import { logger } from "@/server/observability/logger";
 import { resolveCurrentWhatsAppAccount } from "@/server/whatsapp/account-scope";
 
 const schema = z.object({
@@ -69,7 +70,7 @@ export async function POST(request: Request) {
       entityId: category.id,
       after: { groupCount: category.assignedGroupCount, contactCount: category.assignedContactCount },
     }).catch((auditError) =>
-      console.error("mobile.category.audit_failed", { error: auditError instanceof Error ? auditError.message : String(auditError), categoryId: category.id }),
+      logger.error("mobile.category.audit_failed", auditError, { categoryId: category.id }),
     );
     return mobileSuccess({ category }, { status: 201 });
   } catch (error) {

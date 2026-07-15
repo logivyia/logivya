@@ -354,7 +354,7 @@ export function scheduleSupportNotificationDelivery() {
     try {
       await processSupportNotificationOutbox(10);
     } catch (error) {
-      console.error("support.notification_outbox_failed", { error: deliveryError(error) });
+      logger.error("support.notification_outbox_failed", error, { errorCode: deliveryError(error) });
     }
   });
 }
