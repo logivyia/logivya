@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/invitation-delivery",
-      "schedule": "*/10 * * * *"
+      "schedule": "17 3 * * *"
     }
   ]
 }
