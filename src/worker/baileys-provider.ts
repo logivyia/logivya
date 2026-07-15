@@ -5,7 +5,9 @@
  */
 import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, fetchLatestWaWebVersion, getPlatformId, useMultiFileAuthState, type Contact as BaileysContact, type WAMessageKey, type WASocket } from "@whiskeysockets/baileys";
 import { Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import QRCode from "qrcode";
+import { canonicalAuditAction, normalizeCorrelationId, sanitizeLogMetadata, sanitizeLogText } from "@logivya/logging";
 import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
 import { enqueueWhatsAppJob } from "@/server/queues/producer";
@@ -416,11 +418,27 @@ function canRefreshSamePairingCodeAfterClose(reason: string, code?: number) {
   return /connection terminated by server|connection closed|timed out|socket closed before pairing code request|qr refs attempts ended/.test(message);
 }
 
-async function auditAccount(accountId: string, action: string, metadata: Record<string, unknown> = {}) {
+async function auditAccount(accountId: string, action: string, metadata: Record<string, unknown> = {}, correlationId?: string) {
   const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId }, select: { companyId: true } });
   if (!account) return;
-  const auditMetadata = JSON.parse(JSON.stringify(metadata)) as Prisma.InputJsonValue;
-  await prisma.auditLog.create({ data: { companyId: account.companyId, action, entityType: "WhatsAppAccount", entityId: accountId, metadata: auditMetadata } });
+  const auditCorrelationId = normalizeCorrelationId(correlationId, `worker-${randomUUID()}`);
+  const auditMetadata = sanitizeLogMetadata(metadata) as Prisma.InputJsonValue;
+  await prisma.auditLog.create({
+    data: {
+      companyId: account.companyId,
+      actorType: "SERVICE",
+      action: canonicalAuditAction(action),
+      result: action.endsWith(".failed") ? "FAILURE" : "SUCCESS",
+      entityType: "WhatsAppAccount",
+      entityId: sanitizeLogText(accountId, 200),
+      requestId: auditCorrelationId,
+      correlationId: auditCorrelationId,
+      clientPlatform: "worker",
+      appVersion: sanitizeLogText(process.env.APP_VERSION || "unknown", 80),
+      releaseVersion: process.env.LOG_RELEASE_VERSION || process.env.RENDER_GIT_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA,
+      metadata: auditMetadata,
+    },
+  });
 }
 
 export class BaileysWhatsAppProvider implements WhatsAppProvider {
@@ -1591,8 +1609,9 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       },
     });
     await backupWhatsAppSessionToDatabase(accountId, "group.sync").catch((error) => logger.error("whatsapp.session.backup_failed", error, { accountId }));
+    const syncCorrelationId = `sync-${accountId}-${syncedAt.getTime()}`;
     logger.info("GROUP_SYNC", {
-      correlationId: `sync-${accountId}-${syncedAt.getTime()}`,
+      correlationId: syncCorrelationId,
       userId: ownerUserId,
       companyId: account.companyId,
       whatsappAccountId: accountId,
@@ -1605,7 +1624,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       source: "baileys-provider",
     });
     logger.info("WA_GROUP_SYNC_SUCCESS", { accountId, count: groups.length, durationMs: Date.now() - startedAt });
-    await auditAccount(accountId, "whatsapp.groups.synced", { count: groups.length });
+    await auditAccount(accountId, "whatsapp.groups.synced", { count: groups.length }, syncCorrelationId);
     return groups;
   }
 
