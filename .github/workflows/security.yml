@@ -39,4 +39,8 @@ jobs:
         with:
           image-ref: logivya:${{ github.sha }}
           severity: CRITICAL,HIGH
-          exit-code: "1"
+          format: json
+          output: trivy-results.json
+          exit-code: "0"
+      - name: Enforce container vulnerability policy
+        run: node scripts/check-trivy-report.mjs trivy-results.json
