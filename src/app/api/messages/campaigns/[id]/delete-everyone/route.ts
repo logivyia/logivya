@@ -4,12 +4,20 @@ import { requirePermission } from "@/server/auth/permissions";
 import { requireApiSession } from "@/server/auth/session";
 import { requestCampaignDeleteForEveryone } from "@/server/messages/delete-for-everyone";
 import { writeAuditLog } from "@/server/security/audit";
+import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const { company, membership, user } = await requireApiSession();
     requirePermission(membership.role, "delete_campaigns");
+    await enforceOperationRateLimit({
+      scope: "message.delete-everyone",
+      subject: `${company.id}:${user.id}`,
+      maxAttempts: 60,
+      windowMs: 10 * 60_000,
+      request,
+    });
 
     const result = await requestCampaignDeleteForEveryone({
       campaignId: id,
@@ -58,6 +66,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "errors.generic";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHORIZED" ? 401 : 403 });
+    return NextResponse.json({ error: message }, { status: message === "UNAUTHORIZED" ? 401 : message === "RATE_LIMITED" ? 429 : 403 });
   }
 }

@@ -108,8 +108,9 @@ async function recordIpRequest(request: Request, identifier: string) {
 
 export async function requestPasswordReset(request: Request, identifier: string) {
   const normalized = normalizeIdentifier(identifier);
+  const identifierHash = hashOpaqueToken(normalized.email || normalized.phone || identifier.trim().toLowerCase()).slice(0, 16);
   logger.info("Forgot password request received", {
-    normalizedEmail: normalized.email || undefined,
+    identifierHash,
     hasPhoneIdentifier: Boolean(normalized.phone),
   });
 
@@ -127,7 +128,7 @@ export async function requestPasswordReset(request: Request, identifier: string)
 
   const user = await findUser(identifier);
   logger.info("Forgot password user lookup completed", {
-    normalizedEmail: normalized.email || undefined,
+    identifierHash,
     userFound: Boolean(user),
   });
 
@@ -138,7 +139,7 @@ export async function requestPasswordReset(request: Request, identifier: string)
   const providerStatus = getEmailProviderStatus();
   if (!providerStatus.configured) {
     logger.error("Email configuration missing", undefined, {
-      normalizedEmail: normalized.email || undefined,
+      identifierHash,
       provider: providerStatus.provider,
       missing: providerStatus.missingVariables,
       userFound: true,

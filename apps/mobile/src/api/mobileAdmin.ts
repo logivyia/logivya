@@ -50,6 +50,7 @@ export type AdminModuleItem = {
   createdAt?: string | null | undefined;
   updatedAt?: string | null | undefined;
   fields: Record<string, string | number | boolean | null>;
+  actions?: string[];
 };
 
 export type AdminModuleViewData = {
@@ -315,7 +316,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     eyebrow: "Altyapi",
     description: "API, Redis, worker ve WhatsApp saglik kontrolleri.",
     endpoint: "/api/admin/system/health",
-    coverage: "read-only",
+    coverage: "live",
     pagination: "none"
   },
   backups: {
@@ -463,6 +464,13 @@ export function updateAdminSecurityEvent(id: string, status: "ACKNOWLEDGED" | "R
   return apiClient.requestRaw<{ event: Record<string, unknown> }>(`/api/admin/security/events/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ status, investigationNote }),
+  });
+}
+
+export function updateAdminIncident(id: string, status: "ACKNOWLEDGED" | "INVESTIGATING" | "MITIGATED" | "RESOLVED", note: string) {
+  return apiClient.requestRaw<{ incident: Record<string, unknown> }>(`/api/admin/incidents/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status, note }),
   });
 }
 
@@ -713,16 +721,49 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
   } else if (definition.key === "metrics") {
     metrics = primitiveRecord(raw.metrics);
   } else if (definition.key === "systemHealth") {
+    const services = records(raw.services);
+    const incidents = records(raw.incidents);
     metrics = compactFields({
-      app: primitive(raw.app),
-      database: primitive(record(raw.database).status),
-      databaseLatencyMs: readNumber(record(raw.database), "latencyMs"),
-      queue: primitive(record(raw.queue).status),
-      worker: primitive(raw.worker),
-      storage: primitive(raw.storage),
-      email: primitive(raw.email),
+      overallStatus: primitive(raw.status) ?? primitive(raw.app),
+      services: services.length,
+      activeIncidents: incidents.length,
+      openAlerts: records(raw.alerts).length,
+      capacityWarnings: records(raw.capacityWarnings).length,
     });
-    items = records(raw.errors).map((event, index) => adminItem(event, `incident-${index}`, ["title", "description"], ["status", "severity"], ["description", "startedAt", "resolvedAt"]));
+    items = [
+      ...services.map((entry, index) => ({
+        id: readText(entry, "id") ?? `service-${index}`,
+        title: readText(entry, "name") ?? "-",
+        subtitle: readText(entry, "summary"),
+        status: readText(entry, "state"),
+        updatedAt: readText(entry, "checkedAt"),
+        fields: compactFields({
+          recordType: "SERVICE",
+          tier: readNumber(entry, "tier"),
+          latencyMs: readNumber(entry, "latencyMs"),
+          lastSuccessfulCheckAt: readText(entry, "lastSuccessfulCheckAt"),
+          lastFailureAt: readText(entry, "lastFailureAt"),
+          trend: readText(entry, "trend"),
+          release: readText(entry, "release"),
+          safeErrorCode: readText(entry, "safeErrorCode"),
+          runbook: readText(entry, "runbook"),
+          ...primitiveRecord(record(entry.metrics)),
+        }),
+        actions: [],
+      } satisfies AdminModuleItem)),
+      ...incidents.map((event, index) => ({
+        ...adminItem(event, `incident-${index}`, ["title", "description"], ["status", "severity"], ["description", "startedAt", "resolvedAt"]),
+        fields: compactFields({
+          recordType: "INCIDENT",
+          severity: readText(event, "severity"),
+          description: readText(event, "description"),
+          startedAt: readText(event, "startedAt"),
+          resolvedAt: readText(event, "resolvedAt"),
+          metadata: displayPrimitive(event.metadata),
+        }),
+        actions: ["ACKNOWLEDGED", "INVESTIGATING", "MITIGATED", "RESOLVED"],
+      } satisfies AdminModuleItem)),
+    ];
   }
 
   const sourcePagination = record(raw.pagination);
@@ -762,6 +803,7 @@ function supportedActions(key: AdminModuleKey) {
   if (key === "payments") return ["MARK_PAID", "REJECT"];
   if (key === "trialRisk") return ["APPROVE_REVIEW", "BLOCK"];
   if (key === "security") return ["ACKNOWLEDGED", "RESOLVED", "DISMISSED"];
+  if (key === "systemHealth") return ["ACKNOWLEDGED", "INVESTIGATING", "MITIGATED", "RESOLVED"];
   return [];
 }
 

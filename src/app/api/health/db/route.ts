@@ -1,3 +1,8 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/server/db";
-export async function GET(){const started=Date.now();try{await prisma.$queryRaw`SELECT 1`;return NextResponse.json({service:"logivya-db",status:"healthy",latencyMs:Date.now()-started})}catch{return NextResponse.json({service:"logivya-db",status:"unhealthy"},{status:503})}}
+import { publicHealthResponse } from "@/server/monitoring/contracts";
+import { checkDatabaseHealth } from "@/server/monitoring/health";
+
+export async function GET() {
+  const health = await checkDatabaseHealth();
+  return NextResponse.json(publicHealthResponse(health.state), { status: health.state === "UNAVAILABLE" ? 503 : 200, headers: { "cache-control": "no-store" } });
+}

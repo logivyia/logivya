@@ -38,6 +38,9 @@ import os from "node:os";
 import { hasRestorableWhatsAppCredentials, restoreWhatsAppSessionFromDatabase } from "@/lib/whatsapp/session-manager";
 
 const workerId = process.env.WORKER_ID || `${os.hostname()}-${process.pid}`;
+const workerStartedAt = new Date().toISOString();
+const workerCapacity = 8;
+let activeWorkerJobs = 0;
 if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required");
 
 function hostnameFromConnectionString(value: string | undefined) {
@@ -119,6 +122,7 @@ function registerWorker(name: string, worker: Worker) {
   logger.info("worker.queue.registered", { workerId, queue: name });
   worker.on("ready", () => logger.info("worker.queue.ready", { workerId, queue: name }));
   worker.on("active", (job) => {
+    activeWorkerJobs += 1;
     const data = job.data as { correlationId?: string };
     logger.debug("worker.job.received", { workerId, queue: name, jobId: job.id, jobName: job.name, correlationId: data.correlationId, attempt: job.attemptsMade + 1 });
     if (name === QUEUES.sync) {
@@ -126,8 +130,12 @@ function registerWorker(name: string, worker: Worker) {
       logger.info("whatsapp.worker.job.received", { workerId, queue: name, jobId: job.id, jobName: job.name, action: data.action, accountId: data.accountId });
     }
   });
-  worker.on("completed", (job) => logger.info("worker.job.completed", { workerId, queue: name, jobId: job.id, jobName: job.name, correlationId: (job.data as { correlationId?: string }).correlationId, attempt: job.attemptsMade + 1, durationMs: job.processedOn ? Date.now() - job.processedOn : undefined, result: "SUCCESS" }));
+  worker.on("completed", (job) => {
+    activeWorkerJobs = Math.max(0, activeWorkerJobs - 1);
+    logger.info("worker.job.completed", { workerId, queue: name, jobId: job.id, jobName: job.name, correlationId: (job.data as { correlationId?: string }).correlationId, attempt: job.attemptsMade + 1, durationMs: job.processedOn ? Date.now() - job.processedOn : undefined, result: "SUCCESS" });
+  });
   worker.on("failed", (job, error) => {
+    activeWorkerJobs = Math.max(0, activeWorkerJobs - 1);
     const attempts = Number(job?.opts.attempts ?? 1);
     const finalAttempt = !job || job.attemptsMade >= attempts;
     const correlationId = (job?.data as { correlationId?: string } | undefined)?.correlationId;
@@ -803,8 +811,17 @@ setInterval(
   Number(process.env.QUEUE_RECOVERY_INTERVAL_MS || 60_000),
 ).unref();
 logger.info("worker.started", { workerId, queues: [QUEUES.campaign, QUEUES.sync, QUEUES.message] });
-void writeWorkerHeartbeat(workerId).catch((error) => logger.error("worker.heartbeat.failed", error));
-setInterval(() => void writeWorkerHeartbeat(workerId).catch((error) => logger.error("worker.heartbeat.failed", error)), Number(process.env.WORKER_HEARTBEAT_INTERVAL_MS || 30_000)).unref();
+function heartbeatDetails() {
+  return {
+    queueNames: [QUEUES.campaign, QUEUES.sync, QUEUES.message],
+    startedAt: workerStartedAt,
+    currentJobs: activeWorkerJobs,
+    capacity: workerCapacity,
+    status: activeWorkerJobs >= workerCapacity ? "BUSY" as const : "HEALTHY" as const,
+  };
+}
+void writeWorkerHeartbeat(workerId, heartbeatDetails()).catch((error) => logger.error("worker.heartbeat.failed", error));
+setInterval(() => void writeWorkerHeartbeat(workerId, heartbeatDetails()).catch((error) => logger.error("worker.heartbeat.failed", error)), Number(process.env.WORKER_HEARTBEAT_INTERVAL_MS || 30_000)).unref();
 
 logger.info("worker.ready", { workerId });
 

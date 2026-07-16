@@ -36,6 +36,7 @@ export async function GET(request: Request) {
     const userId = params.get("userId")?.trim().slice(0, 128) || "";
     const dateFrom = date(params.get("dateFrom"));
     const dateTo = date(params.get("dateTo"), true);
+    const since24Hours = new Date(Date.now() - 24 * 60 * 60_000);
 
     const where: Prisma.SecurityEventWhereInput = {
       ...(companyId ? { companyId } : {}),
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
       } : {}),
     };
 
-    const [events, total, open, critical] = await Promise.all([
+    const [events, total, open, critical, failedLogins, blockedAttempts, mfaEnabledUsers, suspiciousDevices, suspiciousIps, tenantViolations, recentAdminActions] = await Promise.all([
       prisma.securityEvent.findMany({
         where,
         select: {
@@ -89,6 +90,28 @@ export async function GET(request: Request) {
       prisma.securityEvent.count({ where }),
       prisma.securityEvent.count({ where: { status: "OPEN" } }),
       prisma.securityEvent.count({ where: { severity: "CRITICAL", status: { in: ["OPEN", "ACKNOWLEDGED"] } } }),
+      prisma.loginAttempt.count({ where: { success: false, createdAt: { gte: since24Hours } } }),
+      prisma.rateLimitEvent.count({ where: { blocked: true, createdAt: { gte: since24Hours } } }),
+      prisma.mfaCredential.count({ where: { verifiedAt: { not: null }, revokedAt: null } }),
+      prisma.securityEvent.count({
+        where: {
+          createdAt: { gte: since24Hours },
+          type: { in: ["AUTH_REFRESH_TOKEN_REPLAY_DETECTED", "AUTH_REFRESH_TOKEN_REJECTED", "AUTH_LOGIN_FAILED"] },
+          severity: { in: ["HIGH", "CRITICAL"] },
+        },
+      }),
+      prisma.securityEvent.findMany({
+        where: { createdAt: { gte: since24Hours }, severity: { in: ["HIGH", "CRITICAL"] }, ipAddressMasked: { not: null } },
+        distinct: ["ipAddressMasked"],
+        select: { ipAddressMasked: true },
+      }),
+      prisma.securityEvent.count({
+        where: {
+          createdAt: { gte: since24Hours },
+          OR: [{ type: { contains: "TENANT", mode: "insensitive" } }, { type: { contains: "IDOR", mode: "insensitive" } }],
+        },
+      }),
+      prisma.auditLog.count({ where: { actorType: "PLATFORM_ADMIN", createdAt: { gte: since24Hours } } }),
     ]);
 
     void writeAuditLog(request, {
@@ -107,7 +130,18 @@ export async function GET(request: Request) {
         ...event,
         user: event.user ? { id: event.user.id, name: event.user.name, emailMasked: maskEmail(event.user.email) } : null,
       })),
-      metrics: { total, open, critical },
+      metrics: {
+        total,
+        open,
+        critical,
+        failedLogins,
+        blockedAttempts,
+        mfaEnabledUsers,
+        suspiciousDevices,
+        suspiciousIps: suspiciousIps.length,
+        tenantViolations,
+        recentAdminActions,
+      },
       pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) },
     });
   } catch (error) {

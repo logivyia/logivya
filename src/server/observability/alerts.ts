@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { canonicalAuditAction, sanitizeLogMetadata } from "@logivya/logging";
 import { prisma } from "@/server/db";
 import { retentionDeadline } from "@/server/observability/privacy";
+import { ensureIncidentForAlert } from "@/server/monitoring/incidents";
 
 export type OperationalAlertInput = {
   type: string;
@@ -13,14 +14,18 @@ export type OperationalAlertInput = {
   windowMinutes?: number;
 };
 
+export function operationalAlertDedupeKey(input: Pick<OperationalAlertInput, "service" | "type"> & { environment: string; windowMinutes?: number; now?: number }) {
+  const windowMinutes = Math.max(1, Math.min(input.windowMinutes ?? 15, 1_440));
+  const window = Math.floor((input.now ?? Date.now()) / (windowMinutes * 60_000));
+  return `${input.environment}:${input.service}:${canonicalAuditAction(input.type)}:${window}`;
+}
+
 export async function raiseOperationalAlert(input: OperationalAlertInput) {
   const environment = process.env.LOG_ENVIRONMENT || process.env.VERCEL_ENV || process.env.NODE_ENV || "development";
-  const windowMinutes = Math.max(1, Math.min(input.windowMinutes ?? 15, 1_440));
-  const window = Math.floor(Date.now() / (windowMinutes * 60_000));
   const type = canonicalAuditAction(input.type);
-  const dedupeKey = `${environment}:${input.service}:${type}:${window}`;
+  const dedupeKey = operationalAlertDedupeKey({ environment, service: input.service, type, windowMinutes: input.windowMinutes });
   const safe = sanitizeLogMetadata({ message: input.message, metadata: input.metadata });
-  return prisma.operationalAlert.upsert({
+  const alert = await prisma.operationalAlert.upsert({
     where: { dedupeKey },
     create: {
       dedupeKey,
@@ -41,4 +46,6 @@ export async function raiseOperationalAlert(input: OperationalAlertInput) {
       metadata: (safe.metadata ?? {}) as Prisma.InputJsonValue,
     },
   });
+  await ensureIncidentForAlert(alert).catch(() => undefined);
+  return alert;
 }

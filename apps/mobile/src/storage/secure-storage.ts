@@ -3,11 +3,21 @@ import * as SecureStore from "expo-secure-store";
 import { captureAppError } from "@/services/crash-reporting";
 import { translateCurrent } from "@/i18n/runtime";
 
-const ACCESS_TOKEN_KEY = "logivya.accessToken";
-const REFRESH_TOKEN_KEY = "logivya.refreshToken";
-const ACCESS_EXPIRES_KEY = "logivya.accessTokenExpiresAt";
-const REFRESH_EXPIRES_KEY = "logivya.refreshTokenExpiresAt";
-const MFA_TRUSTED_DEVICE_KEY = "logivya.mfaTrustedDeviceToken";
+const ACCESS_TOKEN_KEY = "logivya.v2.accessToken";
+const REFRESH_TOKEN_KEY = "logivya.v2.refreshToken";
+const ACCESS_EXPIRES_KEY = "logivya.v2.accessTokenExpiresAt";
+const REFRESH_EXPIRES_KEY = "logivya.v2.refreshTokenExpiresAt";
+const MFA_TRUSTED_DEVICE_KEY = "logivya.v2.mfaTrustedDeviceToken";
+const legacyKeys = {
+  accessToken: "logivya.accessToken",
+  refreshToken: "logivya.refreshToken",
+  accessTokenExpiresAt: "logivya.accessTokenExpiresAt",
+  refreshTokenExpiresAt: "logivya.refreshTokenExpiresAt",
+  mfaTrustedDeviceToken: "logivya.mfaTrustedDeviceToken",
+} as const;
+const secureStoreOptions: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+};
 
 export type StoredTokens = {
   accessToken: string;
@@ -48,7 +58,7 @@ function asStoredString(value: string | null) {
 async function setRequiredSecureItem(key: string, value: unknown) {
   const normalized = toSecureStoreString(value);
   if (!normalized) throw new SecureTokenStorageError();
-  await SecureStore.setItemAsync(key, normalized);
+  await SecureStore.setItemAsync(key, normalized, secureStoreOptions);
 }
 
 export async function saveTokens(tokens: StoredTokens) {
@@ -73,11 +83,28 @@ export async function readTokens(): Promise<StoredTokens | null> {
 
   try {
     [accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt] = await Promise.all([
-      SecureStore.getItemAsync(ACCESS_TOKEN_KEY),
-      SecureStore.getItemAsync(REFRESH_TOKEN_KEY),
-      SecureStore.getItemAsync(ACCESS_EXPIRES_KEY),
-      SecureStore.getItemAsync(REFRESH_EXPIRES_KEY)
+      SecureStore.getItemAsync(ACCESS_TOKEN_KEY, secureStoreOptions),
+      SecureStore.getItemAsync(REFRESH_TOKEN_KEY, secureStoreOptions),
+      SecureStore.getItemAsync(ACCESS_EXPIRES_KEY, secureStoreOptions),
+      SecureStore.getItemAsync(REFRESH_EXPIRES_KEY, secureStoreOptions)
     ]);
+    if (!accessToken || !refreshToken || !accessTokenExpiresAt || !refreshTokenExpiresAt) {
+      [accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt] = await Promise.all([
+        SecureStore.getItemAsync(legacyKeys.accessToken),
+        SecureStore.getItemAsync(legacyKeys.refreshToken),
+        SecureStore.getItemAsync(legacyKeys.accessTokenExpiresAt),
+        SecureStore.getItemAsync(legacyKeys.refreshTokenExpiresAt),
+      ]);
+      if (accessToken && refreshToken && accessTokenExpiresAt && refreshTokenExpiresAt) {
+        await saveTokens({ accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt });
+        await Promise.allSettled([
+          SecureStore.deleteItemAsync(legacyKeys.accessToken),
+          SecureStore.deleteItemAsync(legacyKeys.refreshToken),
+          SecureStore.deleteItemAsync(legacyKeys.accessTokenExpiresAt),
+          SecureStore.deleteItemAsync(legacyKeys.refreshTokenExpiresAt),
+        ]);
+      }
+    }
   } catch (error) {
     captureAppError(error, { source: "secure-store-read-tokens" });
     await clearTokens();
@@ -100,10 +127,14 @@ export async function readTokens(): Promise<StoredTokens | null> {
 
 export async function clearTokens() {
   await Promise.allSettled([
-    SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY),
-    SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
-    SecureStore.deleteItemAsync(ACCESS_EXPIRES_KEY),
-    SecureStore.deleteItemAsync(REFRESH_EXPIRES_KEY)
+    SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY, secureStoreOptions),
+    SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY, secureStoreOptions),
+    SecureStore.deleteItemAsync(ACCESS_EXPIRES_KEY, secureStoreOptions),
+    SecureStore.deleteItemAsync(REFRESH_EXPIRES_KEY, secureStoreOptions),
+    SecureStore.deleteItemAsync(legacyKeys.accessToken),
+    SecureStore.deleteItemAsync(legacyKeys.refreshToken),
+    SecureStore.deleteItemAsync(legacyKeys.accessTokenExpiresAt),
+    SecureStore.deleteItemAsync(legacyKeys.refreshTokenExpiresAt),
   ]);
 }
 
@@ -113,7 +144,13 @@ export async function saveMfaTrustedDeviceToken(token: string) {
 
 export async function readMfaTrustedDeviceToken() {
   try {
-    return asStoredString(await SecureStore.getItemAsync(MFA_TRUSTED_DEVICE_KEY));
+    const hardened = asStoredString(await SecureStore.getItemAsync(MFA_TRUSTED_DEVICE_KEY, secureStoreOptions));
+    if (hardened) return hardened;
+    const legacy = asStoredString(await SecureStore.getItemAsync(legacyKeys.mfaTrustedDeviceToken));
+    if (!legacy) return null;
+    await saveMfaTrustedDeviceToken(legacy);
+    await SecureStore.deleteItemAsync(legacyKeys.mfaTrustedDeviceToken);
+    return legacy;
   } catch (error) {
     captureAppError(error, { source: "secure-store-read-mfa-trusted-device" });
     return null;
@@ -121,5 +158,8 @@ export async function readMfaTrustedDeviceToken() {
 }
 
 export async function clearMfaTrustedDeviceToken() {
-  await SecureStore.deleteItemAsync(MFA_TRUSTED_DEVICE_KEY);
+  await Promise.allSettled([
+    SecureStore.deleteItemAsync(MFA_TRUSTED_DEVICE_KEY, secureStoreOptions),
+    SecureStore.deleteItemAsync(legacyKeys.mfaTrustedDeviceToken),
+  ]);
 }

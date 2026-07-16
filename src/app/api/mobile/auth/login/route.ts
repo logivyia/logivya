@@ -19,6 +19,7 @@ import {
 } from "@/server/auth/mfa-challenge";
 import { keyedIdentifierHash } from "@/server/observability/privacy";
 import { tryRecordSecurityEvent } from "@/server/security/events";
+import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 
 const schema = z.object({
   identifier: z.string().trim().min(3).max(254),
@@ -42,6 +43,13 @@ export async function POST(request: Request) {
 
     const identifier = parsed.data.identifier.toLowerCase();
     const phone = identifier.replace(/\D/g, "");
+    await enforceOperationRateLimit({
+      scope: "mobile-login-identifier",
+      subject: identifier,
+      maxAttempts: 20,
+      windowMs: 15 * 60_000,
+      request,
+    });
     const recentFailures = await prisma.loginAttempt.count({
       where: { email: identifier, ipAddress: ip, success: false, createdAt: { gte: new Date(Date.now() - 15 * 60_000) } },
     });

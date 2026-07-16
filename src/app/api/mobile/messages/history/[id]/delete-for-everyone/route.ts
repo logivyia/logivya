@@ -3,12 +3,20 @@ import { requestCampaignDeleteForEveryone } from "@/server/messages/delete-for-e
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { mobileError, mobileSafeError, mobileSuccess } from "@/server/mobile/response";
 import { writeAuditLog } from "@/server/security/audit";
+import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const { company, membership, user } = await requireMobileAuth(request);
     requirePermission(membership.role, "delete_campaigns");
+    await enforceOperationRateLimit({
+      scope: "message.delete-everyone",
+      subject: `${company.id}:${user.id}`,
+      maxAttempts: 60,
+      windowMs: 10 * 60_000,
+      request,
+    });
 
     const result = await requestCampaignDeleteForEveryone({
       campaignId: id,

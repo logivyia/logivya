@@ -21,6 +21,24 @@ export type EmailTemplate =
 export type EmailInput = { to: string; subject: string; html: string; text?: string };
 export type TemplateEmailInput = { to: string; template: EmailTemplate; variables: Record<string, string> };
 
+const REQUIRED_TEMPLATE_VARIABLES: Partial<Record<EmailTemplate, string[]>> = {
+  password_reset: ["code"],
+  support_created: ["ticketNumber", "ticketSubject", "userEmail", "companyName", "ticketCategory", "ticketPriority", "createdAt", "message", "openUrl"],
+  support_replied: ["eventKind", "ticketNumber", "ticketSubject", "ticketStatus", "createdAt", "message", "openUrl"],
+};
+
+export function validateTemplateEmailInput(input: TemplateEmailInput) {
+  const required = REQUIRED_TEMPLATE_VARIABLES[input.template] ?? ["title", "message"];
+  const missing = required.filter((key) => !input.variables[key]?.trim());
+  if (!input.to.trim()) missing.push("recipient");
+  if (input.template === "support_replied" && input.variables.eventKind === "user_reply") {
+    for (const key of ["userName", "userEmail", "companyName"]) {
+      if (!input.variables[key]?.trim()) missing.push(key);
+    }
+  }
+  return { valid: missing.length === 0, missing: [...new Set(missing)] };
+}
+
 export interface EmailProvider {
   sendEmail(input: EmailInput): Promise<{ providerId?: string }>;
   sendTemplateEmail(input: TemplateEmailInput): Promise<{ providerId?: string }>;
@@ -41,6 +59,8 @@ class TransactionalEmailProvider implements EmailProvider {
   }
 
   async sendTemplateEmail(input: TemplateEmailInput) {
+    const validation = validateTemplateEmailInput(input);
+    if (!validation.valid) throw new Error("EMAIL_TEMPLATE_VARIABLES_MISSING");
     if (input.template === "password_reset") {
       return this.sendEmail({ to: input.to, ...await passwordResetCodeTemplate(input.variables.code, input.variables.locale) });
     }

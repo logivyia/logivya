@@ -4,6 +4,7 @@ import { isMessageDeliveryError } from "@/server/messages/delivery-pipeline";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { createMobileMessageCampaign } from "@/server/mobile/messages";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
+import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 
 const scheduledAtSchema = z.union([z.string(), z.date()]).nullable().optional();
 
@@ -34,6 +35,13 @@ const schema = z.object({
 export async function POST(request: Request) {
   try {
     const context = await requireMobileAuth(request);
+    await enforceOperationRateLimit({
+      scope: "message.campaign.create",
+      subject: `${context.company.id}:${context.user.id}`,
+      maxAttempts: 120,
+      windowMs: 60_000,
+      request,
+    });
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return mobileValidationError(parsed.error);
     const { scheduledAt: rawScheduledAt, scheduledTimeZone, timeZone, targets, ...messageInput } = parsed.data;

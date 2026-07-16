@@ -1,8 +1,9 @@
 import { prisma } from "@/server/db";
-import { emailProvider, type TemplateEmailInput } from "@/server/email/provider";
+import { emailProvider, validateTemplateEmailInput, type TemplateEmailInput } from "@/server/email/provider";
 import { getEmailProviderStatus } from "@/lib/email/email-provider";
 import { verifyEmailProviderConnection } from "@/lib/email/send-email";
 import { logger } from "@/server/observability/logger";
+import { raiseOperationalAlert } from "@/server/observability/alerts";
 
 function deliveryErrorCode(error: unknown) {
   if (error instanceof Error && error.message) return error.message.slice(0, 120);
@@ -22,6 +23,21 @@ export async function sendTemplateEmailSafely(input: TemplateEmailInput & { comp
       status: "PENDING",
     },
   });
+
+  const validation = validateTemplateEmailInput(input);
+  if (!validation.valid) {
+    const errorCode = "EMAIL_TEMPLATE_VARIABLES_MISSING";
+    await prisma.emailDeliveryLog.update({ where: { id: log.id }, data: { status: "FAILED", errorCode } });
+    logger.error("email.template.validation_failed", undefined, { template: input.template, missingVariables: validation.missing, emailDeliveryLogId: log.id });
+    await raiseOperationalAlert({
+      type: "EMAIL_TEMPLATE_VALIDATION_FAILED",
+      severity: "HIGH",
+      service: "email",
+      message: "A transactional email was rejected because mandatory template variables were missing.",
+      metadata: { template: input.template, missingVariables: validation.missing },
+    }).catch(() => undefined);
+    return { sent: false as const, errorCode, missing: validation.missing };
+  }
 
   if (!providerStatus.configured) {
     const errorCode = "EMAIL_CONFIGURATION_MISSING";

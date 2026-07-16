@@ -48,6 +48,20 @@ type SecurityRow = {
   company: { id: string; name: string } | null;
   user: RelatedEntity;
 };
+type SecurityMetrics = {
+  total: number;
+  open: number;
+  critical: number;
+  failedLogins: number;
+  blockedAttempts: number;
+  mfaEnabledUsers: number;
+  suspiciousDevices: number;
+  suspiciousIps: number;
+  tenantViolations: number;
+  recentAdminActions: number;
+};
+
+const emptySecurityMetrics: SecurityMetrics = { total: 0, open: 0, critical: 0, failedLogins: 0, blockedAttempts: 0, mfaEnabledUsers: 0, suspiciousDevices: 0, suspiciousIps: 0, tenantViolations: 0, recentAdminActions: 0 };
 
 const field = "min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-orange-400";
 const button = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold disabled:opacity-40";
@@ -164,7 +178,7 @@ export function AdminSecurityCenter() {
   const tr = labels.locale === "tr";
   const [rows, setRows] = useState<SecurityRow[]>([]);
   const [pagination, setPagination] = useState<PageInfo>({ page: 1, limit: 50, total: 0, pages: 1 });
-  const [metrics, setMetrics] = useState({ open: 0, critical: 0 });
+  const [metrics, setMetrics] = useState<SecurityMetrics>(emptySecurityMetrics);
   const [selected, setSelected] = useState<SecurityRow | null>(null);
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
@@ -179,7 +193,7 @@ export function AdminSecurityCenter() {
       const response = await fetch(`/api/admin/security/events?${params}`, { cache: "no-store" });
       if (!response.ok) throw new Error("SECURITY_LOAD_FAILED");
       const payload = await response.json();
-      setRows(payload.events || []); setPagination(payload.pagination); setMetrics(payload.metrics || { open: 0, critical: 0 });
+      setRows(payload.events || []); setPagination(payload.pagination); setMetrics({ ...emptySecurityMetrics, ...(payload.metrics || {}) });
     } catch { setError(labels.failed); } finally { setLoading(false); }
   }, [filters, labels.failed]);
 
@@ -198,6 +212,16 @@ export function AdminSecurityCenter() {
   return (
     <>
       <header className="mb-6"><p className="text-xs font-semibold uppercase text-orange-600">{tr ? "Güvenlik" : "Security"}</p><h1 className="mt-2 text-3xl font-semibold">{tr ? "Güvenlik Olayları" : "Security Events"}</h1><p className="mt-2 text-sm text-slate-500">{tr ? `${metrics.open} açık · ${metrics.critical} kritik` : `${metrics.open} open · ${metrics.critical} critical`}</p></header>
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[
+        [tr ? "Başarısız girişler (24s)" : "Failed logins (24h)", metrics.failedLogins],
+        [tr ? "Engellenen denemeler (24s)" : "Blocked attempts (24h)", metrics.blockedAttempts],
+        [tr ? "2FA etkin kullanıcı" : "2FA enabled users", metrics.mfaEnabledUsers],
+        [tr ? "Şüpheli cihaz sinyali" : "Suspicious device signals", metrics.suspiciousDevices],
+        [tr ? "Şüpheli IP (24s)" : "Suspicious IPs (24h)", metrics.suspiciousIps],
+        [tr ? "Tenant ihlali (24s)" : "Tenant violations (24h)", metrics.tenantViolations],
+        [tr ? "Yönetici işlemi (24s)" : "Admin actions (24h)", metrics.recentAdminActions],
+        [tr ? "Açık güvenlik olayı" : "Open security events", metrics.open],
+      ].map(([label, value]) => <article key={String(label)} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p></article>)}</div>
       <form className="mb-5 grid gap-3 lg:grid-cols-6" onSubmit={(event) => { event.preventDefault(); void load(1); }}>
         <label className="relative lg:col-span-2"><Search className="absolute left-3 top-3.5 size-4 text-slate-400" /><input className={`${field} w-full pl-10`} aria-label={labels.search} value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} placeholder={labels.search} /></label>
         <select className={field} aria-label={tr ? "Durum" : "Status"} value={filters.eventStatus} onChange={(e) => setFilters({ ...filters, eventStatus: e.target.value })}><option value="">{labels.all}</option>{["OPEN", "ACKNOWLEDGED", "RESOLVED", "DISMISSED"].map((x) => <option key={x}>{x}</option>)}</select>

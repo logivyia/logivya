@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-07-15T15:13:21.903Z",
-  "referencedCount": 179,
-  "documentedCount": 216,
+  "generatedAt": "2026-07-16T15:13:16.899Z",
+  "referencedCount": 190,
+  "documentedCount": 228,
   "missingFromExample": [],
   "publicSecretShaped": [],
   "variables": [
@@ -100,7 +100,9 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/server/observability/logger.ts"
+        "src/server/observability/logger.ts",
+        "src/server/whatsapp/worker-heartbeat.ts",
+        "src/worker/baileys-provider.ts"
       ]
     },
     {
@@ -112,9 +114,9 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/server/observability/privacy.ts",
         "src/lib/whatsapp/session-manager.ts",
         "src/server/mobile/auth.ts",
+        "src/server/observability/privacy.ts",
         "src/server/security/private-fields.ts"
       ]
     },
@@ -321,8 +323,9 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/app/api/cron/observability-retention/route.ts",
+        "src/app/api/cron/monitoring/route.ts",
         "src/app/api/cron/invitation-delivery/route.ts",
+        "src/app/api/cron/observability-retention/route.ts",
         "src/app/api/cron/subscriptions/expire/route.ts",
         "src/app/api/cron/support-notifications/route.ts",
         "src/app/api/internal/platform/bootstrap/route.ts"
@@ -337,16 +340,12 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "scripts/audit-database-integrity.mjs",
-        "scripts/test-migration-failure-safety.mjs",
-        "scripts/test-queue-recovery-integration.ts",
-        "scripts/test-whatsapp-session-restore-integration.ts",
-        "scripts/test-worker-restart-integration.mjs",
         "prisma.config.ts",
         "prisma/seed.ts",
         "scripts/apply-whatsapp-group-deduplication.ts",
         "scripts/audit-category-contact-migration.ts",
         "scripts/audit-contact-directory-coverage.ts",
+        "scripts/audit-database-integrity.mjs",
         "scripts/audit-migration-safety.ts",
         "scripts/audit-seven-day-trial-migration.ts",
         "scripts/audit-subscription-seat-trial-migration.ts",
@@ -364,13 +363,42 @@
         "scripts/reconcile-production-schema.ts",
         "scripts/repair-whatsapp-group-ownership.ts",
         "scripts/test-enterprise-support-center-integration.ts",
+        "scripts/test-migration-failure-safety.mjs",
+        "scripts/test-observability-database-integration.mjs",
+        "scripts/test-queue-recovery-integration.ts",
         "scripts/test-seven-day-trial-integration.ts",
         "scripts/test-support-center-load.ts",
         "scripts/test-team-contact-api-smoke.ts",
         "scripts/test-team-contact-integration.ts",
+        "scripts/test-whatsapp-session-restore-integration.ts",
+        "scripts/test-worker-restart-integration.mjs",
         "scripts/watch-whatsapp-pairing-audit.ts",
         "src/server/db.ts",
         "src/worker/index.ts"
+      ]
+    },
+    {
+      "name": "DB_HEALTH_DEGRADED_MS",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/monitoring/health.ts"
+      ]
+    },
+    {
+      "name": "DB_HEALTH_UNAVAILABLE_MS",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/monitoring/health.ts"
       ]
     },
     {
@@ -419,7 +447,6 @@
       "testOnly": false,
       "files": [
         "src/app/(platform)/admin/settings/platform/page.tsx",
-        "src/app/api/admin/system/health/route.ts",
         "src/server/admin/module-snapshots.ts"
       ]
     },
@@ -583,8 +610,22 @@
       "runtime": false,
       "testOnly": false,
       "files": [
+        "src/app/api/health/version/route.ts",
+        "src/server/monitoring/health.ts",
         "src/server/observability/logger.ts",
         "src/server/whatsapp/worker-heartbeat.ts"
+      ]
+    },
+    {
+      "name": "GITHUB_MONITORING_TOKEN",
+      "documented": true,
+      "public": false,
+      "secret": true,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/monitoring/health.ts"
       ]
     },
     {
@@ -670,8 +711,11 @@
       "runtime": true,
       "testOnly": false,
       "files": [
+        "src/app/api/health/version/route.ts",
+        "src/server/monitoring/health.ts",
         "src/server/observability/alerts.ts",
-        "src/server/observability/logger.ts"
+        "src/server/observability/logger.ts",
+        "src/server/whatsapp/worker-heartbeat.ts"
       ]
     },
     {
@@ -707,8 +751,13 @@
       "runtime": true,
       "testOnly": false,
       "files": [
+        "src/app/api/health/version/route.ts",
+        "src/server/monitoring/health.ts",
+        "scripts/test-observability-integration.ts",
         "src/server/observability/logger.ts",
-        "src/server/security/audit.ts"
+        "src/server/security/audit.ts",
+        "src/server/whatsapp/worker-heartbeat.ts",
+        "src/worker/baileys-provider.ts"
       ]
     },
     {
@@ -732,7 +781,8 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/server/observability/logger.ts"
+        "src/server/observability/logger.ts",
+        "src/server/whatsapp/worker-heartbeat.ts"
       ]
     },
     {
@@ -844,6 +894,7 @@
       "runtime": true,
       "testOnly": false,
       "files": [
+        "scripts/test-enterprise-security-hardening.ts",
         "scripts/test-enterprise-support-center-integration.ts",
         "scripts/test-support-center-load.ts",
         "src/server/mobile/auth.ts"
@@ -898,6 +949,66 @@
       ]
     },
     {
+      "name": "MONITORING_GITHUB_REPOSITORY",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/monitoring/health.ts"
+      ]
+    },
+    {
+      "name": "MONITORING_INTERNAL_TOKEN",
+      "documented": true,
+      "public": false,
+      "secret": true,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/monitoring/access.ts"
+      ]
+    },
+    {
+      "name": "MONITORING_PROBE_TIMEOUT_MS",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/monitoring/health.ts"
+      ]
+    },
+    {
+      "name": "MONITORING_RECOVERY_CONSECUTIVE_CHECKS",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/monitoring/incidents.ts"
+      ]
+    },
+    {
+      "name": "MONITORING_TEST_BASE_URL",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": true,
+      "files": [
+        "scripts/test-monitoring-integration.ts"
+      ]
+    },
+    {
       "name": "NEXT_PUBLIC_APP_URL",
       "documented": true,
       "public": true,
@@ -946,7 +1057,8 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/server/observability/alerts.ts",
+        "src/app/api/health/version/route.ts",
+        "src/server/monitoring/health.ts",
         "apps/mobile/app.config.js",
         "next.config.ts",
         "src/app/api/auth/login/route.ts",
@@ -955,8 +1067,22 @@
         "src/lib/email/templates/support-ticket.ts",
         "src/server/auth/session.ts",
         "src/server/db.ts",
+        "src/server/observability/alerts.ts",
         "src/server/observability/logger.ts",
-        "src/server/support/errors.ts"
+        "src/server/support/errors.ts",
+        "src/server/whatsapp/worker-heartbeat.ts"
+      ]
+    },
+    {
+      "name": "OBSERVABILITY_DB_INTEGRATION",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/test-observability-database-integration.mjs"
       ]
     },
     {
@@ -1087,12 +1213,23 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/app/api/health/queue/route.ts",
         "src/server/queues/health.ts"
       ]
     },
     {
       "name": "QUEUE_HEALTH_STALE_CACHE_MS",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/queues/health.ts"
+      ]
+    },
+    {
+      "name": "QUEUE_HEALTH_TIMEOUT_MS",
       "documented": true,
       "public": false,
       "secret": false,
@@ -1152,6 +1289,30 @@
       ]
     },
     {
+      "name": "REDIS_HEALTH_DEGRADED_MS",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/monitoring/health.ts"
+      ]
+    },
+    {
+      "name": "REDIS_HEALTH_UNAVAILABLE_MS",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/monitoring/health.ts"
+      ]
+    },
+    {
       "name": "REDIS_URL",
       "documented": true,
       "public": false,
@@ -1160,10 +1321,11 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "scripts/test-queue-recovery-integration.ts",
-        "scripts/test-worker-restart-integration.mjs",
+        "scripts/test-monitoring-contracts.ts",
         "scripts/inspect-whatsapp-queue.ts",
         "scripts/inspect-whatsapp-rate-limit.ts",
+        "scripts/test-queue-recovery-integration.ts",
+        "scripts/test-worker-restart-integration.mjs",
         "src/server/queues/client.ts",
         "src/server/security/admin-request.ts",
         "src/server/whatsapp/request-guards.ts",
@@ -1179,9 +1341,12 @@
       "runtime": false,
       "testOnly": false,
       "files": [
+        "src/app/api/health/version/route.ts",
+        "src/server/monitoring/health.ts",
         "src/server/observability/logger.ts",
         "src/server/security/audit.ts",
-        "src/server/whatsapp/worker-heartbeat.ts"
+        "src/server/whatsapp/worker-heartbeat.ts",
+        "src/worker/baileys-provider.ts"
       ]
     },
     {
@@ -1205,7 +1370,8 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/server/observability/logger.ts"
+        "src/server/observability/logger.ts",
+        "src/server/whatsapp/worker-heartbeat.ts"
       ]
     },
     {
@@ -1290,7 +1456,7 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/app/api/admin/system/health/route.ts"
+        "src/server/monitoring/health.ts"
       ]
     },
     {
@@ -1326,8 +1492,8 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/server/observability/privacy.ts",
         "src/lib/whatsapp/session-manager.ts",
+        "src/server/observability/privacy.ts",
         "src/server/security/private-fields.ts"
       ]
     },
@@ -1419,18 +1585,6 @@
       "files": [
         "src/lib/email/email-provider.ts",
         "src/lib/email/send-email.ts"
-      ]
-    },
-    {
-      "name": "SOURCE_COMMIT",
-      "documented": true,
-      "public": false,
-      "secret": false,
-      "buildTime": true,
-      "runtime": false,
-      "testOnly": false,
-      "files": [
-        "src/app/api/health/route.ts"
       ]
     },
     {
@@ -1540,7 +1694,6 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/app/api/health/worker/route.ts",
         "src/server/whatsapp/worker-health.ts"
       ]
     },
@@ -1565,8 +1718,9 @@
       "runtime": false,
       "testOnly": false,
       "files": [
+        "src/app/api/health/version/route.ts",
+        "src/server/monitoring/health.ts",
         "src/server/observability/alerts.ts",
-        "src/app/api/health/worker/route.ts",
         "src/server/observability/logger.ts",
         "src/server/whatsapp/worker-health.ts"
       ]
@@ -1580,10 +1734,12 @@
       "runtime": false,
       "testOnly": false,
       "files": [
-        "src/app/api/health/route.ts",
+        "src/app/api/health/version/route.ts",
+        "src/server/monitoring/health.ts",
         "src/server/observability/logger.ts",
         "src/server/security/audit.ts",
-        "src/server/whatsapp/worker-heartbeat.ts"
+        "src/server/whatsapp/worker-heartbeat.ts",
+        "src/worker/baileys-provider.ts"
       ]
     },
     {
@@ -2142,7 +2298,6 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/app/api/health/worker/route.ts",
         "src/lib/whatsapp/session-manager.ts",
         "src/server/whatsapp/worker-health.ts"
       ]
@@ -2156,7 +2311,6 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/app/api/health/whatsapp/route.ts",
         "src/lib/whatsapp/session-manager.ts"
       ]
     },
@@ -2193,7 +2347,6 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/app/api/health/worker/route.ts",
         "src/server/whatsapp/worker-health.ts"
       ]
     },
@@ -2218,7 +2371,6 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/app/api/health/worker/route.ts",
         "src/server/whatsapp/worker-health.ts"
       ]
     },

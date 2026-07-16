@@ -17,6 +17,17 @@ export type MfaEnrollment = {
   recoveryCodes: string[];
 };
 
+export type SecuritySession = {
+  id: string;
+  kind: "WEB" | "MOBILE";
+  deviceName: string;
+  ipAddress?: string | null;
+  lastActiveAt: string;
+  expiresAt: string;
+  createdAt: string;
+  current: boolean;
+};
+
 export function getMfaStatus() {
   return apiClient.request<MfaStatus>("/api/mobile/auth/mfa/status");
 }
@@ -39,4 +50,16 @@ export function regenerateMfaRecoveryCodes(code: string) {
 
 export function revokeMfaTrustedDevice(id: string) {
   return apiClient.delete<{ ok: true }>(`/api/mobile/auth/mfa/trusted-devices/${encodeURIComponent(id)}`);
+}
+
+export function getSecuritySessions() {
+  return apiClient.request<{ sessions: SecuritySession[] }>("/api/mobile/auth/sessions");
+}
+
+export function revokeSecuritySession(session: SecuritySession) {
+  return apiClient.delete<{ ok: true; currentRevoked: boolean }>(`/api/mobile/auth/sessions/${session.kind}/${encodeURIComponent(session.id)}`);
+}
+
+export function logoutEverywhere() {
+  return apiClient.delete<{ ok: true }>("/api/mobile/auth/sessions");
 }

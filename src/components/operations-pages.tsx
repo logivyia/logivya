@@ -1,20 +1,25 @@
 "use client";
 
 /* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any */
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { Fragment, type FormEvent, useCallback, useEffect, useState } from "react";
 import {
   Activity,
+  AlertTriangle,
   Building2,
   CheckCircle2,
   CircleHelp,
+  Clock3,
   Database,
   HeartPulse,
   LoaderCircle,
   MessageSquare,
   Plus,
+  RefreshCw,
   Send,
+  Server,
   ShieldAlert,
   Users,
+  Wifi,
 } from "lucide-react";
 
 import { formatCurrency, formatDateTime, formatNumber } from "@/i18n/format";
@@ -200,21 +205,132 @@ export function AdminListPage({ titleKey, endpoint, kind }: { titleKey: string; 
 }
 
 export function SystemHealthPage() {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const [data, setData] = useState<any>();
-  useEffect(() => { void fetch("/api/admin/system/health").then((response) => response.json()).then(setData); }, []);
-  if (!data) return <Loading />;
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedIncident, setSelectedIncident] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/system/health", { cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "SYSTEM_HEALTH_LOAD_FAILED");
+      setData(body);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "SYSTEM_HEALTH_LOAD_FAILED");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function updateIncidentStatus(id: string, status: string) {
+    if (note.trim().length < 5) {
+      setError(locale === "tr" ? "İşlem notu en az 5 karakter olmalıdır." : "The operation note must contain at least 5 characters.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/admin/incidents/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status, note: note.trim() }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "INCIDENT_UPDATE_FAILED");
+      setNote("");
+      setSelectedIncident(null);
+      await load();
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "INCIDENT_UPDATE_FAILED");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading && !data) return <Loading />;
+  const services = data?.services || [];
+  const queues = data?.queues || [];
+  const incidents = data?.incidents || [];
+  const alerts = data?.alerts || [];
+  const stateTone: Record<string, string> = {
+    HEALTHY: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    DEGRADED: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    UNAVAILABLE: "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300",
+    UNKNOWN: "border-zinc-500/40 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
+    MAINTENANCE: "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  };
+  const serviceIcons: Record<string, typeof Activity> = { api: Server, database: Database, redis: Wifi, queues: Activity, worker: Server, whatsapp: MessageSquare, messaging: Send, scheduler: Clock3, support: CircleHelp, email: Send, backups: Database, deployments: Activity };
   return (
     <>
-      <Header title={t("systemHealth.title")} description={t("systemHealth.description")} />
-      <div className="grid gap-4 md:grid-cols-3">
-        <Metric label={t("systemHealth.application")} value={localizedStatus(data.app || "unknown", t)} Icon={HeartPulse} />
-        <Metric label={t("systemHealth.database")} value={localizedStatus(data.database?.status || "unknown", t)} Icon={Database} />
-        <Metric label={t("systemHealth.failedQueueJobs")} value={data.queue?.counts?.failed || 0} Icon={ShieldAlert} />
-        <Metric label={t("systemHealth.worker")} value={localizedStatus(data.worker || "unknown", t)} Icon={Activity} />
-        <Metric label={t("systemHealth.storage")} value={localizedStatus(data.storage || "unknown", t)} Icon={Database} />
-        <Metric label={t("systemHealth.email")} value={localizedStatus(data.email || "unknown", t)} Icon={CircleHelp} />
+      <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
+        <Header title={t("systemHealth.title")} description={t("systemHealth.description")} />
+        <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-lg border px-4 text-sm font-semibold disabled:opacity-50">
+          <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+          {locale === "tr" ? "Yenile" : "Refresh"}
+        </button>
       </div>
+      {error ? <div className="mb-5 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">{error}</div> : null}
+      <section className="mb-6 flex flex-wrap items-center justify-between gap-4 border-y py-5">
+        <div className="flex items-center gap-3">
+          <HeartPulse className="size-7 text-primary" />
+          <div><p className="text-xs font-semibold uppercase text-muted">{locale === "tr" ? "Genel platform durumu" : "Overall platform status"}</p><p className="mt-1 text-2xl font-semibold">{localizedStatus(data?.status || "UNKNOWN", t)}</p></div>
+        </div>
+        <div className="text-right text-xs text-muted"><p>{data?.release ? String(data.release).slice(0, 12) : "-"}</p><p>{data?.generatedAt ? formatDateTime(data.generatedAt, locale) : "-"}</p></div>
+      </section>
+
+      <section className="mb-8">
+        <h2 className="mb-4 text-lg font-semibold">{locale === "tr" ? "Servisler" : "Services"}</h2>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {services.map((item: any) => {
+            const Icon = serviceIcons[item.id] || Activity;
+            const metricEntries = Object.entries(item.metrics || {}).slice(0, 4);
+            return <article key={item.id} className="rounded-lg border p-4">
+              <div className="flex items-start justify-between gap-3"><Icon className="size-5 text-primary" /><span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${stateTone[item.state] || stateTone.UNKNOWN}`}>{localizedStatus(item.state, t)}</span></div>
+              <h3 className="mt-4 font-semibold">{item.name}</h3>
+              <p className="mt-1 min-h-10 text-xs leading-5 text-muted">{item.summary}</p>
+              <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 border-t pt-3 text-xs">
+                <span className="text-muted">{locale === "tr" ? "Gecikme" : "Latency"}</span><span className="text-right font-medium">{item.latencyMs == null ? "-" : `${item.latencyMs} ms`}</span>
+                <span className="text-muted">{locale === "tr" ? "Eğilim" : "Trend"}</span><span className="text-right font-medium">{localizedStatus(item.trend || "UNKNOWN", t)}</span>
+                <span className="text-muted">{locale === "tr" ? "Son başarılı kontrol" : "Last successful check"}</span><span className="text-right font-medium">{item.lastSuccessfulCheckAt ? formatDateTime(item.lastSuccessfulCheckAt, locale) : "-"}</span>
+                <span className="text-muted">{locale === "tr" ? "Son hata" : "Last failure"}</span><span className="text-right font-medium">{item.lastFailureAt ? formatDateTime(item.lastFailureAt, locale) : "-"}</span>
+                <span className="text-muted">{locale === "tr" ? "Sürüm" : "Release"}</span><span className="break-all text-right font-medium">{item.release ? String(item.release).slice(0, 16) : "-"}</span>
+                <span className="text-muted">{locale === "tr" ? "Hata kodu" : "Error code"}</span><span className="break-all text-right font-medium">{item.safeErrorCode || "-"}</span>
+              </div>
+              {metricEntries.length ? <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t pt-3 text-xs">{metricEntries.map(([key, value]) => <Fragment key={key}><dt className="break-all text-muted">{key}</dt><dd className="break-all text-right font-medium">{value == null ? "-" : String(value)}</dd></Fragment>)}</dl> : null}
+              {item.incidentId ? <a href="#active-incidents" onClick={() => setSelectedIncident(item.incidentId)} className="mt-4 inline-flex min-h-10 items-center text-xs font-semibold text-primary">{locale === "tr" ? "Açık olayı görüntüle" : "View open incident"}</a> : null}
+            </article>;
+          })}
+        </div>
+      </section>
+
+      <section className="mb-8">
+        <h2 className="mb-4 text-lg font-semibold">{locale === "tr" ? "Kuyruk özeti" : "Queue summary"}</h2>
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[720px] text-left text-sm"><thead className="border-b bg-black/[.03]"><tr><th className="p-3">{locale === "tr" ? "Kuyruk" : "Queue"}</th><th>{locale === "tr" ? "Durum" : "State"}</th><th>{locale === "tr" ? "Bekleyen" : "Waiting"}</th><th>{locale === "tr" ? "Aktif" : "Active"}</th><th>{locale === "tr" ? "En eski iş" : "Oldest job"}</th><th>{locale === "tr" ? "Dakika hızı" : "Per minute"}</th><th>{locale === "tr" ? "95. yüzdelik" : "95th percentile"}</th></tr></thead><tbody>{queues.map((queue: any) => <tr key={queue.name} className="border-b last:border-0"><td className="p-3 font-medium">{queue.name}</td><td>{localizedStatus(queue.state, t)}</td><td>{queue.counts?.waiting || 0}</td><td>{queue.counts?.active || 0}</td><td>{queue.oldestWaitingAgeMs == null ? "-" : `${Math.round(queue.oldestWaitingAgeMs / 1000)} sn`}</td><td>{queue.throughputPerMinute}</td><td>{queue.p95ProcessingMs == null ? "-" : `${queue.p95ProcessingMs} ms`}</td></tr>)}</tbody></table>
+        </div>
+      </section>
+
+      <section className="mb-8 grid gap-6 xl:grid-cols-2">
+        <div id="active-incidents">
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold"><AlertTriangle className="size-5 text-amber-500" />{locale === "tr" ? "Aktif olaylar" : "Active incidents"}</h2>
+          <div className="grid gap-3">{incidents.map((incident: any) => <article key={incident.id} className="rounded-lg border p-4">
+            <button type="button" onClick={() => setSelectedIncident(selectedIncident === incident.id ? null : incident.id)} className="w-full text-left"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{incident.title}</h3><p className="mt-1 text-xs text-muted">{incident.severity} · {formatDateTime(incident.startedAt, locale)}</p></div><span className="rounded-full border px-2.5 py-1 text-[11px] font-semibold">{localizedStatus(incident.status, t)}</span></div><p className="mt-3 text-sm text-muted">{incident.description}</p></button>
+            {selectedIncident === incident.id ? <div className="mt-4 border-t pt-4"><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder={locale === "tr" ? "İnceleme veya çözüm notu" : "Investigation or resolution note"} className={`${field} min-h-24`} /><div className="mt-3 flex flex-wrap gap-2">{[["ACKNOWLEDGED", locale === "tr" ? "Kabul et" : "Acknowledge"], ["INVESTIGATING", locale === "tr" ? "İncele" : "Investigate"], ["MITIGATED", locale === "tr" ? "Azaltıldı" : "Mitigated"], ["RESOLVED", locale === "tr" ? "Çözüldü" : "Resolve"]].map(([status, label]) => <button key={status} type="button" disabled={saving} onClick={() => void updateIncidentStatus(incident.id, status)} className="min-h-10 rounded-lg border px-3 text-xs font-semibold disabled:opacity-50">{label}</button>)}</div></div> : null}
+          </article>)}{!incidents.length ? <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted">{locale === "tr" ? "Aktif olay yok." : "No active incidents."}</p> : null}</div>
+        </div>
+        <div>
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold"><ShieldAlert className="size-5 text-primary" />{locale === "tr" ? "Son uyarılar" : "Recent alerts"}</h2>
+          <div className="grid gap-3">{alerts.slice(0, 12).map((alert: any) => <article key={alert.id} className="rounded-lg border p-4"><div className="flex justify-between gap-3"><h3 className="text-sm font-semibold">{String(alert.type).replaceAll("_", " ")}</h3><span className="text-xs font-semibold">{alert.severity}</span></div><p className="mt-2 text-xs text-muted">{alert.message}</p><p className="mt-3 text-[11px] text-muted">{alert.service} · {alert.occurrenceCount} · {formatDateTime(alert.lastSeenAt, locale)}</p></article>)}{!alerts.length ? <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted">{locale === "tr" ? "Açık uyarı yok." : "No open alerts."}</p> : null}</div>
+        </div>
+      </section>
     </>
   );
 }

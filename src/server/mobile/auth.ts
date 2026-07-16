@@ -1,13 +1,19 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { MobilePlatform, type Company, type CompanyUser, type User } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { hashOpaqueToken } from "@/server/security/authentication";
 
 const ACCESS_TOKEN_SECONDS = 15 * 60;
 const REFRESH_TOKEN_DAYS = 30;
+const ACCESS_TOKEN_ISSUER = "logivya";
+const ACCESS_TOKEN_AUDIENCE = "logivya-mobile";
+const CLOCK_SKEW_SECONDS = 60;
 
 type AccessPayload = {
   typ: "mobile_access";
+  iss: typeof ACCESS_TOKEN_ISSUER;
+  aud: typeof ACCESS_TOKEN_AUDIENCE;
+  jti: string;
   sub: string;
   companyId: string;
   sessionId: string;
@@ -44,6 +50,10 @@ function encodeJson(value: unknown) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
+function decodeJson(value: string): unknown {
+  return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+}
+
 function sign(input: string) {
   return createHmac("sha256", mobileJwtSecret()).update(input).digest("base64url");
 }
@@ -59,6 +69,9 @@ export function createAccessToken(input: { userId: string; companyId: string; se
   const accessTokenExpiresAt = new Date((now + ACCESS_TOKEN_SECONDS) * 1000).toISOString();
   const payload: AccessPayload = {
     typ: "mobile_access",
+    iss: ACCESS_TOKEN_ISSUER,
+    aud: ACCESS_TOKEN_AUDIENCE,
+    jti: randomUUID(),
     sub: input.userId,
     companyId: input.companyId,
     sessionId: input.sessionId,
@@ -76,9 +89,30 @@ export function verifyAccessToken(token: string): AccessPayload {
   const [header, payload, signature] = parts;
   const expected = sign(`${header}.${payload}`);
   if (!safeEqual(signature, expected)) throw new Error("UNAUTHORIZED");
-  const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as AccessPayload;
-  if (parsed.typ !== "mobile_access" || parsed.exp <= Math.floor(Date.now() / 1000)) throw new Error("UNAUTHORIZED");
-  return parsed;
+  try {
+    const parsedHeader = decodeJson(header) as Record<string, unknown>;
+    const parsed = decodeJson(payload) as Partial<AccessPayload>;
+    const now = Math.floor(Date.now() / 1000);
+    const validHeader = parsedHeader.alg === "HS256" && parsedHeader.typ === "JWT";
+    const validClaims = parsed.typ === "mobile_access"
+      && parsed.iss === ACCESS_TOKEN_ISSUER
+      && parsed.aud === ACCESS_TOKEN_AUDIENCE
+      && typeof parsed.jti === "string" && parsed.jti.length >= 16
+      && typeof parsed.sub === "string" && parsed.sub.length > 0
+      && typeof parsed.companyId === "string" && parsed.companyId.length > 0
+      && typeof parsed.sessionId === "string" && parsed.sessionId.length > 0
+      && typeof parsed.role === "string" && parsed.role.length > 0
+      && typeof parsed.iat === "number" && Number.isInteger(parsed.iat)
+      && typeof parsed.exp === "number" && Number.isInteger(parsed.exp)
+      && parsed.iat <= now + CLOCK_SKEW_SECONDS
+      && parsed.exp > now
+      && parsed.exp > parsed.iat
+      && parsed.exp - parsed.iat <= ACCESS_TOKEN_SECONDS;
+    if (!validHeader || !validClaims) throw new Error("UNAUTHORIZED");
+    return parsed as AccessPayload;
+  } catch {
+    throw new Error("UNAUTHORIZED");
+  }
 }
 
 export function createRefreshToken() {
@@ -126,35 +160,100 @@ export async function createMobileSession(input: {
 
 export async function rotateRefreshToken(refreshToken: string, request: Request) {
   const refresh = createRefreshToken();
-  const existing = await prisma.mobileDeviceSession.findUnique({
-    where: { refreshTokenHash: hashOpaqueToken(refreshToken) },
-    include: { user: true, company: true },
-  });
-  if (!existing) throw new Error("UNAUTHORIZED");
-  if (existing.revokedAt || existing.expiresAt <= new Date()) {
-    const { recordSecurityEvent } = await import("@/server/security/events");
-    await recordSecurityEvent({
-      request,
-      companyId: existing.companyId,
+  const incomingHash = hashOpaqueToken(refreshToken);
+  const now = new Date();
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mobile-refresh:${incomingHash}`}))`;
+    const existing = await tx.mobileDeviceSession.findUnique({
+      where: { refreshTokenHash: incomingHash },
+      include: { user: true },
+    });
+    if (!existing) {
+      const replay = await tx.mobileRefreshTokenHistory.findUnique({
+        where: { tokenHash: incomingHash },
+        include: { session: true },
+      });
+      if (!replay) return { kind: "missing" as const };
+      await tx.mobileRefreshTokenHistory.update({
+        where: { id: replay.id },
+        data: { replayDetectedAt: now },
+      });
+      await tx.mobileDeviceSession.updateMany({
+        where: { id: replay.sessionId, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      await tx.trustedDevice.updateMany({
+        where: { userId: replay.session.userId, deviceFingerprint: replay.session.deviceId, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      return {
+        kind: "replay" as const,
+        companyId: replay.session.companyId,
+        userId: replay.session.userId,
+        sessionId: replay.sessionId,
+      };
+    }
+    if (existing.revokedAt || existing.expiresAt <= now) {
+      return { kind: "rejected" as const, companyId: existing.companyId, userId: existing.userId, sessionId: existing.id };
+    }
+    const membership = await tx.companyUser.findUnique({
+      where: { companyId_userId: { companyId: existing.companyId, userId: existing.userId } },
+    });
+    if (!membership || membership.status !== "ACTIVE" || existing.user.status !== "ACTIVE") {
+      return { kind: "rejected" as const, companyId: existing.companyId, userId: existing.userId, sessionId: existing.id };
+    }
+    if (existing.user.mfaRequired && !existing.mfaVerifiedAt) {
+      return { kind: "rejected" as const, companyId: existing.companyId, userId: existing.userId, sessionId: existing.id };
+    }
+    await tx.mobileRefreshTokenHistory.deleteMany({ where: { sessionId: existing.id, expiresAt: { lte: now } } });
+    await tx.mobileRefreshTokenHistory.create({
+      data: { sessionId: existing.id, tokenHash: incomingHash, expiresAt: existing.expiresAt, consumedAt: now },
+    });
+    const session = await tx.mobileDeviceSession.update({
+      where: { id: existing.id },
+      data: { refreshTokenHash: refresh.tokenHash, expiresAt: refresh.expiresAt, lastUsedAt: now },
+    });
+    return {
+      kind: "rotated" as const,
       userId: existing.userId,
-      severity: "HIGH",
-      type: "AUTH_REFRESH_TOKEN_REJECTED",
-      message: "A revoked or expired mobile refresh token was rejected.",
+      companyId: existing.companyId,
+      sessionId: session.id,
+      role: membership.role,
+    };
+  });
+
+  if (result.kind === "replay") {
+    const { tryRecordSecurityEvent } = await import("@/server/security/events");
+    await tryRecordSecurityEvent({
+      request,
+      companyId: result.companyId,
+      userId: result.userId,
+      severity: "CRITICAL",
+      type: "AUTH_REFRESH_TOKEN_REPLAY_DETECTED",
+      message: "A previously consumed mobile refresh token was replayed and its session was revoked.",
       result: "DENIED",
       source: "mobile-auth",
+      metadata: { sessionId: result.sessionId },
     });
     throw new Error("UNAUTHORIZED");
   }
-  const membership = await prisma.companyUser.findUnique({
-    where: { companyId_userId: { companyId: existing.companyId, userId: existing.userId } },
-  });
-  if (!membership || membership.status !== "ACTIVE" || existing.user.status !== "ACTIVE") throw new Error("UNAUTHORIZED");
-  if (existing.user.mfaRequired && !existing.mfaVerifiedAt) throw new Error("UNAUTHORIZED");
-  const session = await prisma.mobileDeviceSession.update({
-    where: { id: existing.id },
-    data: { refreshTokenHash: refresh.tokenHash, expiresAt: refresh.expiresAt, lastUsedAt: new Date() },
-  });
-  const access = createAccessToken({ userId: existing.userId, companyId: existing.companyId, sessionId: session.id, role: membership.role });
+  if (result.kind === "rejected") {
+    const { tryRecordSecurityEvent } = await import("@/server/security/events");
+    await tryRecordSecurityEvent({
+      request,
+      companyId: result.companyId,
+      userId: result.userId,
+      severity: "HIGH",
+      type: "AUTH_REFRESH_TOKEN_REJECTED",
+      message: "A revoked, expired, or ineligible mobile refresh token was rejected.",
+      result: "DENIED",
+      source: "mobile-auth",
+      metadata: { sessionId: result.sessionId },
+    });
+    throw new Error("UNAUTHORIZED");
+  }
+  if (result.kind === "missing") throw new Error("UNAUTHORIZED");
+  const access = createAccessToken({ userId: result.userId, companyId: result.companyId, sessionId: result.sessionId, role: result.role });
   return {
     ...access,
     refreshToken: refresh.token,

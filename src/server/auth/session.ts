@@ -11,26 +11,38 @@ export async function createSession(
   userId: string,
   companyId: string,
   request: Request,
-  options: { mfaVerified?: boolean } = {},
+  options: { mfaVerified?: boolean; deviceName?: string | null; deviceFingerprint?: string | null } = {},
 ) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
-  const session = await prisma.userSession.create({
-    data: {
-      userId,
-      companyId,
-      sessionTokenHash: hashOpaqueToken(token),
-      ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown",
-      userAgent: request.headers.get("user-agent"),
-      expiresAt,
-      mfaVerifiedAt: options.mfaVerified ? new Date() : null,
-    },
-  });
   const cookieStore = await cookies();
+  const previousToken = cookieStore.get(SESSION_COOKIE)?.value;
+  const session = await prisma.$transaction(async (tx) => {
+    if (previousToken) {
+      await tx.userSession.updateMany({
+        where: { sessionTokenHash: hashOpaqueToken(previousToken), revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    }
+    return tx.userSession.create({
+      data: {
+        userId,
+        companyId,
+        sessionTokenHash: hashOpaqueToken(token),
+        deviceName: options.deviceName?.trim().slice(0, 120) || null,
+        deviceFingerprint: options.deviceFingerprint ? hashOpaqueToken(`web-device:${options.deviceFingerprint}`) : null,
+        ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown",
+        userAgent: request.headers.get("user-agent"),
+        expiresAt,
+        mfaVerifiedAt: options.mfaVerified ? new Date() : null,
+      },
+    });
+  });
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
+    priority: "high",
     path: "/",
     expires: expiresAt,
   });
@@ -63,6 +75,12 @@ export async function getSessionContext() {
     include: { company: true },
   });
   if (!membership || membership.status !== "ACTIVE") return null;
+  if (session.lastActiveAt.getTime() < Date.now() - 5 * 60_000) {
+    await prisma.userSession.updateMany({
+      where: { id: session.id, revokedAt: null },
+      data: { lastActiveAt: new Date() },
+    });
+  }
   return { session, user: session.user, company: membership.company, membership };
 }
 

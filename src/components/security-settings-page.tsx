@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Copy, KeyRound, LoaderCircle, RefreshCw, ShieldCheck, ShieldOff, Smartphone, Trash2 } from "lucide-react";
+import { Copy, KeyRound, LoaderCircle, LogOut, RefreshCw, ShieldCheck, ShieldOff, Smartphone, Trash2 } from "lucide-react";
 
 import { apiErrorMessage } from "@/i18n/api-error";
 import { useI18n } from "@/i18n/provider";
@@ -17,6 +17,7 @@ type SecurityStatus = {
 };
 
 type Enrollment = { secret: string; qrCodeDataUrl: string; recoveryCodes: string[] };
+type SecuritySession = { id: string; kind: "WEB" | "MOBILE"; deviceName: string; ipAddress?: string | null; lastActiveAt: string; expiresAt: string; current: boolean };
 
 export function SecuritySettingsPage() {
   const { t, locale } = useI18n();
@@ -26,10 +27,15 @@ export function SecuritySettingsPage() {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [sessions, setSessions] = useState<SecuritySession[]>([]);
 
   const load = useCallback(async () => {
-    const response = await fetch("/api/auth/mfa/status", { cache: "no-store" });
-    if (response.ok) setData(await response.json());
+    const [statusResponse, sessionsResponse] = await Promise.all([
+      fetch("/api/auth/mfa/status", { cache: "no-store" }),
+      fetch("/api/auth/sessions", { cache: "no-store" }),
+    ]);
+    if (statusResponse.ok) setData(await statusResponse.json());
+    if (sessionsResponse.ok) setSessions((await sessionsResponse.json()).sessions || []);
   }, []);
   useEffect(() => {
     const timer = window.setTimeout(() => { void load(); }, 0);
@@ -81,6 +87,24 @@ export function SecuritySettingsPage() {
     setBusy(false);
   }
 
+  async function revokeSession(session: SecuritySession) {
+    setBusy(true); setMessage("");
+    const response = await fetch(`/api/auth/sessions/${session.kind}/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+    if (response.ok) {
+      const result = await response.json();
+      if (result.currentRevoked) { window.location.assign("/login"); return; }
+      await load();
+    } else setMessage(apiErrorMessage(t, await response.json()));
+    setBusy(false);
+  }
+
+  async function logoutEverywhere() {
+    setBusy(true); setMessage("");
+    const response = await fetch("/api/auth/sessions", { method: "DELETE" });
+    if (response.ok) { window.location.assign("/login"); return; }
+    setMessage(apiErrorMessage(t, await response.json())); setBusy(false);
+  }
+
   if (!data) return <LoaderCircle className="size-6 animate-spin text-primary" />;
   return <>
     <header className="mb-7"><p className="text-xs font-semibold uppercase tracking-[.2em] text-primary">{t("security.eyebrow")}</p><h1 className="mt-2 text-3xl font-semibold">{t("security.title")}</h1><p className="mt-2 text-sm text-muted">{t("security.description")}</p></header>
@@ -95,6 +119,8 @@ export function SecuritySettingsPage() {
       </section>
 
       {(recoveryCodes.length > 0 || data.enabled) ? <section className="rounded-2xl border bg-card p-6"><div className="flex items-center gap-3"><KeyRound className="size-5 text-primary" /><div><h2 className="font-semibold">{t("security.recoveryTitle")}</h2><p className="text-sm text-muted">{t("security.recoveryRemaining", { count: data.recoveryCodesRemaining })}</p></div></div>{recoveryCodes.length ? <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><pre className="grid grid-cols-1 gap-1 whitespace-pre-wrap font-mono text-sm sm:grid-cols-2">{recoveryCodes.join("\n")}</pre><button type="button" onClick={() => void navigator.clipboard.writeText(recoveryCodes.join("\n"))} className="mt-3 inline-flex items-center gap-2 text-sm font-semibold"><Copy className="size-4" />{t("security.copyCodes")}</button></div> : null}{data.enabled ? <form onSubmit={regenerate} className="mt-4 flex flex-wrap items-end gap-3"><label className="min-w-64 flex-1"><span className="mb-2 block text-xs font-medium">{t("auth.mfaCode")}</span><input required name="code" className="w-full rounded-xl border bg-input px-3 py-3 font-mono outline-none focus:border-primary" /></label><button disabled={busy} className="inline-flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold"><RefreshCw className="size-4" />{t("security.regenerate")}</button></form> : null}</section> : null}
+
+      <section><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><Smartphone className="size-5 text-primary" /><h2 className="text-lg font-semibold">{t("security.activeSessions")}</h2></div><button disabled={busy || !sessions.length} onClick={() => void logoutEverywhere()} className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-danger disabled:opacity-50"><LogOut className="size-4" />{t("security.logoutEverywhere")}</button></div><div className="grid gap-3">{sessions.length ? sessions.map((session) => <article key={`${session.kind}:${session.id}`} className="flex items-center justify-between gap-4 rounded-xl border bg-card p-4"><div><p className="font-semibold">{session.deviceName}{session.current ? <span className="ml-2 text-xs text-primary">{t("security.currentSession")}</span> : null}</p><p className="mt-1 text-xs text-muted">{session.kind}{session.ipAddress ? ` · ${session.ipAddress}` : ""} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(session.lastActiveAt))}</p></div><button disabled={busy} onClick={() => void revokeSession(session)} title={t("security.revokeSession")} className="grid size-10 place-items-center rounded-lg border text-danger"><LogOut className="size-4" /></button></article>) : <p className="rounded-xl border border-dashed p-4 text-sm text-muted">{t("security.noActiveSessions")}</p>}</div></section>
 
       <section><div className="mb-3 flex items-center gap-2"><Smartphone className="size-5 text-primary" /><h2 className="text-lg font-semibold">{t("security.trustedDevices")}</h2></div><div className="grid gap-3">{data.trustedDevices.length ? data.trustedDevices.map((device) => <article key={device.id} className="flex items-center justify-between gap-4 rounded-xl border bg-card p-4"><div><p className="font-semibold">{device.deviceName || t("security.unknownDevice")}</p><p className="mt-1 text-xs text-muted">{device.ipAddress} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(device.lastUsedAt || device.trustedAt))}</p></div><button disabled={busy} onClick={() => void revokeDevice(device.id)} title={t("security.revokeDevice")} className="grid size-10 place-items-center rounded-lg border text-danger"><Trash2 className="size-4" /></button></article>) : <p className="rounded-xl border border-dashed p-4 text-sm text-muted">{t("security.noTrustedDevices")}</p>}</div></section>
 

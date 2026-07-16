@@ -36,7 +36,7 @@ Do not deploy the worker without persistent storage. Otherwise connected WhatsAp
 
 ## Verification
 
-1. Call `/api/health/worker`; `remoteConfigured` and `remoteReachable` must both be `true`.
+1. Call `/api/health/worker` and verify the minimal public status response. Verify heartbeat age, queue names, capacity and release only through the authorized `/api/health/dependencies` endpoint or **Yönetici > Sistem Sağlığı**; public endpoints intentionally expose none of those fields.
 2. Open `/accounts` and click `WhatsApp hesabı ekle`.
 3. Click `QR oluştur`; a real QR must appear within 15 seconds.
 4. Scan the QR and verify that the account becomes `CONNECTED`.

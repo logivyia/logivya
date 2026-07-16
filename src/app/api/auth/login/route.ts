@@ -23,6 +23,7 @@ import { keyedIdentifierHash } from "@/server/observability/privacy";
 import { tryRecordSecurityEvent } from "@/server/security/events";
 import { writeAuditLog } from "@/server/security/audit";
 import { logger } from "@/server/observability/logger";
+import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 
 const schema = loginSchema.extend({
   deviceFingerprint: z.string().trim().min(8).max(160).optional(),
@@ -37,6 +38,24 @@ export async function POST(request: Request) {
 
   const identifier = parsed.data.identifier.trim().toLowerCase();
   const normalizedPhone = identifier.replace(/\D/gu, "");
+  try {
+    await Promise.all([
+      enforceOperationRateLimit({ scope: "web-login-ip", subject: ipAddress, maxAttempts: 60, windowMs: 15 * 60_000, request }),
+      enforceOperationRateLimit({ scope: "web-login-identifier", subject: identifier, maxAttempts: 20, windowMs: 15 * 60_000, request }),
+    ]);
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== "RATE_LIMITED") throw error;
+    await tryRecordSecurityEvent({
+      request,
+      severity: "HIGH",
+      type: "AUTH_RATE_LIMITED",
+      message: "Authentication traffic was rate limited.",
+      result: "DENIED",
+      source: "web-login",
+      metadata: { identifierType: identifier.includes("@") ? "email" : "phone", identifierHash: keyedIdentifierHash(identifier) },
+    });
+    return NextResponse.json({ error: "RATE_LIMITED" }, { status: 429 });
+  }
   const recentFailures = await prisma.loginAttempt.count({
     where: { email: identifier, ipAddress, success: false, createdAt: { gte: new Date(Date.now() - 15 * 60_000) } },
   });
@@ -117,7 +136,11 @@ export async function POST(request: Request) {
     }, { status: 202 });
   }
 
-  await createSession(user.id, membership.companyId, request, { mfaVerified: Boolean(activeCredential) });
+  await createSession(user.id, membership.companyId, request, {
+    mfaVerified: Boolean(activeCredential),
+    deviceName: parsed.data.deviceName,
+    deviceFingerprint: parsed.data.deviceFingerprint,
+  });
   await prisma.loginAttempt.create({
     data: { userId: user.id, email: user.email, ipAddress, userAgent, success: true },
   });

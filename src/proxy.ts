@@ -24,15 +24,16 @@ export function proxy(request: NextRequest) {
     return withIds(NextResponse.json({ error: "MAINTENANCE_MODE" }, { status: 503 }));
   }
   if (!hasSession && isProtected) return withIds(NextResponse.redirect(new URL("/login", request.url)));
+  const isApiRequest = request.nextUrl.pathname.startsWith("/api/");
   if (request.nextUrl.pathname.startsWith("/api/admin/")) {
     if (!hasSession && !hasBearerToken) return withIds(NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 }));
-    if (hasSession && !hasBearerToken && ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
-      const origin = request.headers.get("origin");
-      const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
-      let originHost: string | undefined;
-      try { originHost = origin ? new URL(origin).host : undefined; } catch { originHost = undefined; }
-      if (!originHost || !host || originHost !== host) return withIds(NextResponse.json({ error: "CSRF_REJECTED" }, { status: 403 }));
-    }
+  }
+  if (isApiRequest && hasSession && !hasBearerToken && ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
+    const origin = request.headers.get("origin");
+    const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+    let originHost: string | undefined;
+    try { originHost = origin ? new URL(origin).host : undefined; } catch { originHost = undefined; }
+    if (!originHost || !host || originHost !== host) return withIds(NextResponse.json({ error: "CSRF_REJECTED" }, { status: 403 }));
   }
   if (hasSession && isAuthPath) return withIds(NextResponse.redirect(new URL("/dashboard", request.url)));
   return withIds(NextResponse.next({ request: { headers: requestHeaders } }));

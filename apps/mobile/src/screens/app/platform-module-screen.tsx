@@ -23,6 +23,7 @@ import {
   updateAdminSupportTicketPriority,
   updateAdminSupportTicketStatus,
   updateAdminSecurityEvent,
+  updateAdminIncident,
   type AdminModuleItem,
   type AdminModuleViewData,
   type AdminCompanyOption,
@@ -309,6 +310,8 @@ export function PlatformModuleScreen() {
                   await runAdminTrialDecision(selectedItem.id, action, reason);
                 } else if (params.moduleKey === "security" && (action === "ACKNOWLEDGED" || action === "RESOLVED" || action === "DISMISSED")) {
                   await updateAdminSecurityEvent(selectedItem.id, action, reason);
+                } else if (params.moduleKey === "systemHealth" && ["ACKNOWLEDGED", "INVESTIGATING", "MITIGATED", "RESOLVED"].includes(action)) {
+                  await updateAdminIncident(selectedItem.id, action as "ACKNOWLEDGED" | "INVESTIGATING" | "MITIGATED" | "RESOLVED", reason);
                 } else {
                   throw new Error(locale === "tr" ? "Bu işlem desteklenmiyor." : "This action is not supported.");
                 }
@@ -569,7 +572,7 @@ export function PlatformModuleScreen() {
         {!isSupportModule && selectedItem ? (
           <AdminModuleDetail
             item={selectedItem}
-            actions={data?.capabilities.actions ?? []}
+            actions={selectedItem.actions ?? data?.capabilities.actions ?? []}
             actionReason={actionReason}
             adminPassword={adminPassword}
             saving={actionSaving}
@@ -981,13 +984,14 @@ function adminStatusLabel(status: string, locale: ReturnType<typeof useTranslati
     SUCCEEDED: "Başarılı", REFUNDED: "İade edildi", READ: "Okundu", UNREAD: "Okunmadı", REQUESTED: "Talep edildi", VERIFYING: "Doğrulanıyor",
     PROCESSING: "İşleniyor", REJECTED: "Reddedildi", HEALTHY: "Sağlıklı", DEGRADED: "Düşük performans", UNAVAILABLE: "Kullanılamıyor", UNKNOWN: "Bilinmiyor",
     CONFIGURED: "Yapılandırıldı", RUNBOOK_ONLY: "Yalnızca runbook", DOCUMENTED: "Belgelendi", ARCHIVED: "Arşivlendi", OPEN: "Açık",
+    ACKNOWLEDGED: "İncelemeye alındı", INVESTIGATING: "İnceleniyor", MITIGATED: "Etkisi azaltıldı", RESOLVED: "Çözüldü", MAINTENANCE: "Bakımda",
   };
   return locale === "tr" ? (tr[status] ?? status.replace(/_/g, " ")) : status.replace(/_/g, " ");
 }
 
 function adminActionLabel(action: string, locale: ReturnType<typeof useTranslation>["locale"]) {
-  const tr: Record<string, string> = { SUSPEND: "Askıya al", REACTIVATE: "Yeniden etkinleştir", FORCE_LOGOUT: "Oturumları kapat", RESET_MFA: "MFA sıfırla", REQUIRE_MFA: "MFA zorunlu kıl", ACTIVATE: "Etkinleştir", CANCEL: "İptal et", MARK_PAID: "Ödendi olarak işaretle", REJECT: "Reddet", APPROVE_REVIEW: "İncelemeyi onayla", BLOCK: "Engelle", ACKNOWLEDGED: "İncelemeye al", RESOLVED: "Çözüldü", DISMISSED: "Geçersiz sinyal" };
-  const en: Record<string, string> = { SUSPEND: "Suspend", REACTIVATE: "Reactivate", FORCE_LOGOUT: "Revoke sessions", RESET_MFA: "Reset MFA", REQUIRE_MFA: "Require MFA", ACTIVATE: "Activate", CANCEL: "Cancel", MARK_PAID: "Mark paid", REJECT: "Reject", APPROVE_REVIEW: "Approve review", BLOCK: "Block", ACKNOWLEDGED: "Acknowledge", RESOLVED: "Resolve", DISMISSED: "Dismiss signal" };
+  const tr: Record<string, string> = { SUSPEND: "Askıya al", REACTIVATE: "Yeniden etkinleştir", FORCE_LOGOUT: "Oturumları kapat", RESET_MFA: "MFA sıfırla", REQUIRE_MFA: "MFA zorunlu kıl", ACTIVATE: "Etkinleştir", CANCEL: "İptal et", MARK_PAID: "Ödendi olarak işaretle", REJECT: "Reddet", APPROVE_REVIEW: "İncelemeyi onayla", BLOCK: "Engelle", ACKNOWLEDGED: "İncelemeye al", INVESTIGATING: "İnceleniyor", MITIGATED: "Etkisi azaltıldı", RESOLVED: "Çözüldü", DISMISSED: "Geçersiz sinyal" };
+  const en: Record<string, string> = { SUSPEND: "Suspend", REACTIVATE: "Reactivate", FORCE_LOGOUT: "Revoke sessions", RESET_MFA: "Reset MFA", REQUIRE_MFA: "Require MFA", ACTIVATE: "Activate", CANCEL: "Cancel", MARK_PAID: "Mark paid", REJECT: "Reject", APPROVE_REVIEW: "Approve review", BLOCK: "Block", ACKNOWLEDGED: "Acknowledge", INVESTIGATING: "Investigating", MITIGATED: "Mitigated", RESOLVED: "Resolve", DISMISSED: "Dismiss signal" };
   return (locale === "tr" ? tr : en)[action] ?? action.replace(/_/g, " ");
 }
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { isSmartScheduleDateError, parseSmartScheduleDateTime } from "@/lib/smart-schedule-date";
 import { requireApiSession } from "@/server/auth/session";
 import { createMessageDeliveryCampaign, isMessageDeliveryError } from "@/server/messages/delivery-pipeline";
+import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 
 const scheduledAtSchema = z.union([z.string(), z.date()]).nullable().optional();
 
@@ -33,6 +34,13 @@ const schema = z.object({
 export async function POST(request: Request) {
   try {
     const { company, user, membership } = await requireApiSession();
+    await enforceOperationRateLimit({
+      scope: "message.campaign.create",
+      subject: `${company.id}:${user.id}`,
+      maxAttempts: 120,
+      windowMs: 60_000,
+      request,
+    });
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
     const { scheduledAt: rawScheduledAt, scheduledTimeZone, timeZone, targets, ...campaignInput } = parsed.data;
@@ -66,6 +74,9 @@ export async function POST(request: Request) {
     }
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+    if (error instanceof Error && error.message === "RATE_LIMITED") {
+      return NextResponse.json({ error: "RATE_LIMITED" }, { status: 429 });
     }
     return NextResponse.json({ error: error instanceof Error ? error.message : "errors.generic" }, { status: 503 });
   }

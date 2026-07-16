@@ -56,14 +56,21 @@ function normalizedRecoveryCode(value: string) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]/gu, "");
 }
 
-function recoveryPepper() {
-  const pepper = process.env.MFA_RECOVERY_CODE_PEPPER || process.env.PASSWORD_PEPPER;
-  if (!pepper) throw new Error("MFA_RECOVERY_PEPPER_NOT_CONFIGURED");
-  return pepper;
+function recoveryPeppers() {
+  const peppers = [process.env.MFA_RECOVERY_CODE_PEPPER, process.env.PASSWORD_PEPPER].filter(
+    (value): value is string => Boolean(value),
+  );
+  const unique = [...new Set(peppers)];
+  if (!unique.length) throw new Error("MFA_RECOVERY_PEPPER_NOT_CONFIGURED");
+  return unique;
+}
+
+function hashRecoveryCodeWithPepper(value: string, pepper: string) {
+  return createHmac("sha256", pepper).update(normalizedRecoveryCode(value)).digest("base64url");
 }
 
 export function hashRecoveryCode(value: string) {
-  return createHmac("sha256", recoveryPepper()).update(normalizedRecoveryCode(value)).digest("base64url");
+  return hashRecoveryCodeWithPepper(value, recoveryPeppers()[0]);
 }
 
 function legacyRecoveryHash(value: string) {
@@ -219,7 +226,10 @@ export async function verifyAndConsumeMfaCode(input: {
 
   const normalized = normalizedRecoveryCode(code);
   if (normalized.length < 16) return { ok: false as const, reason: "MFA_INVALID" as const };
-  const hashes = [hashRecoveryCode(code), legacyRecoveryHash(code)];
+  const hashes = [
+    ...recoveryPeppers().map((pepper) => hashRecoveryCodeWithPepper(code, pepper)),
+    legacyRecoveryHash(code),
+  ];
   const recoveryCode = credential.recoveryCodes.find((item) => !item.usedAt && hashes.includes(item.codeHash));
   if (recoveryCode) {
     const consumed = await prisma.twoFactorRecoveryCode.updateMany({

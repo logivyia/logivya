@@ -1,27 +1,28 @@
 import { NextResponse } from "next/server";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
-import { prisma } from "@/server/db";
-import { messageQueue } from "@/server/queues/client";
-import { getCachedQueueHealth } from "@/server/queues/health";
+import { getSystemHealthSnapshot } from "@/server/monitoring/health";
+import { logger } from "@/server/observability/logger";
 
 export async function GET(request: Request) {
   try {
     await requirePlatformAdmin("admin.dashboard.read", request);
-    const started = Date.now();
-    await prisma.$queryRaw`SELECT 1`;
-    const queue = await getCachedQueueHealth("logivya-message", messageQueue, ["waiting", "active", "delayed", "failed", "paused"]);
-    const errors = await prisma.incidentLog.findMany({ where: { resolvedAt: null }, orderBy: { startedAt: "desc" }, take: 20 });
-    const active = queue.status === "healthy" ? queue.counts.active ?? 0 : 0;
+    const snapshot = await getSystemHealthSnapshot();
+    const byId = Object.fromEntries(snapshot.services.map((service) => [service.id, service]));
+    const messageQueue = snapshot.queues.find((queue) => queue.name === "logivya-message");
     return NextResponse.json({
-      app: "healthy",
-      database: { status: "healthy", latencyMs: Date.now() - started },
-      queue,
-      worker: active > 0 ? "active" : "idle",
-      storage: process.env.S3_BUCKET ? "configured" : "not_configured",
-      email: process.env.EMAIL_PROVIDER || "not_configured",
-      errors,
+      ...snapshot,
+      app: snapshot.status,
+      database: { status: byId.database?.state ?? "UNKNOWN", latencyMs: byId.database?.latencyMs ?? null },
+      queue: { status: byId.queues?.state ?? "UNKNOWN", counts: messageQueue?.counts ?? {} },
+      worker: byId.worker?.state ?? "UNKNOWN",
+      storage: byId.storage?.state ?? "UNKNOWN",
+      email: byId.email?.state ?? "UNKNOWN",
+      errors: snapshot.incidents,
     });
-  } catch {
-    return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "UNKNOWN";
+    if (code === "FORBIDDEN" || code === "UNAUTHORIZED") return NextResponse.json({ error: code }, { status: code === "UNAUTHORIZED" ? 401 : 403 });
+    logger.error("admin.system_health.load_failed", error);
+    return NextResponse.json({ error: "SYSTEM_HEALTH_LOAD_FAILED" }, { status: 500 });
   }
 }
