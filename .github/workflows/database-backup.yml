@@ -70,3 +70,96 @@ jobs:
           else
             echo "BACKUP_ALERT_WEBHOOK_URL is not configured; GitHub workflow failure remains the alert channel."
           fi
+
+  restore-drill:
+    needs: backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-backup
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: restore-only-password
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      CI: "true"
+      BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+      BACKUP_POSTGRES_TOOLS: docker
+      BACKUP_POSTGRES_IMAGE: postgres:17
+      RESTORE_CONFIRM_ISOLATED: "YES"
+      RESTORE_DOCKER_CONTAINER: ${{ job.services.postgres.id }}
+      RESTORE_DATABASE_NAME: logivya_restore
+      RESTORE_DATABASE_USER: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Download encrypted recovery artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: encrypted-postgres-backup-${{ github.run_id }}
+          path: artifacts/restore-drill
+      - name: Restore into isolated PostgreSQL and verify row counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="$(find artifacts/restore-drill -type f -name '*.manifest.json' -print -quit)"
+          archive="$(find artifacts/restore-drill -type f -name '*.dump.enc' -print -quit)"
+          test -n "$manifest"
+          test -n "$archive"
+
+          docker exec "$RESTORE_DOCKER_CONTAINER" createdb --username postgres logivya_restore
+          npm run backup:restore -- --manifest "$manifest" --archive "$archive"
+
+          node --input-type=module - "$manifest" <<'NODE' > "$RUNNER_TEMP/expected-row-counts.tsv"
+          import { readFile } from "node:fs/promises";
+          const manifest = JSON.parse(await readFile(process.argv[2], "utf8"));
+          const expected = {
+            _prisma_migrations: manifest.source.migrationCount,
+            ...manifest.source.rowCounts,
+          };
+          for (const [table, count] of Object.entries(expected)) {
+            if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table) || !Number.isInteger(count) || count < 0) {
+              throw new Error(`INVALID_RESTORE_EXPECTATION:${table}`);
+            }
+            process.stdout.write(`${table}\t${count}\n`);
+          }
+          NODE
+
+          checked=0
+          while IFS=$'\t' read -r table expected; do
+            actual="$(docker exec "$RESTORE_DOCKER_CONTAINER" psql --username postgres --dbname logivya_restore --tuples-only --no-align --command "SELECT COUNT(*) FROM \"$table\";")"
+            test "$actual" = "$expected"
+            checked=$((checked + 1))
+          done < "$RUNNER_TEMP/expected-row-counts.tsv"
+
+          mkdir -p artifacts/restore-proof
+          BACKUP_MANIFEST="$manifest" CHECKED_TABLES="$checked" node --input-type=module <<'NODE'
+          import { readFile, writeFile } from "node:fs/promises";
+          const manifest = JSON.parse(await readFile(process.env.BACKUP_MANIFEST, "utf8"));
+          await writeFile("artifacts/restore-proof/restore-drill.json", `${JSON.stringify({
+            backupId: manifest.backupId,
+            status: "RESTORE_VERIFIED",
+            checksumSha256: manifest.checksumSha256,
+            checkedTables: Number(process.env.CHECKED_TABLES),
+            sourceCountsMatched: true,
+            restoreTarget: "isolated-postgres-17",
+            productionWrites: false,
+            verifiedAt: new Date().toISOString(),
+          }, null, 2)}\n`);
+          NODE
+      - name: Preserve sanitized restore proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-proof-${{ github.run_id }}
+          path: artifacts/restore-proof/restore-drill.json
+          if-no-files-found: error
+          retention-days: 14
