@@ -246,6 +246,81 @@ async function spawnPgRestoreList() {
   return { child, exit: childExit(child, stderr) };
 }
 
+function isClosedToolInputError(error) {
+  return error?.code === "EPIPE" || error?.code === "ERR_STREAM_DESTROYED";
+}
+
+function waitForToolInput(childInput) {
+  if (childInput.destroyed || childInput.closed || childInput.writableEnded || !childInput.writable) {
+    return Promise.resolve("closed");
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      childInput.off("drain", onDrain);
+      childInput.off("close", onClose);
+      childInput.off("error", onError);
+    };
+    const settle = (result, error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve(result);
+    };
+    const onDrain = () => {
+      settle("drain");
+    };
+    const onClose = () => {
+      settle("closed");
+    };
+    const onError = (error) => {
+      if (isClosedToolInputError(error)) settle("closed");
+      else settle(null, error);
+    };
+
+    childInput.once("drain", onDrain);
+    childInput.once("close", onClose);
+    childInput.once("error", onError);
+
+    if (childInput.destroyed || childInput.closed || childInput.writableEnded || !childInput.writable) {
+      onClose();
+    }
+  });
+}
+
+async function fullyDecryptIntoToolInput(archivePath, decipher, childInput) {
+  let inputClosed = childInput.destroyed || !childInput.writable;
+  let inputError = null;
+  childInput.on("close", () => {
+    inputClosed = true;
+  });
+  childInput.on("error", (error) => {
+    if (isClosedToolInputError(error)) inputClosed = true;
+    else inputError = error;
+  });
+
+  // pg_restore --list may stop reading once it has the archive TOC. Continue
+  // consuming the decrypted stream so AES-GCM authenticates the entire file.
+  const decrypted = createReadStream(archivePath).pipe(decipher);
+  for await (const chunk of decrypted) {
+    if (inputError) throw inputError;
+    if (inputClosed || childInput.destroyed || !childInput.writable) continue;
+    try {
+      if (!childInput.write(chunk)) {
+        inputClosed = (await waitForToolInput(childInput)) === "closed";
+      }
+    } catch (error) {
+      if (isClosedToolInputError(error)) inputClosed = true;
+      else throw error;
+    }
+  }
+
+  if (inputError) throw inputError;
+  if (!inputClosed && !childInput.destroyed && childInput.writable) childInput.end();
+}
+
 export async function inspectEncryptedArchive(archivePath, manifest, key = encryptionKey()) {
   assertManifestSignature(manifest, key);
   const actualChecksum = await sha256File(archivePath);
@@ -260,7 +335,12 @@ export async function inspectEncryptedArchive(archivePath, manifest, key = encry
   const { child, exit } = await spawnPgRestoreList();
   const output = [];
   child.stdout.on("data", (chunk) => output.push(Buffer.from(chunk)));
-  await Promise.all([pipeline(createReadStream(archivePath), decipher, child.stdin), exit]);
+  const [decryptResult, restoreResult] = await Promise.allSettled([
+    fullyDecryptIntoToolInput(archivePath, decipher, child.stdin),
+    exit,
+  ]);
+  if (decryptResult.status === "rejected") throw decryptResult.reason;
+  if (restoreResult.status === "rejected") throw restoreResult.reason;
   const listing = Buffer.concat(output).toString("utf8");
   const missingTables = manifest.verification.requiredTables.filter((table) => !new RegExp(`\\b${table.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\b`).test(listing));
   if (missingTables.length) throw new Error(`BACKUP_REQUIRED_TABLES_MISSING:${missingTables.join(",")}`);
