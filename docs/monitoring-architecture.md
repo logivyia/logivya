@@ -7,7 +7,7 @@ LOGIVYA separates logs, metrics, health, alerts, incidents and audit evidence. T
 1. `/api/health/live` proves only that the Next.js process can answer.
 2. `/api/health/ready` performs bounded Tier-0 probes for PostgreSQL, Redis, BullMQ and the worker heartbeat.
 3. `getSystemHealthSnapshot` combines authoritative database aggregates, Redis/queue evidence, worker heartbeat, provider configuration and the latest backup workflow.
-4. `/api/cron/monitoring` runs every five minutes with `CRON_SECRET` and reconciles actionable Tier-0 failures into deduplicated `OperationalAlert` and `IncidentLog` records.
+4. `/api/cron/monitoring` reconciles actionable Tier-0 failures into deduplicated `OperationalAlert` and `IncidentLog` records. Vercel Hobby invokes it daily as a safety net; an external scheduler can invoke the same authenticated endpoint every five minutes when higher-frequency monitoring is configured.
 5. High/critical operational alerts create or reopen one stable incident and notify the platform owner through the existing notification/push pipeline.
 6. `/api/admin/system/health` and `/api/health/dependencies` expose detailed evidence only after platform-admin or internal-token authorization.
 7. Web, mobile web and Android consume the same administrator contract. Incident mutations are authorization checked and audit logged.
