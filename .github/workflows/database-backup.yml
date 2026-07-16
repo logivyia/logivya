@@ -92,7 +92,6 @@ jobs:
       BACKUP_POSTGRES_TOOLS: docker
       BACKUP_POSTGRES_IMAGE: postgres:17
       RESTORE_CONFIRM_ISOLATED: "YES"
-      RESTORE_DOCKER_CONTAINER: ${{ job.services.postgres.id }}
       RESTORE_DATABASE_NAME: logivya_restore
       RESTORE_DATABASE_USER: postgres
     steps:
@@ -109,6 +108,8 @@ jobs:
           path: artifacts/restore-drill
       - name: Restore into isolated PostgreSQL and verify row counts
         shell: bash
+        env:
+          RESTORE_DOCKER_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           set -euo pipefail
           manifest="$(find artifacts/restore-drill -type f -name '*.manifest.json' -print -quit)"
