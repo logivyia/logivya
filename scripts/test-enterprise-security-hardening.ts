@@ -50,6 +50,7 @@ const migration = read("prisma/migrations/20260716170000_mobile_refresh_token_re
 const mobileAuth = read("src/server/mobile/auth.ts");
 const sessions = read("src/server/auth/device-sessions.ts");
 const proxy = read("src/proxy.ts");
+const vercelIgnore = read(".vercelignore");
 const manifest = read("apps/mobile/android/app/src/main/AndroidManifest.xml");
 const secureStorage = read("apps/mobile/src/storage/secure-storage.ts");
 const webCampaignRoute = read("src/app/api/campaigns/route.ts");
@@ -64,6 +65,8 @@ assert(mobileAuth.includes("pg_advisory_xact_lock"));
 assert(mobileAuth.includes("deviceFingerprint: replay.session.deviceId"));
 assert(sessions.includes("where: { userId, revokedAt: null"), "Session list and revocation must be scoped to the authenticated user.");
 assert(proxy.includes("isApiRequest && hasSession && !hasBearerToken"), "Cookie-authenticated API mutations must enforce same-origin CSRF checks.");
+assert(vercelIgnore.includes("/sessions"), "Only the repository-root session snapshot directory may be excluded from Vercel uploads.");
+assert(!/^sessions$/m.test(vercelIgnore), "Vercel uploads must not exclude API session routes.");
 assert(!manifest.includes("android.permission.READ_EXTERNAL_STORAGE"));
 assert(!manifest.includes("android.permission.WRITE_EXTERNAL_STORAGE"));
 assert(!manifest.includes("android.permission.SYSTEM_ALERT_WINDOW"));

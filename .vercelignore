@@ -5,7 +5,7 @@
 .tools
 .logs
 logs
-sessions
+/sessions
 .local-android
 node_modules
 tsconfig.tsbuildinfo
