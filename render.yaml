@@ -57,6 +57,8 @@ services:
         sync: false
       - key: NOTIFICATION_WORKER_REQUIRED
         value: "true"
+      - key: NOTIFICATION_PROCESSING_MODE
+        value: worker
       - key: NOTIFICATION_WORKER_ID
         value: render-notification-worker
       - key: NOTIFICATION_WORKER_POLL_MS

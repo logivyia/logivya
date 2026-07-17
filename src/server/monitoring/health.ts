@@ -15,7 +15,7 @@ import {
 import { redisConnectionOptions } from "@/server/queues/client";
 import { getCoreQueueOperationalMetrics } from "@/server/queues/health";
 import { readWorkerHeartbeat, WORKER_HEARTBEAT_FRESH_MS } from "@/server/whatsapp/worker-heartbeat";
-import { readNotificationWorkerHeartbeat } from "@/server/notifications/worker-heartbeat";
+import { notificationHeartbeatMaxAgeMs, notificationProcessorMode, readNotificationWorkerHeartbeat } from "@/server/notifications/worker-heartbeat";
 
 const DAY_MS = 24 * 60 * 60_000;
 const SNAPSHOT_STALE_AFTER_MS = 5 * 60_000;
@@ -464,10 +464,17 @@ async function checkNotificationPlatformHealth(): Promise<ServiceHealth> {
     });
     const attempts = delivered + failed;
     const failureRate = attempts ? Number(((failed / attempts) * 100).toFixed(2)) : 0;
+    const processorMode = notificationProcessorMode();
+    const heartbeatMaxAgeMs = notificationHeartbeatMaxAgeMs(processorMode);
     const workerAgeMs = workerHeartbeat ? Math.max(0, Date.now() - new Date(workerHeartbeat.lastHeartbeatAt).getTime()) : null;
-    const workerRequired = environment() === "production" || process.env.NOTIFICATION_WORKER_REQUIRED === "true";
-    const workerUnhealthy = workerRequired && (!workerHeartbeat || workerHeartbeat.status !== "HEALTHY" || (workerAgeMs ?? Number.POSITIVE_INFINITY) > 30_000);
-    const state: HealthState = workerUnhealthy || deadLetters >= 5 || staleQueued >= 25 || staleProcessing > 0 || (attempts >= 10 && failureRate >= 25)
+    const processorRequired = environment() === "production" || process.env.NOTIFICATION_WORKER_REQUIRED === "true";
+    const processorUnhealthy = processorRequired && (
+      !workerHeartbeat
+      || workerHeartbeat.mode !== processorMode
+      || workerHeartbeat.status !== "HEALTHY"
+      || (workerAgeMs ?? Number.POSITIVE_INFINITY) > heartbeatMaxAgeMs
+    );
+    const state: HealthState = processorUnhealthy || deadLetters >= 5 || staleQueued >= 25 || staleProcessing > 0 || (attempts >= 10 && failureRate >= 25)
       ? "DEGRADED"
       : "HEALTHY";
     return service({
@@ -478,7 +485,7 @@ async function checkNotificationPlatformHealth(): Promise<ServiceHealth> {
       summary: state === "HEALTHY" ? "Notification outbox, delivery and dead-letter evidence are within threshold." : "Notification backlog, failed deliveries or dead letters require review.",
       safeErrorCode: state === "HEALTHY" ? null : "NOTIFICATION_DELIVERY_DEGRADED",
       runbook: "/docs/runbooks/notification-delivery-failure.md",
-      metrics: { queued, staleQueued, staleProcessing, unresolvedDeadLetters: deadLetters, deliveredLast24h: delivered, failedLast24h: failed, failureRate, workerHeartbeatAgeMs: workerAgeMs, workerStatus: workerHeartbeat?.status ?? "MISSING", workerRelease: workerHeartbeat?.release ?? null },
+      metrics: { queued, staleQueued, staleProcessing, unresolvedDeadLetters: deadLetters, deliveredLast24h: delivered, failedLast24h: failed, failureRate, processorMode, heartbeatMaxAgeMs, workerHeartbeatAgeMs: workerAgeMs, workerStatus: workerHeartbeat?.status ?? "MISSING", workerMode: workerHeartbeat?.mode ?? "MISSING", workerRelease: workerHeartbeat?.release ?? null },
     });
   } catch (error) {
     return service({ id: "notifications", name: "Notification delivery platform", state: "UNKNOWN", tier: 1, summary: "Notification platform metrics could not be read.", safeErrorCode: errorCode(error, "NOTIFICATION_METRICS"), runbook: "/docs/runbooks/notification-delivery-failure.md" });

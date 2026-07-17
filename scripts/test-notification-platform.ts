@@ -15,6 +15,7 @@ import {
 import { announcementInputSchema, announcementPreviewHash } from "../src/server/notifications/announcements";
 import { renderText, validateTemplateSource } from "../src/server/notifications/template-policy";
 import { decryptPushToken, encryptPushToken, isEncryptedPushToken } from "../src/server/notifications/push-token-security";
+import { notificationHeartbeatMaxAgeMs, notificationProcessorMode } from "../src/server/notifications/worker-heartbeat";
 
 process.env.AUTH_SECRET ||= "notification-contract-test-secret-that-is-at-least-32-characters";
 process.env.TRIAL_IDENTITY_HASH_KEY ||= "notification-contract-hash-secret-at-least-32-characters";
@@ -98,6 +99,12 @@ assert.notEqual(encrypted, rawToken);
 assert.equal(isEncryptedPushToken(encrypted), true);
 assert.equal(decryptPushToken(encrypted), rawToken);
 assert.equal(decryptPushToken(rawToken), rawToken, "legacy plaintext tokens must remain readable during migration");
+assert.equal(notificationProcessorMode("cron"), "cron");
+assert.equal(notificationProcessorMode("WORKER"), "worker");
+assert.equal(notificationProcessorMode("unsupported"), "worker");
+assert.equal(notificationHeartbeatMaxAgeMs("worker"), 30_000);
+assert.equal(notificationHeartbeatMaxAgeMs("cron"), 26 * 60 * 60_000);
+assert.equal(notificationHeartbeatMaxAgeMs("cron", "600000"), 600_000);
 
 const root = process.cwd();
 const engine = readFileSync(join(root, "src/server/notifications/engine.ts"), "utf8");
@@ -106,6 +113,7 @@ const dispatch = readFileSync(join(root, "src/app/api/admin/notifications/dispat
 const migration = readFileSync(join(root, "prisma/migrations/20260717090000_enterprise_notification_platform/migration.sql"), "utf8");
 const mobileAdmin = readFileSync(join(root, "apps/mobile/src/screens/app/admin-notification-operations-screen.tsx"), "utf8");
 const webPushWorker = readFileSync(join(root, "public/logivya-notifications-sw.js"), "utf8");
+const notificationCron = readFileSync(join(root, "src/app/api/cron/notifications/route.ts"), "utf8");
 assert.match(engine, /NOTIFICATION_RECIPIENT_TENANT_MISMATCH/);
 assert.match(engine, /notificationAudienceExpansion/);
 assert.match(engine, /leaseExpiresAt/);
@@ -118,5 +126,7 @@ assert.doesNotMatch(dispatch, /10_000|10000/);
 assert.match(mobileAdmin, /previewAdminNotificationAnnouncement/);
 assert.match(mobileAdmin, /retryAdminNotificationDeadLetter/);
 assert.match(webPushWorker, /self\.addEventListener\("push"/);
+assert.match(notificationCron, /writeNotificationWorkerHeartbeat/);
+assert.match(notificationCron, /mode: "cron"/);
 
 console.log(`notification platform contracts passed (${Object.keys(NOTIFICATION_EVENT_REGISTRY).length} registered events)`);

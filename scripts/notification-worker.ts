@@ -28,11 +28,11 @@ async function main() {
       const result = await cycle();
       cycles += 1;
       const processed = result.audience.recipients + result.outbox.claimed + ("requested" in result.receipts ? result.receipts.requested : 0);
-      await writeNotificationWorkerHeartbeat({ workerId, status: "HEALTHY", lastHeartbeatAt: new Date().toISOString(), release: process.env.LOG_RELEASE_VERSION || process.env.RENDER_GIT_COMMIT || null, cycleMs: Date.now() - cycleStartedAt, processed });
+      await writeNotificationWorkerHeartbeat({ workerId, mode: "worker", status: "HEALTHY", lastHeartbeatAt: new Date().toISOString(), release: process.env.LOG_RELEASE_VERSION || process.env.RENDER_GIT_COMMIT || null, cycleMs: Date.now() - cycleStartedAt, processed });
       console.log(JSON.stringify({ level: "info", event: "notification.worker.cycle", startedAt, cycles, ...result }));
       if (cycles % 720 === 0) await enforceNotificationRetention();
     } catch (error) {
-      await writeNotificationWorkerHeartbeat({ workerId, status: "DEGRADED", lastHeartbeatAt: new Date().toISOString(), release: process.env.LOG_RELEASE_VERSION || process.env.RENDER_GIT_COMMIT || null, cycleMs: Date.now() - cycleStartedAt, processed: 0, lastErrorCode: error instanceof Error ? error.message : "NOTIFICATION_WORKER_FAILED" }).catch(() => undefined);
+      await writeNotificationWorkerHeartbeat({ workerId, mode: "worker", status: "DEGRADED", lastHeartbeatAt: new Date().toISOString(), release: process.env.LOG_RELEASE_VERSION || process.env.RENDER_GIT_COMMIT || null, cycleMs: Date.now() - cycleStartedAt, processed: 0, lastErrorCode: error instanceof Error ? error.message : "NOTIFICATION_WORKER_FAILED" }).catch(() => undefined);
       console.error(JSON.stringify({ level: "error", event: "notification.worker.cycle_failed", startedAt, errorCode: error instanceof Error ? error.message : "NOTIFICATION_WORKER_FAILED" }));
       if (once) throw error;
     }
