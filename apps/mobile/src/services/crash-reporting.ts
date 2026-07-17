@@ -1,5 +1,6 @@
 import { config } from "@/constants/config";
 import { redactSensitive, serializeLogError } from "@logivya/logging";
+import { useSettingsStore } from "@/auth/settings-store";
 
 declare const require: (name: string) => unknown;
 
@@ -8,6 +9,7 @@ type SentryModule = {
   captureException?: (error: unknown, context?: Record<string, unknown>) => void;
   setUser?: (user: Record<string, unknown> | null) => void;
   wrap?: <T>(component: T) => T;
+  close?: () => Promise<void>;
 };
 
 type SentryEvent = Record<string, unknown>;
@@ -25,6 +27,7 @@ export function getSentry() {
 }
 
 export function initCrashReporting() {
+  if (!useSettingsStore.getState().diagnosticsEnabled) return;
   const instance = getSentry();
   if (!instance?.init || !config.sentryDsn) return;
   try {
@@ -45,7 +48,7 @@ export function initCrashReporting() {
 }
 
 export function captureAppError(error: unknown, context?: Record<string, unknown>) {
-  if (!config.sentryDsn) return;
+  if (!config.sentryDsn || !useSettingsStore.getState().diagnosticsEnabled) return;
 
   try {
     getSentry()?.captureException?.(error, {
@@ -63,7 +66,7 @@ export function captureAppError(error: unknown, context?: Record<string, unknown
 }
 
 export function setCrashUser(user: { id?: string } | null) {
-  if (!config.sentryDsn) return;
+  if (!config.sentryDsn || !useSettingsStore.getState().diagnosticsEnabled) return;
 
   try {
     getSentry()?.setUser?.(user?.id ? { id: user.id } : null);
@@ -73,7 +76,7 @@ export function setCrashUser(user: { id?: string } | null) {
 }
 
 export function wrapWithCrashReporting<T>(component: T): T {
-  if (!config.sentryDsn) return component;
+  if (!config.sentryDsn || !useSettingsStore.getState().diagnosticsEnabled) return component;
 
   try {
     return getSentry()?.wrap?.(component) ?? component;
@@ -81,4 +84,13 @@ export function wrapWithCrashReporting<T>(component: T): T {
     sentry = null;
     return component;
   }
+}
+
+export async function configureCrashReporting(enabled: boolean) {
+  if (enabled) {
+    initCrashReporting();
+    return;
+  }
+  await getSentry()?.close?.().catch(() => undefined);
+  sentry = undefined;
 }

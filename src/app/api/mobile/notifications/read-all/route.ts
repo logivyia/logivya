@@ -7,7 +7,7 @@ export async function POST(request: Request) {
     const { company, user } = await requireMobileAuth(request);
     const result = await prisma.notification.updateMany({
       where: { companyId: company.id, userId: user.id, isRead: false },
-      data: { isRead: true }
+      data: { isRead: true, readAt: new Date() }
     });
     return mobileSuccess({ updatedCount: result.count });
   } catch (error) {

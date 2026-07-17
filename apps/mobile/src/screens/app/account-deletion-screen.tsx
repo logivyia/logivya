@@ -1,8 +1,7 @@
-import { useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { deleteAccountRequest } from "@/api/account-api";
-import { clearMobileSessionState } from "@/auth/session-cleanup";
+import { cancelAccountDeletion, getAccountDeletionRequests, requestAccountDeletion } from "@/api/privacy-api";
 import { PrimaryButton } from "@/components/primary-button";
 import { Screen } from "@/components/screen";
 import { TextField } from "@/components/text-field";
@@ -14,17 +13,43 @@ export function AccountDeletionScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
   const [confirmation, setConfirmation] = useState("");
+  const [password, setPassword] = useState("");
+  const [scope, setScope] = useState<"USER" | "COMPANY">("USER");
   const [loading, setLoading] = useState(false);
-  const confirmationText = t("accountClosurePhrase");
-  const canSubmit = confirmation === confirmationText;
+  const [jobs, setJobs] = useState<Array<{ publicId: string; scope: string; status: string; cancelUntil: string }>>([]);
+  const confirmationText = scope === "COMPANY" ? t("companyDeletionPhrase") : t("accountDeletionPhrase");
+  const canSubmit = confirmation === confirmationText && Boolean(password);
+
+  const load = useCallback(async () => {
+    const result = await getAccountDeletionRequests();
+    setJobs(result.jobs);
+  }, []);
+
+  useEffect(() => { void load().catch(() => undefined); }, [load]);
 
   async function submit() {
     if (!canSubmit) return;
     setLoading(true);
     try {
-      await deleteAccountRequest(confirmation);
-      await clearMobileSessionState();
-      Alert.alert(t("requestReceived"), t("accountDisabledDescription"));
+      await requestAccountDeletion({ scope, confirmation: scope === "COMPANY" ? "DELETE MY LOGIVYA COMPANY" : "DELETE MY LOGIVYA ACCOUNT", password });
+      setConfirmation("");
+      setPassword("");
+      await load();
+      Alert.alert(t("requestReceived"), t("deletionQueuedDescription"));
+    } catch (error) {
+      Alert.alert(t("accountDeleteFailed"), error instanceof Error ? error.message : t("operationFailed"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function cancel(publicId: string) {
+    if (!password) return Alert.alert(t("currentPassword"), t("passwordRequired"));
+    setLoading(true);
+    try {
+      await cancelAccountDeletion(publicId, password);
+      await load();
+      Alert.alert(t("requestReceived"), t("deletionCanceledDescription"));
     } catch (error) {
       Alert.alert(t("accountDeleteFailed"), error instanceof Error ? error.message : t("operationFailed"));
     } finally {
@@ -38,14 +63,22 @@ export function AccountDeletionScreen() {
         <View style={[styles.warningCard, { backgroundColor: theme.card, borderColor: colors.danger }]}>
           <Text style={[styles.title, { color: theme.text }]}>{t("deleteAccount")}</Text>
           <Text style={[styles.description, { color: theme.muted }]}>{t("accountDeleteFullWarning")}</Text>
+          <View style={styles.scopeRow}><ScopeButton label={t("userAccountScope")} active={scope === "USER"} onPress={() => { setScope("USER"); setConfirmation(""); }}/><ScopeButton label={t("companyAccountScope")} active={scope === "COMPANY"} onPress={() => { setScope("COMPANY"); setConfirmation(""); }}/></View>
           <Text style={[styles.confirmationLabel, { color: theme.text }]}>{t("confirmationPrompt")}</Text>
           <Text style={[styles.confirmationText, { color: colors.danger }]}>{confirmationText}</Text>
           <TextField label={t("confirmationTextLabel")} value={confirmation} onChangeText={setConfirmation} autoCapitalize="characters" />
+          <TextField label={t("currentPassword")} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" />
         </View>
-        <PrimaryButton title={t("closeAccount")} loading={loading} disabled={!canSubmit} onPress={submit} />
+        <PrimaryButton title={t("submitDeletionRequest")} loading={loading} disabled={!canSubmit} onPress={submit} />
+        {jobs.map((job) => <View key={job.publicId} style={[styles.job, { backgroundColor: theme.card, borderColor: theme.border }]}><View style={styles.jobText}><Text style={[styles.jobId, { color: theme.text }]}>{job.publicId}</Text><Text style={[styles.description, { color: theme.muted }]}>{job.scope} / {job.status}</Text></View>{job.status === "QUEUED" ? <Pressable onPress={() => void cancel(job.publicId)}><Text style={[styles.cancel, { color: theme.danger }]}>{t("cancelRequest")}</Text></Pressable> : null}</View>)}
       </ScrollView>
     </Screen>
   );
+}
+
+function ScopeButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const theme = useTheme();
+  return <Pressable onPress={onPress} style={[styles.scopeButton, { backgroundColor: active ? theme.badge : theme.cardMuted, borderColor: active ? theme.primary : theme.border }]}><Text style={{ color: active ? theme.primary : theme.text, fontWeight: "800" }}>{label}</Text></Pressable>;
 }
 
 const styles = StyleSheet.create({
@@ -56,4 +89,10 @@ const styles = StyleSheet.create({
   description: { fontSize: 14, lineHeight: 21 },
   confirmationLabel: { fontSize: 14, fontWeight: "900" },
   confirmationText: { fontSize: 15, fontWeight: "900" }
+  ,scopeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 }
+  ,scopeButton: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 10 }
+  ,job: { alignItems: "center", borderWidth: 1, borderRadius: 18, flexDirection: "row", gap: 12, padding: 14 }
+  ,jobText: { flex: 1, gap: 4 }
+  ,jobId: { fontSize: 13, fontWeight: "900" }
+  ,cancel: { fontSize: 14, fontWeight: "900" }
 });

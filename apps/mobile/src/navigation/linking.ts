@@ -29,8 +29,11 @@ export const linking = {
         screens: {
           ProfileHome: "",
           Notifications: "notifications",
+          NotificationPreferences: "notifications/preferences",
+          NotificationPermissionEducation: "notifications/permission",
           Subscription: "subscription",
           Settings: "settings",
+          PrivacyData: "privacy",
           PlatformModule: "admin/:moduleKey/:ticketId?"
         }
       }

@@ -16,7 +16,8 @@ export type EmailTemplate =
   | "support_replied"
   | "team_invitation"
   | "whatsapp_disconnected"
-  | "security_alert";
+  | "security_alert"
+  | "notification_generic";
 
 export type EmailInput = { to: string; subject: string; html: string; text?: string };
 export type TemplateEmailInput = { to: string; template: EmailTemplate; variables: Record<string, string> };
@@ -25,6 +26,7 @@ const REQUIRED_TEMPLATE_VARIABLES: Partial<Record<EmailTemplate, string[]>> = {
   password_reset: ["code"],
   support_created: ["ticketNumber", "ticketSubject", "userEmail", "companyName", "ticketCategory", "ticketPriority", "createdAt", "message", "openUrl"],
   support_replied: ["eventKind", "ticketNumber", "ticketSubject", "ticketStatus", "createdAt", "message", "openUrl"],
+  notification_generic: ["title", "message"],
 };
 
 export function validateTemplateEmailInput(input: TemplateEmailInput) {

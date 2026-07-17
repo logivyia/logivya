@@ -24,3 +24,40 @@ services:
         value: /var/data/sessions
       - key: WHATSAPP_SESSION_VOLUME_PERSISTENT
         value: "true"
+
+  - type: worker
+    name: logivya-notification-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile.worker
+    dockerContext: .
+    dockerCommand: npm run worker:notifications
+    plan: starter
+    autoDeploy: true
+    maxShutdownDelaySeconds: 60
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: FIELD_ENCRYPTION_ACTIVE_VERSION
+        value: v1
+      - key: FIELD_ENCRYPTION_KEY_V1
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: WEB_PUSH_VAPID_PUBLIC_KEY
+        sync: false
+      - key: WEB_PUSH_VAPID_PRIVATE_KEY
+        sync: false
+      - key: WEB_PUSH_VAPID_SUBJECT
+        value: mailto:logivya@gmail.com
+      - key: EXPO_ACCESS_TOKEN
+        sync: false
+      - key: NOTIFICATION_WORKER_REQUIRED
+        value: "true"
+      - key: NOTIFICATION_WORKER_ID
+        value: render-notification-worker
+      - key: NOTIFICATION_WORKER_POLL_MS
+        value: "5000"

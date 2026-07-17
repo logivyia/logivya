@@ -1,5 +1,7 @@
 import { useEffect } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { PrimaryButton } from "@/components/primary-button";
 import { Screen } from "@/components/screen";
@@ -11,10 +13,20 @@ import { formatDateTime } from "@/i18n/format";
 import { useTranslation } from "@/i18n/use-translation";
 import { useTheme } from "@/theme/theme-provider";
 import type { MobileNotification } from "@/api/mobileNotifications";
+import type { ProfileStackParamList } from "@/types/navigation";
+
+function safeNotificationUrl(deepLink: string | null | undefined) {
+  if (!deepLink) return null;
+  if (deepLink.startsWith("logivya://")) return deepLink;
+  if (deepLink.startsWith("https://www.logivya.com/") || deepLink.startsWith("https://logivya.com/")) return deepLink;
+  if (deepLink.startsWith("/") && !deepLink.startsWith("//")) return `https://www.logivya.com${deepLink}`;
+  return null;
+}
 
 export function NotificationsScreen() {
   const theme = useTheme();
   const { t, locale } = useTranslation();
+  const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
   const {
     notifications,
     unreadCount,
@@ -33,8 +45,13 @@ export function NotificationsScreen() {
     void loadNotifications();
   }, [loadNotifications]);
 
-  const openNotification = (notification: MobileNotification) => {
-    void markAsRead(notification.id);
+  const openNotification = async (notification: MobileNotification) => {
+    await markAsRead(notification.id);
+    const url = safeNotificationUrl(notification.deepLink);
+    if (url && await Linking.canOpenURL(url)) {
+      await Linking.openURL(url);
+      return;
+    }
     Alert.alert(notification.title, notification.message);
   };
 
@@ -64,6 +81,13 @@ export function NotificationsScreen() {
               </View>
             </View>
             <PrimaryButton title={t("markAllAsRead")} onPress={() => void markAllAsRead()} disabled={unreadCount === 0} />
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => navigation.navigate("NotificationPreferences")}
+              style={[styles.preferencesButton, { borderColor: theme.border }]}
+            >
+              <Text style={[styles.preferencesText, { color: theme.text }]}>{t("notificationPreferences")}</Text>
+            </Pressable>
           </View>
         }
         ListEmptyComponent={
@@ -108,6 +132,8 @@ const styles = StyleSheet.create({
   subtitle: { marginTop: 6, maxWidth: 250, fontSize: 15, lineHeight: 22 },
   badge: { minWidth: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
   badgeText: { fontSize: 16, fontWeight: "900" },
+  preferencesButton: { alignItems: "center", borderRadius: 16, borderWidth: 1, justifyContent: "center", minHeight: 50, paddingHorizontal: 16 },
+  preferencesText: { fontSize: 15, fontWeight: "800" },
   notificationCard: { borderWidth: 1, borderRadius: 22, padding: 16, gap: 10 },
   pressed: { opacity: 0.78 },
   notificationHeader: { flexDirection: "row", alignItems: "center", gap: 10 },

@@ -15,6 +15,7 @@ export type AdminModuleKey =
   | "security"
   | "trialRisk"
   | "compliance"
+  | "privacy"
   | "audit"
   | "activity"
   | "notifications"
@@ -259,6 +260,15 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     coverage: "read-only",
     searchable: true,
     pagination: "page"
+  },
+  privacy: {
+    key: "privacy",
+    title: "Gizlilik Merkezi",
+    eyebrow: "Uyumluluk",
+    description: "Veri talepleri, dışa aktarma, silme, saklama ve olay süreçlerinin merkezi görünümü.",
+    endpoint: "/api/admin/privacy/overview",
+    coverage: "live",
+    pagination: "none"
   },
   audit: {
     key: "audit",
@@ -714,6 +724,32 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
       };
     });
     metrics = statusMetrics(entitlements, "status", "trialEntitlements");
+  } else if (definition.key === "privacy") {
+    const requestGroups = records(raw.requests);
+    const exportGroups = records(raw.exports);
+    const deletionGroups = records(raw.deletions);
+    const retentionRuns = records(raw.retentionRuns);
+    metrics = compactFields({
+      requests: groupedTotal(requestGroups),
+      exports: groupedTotal(exportGroups),
+      deletions: groupedTotal(deletionGroups),
+      activeLegalHolds: readNumber(raw, "activeLegalHolds"),
+      openBreaches: readNumber(raw, "openBreaches"),
+      dpiasRequiringReview: readNumber(raw, "dpiasRequiringReview"),
+    });
+    items = retentionRuns.map((run, index) => ({
+      id: readText(run, "id") ?? `privacy-retention-${index}`,
+      title: readText(run, "publicId") ?? "Privacy retention run",
+      subtitle: readText(run, "policyVersion"),
+      status: readText(run, "status"),
+      createdAt: readText(run, "startedAt"),
+      updatedAt: readText(run, "finishedAt"),
+      fields: compactFields({
+        dryRun: readBoolean(run, "dryRun"),
+        startedAt: readText(run, "startedAt"),
+        finishedAt: readText(run, "finishedAt"),
+      }),
+    }));
   } else if (definition.key === "activity") {
     const logs = records(raw.logs);
     items = logs.map((event, index) => adminItem(event, `activity-${index}`, ["action", "entityType"], ["entityType"], ["company", "user", "entityId", "createdAt"]));
@@ -814,6 +850,10 @@ function statusMetrics(items: Record<string, unknown>[], key: string, totalKey: 
     if (status) result[`status_${status}`] = Number(result[`status_${status}`] ?? 0) + 1;
   }
   return result;
+}
+
+function groupedTotal(items: Record<string, unknown>[]) {
+  return items.reduce((sum, item) => sum + (readNumber(record(item._count), "_all") ?? 0), 0);
 }
 
 function records(value: unknown): Record<string, unknown>[] {

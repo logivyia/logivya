@@ -1,5 +1,6 @@
 import type { NavigationState, PartialState } from "@react-navigation/native";
 import { normalizeEventName, sanitizeLogMetadata } from "@logivya/logging";
+import { useSettingsStore } from "@/auth/settings-store";
 
 declare const require: (name: string) => unknown;
 
@@ -7,6 +8,7 @@ type AnalyticsModule = {
   default?: () => {
     logScreenView?: (params: { screen_name: string; screen_class: string }) => Promise<void>;
     logEvent?: (name: string, params?: Record<string, unknown>) => Promise<void>;
+    setAnalyticsCollectionEnabled?: (enabled: boolean) => Promise<void>;
   };
 };
 
@@ -28,12 +30,13 @@ export function getActiveRouteName(state?: NavigationState | PartialState<Naviga
 }
 
 export async function trackScreenView(screenName?: string) {
-  if (!screenName) return;
+  if (!screenName || !useSettingsStore.getState().analyticsEnabled) return;
   const analytics = loadAnalytics();
   await analytics?.logScreenView?.({ screen_name: screenName, screen_class: screenName }).catch(() => undefined);
 }
 
 export async function trackEvent(name: string, params?: Record<string, unknown>) {
+  if (!useSettingsStore.getState().analyticsEnabled) return;
   const analytics = loadAnalytics();
   const eventName = normalizeEventName(name).replace(/[^A-Za-z0-9_]/g, "_").slice(0, 40);
   const safeParams = Object.fromEntries(
@@ -47,4 +50,9 @@ export async function trackEvent(name: string, params?: Record<string, unknown>)
     })
   );
   await analytics?.logEvent?.(eventName, safeParams).catch(() => undefined);
+}
+
+export async function configureAnalyticsCollection(enabled: boolean) {
+  const analytics = loadAnalytics();
+  await analytics?.setAnalyticsCollectionEnabled?.(enabled).catch(() => undefined);
 }

@@ -8,9 +8,42 @@ export type MobileNotification = {
   title: string;
   message: string;
   payload?: Record<string, unknown> | null;
+  category?: NotificationCategory;
+  priority?: "LOW" | "NORMAL" | "HIGH" | "CRITICAL";
+  deepLink?: string | null;
   read?: boolean;
   isRead: boolean;
+  readAt?: string | null;
   createdAt: string;
+};
+
+export type NotificationCategory =
+  | "ACCOUNT"
+  | "SECURITY"
+  | "SUPPORT"
+  | "SUBSCRIPTION"
+  | "BILLING"
+  | "INVITATION"
+  | "WHATSAPP"
+  | "MESSAGE"
+  | "SYSTEM"
+  | "MARKETING"
+  | "COMPLIANCE"
+  | "ADMINISTRATION"
+  | "BACKUP"
+  | "INCIDENT";
+
+export type MobileNotificationChannel = "IN_APP" | "EMAIL" | "ANDROID_PUSH" | "IOS_PUSH" | "WEB_PUSH";
+
+export type MobileNotificationPreference = {
+  category: NotificationCategory;
+  channel: MobileNotificationChannel;
+  enabled: boolean;
+  mandatoryLocked: boolean;
+  digestMode: "IMMEDIATE" | "DAILY" | "WEEKLY";
+  quietHoursStart: string | null;
+  quietHoursEnd: string | null;
+  timezone: string;
 };
 
 export type NotificationPageInfo = {
@@ -38,6 +71,23 @@ export function markMobileNotificationAsRead(notificationId: string) {
 
 export function markAllMobileNotificationsAsRead() {
   return apiClient.post<{ updatedCount: number }>("/api/mobile/notifications/read-all", {});
+}
+
+export function getMobileNotificationPreferences() {
+  return apiClient.request<{ preferences: MobileNotificationPreference[] }>("/api/mobile/notifications/preferences");
+}
+
+export function updateMobileNotificationPreferences(preferences: MobileNotificationPreference[]) {
+  return apiClient.patch<{ preferences: MobileNotificationPreference[] }>("/api/mobile/notifications/preferences", {
+    preferences: preferences.map(({ category, channel, enabled, digestMode, quietHoursStart, quietHoursEnd }) => ({
+      category,
+      channel,
+      enabled,
+      digestMode,
+      quietHoursStart,
+      quietHoursEnd
+    }))
+  });
 }
 
 export function registerMobileNotificationToken(input: {

@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     const notificationId = parsed.data.id ?? parsed.data.notificationId ?? "";
     const result = await prisma.notification.updateMany({
       where: { id: notificationId, companyId: company.id, userId: user.id },
-      data: { isRead: true }
+      data: { isRead: true, readAt: new Date() }
     });
     if (!result.count) return mobileError("NOT_FOUND", "Bildirim bulunamadı.", { status: 404 });
     return mobileSuccess({ read: true, notificationId });

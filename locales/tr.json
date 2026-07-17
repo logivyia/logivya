@@ -598,11 +598,18 @@
   "settings.trialDays": "{days} gün",
   "settings.custom": "Özel",
   "accountDeletion.title": "Hesabı Sil",
-  "accountDeletion.description": "Şirket erişimini kapatın. Mesaj, fatura ve denetim geçmişi yasal gereklilikler doğrultusunda korunur.",
-  "accountDeletion.disableCompany": "Şirket hesabını devre dışı bırak",
-  "accountDeletion.warning": "Bu işlem tüm aktif oturumları kapatır ve kampanyaları durdurur. Devam etmek için aşağıya {phrase} yazın.",
-  "accountDeletion.confirmationPhrase": "LOGIVYA HESABIMI KAPAT",
-  "accountDeletion.disableAction": "Hesabı devre dışı bırak",
+  "accountDeletion.description": "Silme talebi oluşturun ve durumunu takip edin. Bazı kayıtların hukuk incelemesi sonrasında saklanması gerekebilir.",
+  "accountDeletion.disableCompany": "Silme talebi oluştur",
+  "accountDeletion.warning": "Talep bir iptal süresine girer ve hemen uygulanmaz. Devam etmek için aşağıya {phrase} yazın.",
+  "accountDeletion.confirmationPhrase": "LOGIVYA HESABIMI SIL",
+  "accountDeletion.disableAction": "Silme talebini gönder",
+  "accountDeletion.userScope": "Kullanıcı hesabım",
+  "accountDeletion.companyScope": "Şirketim ve şirket verileri (yalnızca sahip)",
+  "accountDeletion.userPhrase": "LOGIVYA HESABIMI SIL",
+  "accountDeletion.companyPhrase": "LOGIVYA SIRKETIMI SIL",
+  "accountDeletion.queued": "Silme talebiniz kuyruğa alındı ve bekleme süresinde iptal edilebilir.",
+  "accountDeletion.canceled": "Silme talebiniz iptal edildi.",
+  "accountDeletion.cancelRequest": "Talebi iptal et",
   "billing.period.monthly": "Aylık",
   "billing.period.yearly": "Yıllık",
   "billing.period.custom": "Özel",
@@ -857,11 +864,13 @@
   "cookies.title": "Çerez tercihleri",
   "cookies.description": "Zorunlu çerezler oturum ve güvenlik için kullanılır. Analitik ve pazarlama çerezleri tercihinize bağlıdır.",
   "cookies.essential": "Zorunlu",
+  "cookies.functional": "İşlevsel tercihler",
   "cookies.analytics": "Analitik",
   "cookies.marketing": "Pazarlama",
   "cookies.acceptAll": "Tümünü kabul et",
   "cookies.rejectOptional": "Zorunlu olmayanları reddet",
   "cookies.manage": "Tercihleri yönet",
+  "cookies.save": "Tercihleri kaydet",
   "history.pending": "Bekleyen",
   "history.retrying": "Yeniden deneniyor",
   "history.created": "Oluşturuldu",
@@ -1129,6 +1138,7 @@
   "admin.menu.security": "Güvenlik",
   "admin.menu.trialRisk": "Deneme riski",
   "admin.menu.compliance": "Uyumluluk",
+  "admin.menu.privacy": "Gizlilik Merkezi",
   "admin.menu.audit": "Denetim merkezi",
   "admin.menu.activity": "Aktivite merkezi",
   "admin.menu.notifications": "Bildirimler",
@@ -1338,4 +1348,164 @@
   ,"billing.trialIdentityUsedDescription": "Bu WhatsApp hesabı daha önce ücretsiz deneme hakkını kullanmıştır. Devam etmek için bir paket seçmeniz gerekir."
   ,"billing.trialReviewTitle": "Deneme uygunluğu inceleniyor"
   ,"billing.trialReviewDescription": "Güvenlik kontrolleri nedeniyle deneme hakkınız incelemeye alındı. Ücretli paket satın almanıza engel yoktur."
+  ,"settings.privacy": "Gizlilik ve veriler"
+  ,"privacy.eyebrow": "Gizlilik kontrolleri"
+  ,"privacy.title": "Gizlilik ve veriler"
+  ,"privacy.description": "İsteğe bağlı veri tercihlerinizi yönetin, verilerinizin kopyasını isteyin ve gizlilik taleplerinizi takip edin."
+  ,"privacy.loadFailed": "Gizlilik ayarları yüklenemedi."
+  ,"privacy.preferenceFailed": "Tercihiniz güncellenemedi."
+  ,"privacy.preferenceSaved": "Tercihiniz kaydedildi."
+  ,"privacy.noticesTitle": "Aydınlatma metinleri ve koşullar"
+  ,"privacy.noticesDescription": "Veri işleme ve hizmet koşulları hakkında sunulan güncel metinleri inceleyin."
+  ,"privacy.privacyPolicy": "Gizlilik Politikası"
+  ,"privacy.kvkkNotice": "KVKK Aydınlatma Metni"
+  ,"privacy.terms": "Kullanım Koşulları"
+  ,"privacy.preferencesTitle": "İsteğe bağlı tercihler"
+  ,"privacy.preferencesDescription": "Zorunlu hizmet ve güvenlik işlemleri buradan kapatılamaz."
+  ,"privacy.analyticsLabel": "Ürün analitiği"
+  ,"privacy.analyticsDescription": "Ürünü geliştirmek için izinli kullanım ölçümleri."
+  ,"privacy.diagnosticsLabel": "Çökme ve hata tanılama"
+  ,"privacy.diagnosticsDescription": "Uygulama hatalarını incelemek için kişisel verisi azaltılmış teknik tanılama."
+  ,"privacy.marketingLabel": "Pazarlama iletileri"
+  ,"privacy.marketingDescription": "Hizmet bildirimlerinden ayrı ürün ve kampanya duyuruları."
+  ,"privacy.exportTitle": "Verilerinizi indirin"
+  ,"privacy.exportDescription": "Özel ve şifreli bir dışa aktarma oluşturun. Tek kullanımlık indirme anahtarı sürelidir."
+  ,"privacy.passwordPlaceholder": "Mevcut şifreniz"
+  ,"privacy.requestExport": "Dışa aktarma iste"
+  ,"privacy.exportFailed": "Veri dışa aktarma talebi tamamlanamadı."
+  ,"privacy.exportQueued": "Şifreli dışa aktarmanız hazırlanıyor."
+  ,"privacy.exportTokenMissing": "Tek kullanımlık indirme anahtarı bu cihazda yok. Yeni bir dışa aktarma isteyin."
+  ,"privacy.download": "İndir"
+  ,"privacy.rightsTitle": "Gizlilik talebi"
+  ,"privacy.rightsDescription": "Kişisel verileriniz hakkında kimliği doğrulanmış bir talep oluşturun ve takip edin."
+  ,"privacy.requestAccess": "Erişim ve bilgi"
+  ,"privacy.requestRectification": "Düzeltme"
+  ,"privacy.requestRestriction": "İşlemeyi sınırlama"
+  ,"privacy.requestObjection": "İtiraz"
+  ,"privacy.requestPortability": "Taşınabilirlik"
+  ,"privacy.requestOther": "Diğer"
+  ,"privacy.requestDescriptionPlaceholder": "Talebinizi açıklayın"
+  ,"privacy.submitRequest": "Talebi gönder"
+  ,"privacy.requestFailed": "Gizlilik talebiniz gönderilemedi."
+  ,"privacy.requestReceived": "Gizlilik talebiniz alındı."
+  ,"privacy.requestHistory": "Talep geçmişi"
+  ,"privacy.requestId": "Talep numarası"
+  ,"privacy.requestType": "Tür"
+  ,"privacy.requestStatus": "Durum"
+  ,"privacy.requestDate": "Tarih"
+  ,"privacy.deletionLink": "Hesap veya şirket silme talebi oluştur"
+  ,"common.all": "Tümü"
+  ,"notifications.eyebrow": "İletişim merkezi"
+  ,"notifications.centerDescription": "Hesap, güvenlik, destek ve operasyon bildirimlerinizi tek yerde yönetin."
+  ,"notifications.preferences": "Bildirim tercihleri"
+  ,"notifications.preferencesDescription": "Zorunlu güvenlik bildirimleri korunurken kullanmak istediğiniz kanalları seçin."
+  ,"notifications.preferencesSaved": "Bildirim tercihleri kaydedildi."
+  ,"notifications.preferencesSaveFailed": "Bildirim tercihleri kaydedilemedi."
+  ,"notifications.loadFailed": "Bildirimler alınamadı."
+  ,"notifications.category": "Kategori"
+  ,"notifications.open": "Aç"
+  ,"notifications.markRead": "Okundu işaretle"
+  ,"notifications.archive": "Arşivle"
+  ,"notifications.mandatory": "Zorunlu bildirim"
+  ,"notifications.deliveryMode": "Teslimat biçimi"
+  ,"notifications.immediate": "Anında"
+  ,"notifications.dailyDigest": "Günlük özet"
+  ,"notifications.weeklyDigest": "Haftalık özet"
+  ,"notifications.quietStart": "Sessiz saat başlangıcı"
+  ,"notifications.quietEnd": "Sessiz saat bitişi"
+  ,"notifications.viewAll": "Tüm bildirimleri gör"
+  ,"notifications.webPushTitle": "Tarayıcı bildirimleri"
+  ,"notifications.webPushDescription": "İzin verdiğinizde bu tarayıcıda önemli Logivya bildirimlerini alın."
+  ,"notifications.webPushEnable": "Web bildirimlerini etkinleştir"
+  ,"notifications.webPushDisable": "Web bildirimlerini kapat"
+  ,"notifications.webPushEnabled": "Web bildirimleri bu tarayıcı için etkinleştirildi."
+  ,"notifications.webPushDisabled": "Web bildirimleri bu tarayıcı için kapatıldı."
+  ,"notifications.webPushUnavailable": "Web bildirimleri bu tarayıcıda veya sunucu yapılandırmasında kullanılamıyor."
+  ,"notifications.webPushPermissionDenied": "Tarayıcı bildirim izni verilmedi. İzni tarayıcı ayarlarından değiştirebilirsiniz."
+  ,"notifications.webPushEnableFailed": "Web bildirimleri etkinleştirilemedi."
+  ,"notifications.webPushDisableFailed": "Web bildirimleri kapatılamadı."
+  ,"notification.channel.in_app": "Uygulama içi"
+  ,"notification.channel.email": "E-posta"
+  ,"notification.channel.android_push": "Android push"
+  ,"notification.channel.ios_push": "iOS push"
+  ,"notification.channel.web_push": "Web push"
+  ,"notification.category.account": "Hesap"
+  ,"notification.category.security": "Güvenlik"
+  ,"notification.category.support": "Destek"
+  ,"notification.category.subscription": "Abonelik"
+  ,"notification.category.billing": "Faturalandırma"
+  ,"notification.category.invitation": "Davet"
+  ,"notification.category.whatsapp": "WhatsApp"
+  ,"notification.category.message": "Mesaj"
+  ,"notification.category.system": "Sistem"
+  ,"notification.category.marketing": "Pazarlama"
+  ,"notification.category.compliance": "Uyumluluk"
+  ,"notification.category.administration": "Yönetim"
+  ,"notification.category.backup": "Yedekleme"
+  ,"notification.category.incident": "Olay"
+  ,"notifications.admin.platformAnnouncement": "Platform duyurusu"
+  ,"notifications.admin.platformAnnouncementDescription": "Bir taslak oluşturun, tam hedef kitlesini ve kanallarını inceleyin, ardından yayını açıkça onaylayın."
+  ,"notifications.admin.title": "Başlık"
+  ,"notifications.admin.message": "Mesaj"
+  ,"notifications.admin.deepLink": "Uygulama içi bağlantı (isteğe bağlı)"
+  ,"notifications.admin.locale": "Dil"
+  ,"notifications.admin.priority": "Öncelik"
+  ,"notifications.admin.channels": "Kanallar"
+  ,"notifications.admin.startTime": "Başlangıç zamanı"
+  ,"notifications.admin.endTime": "Bitiş zamanı (isteğe bağlı)"
+  ,"notifications.admin.createDraft": "Taslak oluştur"
+  ,"notifications.admin.previewAndPublish": "Önizle ve yayınla"
+  ,"notifications.admin.cancel": "İptal et"
+  ,"notifications.admin.noAnnouncements": "Henüz duyuru taslağı yok."
+  ,"notifications.admin.unresolvedDeadLetters": "Çözümlenmemiş kalıcı hatalar"
+  ,"notifications.admin.deadLetterDescription": "Yalnızca sağlayıcı veya yapılandırma sorunu giderildikten sonra yeniden deneyin."
+  ,"notifications.admin.event": "Olay"
+  ,"notifications.admin.channel": "Kanal"
+  ,"notifications.admin.error": "Hata"
+  ,"notifications.admin.attempts": "Deneme"
+  ,"notifications.admin.date": "Tarih"
+  ,"notifications.admin.retry": "Yeniden dene"
+  ,"notifications.admin.noDeadLetters": "Çözümlenmemiş kalıcı hata yok."
+  ,"notifications.admin.versionedTemplates": "Sürümlü bildirim şablonları"
+  ,"notifications.admin.versionedTemplatesDescription": "Yeni sürümler taslak olarak başlar ve açık yönetici onayı gerektirir."
+  ,"notifications.admin.templateName": "Şablon adı"
+  ,"notifications.admin.emailSubject": "E-posta konusu"
+  ,"notifications.admin.templateBody": "{{variable}} yer tutucuları içeren mesaj metni"
+  ,"notifications.admin.requiredVariables": "Gerekli değişkenler, virgülle ayrılmış"
+  ,"notifications.admin.preview": "Önizle"
+  ,"notifications.admin.testSelf": "Kendime test gönder"
+  ,"notifications.admin.active": "Aktif"
+  ,"notifications.admin.approve": "Onayla"
+  ,"notifications.admin.noTemplates": "Henüz sürümlü şablon yok. Kod yedekleri aktif kalır."
+  ,"notifications.admin.providerReadiness": "Sağlayıcı hazırlığı"
+  ,"notifications.admin.providerReadinessDescription": "Yalnızca güvenli yapılandırma bilgileri gösterilir. Kimlik bilgileri asla döndürülmez."
+  ,"notifications.admin.draftCreated": "Duyuru taslağı oluşturuldu."
+  ,"notifications.admin.draftFailed": "Duyuru taslağı oluşturulamadı."
+  ,"notifications.admin.previewStale": "Duyuru önizlemesi artık güncel değil."
+  ,"notifications.admin.audience": "Hedef kitle"
+  ,"notifications.admin.schedule": "Zamanlama"
+  ,"notifications.admin.continueConfirmation": "Kontrollü yayın onayına devam edilsin mi?"
+  ,"notifications.admin.typeExactly": "Tam olarak yazın"
+  ,"notifications.admin.confirmationMismatch": "Onay metni eşleşmiyor."
+  ,"notifications.admin.largeAudience": "Geniş hedef kitle onayı"
+  ,"notifications.admin.publishFailed": "Duyuru yayınlanamadı."
+  ,"notifications.admin.announcementQueued": "Duyurunun kuyruğa alındığı alıcı sayısı"
+  ,"notifications.admin.cancelReason": "İptal nedenini girin (en az 5 karakter)."
+  ,"notifications.admin.announcementCanceled": "Duyuru iptal edildi."
+  ,"notifications.admin.cancelFailed": "Duyuru iptal edilemedi."
+  ,"notifications.admin.retryReason": "Yeniden denemeden önce giderilen nedeni açıklayın (en az 5 karakter)."
+  ,"notifications.admin.retryQueued": "Teslimat güvenli yeniden deneme kuyruğuna alındı."
+  ,"notifications.admin.retryFailed": "Teslimat yeniden deneme kuyruğuna alınamadı."
+  ,"notifications.admin.templateDraftCreated": "Şablon taslağı oluşturuldu."
+  ,"notifications.admin.templateCreateFailed": "Şablon taslağı oluşturulamadı."
+  ,"notifications.admin.templateApproved": "Şablon onaylandı ve etkinleştirildi."
+  ,"notifications.admin.templateApproveFailed": "Şablon onaylanamadı."
+  ,"notifications.admin.templatePreviewFailed": "Şablon önizlemesi oluşturulamadı."
+  ,"notifications.admin.testConfirm": "Yalnızca yönetici hesabınıza kontrollü test gönderilsin mi?"
+  ,"notifications.admin.testCompleted": "Kontrollü test yönetici hesabınıza gönderildi."
+  ,"notifications.admin.testFailed": "Kontrollü test gönderilemedi."
+  ,"notifications.admin.priorityLow": "Düşük"
+  ,"notifications.admin.priorityNormal": "Normal"
+  ,"notifications.admin.priorityHigh": "Yüksek"
+  ,"notifications.admin.priorityCritical": "Kritik"
 }

@@ -1,0 +1,20 @@
+{
+  "status": "LEGAL_REVIEW_REQUIRED",
+  "generatedFor": "engineering-inventory-only",
+  "releaseVerificationRequired": true,
+  "androidPermissions": ["INTERNET", "POST_NOTIFICATIONS", "VIBRATE"],
+  "prohibitedUnexpectedPermissions": ["READ_CONTACTS", "WRITE_CONTACTS", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "RECORD_AUDIO", "READ_SMS", "READ_CALL_LOG"],
+  "optionalSdks": [
+    { "provider": "Firebase Analytics", "purposeCode": "PRODUCT_ANALYTICS", "defaultEnabled": false },
+    { "provider": "Sentry", "purposeCode": "CRASH_DIAGNOSTICS", "defaultEnabled": false }
+  ],
+  "dataCategories": [
+    { "code": "ACCOUNT_IDENTITY", "collected": true, "required": true },
+    { "code": "COMPANY_TEAM", "collected": true, "required": true },
+    { "code": "WHATSAPP_CUSTOMER_DIRECTED", "collected": "feature-dependent", "required": false },
+    { "code": "PRODUCT_ANALYTICS", "collected": "preference-dependent", "required": false },
+    { "code": "CRASH_DIAGNOSTICS", "collected": "preference-dependent", "required": false },
+    { "code": "SUPPORT_CONTENT", "collected": "user-submitted", "required": false },
+    { "code": "BILLING_REFERENCE", "collected": "purchase-dependent", "required": false }
+  ]
+}

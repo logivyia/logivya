@@ -56,6 +56,7 @@ export function SettingsScreen() {
         </View>
         <SettingsSection title={t("accountSection")}>
           <MenuButton title={t("security")} description={t("mfaSecurityDescription")} onPress={() => navigation.navigate("Security")} />
+          <MenuButton title={t("privacyData")} description={t("privacyDataDescription")} onPress={() => navigation.navigate("PrivacyData")} />
           <MenuButton title={t("deleteAccount")} description={t("deleteAccountDescription")} onPress={() => navigation.navigate("AccountDeletion")} tone="danger" />
         </SettingsSection>
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>

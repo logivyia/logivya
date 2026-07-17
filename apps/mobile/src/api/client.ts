@@ -199,6 +199,35 @@ class MobileApiClient {
     return payload as T;
   }
 
+  async download(path: string, extraHeaders: Record<string, string>) {
+    const headers = new Headers(extraHeaders);
+    headers.set("Accept", "application/json");
+    const locale = useSettingsStore.getState().locale;
+    headers.set("Accept-Language", locale);
+    headers.set("X-Logivya-Locale", locale);
+    addObservabilityHeaders(headers);
+    let tokens = await readTokens();
+    if (tokens && this.isTokenExpiringSoon(tokens.accessTokenExpiresAt)) tokens = await this.refreshTokens();
+    if (tokens?.accessToken) headers.set("Authorization", `Bearer ${tokens.accessToken}`);
+
+    let response = await this.fetchWithRetry(path, { method: "GET", headers, retry: false });
+    if (response.status === 401) {
+      tokens = await this.refreshTokens();
+      if (!tokens?.accessToken) {
+        await this.forceLogout();
+        throw new ApiRequestError(messageForApiError("UNAUTHORIZED", 401), "UNAUTHORIZED", 401, path);
+      }
+      headers.set("Authorization", `Bearer ${tokens.accessToken}`);
+      response = await this.fetchWithRetry(path, { method: "GET", headers, retry: false });
+    }
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      const code = payload?.error || "REQUEST_FAILED";
+      throw new ApiRequestError(messageForApiError(code, response.status), code, response.status, path);
+    }
+    return response.arrayBuffer();
+  }
+
   async post<T, B extends Record<string, unknown> = Record<string, unknown>>(path: string, body: B, options?: ApiOptions) {
     return this.request<T>(path, {
       method: "POST",

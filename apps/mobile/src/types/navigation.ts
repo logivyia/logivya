@@ -1,6 +1,7 @@
 import type { NavigatorScreenParams } from "@react-navigation/native";
 
 import type { AdminModuleKey } from "@/api/mobileAdmin";
+import type { NotificationAdminTab } from "@/api/mobileNotificationAdmin";
 
 export type AuthStackParamList = {
   Splash: undefined;
@@ -44,10 +45,14 @@ export type ProfileStackParamList = {
   CompanySettings: undefined;
   Subscription: undefined;
   Notifications: undefined;
+  NotificationPreferences: undefined;
+  NotificationPermissionEducation: undefined;
   Feedback: undefined;
   Settings: undefined;
   Security: undefined;
+  PrivacyData: undefined;
   AccountDeletion: undefined;
   TeamUsers: undefined;
+  AdminNotificationOperations: { initialTab?: NotificationAdminTab } | undefined;
   PlatformModule: { moduleKey: AdminModuleKey; title?: string; eyebrow?: string; description?: string; ticketId?: string };
 };

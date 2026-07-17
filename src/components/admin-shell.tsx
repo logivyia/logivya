@@ -2,7 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, ArrowLeft, Building2, ChevronDown, CircleDollarSign, ClipboardCheck, Database, FileClock, FileText, Flag, Gauge, HeartPulse, Megaphone, Search, Settings, ShieldAlert, Ticket, Users, Webhook, Zap } from "lucide-react";
+import { Activity, ArrowLeft, Building2, ChevronDown, CircleDollarSign, ClipboardCheck, Database, FileClock, FileLock2, FileText, Flag, Gauge, HeartPulse, Megaphone, Search, Settings, ShieldAlert, Ticket, Users, Webhook, Zap } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand-logo";
@@ -23,6 +23,7 @@ const nav = [
   ["/admin/security", "security", ShieldAlert],
   ["/admin/trial-risk", "trialRisk", ShieldAlert],
   ["/admin/compliance", "compliance", ClipboardCheck],
+  ["/admin/privacy", "privacy", FileLock2],
   ["/admin/audit", "audit", FileClock],
   ["/admin/activity", "activity", Activity],
   ["/admin/notifications", "notifications", Megaphone],

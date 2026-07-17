@@ -348,15 +348,30 @@ enum DataRequestType {
   EXPORT
   RECTIFICATION
   DELETION
+  INFORMATION
+  RESTRICTION
+  OBJECTION
+  PORTABILITY
+  CONSENT_WITHDRAWAL
+  AUTOMATED_DECISION_REVIEW
+  COMPLAINT
+  OTHER
 }
 
 enum DataRequestStatus {
   REQUESTED
+  RECEIVED
   VERIFYING
+  IDENTITY_VERIFICATION_REQUIRED
+  IN_REVIEW
+  WAITING_FOR_USER
   PROCESSING
+  APPROVED
+  PARTIALLY_APPROVED
   COMPLETED
   REJECTED
   CANCELED
+  CLOSED
 }
 
 enum ConsentType {
@@ -364,6 +379,44 @@ enum ConsentType {
   TERMS_OF_SERVICE
   KVKK
   MARKETING
+}
+
+enum ConsentStatus {
+  GRANTED
+  WITHDRAWN
+  EXPIRED
+  NOT_REQUIRED
+  PENDING
+}
+
+enum PrivacyVerificationStatus {
+  NOT_REQUIRED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum PrivacyJobStatus {
+  QUEUED
+  PROCESSING
+  READY
+  COMPLETED
+  FAILED
+  EXPIRED
+  CANCELED
+  BLOCKED
+}
+
+enum PrivacyDeletionScope {
+  USER
+  COMPANY
+}
+
+enum LegalReviewStatus {
+  DRAFT
+  LEGAL_REVIEW_REQUIRED
+  APPROVED
+  RETIRED
 }
 
 enum SupportTicketStatus {
@@ -437,6 +490,64 @@ enum MobilePlatform {
   UNKNOWN
 }
 
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  ANDROID_PUSH
+  IOS_PUSH
+  WEB_PUSH
+  SMS_FUTURE
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum NotificationCategory {
+  ACCOUNT
+  SECURITY
+  SUPPORT
+  SUBSCRIPTION
+  BILLING
+  INVITATION
+  WHATSAPP
+  MESSAGE
+  SYSTEM
+  MARKETING
+  COMPLIANCE
+  ADMINISTRATION
+  BACKUP
+  INCIDENT
+}
+
+enum NotificationStatus {
+  PENDING
+  QUEUED
+  PROCESSING
+  SENT
+  ACCEPTED
+  DELIVERED
+  FAILED
+  BOUNCED
+  REJECTED
+  EXPIRED
+  CANCELED
+  DEAD_LETTERED
+}
+
+enum NotificationAudience {
+  USER
+  COMPANY
+  COMPANY_OWNERS
+  COMPANY_USERS
+  PLATFORM_ADMIN
+  PLATFORM_ALL_USERS
+  CUSTOM_SEGMENT
+}
+
 enum CompanySecurityStatus {
   ACTIVE
   DISABLED
@@ -461,155 +572,177 @@ enum ContactSyncStatus {
 }
 
 model User {
-  id                             String                      @id @default(cuid())
-  name                           String
-  username                       String                      @unique
-  email                          String                      @unique
-  emailVerifiedAt                DateTime?
-  phone                          String?
-  passwordHash                   String
-  avatarUrl                      String?
-  locale                         String                      @default("en")
-  timezone                       String                      @default("Europe/Istanbul")
-  country                        String                      @default("TR")
-  theme                          String                      @default("system")
-  status                         UserStatus                  @default(ACTIVE)
-  mfaRequired                    Boolean                     @default(false)
-  mfaRequiredAt                  DateTime?
-  ownedCompanies                 Company[]                   @relation("CompanyOwner")
-  memberships                    CompanyUser[]
-  campaigns                      MessageCampaign[]
-  mediaFiles                     MediaFile[]
-  notifications                  Notification[]
-  auditLogs                      AuditLog[]
-  activities                     Activity[]
-  assignedTasks                  Task[]                      @relation("TaskAssignee")
-  createdTasks                   Task[]                      @relation("TaskCreator")
-  notes                          Note[]
-  activityFeed                   ActivityFeedEntry[]
-  aiGenerations                  AiGeneration[]
-  userMetrics                    UserMetricDaily[]
-  loginAttempts                  LoginAttempt[]
-  sessions                       UserSession[]
-  mobileDeviceSessions           MobileDeviceSession[]
-  mobilePushTokens               MobilePushToken[]
-  mobileFeedback                 MobileFeedback[]
-  trustedDevices                 TrustedDevice[]
-  securityEvents                 SecurityEvent[]
-  consents                       ConsentRecord[]
-  dataRequests                   DataSubjectRequest[]
-  passwordResetTokens            PasswordResetToken[]
-  emailVerificationTokens        EmailVerificationToken[]
-  mfaCredentials                 MfaCredential[]
-  mfaLoginChallenges             MfaLoginChallenge[]
-  createdSupportTickets          SupportTicket[]             @relation("SupportTicketCreator")
-  assignedSupportTickets         SupportTicket[]             @relation("SupportTicketAssignee")
-  supportMessages                SupportTicketMessage[]
-  supportTicketAudits            SupportTicketAudit[]        @relation("SupportTicketAuditActor")
-  supportNotificationOutbox      SupportNotificationOutbox[] @relation("SupportNotificationRecipient")
-  referralCodes                  ReferralCode[]
-  referredSignups                ReferralSignup[]            @relation("ReferredUser")
-  emailDeliveries                EmailDeliveryLog[]
-  messageVisibilityRecords       UserMessageVisibility[]
-  whatsAppAccounts               WhatsAppAccount[]
-  whatsAppGroups                 WhatsAppGroup[]
-  contacts                       Contact[]
-  contactSyncRuns                ContactSyncRun[]
-  categoryContactAssignments     CategoryContact[]
-  sentCompanyInvitations         CompanyInvitation[]         @relation("CompanyInvitationInviter")
-  acceptedCompanyInvitations     CompanyInvitation[]         @relation("CompanyInvitationAcceptedUser")
-  trialEntitlements              TrialEntitlement[]
-  subscriptionAuditLogs          SubscriptionAuditLog[]      @relation("SubscriptionAuditActor")
-  platformAdmin                  PlatformAdmin?
-  adminAccessLogs                AdminAccessLog[]
-  adminSessionEvents             AdminSessionEvent[]
-  twoFactorRecoveryCodes         TwoFactorRecoveryCode[]
-  manuallyActivatedSubscriptions Subscription[]              @relation("ManualSubscriptionActivator")
-  subscriptionEvents             SubscriptionEvent[]
-  createdAt                      DateTime                    @default(now())
-  updatedAt                      DateTime                    @updatedAt
+  id                                String                      @id @default(cuid())
+  name                              String
+  username                          String                      @unique
+  email                             String                      @unique
+  emailVerifiedAt                   DateTime?
+  phone                             String?
+  passwordHash                      String
+  avatarUrl                         String?
+  locale                            String                      @default("en")
+  timezone                          String                      @default("Europe/Istanbul")
+  country                           String                      @default("TR")
+  theme                             String                      @default("system")
+  status                            UserStatus                  @default(ACTIVE)
+  mfaRequired                       Boolean                     @default(false)
+  mfaRequiredAt                     DateTime?
+  ownedCompanies                    Company[]                   @relation("CompanyOwner")
+  memberships                       CompanyUser[]
+  campaigns                         MessageCampaign[]
+  mediaFiles                        MediaFile[]
+  notifications                     Notification[]
+  notificationEvents                NotificationEvent[]         @relation("NotificationEventActor")
+  notificationPreferences           NotificationPreference[]
+  notificationDeliveries            NotificationDelivery[]
+  notificationOutbox                NotificationOutbox[]
+  notificationDevices               NotificationDevice[]
+  notificationDeadLettersResolved   NotificationDeadLetter[]    @relation("NotificationDeadLetterResolver")
+  notificationAnnouncementsCreated  NotificationAnnouncement[]  @relation("NotificationAnnouncementCreator")
+  notificationAnnouncementsApproved NotificationAnnouncement[]  @relation("NotificationAnnouncementApprover")
+  auditLogs                         AuditLog[]
+  activities                        Activity[]
+  assignedTasks                     Task[]                      @relation("TaskAssignee")
+  createdTasks                      Task[]                      @relation("TaskCreator")
+  notes                             Note[]
+  activityFeed                      ActivityFeedEntry[]
+  aiGenerations                     AiGeneration[]
+  userMetrics                       UserMetricDaily[]
+  loginAttempts                     LoginAttempt[]
+  sessions                          UserSession[]
+  mobileDeviceSessions              MobileDeviceSession[]
+  mobilePushTokens                  MobilePushToken[]
+  mobileFeedback                    MobileFeedback[]
+  trustedDevices                    TrustedDevice[]
+  securityEvents                    SecurityEvent[]
+  consents                          ConsentRecord[]
+  dataRequests                      DataSubjectRequest[]
+  privacyExportJobs                 PrivacyExportJob[]
+  privacyDeletionJobs               PrivacyDeletionJob[]
+  privacyLegalHolds                 PrivacyLegalHold[]
+  passwordResetTokens               PasswordResetToken[]
+  emailVerificationTokens           EmailVerificationToken[]
+  mfaCredentials                    MfaCredential[]
+  mfaLoginChallenges                MfaLoginChallenge[]
+  createdSupportTickets             SupportTicket[]             @relation("SupportTicketCreator")
+  assignedSupportTickets            SupportTicket[]             @relation("SupportTicketAssignee")
+  supportMessages                   SupportTicketMessage[]
+  supportTicketAudits               SupportTicketAudit[]        @relation("SupportTicketAuditActor")
+  supportNotificationOutbox         SupportNotificationOutbox[] @relation("SupportNotificationRecipient")
+  referralCodes                     ReferralCode[]
+  referredSignups                   ReferralSignup[]            @relation("ReferredUser")
+  emailDeliveries                   EmailDeliveryLog[]
+  messageVisibilityRecords          UserMessageVisibility[]
+  whatsAppAccounts                  WhatsAppAccount[]
+  whatsAppGroups                    WhatsAppGroup[]
+  contacts                          Contact[]
+  contactSyncRuns                   ContactSyncRun[]
+  categoryContactAssignments        CategoryContact[]
+  sentCompanyInvitations            CompanyInvitation[]         @relation("CompanyInvitationInviter")
+  acceptedCompanyInvitations        CompanyInvitation[]         @relation("CompanyInvitationAcceptedUser")
+  trialEntitlements                 TrialEntitlement[]
+  subscriptionAuditLogs             SubscriptionAuditLog[]      @relation("SubscriptionAuditActor")
+  platformAdmin                     PlatformAdmin?
+  adminAccessLogs                   AdminAccessLog[]
+  adminSessionEvents                AdminSessionEvent[]
+  twoFactorRecoveryCodes            TwoFactorRecoveryCode[]
+  manuallyActivatedSubscriptions    Subscription[]              @relation("ManualSubscriptionActivator")
+  subscriptionEvents                SubscriptionEvent[]
+  createdAt                         DateTime                    @default(now())
+  updatedAt                         DateTime                    @updatedAt
 }
 
 model Company {
-  id                         String                      @id @default(cuid())
-  name                       String
-  address                    String?
-  city                       String?
-  district                   String?
-  postalCode                 String?
-  taxOffice                  String?
-  taxNumber                  String?
-  phone                      String?
-  email                      String?
-  ownerId                    String
-  owner                      User                        @relation("CompanyOwner", fields: [ownerId], references: [id])
-  members                    CompanyUser[]
-  invitations                CompanyInvitation[]
-  trialEntitlements          TrialEntitlement[]
-  subscriptionAuditLogs      SubscriptionAuditLog[]
-  subscriptions              Subscription[]
-  accounts                   WhatsAppAccount[]
-  groups                     WhatsAppGroup[]
-  contacts                   Contact[]
-  contactSyncRuns            ContactSyncRun[]
-  categoryContactAssignments CategoryContact[]
-  categories                 Category[]
-  campaigns                  MessageCampaign[]
-  mediaFiles                 MediaFile[]
-  notifications              Notification[]
-  auditLogs                  AuditLog[]
-  channels                   Channel[]
-  channelAccounts            ChannelAccount[]
-  channelMessages            ChannelMessage[]
-  aiConfigurations           AiProviderConfiguration[]
-  aiGenerations              AiGeneration[]
-  leads                      Lead[]
-  customers                  Customer[]
-  deals                      Deal[]
-  pipelines                  Pipeline[]
-  activities                 Activity[]
-  tasks                      Task[]
-  tags                       Tag[]
-  notes                      Note[]
-  campaignMetrics            CampaignMetric[]
-  accountMetrics             AccountMetricDaily[]
-  categoryMetrics            CategoryMetricDaily[]
-  userMetrics                UserMetricDaily[]
-  webhooks                   WebhookEndpoint[]
-  webhookEvents              WebhookEvent[]
-  apiKeys                    ApiKey[]
-  invoices                   Invoice[]
-  payments                   Payment[]
-  subscriptionEvents         SubscriptionEvent[]
-  coupons                    Coupon[]
-  activityFeed               ActivityFeedEntry[]
-  billingProfile             CompanyBillingProfile?
-  securityEvents             SecurityEvent[]
-  dataRequests               DataSubjectRequest[]
-  idempotencyKeys            IdempotencyKey[]
-  apiUsageLogs               ApiUsageLog[]
-  incidentLogs               IncidentLog[]
-  supportTickets             SupportTicket[]
-  supportNotificationOutbox  SupportNotificationOutbox[]
-  internalNotes              CompanyInternalNote[]
-  onboarding                 OnboardingChecklist?
-  branding                   BrandingSettings?
-  referralCodes              ReferralCode[]
-  referredSignups            ReferralSignup[]            @relation("ReferredCompany")
-  emailDeliveries            EmailDeliveryLog[]
-  mobileDeviceSessions       MobileDeviceSession[]
-  mobilePushTokens           MobilePushToken[]
-  mobileFeedback             MobileFeedback[]
-  securityStatus             CompanySecurityStatus       @default(ACTIVE)
-  billingLockedAt            DateTime?
-  campaignsPausedAt          DateTime?
-  retentionDays              Int                         @default(90)
-  defaultLanguage            String                      @default("tr")
-  defaultTimezone            String                      @default("Europe/Istanbul")
-  defaultCurrency            String                      @default("TRY")
-  defaultCountry             String                      @default("TR")
-  createdAt                  DateTime                    @default(now())
-  updatedAt                  DateTime                    @updatedAt
+  id                             String                          @id @default(cuid())
+  name                           String
+  address                        String?
+  city                           String?
+  district                       String?
+  postalCode                     String?
+  taxOffice                      String?
+  taxNumber                      String?
+  phone                          String?
+  email                          String?
+  ownerId                        String
+  owner                          User                            @relation("CompanyOwner", fields: [ownerId], references: [id])
+  members                        CompanyUser[]
+  invitations                    CompanyInvitation[]
+  trialEntitlements              TrialEntitlement[]
+  subscriptionAuditLogs          SubscriptionAuditLog[]
+  subscriptions                  Subscription[]
+  accounts                       WhatsAppAccount[]
+  groups                         WhatsAppGroup[]
+  contacts                       Contact[]
+  contactSyncRuns                ContactSyncRun[]
+  categoryContactAssignments     CategoryContact[]
+  categories                     Category[]
+  campaigns                      MessageCampaign[]
+  mediaFiles                     MediaFile[]
+  notifications                  Notification[]
+  notificationEvents             NotificationEvent[]
+  notificationPreferences        NotificationPreference[]
+  notificationDeliveries         NotificationDelivery[]
+  notificationOutbox             NotificationOutbox[]
+  notificationDevices            NotificationDevice[]
+  notificationAudienceExpansions NotificationAudienceExpansion[]
+  notificationAnnouncements      NotificationAnnouncement[]
+  auditLogs                      AuditLog[]
+  channels                       Channel[]
+  channelAccounts                ChannelAccount[]
+  channelMessages                ChannelMessage[]
+  aiConfigurations               AiProviderConfiguration[]
+  aiGenerations                  AiGeneration[]
+  leads                          Lead[]
+  customers                      Customer[]
+  deals                          Deal[]
+  pipelines                      Pipeline[]
+  activities                     Activity[]
+  tasks                          Task[]
+  tags                           Tag[]
+  notes                          Note[]
+  campaignMetrics                CampaignMetric[]
+  accountMetrics                 AccountMetricDaily[]
+  categoryMetrics                CategoryMetricDaily[]
+  userMetrics                    UserMetricDaily[]
+  webhooks                       WebhookEndpoint[]
+  webhookEvents                  WebhookEvent[]
+  apiKeys                        ApiKey[]
+  invoices                       Invoice[]
+  payments                       Payment[]
+  subscriptionEvents             SubscriptionEvent[]
+  coupons                        Coupon[]
+  activityFeed                   ActivityFeedEntry[]
+  billingProfile                 CompanyBillingProfile?
+  securityEvents                 SecurityEvent[]
+  consents                       ConsentRecord[]
+  dataRequests                   DataSubjectRequest[]
+  privacyExportJobs              PrivacyExportJob[]
+  privacyDeletionJobs            PrivacyDeletionJob[]
+  privacyLegalHolds              PrivacyLegalHold[]
+  idempotencyKeys                IdempotencyKey[]
+  apiUsageLogs                   ApiUsageLog[]
+  incidentLogs                   IncidentLog[]
+  supportTickets                 SupportTicket[]
+  supportNotificationOutbox      SupportNotificationOutbox[]
+  internalNotes                  CompanyInternalNote[]
+  onboarding                     OnboardingChecklist?
+  branding                       BrandingSettings?
+  referralCodes                  ReferralCode[]
+  referredSignups                ReferralSignup[]                @relation("ReferredCompany")
+  emailDeliveries                EmailDeliveryLog[]
+  mobileDeviceSessions           MobileDeviceSession[]
+  mobilePushTokens               MobilePushToken[]
+  mobileFeedback                 MobileFeedback[]
+  securityStatus                 CompanySecurityStatus           @default(ACTIVE)
+  billingLockedAt                DateTime?
+  campaignsPausedAt              DateTime?
+  retentionDays                  Int                             @default(90)
+  defaultLanguage                String                          @default("tr")
+  defaultTimezone                String                          @default("Europe/Istanbul")
+  defaultCurrency                String                          @default("TRY")
+  defaultCountry                 String                          @default("TR")
+  createdAt                      DateTime                        @default(now())
+  updatedAt                      DateTime                        @updatedAt
 
   @@index([ownerId])
 }
@@ -1152,21 +1285,306 @@ model MediaFile {
 }
 
 model Notification {
-  id        String   @id @default(cuid())
-  companyId String
-  userId    String
-  type      String
-  title     String
-  message   String
-  payload   Json?
-  isRead    Boolean  @default(false)
-  company   Company  @relation(fields: [companyId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
-  createdAt DateTime @default(now())
+  id              String                 @id @default(cuid())
+  eventId         String?
+  companyId       String
+  userId          String
+  type            String
+  category        NotificationCategory   @default(SYSTEM)
+  priority        NotificationPriority   @default(NORMAL)
+  audience        NotificationAudience   @default(USER)
+  title           String
+  message         String
+  payload         Json?
+  deepLink        String?
+  collapseKey     String?
+  collapsedCount  Int                    @default(0)
+  lastCollapsedAt DateTime?
+  isRead          Boolean                @default(false)
+  readAt          DateTime?
+  archivedAt      DateTime?
+  expiresAt       DateTime?
+  event           NotificationEvent?     @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  company         Company                @relation(fields: [companyId], references: [id])
+  user            User                   @relation(fields: [userId], references: [id])
+  deliveries      NotificationDelivery[]
+  outbox          NotificationOutbox[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
 
   @@index([userId, isRead, createdAt])
   @@index([companyId, userId, createdAt])
   @@index([companyId, type, createdAt])
+  @@index([eventId])
+  @@index([companyId, userId, archivedAt, createdAt])
+  @@index([category, createdAt])
+  @@index([companyId, userId, collapseKey, createdAt])
+}
+
+model NotificationEvent {
+  id                String                         @id @default(cuid())
+  eventKey          String                         @unique
+  idempotencyKey    String                         @unique
+  companyId         String?
+  actorUserId       String?
+  type              String
+  category          NotificationCategory
+  audience          NotificationAudience
+  priority          NotificationPriority           @default(NORMAL)
+  payload           Json
+  correlationId     String?
+  collapseKey       String?
+  occurredAt        DateTime                       @default(now())
+  company           Company?                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  actor             User?                          @relation("NotificationEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  notifications     Notification[]
+  deliveries        NotificationDelivery[]
+  outbox            NotificationOutbox[]
+  deadLetters       NotificationDeadLetter[]
+  audienceExpansion NotificationAudienceExpansion?
+  announcement      NotificationAnnouncement?
+  createdAt         DateTime                       @default(now())
+
+  @@index([companyId, occurredAt])
+  @@index([type, occurredAt])
+  @@index([category, occurredAt])
+  @@index([correlationId])
+  @@index([companyId, type, collapseKey, occurredAt])
+}
+
+model NotificationPreference {
+  id              String               @id @default(cuid())
+  companyId       String
+  userId          String
+  category        NotificationCategory
+  channel         NotificationChannel
+  enabled         Boolean              @default(true)
+  mandatoryLocked Boolean              @default(false)
+  digestMode      String               @default("IMMEDIATE")
+  quietHoursStart String?
+  quietHoursEnd   String?
+  timezone        String               @default("Europe/Istanbul")
+  company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@unique([companyId, userId, category, channel])
+  @@index([userId, enabled])
+  @@index([companyId, category])
+}
+
+model NotificationAudienceExpansion {
+  id             String               @id @default(cuid())
+  eventId        String               @unique
+  audience       NotificationAudience
+  companyId      String?
+  payload        Json
+  status         NotificationStatus   @default(QUEUED)
+  cursorId       String?
+  processedCount Int                  @default(0)
+  attempts       Int                  @default(0)
+  maxAttempts    Int                  @default(10)
+  availableAt    DateTime             @default(now())
+  leaseExpiresAt DateTime?
+  lockedBy       String?
+  lastErrorCode  String?
+  completedAt    DateTime?
+  event          NotificationEvent    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  company        Company?             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([status, availableAt])
+  @@index([companyId, status])
+  @@index([leaseExpiresAt])
+}
+
+model NotificationTemplate {
+  id                String              @id @default(cuid())
+  scopeKey          String              @default("GLOBAL")
+  eventType         String
+  channel           NotificationChannel
+  locale            String
+  version           Int
+  name              String
+  subject           String?
+  title             String?
+  body              String
+  requiredVariables Json
+  status            String              @default("DRAFT")
+  isActive          Boolean             @default(false)
+  approvedBy        String?
+  approvedAt        DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([scopeKey, eventType, channel, locale, version])
+  @@index([eventType, channel, locale, isActive])
+  @@index([status, updatedAt])
+}
+
+model NotificationAnnouncement {
+  id               String                @id @default(cuid())
+  title            String
+  body             String
+  audience         NotificationAudience  @default(PLATFORM_ALL_USERS)
+  companyId        String?
+  locale           String                @default("tr")
+  channels         NotificationChannel[]
+  priority         NotificationPriority  @default(NORMAL)
+  deepLink         String?
+  startsAt         DateTime
+  endsAt           DateTime?
+  status           String                @default("DRAFT")
+  approvalState    String                @default("PENDING")
+  previewHash      String
+  createdById      String
+  approvedById     String?
+  approvedAt       DateTime?
+  publishedEventId String?               @unique
+  company          Company?              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy        User                  @relation("NotificationAnnouncementCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy       User?                 @relation("NotificationAnnouncementApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  publishedEvent   NotificationEvent?    @relation(fields: [publishedEventId], references: [id], onDelete: SetNull)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@index([status, startsAt])
+  @@index([audience, status])
+  @@index([companyId, status])
+  @@index([createdById, createdAt])
+}
+
+model NotificationOutbox {
+  id             String                  @id @default(cuid())
+  eventId        String
+  notificationId String
+  companyId      String
+  userId         String
+  channel        NotificationChannel
+  priority       NotificationPriority    @default(NORMAL)
+  status         NotificationStatus      @default(PENDING)
+  dedupeKey      String                  @unique
+  templateKey    String
+  locale         String                  @default("tr")
+  payload        Json
+  attempts       Int                     @default(0)
+  maxAttempts    Int                     @default(5)
+  availableAt    DateTime                @default(now())
+  leaseExpiresAt DateTime?
+  lockedBy       String?
+  processedAt    DateTime?
+  lastErrorCode  String?
+  event          NotificationEvent       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  notification   Notification            @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  company        Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  delivery       NotificationDelivery?
+  deadLetter     NotificationDeadLetter?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@index([status, availableAt, priority])
+  @@index([companyId, createdAt])
+  @@index([userId, createdAt])
+  @@index([eventId, channel])
+  @@index([leaseExpiresAt])
+}
+
+model NotificationDelivery {
+  id                String              @id @default(cuid())
+  eventId           String
+  notificationId    String
+  outboxId          String              @unique
+  companyId         String
+  userId            String
+  channel           NotificationChannel
+  status            NotificationStatus  @default(PENDING)
+  provider          String
+  idempotencyKey    String              @unique
+  recipientHash     String?
+  providerMessageId String?
+  attempts          Int                 @default(0)
+  acceptedAt        DateTime?
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  lastErrorCode     String?
+  providerMetadata  Json?
+  event             NotificationEvent   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  notification      Notification        @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  outbox            NotificationOutbox  @relation(fields: [outboxId], references: [id], onDelete: Cascade)
+  company           Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([companyId, status, createdAt])
+  @@index([userId, createdAt])
+  @@index([channel, status, createdAt])
+  @@index([provider, providerMessageId])
+}
+
+model NotificationDevice {
+  id                String          @id @default(cuid())
+  companyId         String
+  userId            String
+  mobilePushTokenId String          @unique
+  platform          MobilePlatform
+  locale            String          @default("tr")
+  timezone          String          @default("Europe/Istanbul")
+  enabled           Boolean         @default(true)
+  lastSeenAt        DateTime        @default(now())
+  invalidatedAt     DateTime?
+  company           Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mobilePushToken   MobilePushToken @relation(fields: [mobilePushTokenId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([companyId, userId, enabled])
+  @@index([platform, enabled])
+  @@index([invalidatedAt])
+}
+
+model NotificationDeadLetter {
+  id             String              @id @default(cuid())
+  outboxId       String              @unique
+  eventId        String
+  companyId      String
+  userId         String
+  channel        NotificationChannel
+  reason         String
+  errorCode      String
+  payload        Json
+  attemptCount   Int
+  resolvedAt     DateTime?
+  resolvedById   String?
+  resolution     String?
+  outbox         NotificationOutbox  @relation(fields: [outboxId], references: [id], onDelete: Cascade)
+  event          NotificationEvent   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  resolvedBy     User?               @relation("NotificationDeadLetterResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  deadLetteredAt DateTime            @default(now())
+
+  @@index([companyId, deadLetteredAt])
+  @@index([channel, deadLetteredAt])
+  @@index([resolvedAt])
+}
+
+model NotificationProviderWebhook {
+  id              String              @id @default(cuid())
+  provider        String
+  providerEventId String
+  eventType       String
+  signatureValid  Boolean
+  payloadHash     String
+  status          NotificationStatus?
+  processedAt     DateTime?
+  createdAt       DateTime            @default(now())
+
+  @@unique([provider, providerEventId])
+  @@index([provider, createdAt])
+  @@index([processedAt])
 }
 
 model AuditLog {
@@ -1909,22 +2327,22 @@ model UserSession {
 }
 
 model MobileDeviceSession {
-  id               String         @id @default(cuid())
+  id               String                      @id @default(cuid())
   userId           String
   companyId        String
   deviceId         String
-  platform         MobilePlatform @default(UNKNOWN)
+  platform         MobilePlatform              @default(UNKNOWN)
   appVersion       String?
   userAgent        String?
-  refreshTokenHash String         @unique
-  lastUsedAt       DateTime       @default(now())
+  refreshTokenHash String                      @unique
+  lastUsedAt       DateTime                    @default(now())
   expiresAt        DateTime
   revokedAt        DateTime?
   mfaVerifiedAt    DateTime?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+  user             User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company          Company                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   refreshHistory   MobileRefreshTokenHistory[]
 
   @@index([userId, revokedAt, expiresAt])
@@ -1948,20 +2366,21 @@ model MobileRefreshTokenHistory {
 }
 
 model MobilePushToken {
-  id         String         @id @default(cuid())
-  userId     String
-  companyId  String
-  deviceId   String
-  platform   MobilePlatform
-  tokenHash  String         @unique
-  token      String
-  appVersion String?
-  revokedAt  DateTime?
-  lastSeenAt DateTime       @default(now())
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company    Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id                 String              @id @default(cuid())
+  userId             String
+  companyId          String
+  deviceId           String
+  platform           MobilePlatform
+  tokenHash          String              @unique
+  token              String
+  appVersion         String?
+  revokedAt          DateTime?
+  lastSeenAt         DateTime            @default(now())
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  notificationDevice NotificationDevice?
 
   @@index([userId, revokedAt])
   @@index([companyId, platform])
@@ -2175,34 +2594,276 @@ model OperationalAlert {
 }
 
 model ConsentRecord {
-  id        String      @id @default(cuid())
-  userId    String
-  type      ConsentType
-  version   String
-  granted   Boolean
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime    @default(now())
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String        @id @default(cuid())
+  userId           String
+  companyId        String?
+  type             ConsentType
+  purposeCode      String        @default("LEGACY_NOTICE_ACKNOWLEDGEMENT")
+  status           ConsentStatus @default(GRANTED)
+  version          String
+  legalTextVersion String?
+  noticeVersion    String?
+  granted          Boolean
+  ipAddress        String?
+  userAgent        String?
+  collectionMethod String        @default("LEGACY")
+  platform         String        @default("UNKNOWN")
+  appVersion       String?
+  locale           String        @default("tr")
+  evidence         Json?
+  collectedAt      DateTime      @default(now())
+  withdrawnAt      DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company          Company?      @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([userId, type, createdAt])
+  @@index([userId, purposeCode, collectedAt])
+  @@index([companyId, purposeCode, collectedAt])
 }
 
 model DataSubjectRequest {
-  id          String            @id @default(cuid())
-  companyId   String?
-  userId      String?
-  type        DataRequestType
-  status      DataRequestStatus @default(REQUESTED)
-  reason      String?
-  exportUrl   String?
-  requestedAt DateTime          @default(now())
-  completedAt DateTime?
-  company     Company?          @relation(fields: [companyId], references: [id])
-  user        User?             @relation(fields: [userId], references: [id])
+  id                         String                    @id @default(cuid())
+  publicId                   String                    @unique
+  companyId                  String?
+  userId                     String?
+  type                       DataRequestType
+  status                     DataRequestStatus         @default(REQUESTED)
+  identityVerificationStatus PrivacyVerificationStatus @default(PENDING)
+  verificationMethod         String?
+  reason                     String?
+  description                String?
+  exportUrl                  String?
+  responseSummary            String?
+  extensionReason            String?
+  assignedAdminUserId        String?
+  legalHold                  Boolean                   @default(false)
+  metadata                   Json?
+  requestedAt                DateTime                  @default(now())
+  receivedAt                 DateTime                  @default(now())
+  deadlineAt                 DateTime?
+  completedAt                DateTime?
+  closedAt                   DateTime?
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  company                    Company?                  @relation(fields: [companyId], references: [id])
+  user                       User?                     @relation(fields: [userId], references: [id])
+  messages                   PrivacyRequestMessage[]
+  events                     PrivacyRequestEvent[]
+  exportJobs                 PrivacyExportJob[]
+  deletionJobs               PrivacyDeletionJob[]
+  legalHolds                 PrivacyLegalHold[]
 
   @@index([companyId, status, requestedAt])
   @@index([userId, status, requestedAt])
+  @@index([status, deadlineAt])
+}
+
+model PrivacyRequestMessage {
+  id          String             @id @default(cuid())
+  requestId   String
+  actorUserId String?
+  actorType   String
+  message     String
+  isInternal  Boolean            @default(false)
+  metadata    Json?
+  createdAt   DateTime           @default(now())
+  request     DataSubjectRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+}
+
+model PrivacyRequestEvent {
+  id          String             @id @default(cuid())
+  requestId   String
+  actorUserId String?
+  action      String
+  fromStatus  String?
+  toStatus    String?
+  metadata    Json?
+  createdAt   DateTime           @default(now())
+  request     DataSubjectRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+  @@index([action, createdAt])
+}
+
+model PrivacyExportJob {
+  id                   String              @id @default(cuid())
+  publicId             String              @unique
+  companyId            String
+  userId               String
+  requestId            String?
+  status               PrivacyJobStatus    @default(QUEUED)
+  scope                Json
+  objectKey            String?
+  downloadTokenHash    String?             @unique
+  encryptionKeyVersion String?
+  encryptionIv         String?
+  encryptionAuthTag    String?
+  contentType          String              @default("application/json+gzip")
+  sizeBytes            BigInt?
+  checksumSha256       String?
+  attempts             Int                 @default(0)
+  expiresAt            DateTime?
+  downloadedAt         DateTime?
+  lastError            String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  company              Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  request              DataSubjectRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, userId, createdAt])
+  @@index([status, createdAt])
+  @@index([expiresAt])
+}
+
+model PrivacyDeletionJob {
+  id           String               @id @default(cuid())
+  publicId     String               @unique
+  companyId    String
+  userId       String
+  requestId    String?
+  scope        PrivacyDeletionScope
+  status       PrivacyJobStatus     @default(QUEUED)
+  cancelUntil  DateTime
+  scheduledFor DateTime
+  checkpoint   Json?
+  result       Json?
+  lastError    String?
+  attempts     Int                  @default(0)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  completedAt  DateTime?
+  company      Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  request      DataSubjectRequest?  @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status, scheduledFor])
+  @@index([userId, status, createdAt])
+}
+
+model PrivacyLegalHold {
+  id               String              @id @default(cuid())
+  publicId         String              @unique
+  companyId        String?
+  userId           String?
+  requestId        String?
+  scopeType        String
+  scopeId          String
+  reason           String
+  status           String              @default("ACTIVE")
+  createdByUserId  String
+  approvedByUserId String?
+  startsAt         DateTime            @default(now())
+  reviewAt         DateTime
+  endsAt           DateTime?
+  releasedAt       DateTime?
+  metadata         Json?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  company          Company?            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user             User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  request          DataSubjectRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@index([status, reviewAt])
+  @@index([companyId, scopeType, scopeId])
+  @@index([userId, status])
+}
+
+model PrivacyBreach {
+  id                           String            @id @default(cuid())
+  publicId                     String            @unique
+  title                        String
+  status                       String            @default("OPEN")
+  discoveredAt                 DateTime
+  occurredAt                   DateTime?
+  reportedByUserId             String
+  affectedSystem               String
+  dataCategories               String[]
+  dataSubjectCategories        String[]
+  estimatedAffectedCount       Int?
+  riskLevel                    String
+  containmentActions           String?
+  controllerNotificationStatus String            @default("ASSESSMENT_REQUIRED")
+  authorityNotificationStatus  String            @default("ASSESSMENT_REQUIRED")
+  subjectNotificationStatus    String            @default("ASSESSMENT_REQUIRED")
+  legalReviewStatus            LegalReviewStatus @default(LEGAL_REVIEW_REQUIRED)
+  legalReviewNotes             String?
+  rootCause                    String?
+  remediation                  String?
+  evidence                     Json?
+  closedAt                     DateTime?
+  createdAt                    DateTime          @default(now())
+  updatedAt                    DateTime          @updatedAt
+
+  @@index([status, riskLevel, discoveredAt])
+  @@index([legalReviewStatus, discoveredAt])
+}
+
+model PrivacyDpia {
+  id                        String            @id @default(cuid())
+  publicId                  String            @unique
+  projectName               String
+  ownerUserId               String
+  purpose                   String
+  processingDescription     String
+  necessityAssessment       String
+  proportionalityAssessment String
+  dataFlow                  Json
+  risks                     Json
+  safeguards                Json
+  residualRisk              String
+  status                    String            @default("DRAFT")
+  legalReviewStatus         LegalReviewStatus @default(LEGAL_REVIEW_REQUIRED)
+  reviewAt                  DateTime?
+  approvedByUserId          String?
+  approvedAt                DateTime?
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+
+  @@index([status, legalReviewStatus, updatedAt])
+  @@index([reviewAt])
+}
+
+model PrivacyRetentionRun {
+  id                String    @id @default(cuid())
+  policyVersion     String
+  dryRun            Boolean   @default(true)
+  status            String    @default("RUNNING")
+  initiatedByUserId String?
+  counts            Json?
+  error             String?
+  startedAt         DateTime  @default(now())
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([status, startedAt])
+  @@index([policyVersion, startedAt])
+}
+
+model PrivacyLegalDocument {
+  id              String            @id @default(cuid())
+  type            String
+  version         String
+  locale          String
+  status          LegalReviewStatus @default(LEGAL_REVIEW_REQUIRED)
+  sourcePath      String
+  checksumSha256  String?
+  effectiveAt     DateTime?
+  publishedAt     DateTime?
+  reviewedBy      String?
+  previousVersion String?
+  changeSummary   String?
+  active          Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([type, version, locale])
+  @@index([type, locale, active])
+  @@index([status, updatedAt])
 }
 
 model IncidentLog {

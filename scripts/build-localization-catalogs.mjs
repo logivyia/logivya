@@ -3,10 +3,13 @@ import path from "node:path";
 import ts from "typescript";
 
 const root = process.cwd();
-const targetLocales = ["ro", "ru", "az", "tk", "de", "bg", "el", "sr"];
+const supportedTargetLocales = ["ro", "ru", "az", "tk", "de", "bg", "el", "sr"];
+const requestedTargetLocales = process.env.L10N_TARGET_LOCALES?.split(",").map((locale) => locale.trim()).filter(Boolean);
+const targetLocales = requestedTargetLocales?.length ? requestedTargetLocales : supportedTargetLocales;
+if (targetLocales.some((locale) => !supportedTargetLocales.includes(locale))) throw new Error("L10N_TARGET_LOCALES contains an unsupported locale");
 const googleLocale = { ro: "ro", ru: "ru", az: "az", tk: "tk", de: "de", bg: "bg", el: "el", sr: "sr" };
-const batchSize = 30;
-const concurrency = 1;
+const batchSize = 4;
+const concurrency = 3;
 const cachePath = path.join(root, ".cache", "localization-catalogs.json");
 let translationCache = {};
 let bingSession = null;
@@ -84,20 +87,134 @@ const curatedTerms = {
     Active: "Aktivno", Pending: "Na čekanju", Failed: "Neuspešno", Completed: "Završeno", Cancelled: "Otkazano",
     Trial: "Probni period", Professional: "Profesionalni", Admin: "Administrator", Save: "Sačuvaj",
     Delete: "Obriši", Edit: "Izmeni", Cancel: "Otkaži", Search: "Pretraži", "Try again": "Pokušaj ponovo",
+    "Communication center": "Centar za komunikaciju",
+    "Manage account, security, support, and operational notifications in one place.": "Upravljajte obaveštenjima o nalogu, bezbednosti, podršci i operacijama na jednom mestu.",
+    "Notification preferences": "Podešavanja obaveštenja",
+    "Choose your channels while mandatory security notifications remain protected.": "Izaberite kanale dok obavezna bezbednosna obaveštenja ostaju zaštićena.",
+    "Notification preferences saved.": "Podešavanja obaveštenja su sačuvana.",
+    "Notification preferences could not be saved.": "Podešavanja obaveštenja nisu mogla biti sačuvana.",
+    "Mark as read": "Označi kao pročitano",
+    "Mandatory notification": "Obavezno obaveštenje",
+    Immediate: "Odmah",
+    "Daily digest": "Dnevni pregled",
+    "Weekly digest": "Nedeljni pregled",
+    "Quiet hours start": "Početak perioda bez obaveštenja",
+    "Quiet hours end": "Kraj perioda bez obaveštenja",
+    "View all notifications": "Prikaži sva obaveštenja",
+    "Browser notifications": "Obaveštenja pregledača",
+    "Receive important Logivya notifications in this browser after you grant permission.": "Primajte važna Logivya obaveštenja u ovom pregledaču nakon što date dozvolu.",
+    "Enable web notifications": "Omogući veb obaveštenja",
+    "Disable web notifications": "Onemogući veb obaveštenja",
+    "Web notifications are enabled for this browser.": "Veb obaveštenja su omogućena za ovaj pregledač.",
+    "Web notifications are disabled for this browser.": "Veb obaveštenja su onemogućena za ovaj pregledač.",
+    "Web notifications are unavailable in this browser or server configuration.": "Veb obaveštenja nisu dostupna u ovom pregledaču ili konfiguraciji servera.",
+    "Browser notification permission was not granted. You can change it in browser settings.": "Dozvola za obaveštenja pregledača nije odobrena. Možete je promeniti u podešavanjima pregledača.",
+    "Web notifications could not be enabled.": "Veb obaveštenja nisu mogla biti omogućena.",
+    "Web notifications could not be disabled.": "Veb obaveštenja nisu mogla biti onemogućena.",
+    "In-app": "U aplikaciji",
+    "Android push": "Android prosleđeno obaveštenje",
+    "iOS push": "iOS prosleđeno obaveštenje",
+    "Web push": "Veb prosleđeno obaveštenje",
+    Invitation: "Pozivnica",
+    Administration: "Administracija",
+    Backup: "Rezervna kopija",
+    Incident: "Vanredni događaj",
+    "Platform announcement": "Obaveštenje platforme",
+    "Create a draft, review its exact audience and channels, then explicitly approve publication.": "Kreirajte nacrt, pregledajte tačnu publiku i kanale, zatim izričito odobrite objavljivanje.",
+    "Internal deep link (optional)": "Interna dubinska veza (opciono)",
+    Channels: "Kanali",
+    "Start time": "Vreme početka",
+    "End time (optional)": "Vreme završetka (opciono)",
+    "Create draft": "Kreiraj nacrt",
+    "Preview and publish": "Pregledaj i objavi",
+    "No announcement drafts yet.": "Još nema nacrta obaveštenja.",
+    "Unresolved dead letters": "Nerešene trajne greške",
+    "Retry only after the underlying provider or configuration issue is repaired.": "Ponovite pokušaj tek nakon što otklonite problem dobavljača ili konfiguracije.",
+    Event: "Događaj",
+    Channel: "Kanal",
+    Error: "Greška",
+    Attempts: "Pokušaji",
+    "No unresolved dead letters.": "Nema nerešenih trajnih grešaka.",
+    "Versioned notification templates": "Verzionisani šabloni obaveštenja",
+    "New versions begin as drafts and require explicit administrator approval.": "Nove verzije počinju kao nacrti i zahtevaju izričito odobrenje administratora.",
+    "Template name": "Naziv šablona",
+    "Email subject": "Tema e-pošte",
+    "Message body with {{variable}} placeholders": "Tekst poruke sa čuvarima mesta {{variable}}",
+    "Required variables, comma separated": "Obavezne promenljive, odvojene zarezom",
+    Preview: "Pregled",
+    "Test myself": "Testiraj na mom nalogu",
+    "No versioned templates yet. Code fallbacks remain active.": "Još nema verzionisanih šablona. Rezervne vrednosti iz koda ostaju aktivne.",
+    "Provider readiness": "Spremnost dobavljača",
+    "Only safe configuration metadata is shown. Credentials are never returned.": "Prikazuju se samo bezbedni metapodaci konfiguracije. Akreditivi se nikada ne vraćaju.",
+    "Announcement draft created.": "Nacrt obaveštenja je kreiran.",
+    "Announcement draft could not be created.": "Nacrt obaveštenja nije mogao biti kreiran.",
+    "The announcement preview is no longer current.": "Pregled obaveštenja više nije aktuelan.",
+    "Continue to the controlled publication confirmation?": "Nastaviti na kontrolisanu potvrdu objavljivanja?",
+    "Type exactly": "Unesite tačno",
+    "The confirmation text does not match.": "Tekst potvrde se ne podudara.",
+    "Large audience confirmation": "Potvrda velike publike",
+    "The announcement could not be published.": "Obaveštenje nije moglo biti objavljeno.",
+    "Announcement queued for recipients": "Obaveštenje je stavljeno u red za primaoce",
+    "Enter the cancellation reason (at least 5 characters).": "Unesite razlog otkazivanja (najmanje 5 znakova).",
+    "Announcement canceled.": "Obaveštenje je otkazano.",
+    "The announcement could not be canceled.": "Obaveštenje nije moglo biti otkazano.",
+    "Describe the repaired cause before retrying (at least 5 characters).": "Opišite otklonjeni uzrok pre ponovnog pokušaja (najmanje 5 znakova).",
+    "Delivery queued for a safe retry.": "Isporuka je stavljena u red za bezbedan ponovni pokušaj.",
+    "The delivery could not be queued for retry.": "Isporuka nije mogla biti stavljena u red za ponovni pokušaj.",
+    "Template draft created.": "Nacrt šablona je kreiran.",
+    "The template draft could not be created.": "Nacrt šablona nije mogao biti kreiran.",
+    "Template approved and activated.": "Šablon je odobren i aktiviran.",
+    "The template could not be approved.": "Šablon nije mogao biti odobren.",
+    "The template preview could not be generated.": "Pregled šablona nije mogao biti napravljen.",
+    "Send a controlled test only to your administrator account?": "Poslati kontrolisani test samo na vaš administratorski nalog?",
+    "The controlled test was sent to your administrator account.": "Kontrolisani test je poslat na vaš administratorski nalog.",
+    "The controlled test could not be sent.": "Kontrolisani test nije mogao biti poslat.",
+    "Choose the channels you want to use for each notification category.": "Izaberite kanale koje želite da koristite za svaku kategoriju obaveštenja.",
+    "Your notification preferences were saved.": "Vaša podešavanja obaveštenja su sačuvana.",
+    "In app": "U aplikaciji",
+    "Required notification": "Obavezno obaveštenje",
+    Invitations: "Pozivnice",
+    Messages: "Poruke",
+    Incidents: "Vanredni događaji",
+    "Android notification permission": "Dozvola za Android obaveštenja",
+    "Manage notification permission and device registration.": "Upravljajte dozvolom za obaveštenja i registracijom uređaja.",
+    "Allow Android notifications to receive WhatsApp connection, support reply, security, and subscription updates on time.": "Dozvolite Android obaveštenja da biste na vreme primali ažuriranja o WhatsApp vezi, odgovorima podrške, bezbednosti i pretplati.",
+    "Enable notifications": "Omogući obaveštenja",
+    "Notifications enabled": "Obaveštenja su omogućena",
+    "Notifications disabled": "Obaveštenja su onemogućena",
+    "Notification permission was not granted. You can enable it in Android settings.": "Dozvola za obaveštenja nije odobrena. Možete je omogućiti u Android podešavanjima.",
   },
 };
 
 const curatedMobileOverrides = {
   ro: {
+    notificationChannelAndroid: "Notificare Android",
+    notificationChannelIos: "Notificare iOS",
+    notificationChannelWeb: "Notificare web",
     roleSuperAdmin: "Superadministrator",
     feedbackTitle: "Feedback Logivya",
     district: "Județ",
   },
-  ru: {},
+  ru: {
+    notificationChannelAndroid: "Уведомление Android",
+    notificationChannelIos: "Уведомление iOS",
+    notificationChannelWeb: "Веб-уведомление",
+  },
   az: {
+    notificationChannelAndroid: "Android bildirişi",
+    notificationChannelIos: "iOS bildirişi",
     roleSuperAdmin: "Super inzibatçı",
   },
   tk: {
+    retry: "Gaýtadan synan",
+    ticketBilling: "Hasaplaşyk",
+    notificationChannelInApp: "Programmada",
+    notificationChannelWeb: "Web habarnamasy",
+    notificationCategoryBilling: "Hasaplaşyk",
+    notificationImmediate: "Derrew",
+    privacyRightsRequest: "Maglumat hukuklary haýyşy",
+    submitDeletionRequest: "Pozmak haýyşyny iber",
+    adminBillingModule: "Hasaplaşyk moduly",
     sent: "Iberildi",
     emailSent: "Iberildi",
     roleAdmin: "Dolandyryjy",
@@ -112,6 +229,7 @@ const curatedMobileOverrides = {
     emailDelivery: "Παράδοση email: {status}",
   },
   sr: {
+    notificationChannelEmail: "E-pošta",
     email: "E-pošta",
     emailDelivery: "Isporuka e-pošte: {status}",
     feedbackTitle: "Povratne informacije za Logivya",
@@ -125,6 +243,11 @@ function normalizeRomanianTypography(value) {
 
 const curatedKeyOverrides = {
   ro: {
+    "notification.channel.android_push": "Notificare Android",
+    "notification.channel.ios_push": "Notificare iOS",
+    "notification.channel.web_push": "Notificare web",
+    "notification.category.incident": "Incident de sistem",
+    "notifications.admin.templateBody": "Corpul mesajului cu substituenți {{variable}}",
     "users.owner": "Proprietar",
     "adminUsers.superAdmin": "Superadministrator",
     "company.district": "Județ",
@@ -143,6 +266,10 @@ const curatedKeyOverrides = {
     "home.plan.professional.feature4": "Șterge pentru toți",
   },
   ru: {
+    "notification.channel.android_push": "Уведомление Android",
+    "notification.channel.ios_push": "Уведомление iOS",
+    "notification.channel.web_push": "Веб-уведомление",
+    "notifications.admin.templateBody": "Текст сообщения с заполнителями {{variable}}",
     "home.plan.trial.description": "Используйте все основные возможности Logivya бесплатно в течение 7 дней.",
     "home.plan.trial.feature2": "Сообщения с рекламной отметкой",
     "home.plan.trial.feature4": "Удаление у всех",
@@ -157,6 +284,11 @@ const curatedKeyOverrides = {
     "home.plan.professional.feature4": "Удаление у всех",
   },
   az: {
+    "notification.channel.in_app": "Tətbiqdaxili",
+    "notification.channel.android_push": "Android bildirişi",
+    "notification.channel.ios_push": "iOS bildirişi",
+    "notification.category.backup": "Ehtiyat nüsxə",
+    "notifications.admin.templateBody": "{{variable}} yer tutucuları olan mesaj mətni",
     "adminUsers.superAdmin": "Super inzibatçı",
     "adminUsers.role.admin": "İnzibatçı",
     "home.plan.trial.description": "Logivya-nın bütün əsas imkanlarını 7 gün pulsuz sınayın.",
@@ -173,6 +305,14 @@ const curatedKeyOverrides = {
     "home.plan.professional.feature4": "Hamı üçün silmə",
   },
   tk: {
+    "notifications.immediate": "Derrew",
+    "notification.channel.in_app": "Programmada",
+    "notification.channel.web_push": "Web habarnamasy",
+    "notification.category.billing": "Hasaplaşyk",
+    "notifications.admin.endTime": "Tamamlanýan wagt (islege bagly)",
+    "notifications.admin.retry": "Gaýtadan synan",
+    "notifications.admin.approve": "Tassykla",
+    "notifications.admin.templateBody": "{{variable}} ýer eýeleri bilen habar teksti",
     "users.owner": "Eýe",
     "users.admin": "Dolandyryjy",
     "users.emailSent": "Iberildi",
@@ -192,6 +332,8 @@ const curatedKeyOverrides = {
     "home.plan.professional.feature4": "Hemmeler üçin pozmak",
   },
   de: {
+    "notification.category.backup": "Datensicherung",
+    "notifications.admin.templateBody": "Nachrichtentext mit {{variable}}-Platzhaltern",
     "users.owner": "Inhaber",
     "home.plan.trial.description": "Testen Sie alle wesentlichen Logivya-Funktionen 7 Tage lang kostenlos.",
     "home.plan.trial.feature2": "Nachrichten mit Werbehinweis",
@@ -207,6 +349,7 @@ const curatedKeyOverrides = {
     "home.plan.professional.feature4": "Für alle löschen",
   },
   bg: {
+    "notifications.admin.templateBody": "Текст на съобщението със заместители {{variable}}",
     "home.plan.trial.description": "Изпробвайте безплатно всички основни възможности на Logivya за 7 дни.",
     "home.plan.trial.feature2": "Съобщения с рекламна маркировка",
     "home.plan.trial.feature4": "Изтриване за всички",
@@ -221,6 +364,7 @@ const curatedKeyOverrides = {
     "home.plan.professional.feature4": "Изтриване за всички",
   },
   el: {
+    "notifications.admin.templateBody": "Κείμενο μηνύματος με σύμβολα κράτησης θέσης {{variable}}",
     "home.plan.trial.description": "Δοκιμάστε δωρεάν όλες τις βασικές δυνατότητες του Logivya για 7 ημέρες.",
     "home.plan.trial.feature2": "Μηνύματα με διαφημιστική σήμανση",
     "home.plan.trial.feature4": "Διαγραφή για όλους",
@@ -235,6 +379,8 @@ const curatedKeyOverrides = {
     "home.plan.professional.feature4": "Διαγραφή για όλους",
   },
   sr: {
+    "notification.channel.email": "E-pošta",
+    "notifications.admin.templateBody": "Tekst poruke sa čuvarima mesta {{variable}}",
     "auth.email": "E-pošta",
     "company.email": "E-pošta",
     "systemHealth.email": "E-pošta",
@@ -261,6 +407,18 @@ const turkishResidue = /\b(?:kullanıcı|şirket|ayarlar|kaydet|başarısız|ba�
 
 function readJson(file) {
   return fs.readFile(file, "utf8").then(JSON.parse);
+}
+
+async function writeFileWithRetry(file, contents, attempts = 5) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await fs.writeFile(file, contents, "utf8");
+      return;
+    } catch (error) {
+      if (attempt === attempts || !["EBUSY", "EPERM", "UNKNOWN"].includes(error?.code)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+    }
+  }
 }
 
 function propertyName(node, sourceFile) {
@@ -301,18 +459,18 @@ function protectTokens(value) {
   const tokens = [];
   const text = value.replace(protectedTokenPattern, (token) => {
     const index = tokens.push(token) - 1;
-    return `\uE100${index}\uE101`;
+    return `__L10N_TOKEN_${index}__`;
   });
   return { text, tokens };
 }
 
 function restoreTokens(value, tokens) {
-  return value.replace(/\uE100\s*(\d+)\s*\uE101/g, (_, index) => tokens[Number(index)] ?? "").trim();
+  return value.replace(/__L10N_TOKEN_(\d+)__/g, (_, index) => tokens[Number(index)] ?? "").trim();
 }
 
 async function createBingSession() {
   const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/138.0.0.0 Safari/537.36";
-  const response = await fetch("https://www.bing.com/translator", { headers: { "user-agent": userAgent } });
+  const response = await fetch("https://www.bing.com/translator", { headers: { "user-agent": userAgent }, signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error(`Bing translator session returned ${response.status}`);
   const cookies = response.headers.getSetCookie().map((cookie) => cookie.split(";")[0]).join("; ");
   const html = await response.text();
@@ -345,6 +503,7 @@ async function bingTranslate(text, locale, attempt = 0) {
         referer: "https://www.bing.com/translator",
       },
       body,
+      signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) {
       const error = new Error(`Bing translator returned ${response.status}`);
@@ -357,31 +516,81 @@ async function bingTranslate(text, locale, attempt = 0) {
     return translated;
   } catch (error) {
     bingSession = null;
-    if (error?.status === 400 || (error instanceof Error && error.message.includes("could not be parsed"))) throw error;
+    if (error?.status === 400 || error?.status === 401 || error?.status === 403 || (error instanceof Error && error.message.includes("could not be parsed"))) throw error;
     if (attempt >= 2) throw error;
     await new Promise((resolve) => setTimeout(resolve, error?.status === 429 ? 15_000 * (attempt + 1) : 1_000 * 2 ** attempt));
     return bingTranslate(text, locale, attempt + 1);
   }
 }
 
-async function translateText(text, locale) {
-  try {
-    return await bingTranslate(text, locale);
-  } catch (error) {
-    throw new Error(`Translation RPC Bing failed: ${error instanceof Error ? error.message : String(error)}`);
+async function googleTranslate(text, locale, attempt = 0) {
+  const target = locale === "sr" ? "sr" : googleLocale[locale];
+  const body = new URLSearchParams({ client: "gtx", sl: "en", tl: target, dt: "t", q: text });
+  const response = await fetch("https://translate.googleapis.com/translate_a/single", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
+    body,
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    if (response.status === 429 && attempt < 4) {
+      await new Promise((resolve) => setTimeout(resolve, 15_000 * 2 ** attempt));
+      return googleTranslate(text, locale, attempt + 1);
+    }
+    throw new Error(`Google translator returned ${response.status}`);
   }
+  const payload = await response.json();
+  const chunks = Array.isArray(payload?.[0]) ? payload[0] : [];
+  const translated = chunks.map((chunk) => Array.isArray(chunk) && typeof chunk[0] === "string" ? chunk[0] : "").join("");
+  if (!translated) throw new Error("Google translator response could not be parsed");
+  return translated;
+}
+
+async function translateText(text, locale) {
+  if (process.env.L10N_OFFLINE_ONLY === "1") throw new Error(`No reviewed cached translation is available for ${locale}`);
+  try {
+    return await myMemoryTranslate(text, locale);
+  } catch (memoryError) {
+    try {
+      return await bingTranslate(text, locale);
+    } catch (bingError) {
+      try {
+        return await googleTranslate(text, locale);
+      } catch (googleError) {
+        throw new Error(`Translation RPCs failed: MyMemory: ${memoryError instanceof Error ? memoryError.message : String(memoryError)}; Bing: ${bingError instanceof Error ? bingError.message : String(bingError)}; Google: ${googleError instanceof Error ? googleError.message : String(googleError)}`);
+      }
+    }
+  }
+}
+
+async function myMemoryTranslate(text, locale) {
+  const url = new URL("https://api.mymemory.translated.net/get");
+  url.searchParams.set("q", text);
+  url.searchParams.set("langpair", `en|${locale === "sr" ? "sr" : googleLocale[locale]}`);
+  if (process.env.TRANSLATION_CONTACT_EMAIL) url.searchParams.set("de", process.env.TRANSLATION_CONTACT_EMAIL);
+  const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || payload?.responseStatus !== 200 || payload?.quotaFinished) {
+    throw new Error(`MyMemory translator returned ${payload?.responseStatus ?? response.status}`);
+  }
+  const translated = payload?.responseData?.translatedText;
+  if (typeof translated !== "string" || !translated) throw new Error("MyMemory translator response could not be parsed");
+  return translated
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&amp;", "&");
 }
 
 function parseBatch(translated, count) {
   const found = new Map();
-  const marker = /\uE000\s*(\d+)\s*\uE001([\s\S]*?)\uE002\s*\1\s*\uE003/g;
+  const marker = /__L10N_START_(\d+)__([\s\S]*?)__L10N_END_\1__/g;
   for (const match of translated.matchAll(marker)) found.set(Number(match[1]), match[2].trim());
   return found.size === count ? [...Array(count)].map((_, index) => found.get(index) ?? "") : null;
 }
 
 async function translateBatch(values, locale) {
   const protectedValues = values.map(protectTokens);
-  const source = protectedValues.map((item, index) => `\uE000${index}\uE001${item.text}\uE002${index}\uE003`).join("\n");
+  const source = protectedValues.map((item, index) => `__L10N_START_${index}__${item.text}__L10N_END_${index}__`).join("\n");
   let translated;
   try {
     translated = await translateText(source, locale);
@@ -475,11 +684,24 @@ function validateCatalog(locale, english, dictionary, name) {
 
 async function buildLocale(locale, rootEnglish, rootTurkish, mobileBase) {
   const localePath = path.join(root, "locales", `${locale}.json`);
+  const mobileLocalePath = path.join(root, "apps", "mobile", "src", "i18n", "locales", `${locale}.json`);
   const existing = await readJson(localePath).catch(() => ({}));
+  const existingMobile = await readJson(mobileLocalePath).catch(() => ({}));
   const sourceValues = [...new Set([...Object.values(rootEnglish), ...Object.values(mobileBase.en)])];
   const phraseOverrides = curatedTerms[locale];
   const valuesToTranslate = sourceValues.filter((value) => !phraseOverrides[value]);
   const translationMemory = new Map();
+  const seedTranslation = (source, value) => {
+    if (typeof value !== "string" || !value.trim()) return;
+    if (JSON.stringify(placeholders(source)) !== JSON.stringify(placeholders(value))) return;
+    if (hasQuestionMarkCorruption(source, value)) return;
+    if (value === source && !isAllowedIdentical(source, locale)) return;
+    if (["ro", "ru", "de", "bg", "el", "sr"].includes(locale) && turkishResidue.test(value)) return;
+    if (locale === "sr" && /[\u0400-\u04ff]/.test(value)) return;
+    translationMemory.set(source, value);
+  };
+  Object.entries(rootEnglish).forEach(([key, source]) => seedTranslation(source, existing[key]));
+  Object.entries(mobileBase.en).forEach(([key, source]) => seedTranslation(source, existingMobile[key]));
   for (const source of valuesToTranslate) {
     const cached = translationCache[`${locale}\u0000${source}`];
     if (typeof cached === "string" && cached.trim()) translationMemory.set(source, cached);
@@ -497,7 +719,7 @@ async function buildLocale(locale, rootEnglish, rootTurkish, mobileBase) {
       translationCache[`${locale}\u0000${source}`] = value;
     });
     await fs.mkdir(path.dirname(cachePath), { recursive: true });
-    await fs.writeFile(cachePath, `${JSON.stringify(translationCache)}\n`, "utf8");
+    await writeFileWithRetry(cachePath, `${JSON.stringify(translationCache)}\n`);
   });
   const invalidTranslations = valuesToTranslate.filter((source) => {
     const value = translationMemory.get(source) ?? "";
@@ -508,7 +730,7 @@ async function buildLocale(locale, rootEnglish, rootTurkish, mobileBase) {
       || (value === source && !isAllowedIdentical(source, locale) && !alreadyReviewed);
   });
   if (invalidTranslations.length) {
-    process.stdout.write(`[i18n] ${locale}: repairing ${invalidTranslations.length} phrases individually\n`);
+    process.stdout.write(`[i18n] ${locale}: repairing ${invalidTranslations.length} phrases individually (${invalidTranslations.slice(0, 8).join(" | ")})\n`);
     const repaired = await mapWithConcurrency(invalidTranslations, concurrency, async (source) => (await translateBatch([source], locale))[0]);
     invalidTranslations.forEach((source, index) => {
       const value = locale === "sr" ? toSerbianLatin(repaired[index]) : repaired[index];
@@ -516,7 +738,7 @@ async function buildLocale(locale, rootEnglish, rootTurkish, mobileBase) {
       translationCache[`${locale}\u0000${source}`] = value;
       translationCache[`__reviewed__\u0000${locale}\u0000${source}`] = true;
     });
-    await fs.writeFile(cachePath, `${JSON.stringify(translationCache)}\n`, "utf8");
+    await writeFileWithRetry(cachePath, `${JSON.stringify(translationCache)}\n`);
   }
   Object.entries(phraseOverrides).forEach(([source, target]) => translationMemory.set(source, target));
 
@@ -569,8 +791,8 @@ async function buildLocale(locale, rootEnglish, rootTurkish, mobileBase) {
   if (untranslated.length) process.stdout.write(`[i18n] ${locale}: ${untranslated.length} identical phrases require review (${untranslated.slice(0, 8).join(", ")})\n`);
 
   await fs.mkdir(path.join(root, "apps", "mobile", "src", "i18n", "locales"), { recursive: true });
-  await fs.writeFile(localePath, `${JSON.stringify(rootDictionary, null, 2)}\n`, "utf8");
-  await fs.writeFile(path.join(root, "apps", "mobile", "src", "i18n", "locales", `${locale}.json`), `${JSON.stringify(mobileDictionary, null, 2)}\n`, "utf8");
+  await writeFileWithRetry(localePath, `${JSON.stringify(rootDictionary, null, 2)}\n`);
+  await writeFileWithRetry(mobileLocalePath, `${JSON.stringify(mobileDictionary, null, 2)}\n`);
   return { locale, web: Object.keys(rootDictionary).length, mobile: Object.keys(mobileDictionary).length, untranslated: untranslated.length };
 }
 

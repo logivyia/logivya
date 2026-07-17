@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Bell, Boxes, Building2, ChevronDown, CircleHelp, CreditCard, History, LayoutDashboard, LogOut, Menu, Moon, Search, Send, Settings, ShieldCheck, Smartphone, Sun, Trash2, UserCog, UsersRound, X } from "lucide-react";
+import { Bell, Boxes, Building2, ChevronDown, CircleHelp, CreditCard, FileLock2, History, LayoutDashboard, LogOut, Menu, Moon, Search, Send, Settings, ShieldCheck, Smartphone, Sun, Trash2, UserCog, UsersRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/i18n/provider";
 import { cn } from "@/lib/utils";
@@ -17,9 +17,9 @@ const nav = [
   ["/send-message", "nav.sendMessage", Send], ["/message-history", "nav.history", History],
   ["/support", "nav.support", CircleHelp],
 ] as const;
-const settingsNav = [["/settings/company","settings.company",Building2],["/settings/users","settings.users",UserCog],["/settings/subscriptions","settings.billing",CreditCard],["/settings/security","settings.security",ShieldCheck],["/settings/delete-account","settings.deleteAccount",Trash2]] as const;
+const settingsNav = [["/settings/company","settings.company",Building2],["/settings/users","settings.users",UserCog],["/settings/subscriptions","settings.billing",CreditCard],["/settings/security","settings.security",ShieldCheck],["/settings/notifications","settings.notifications",Bell],["/settings/privacy","settings.privacy",FileLock2],["/settings/delete-account","settings.deleteAccount",Trash2]] as const;
 
-type NoticeItem={id:string;title:string;message:string;isRead:boolean;createdAt:string};
+type NoticeItem={id:string;title:string;message:string;isRead:boolean;createdAt:string;deepLink?:string|null};
 type ShellSubscription = {
   planName: string;
   status: string;
@@ -75,7 +75,7 @@ export function AppShell({ children, userName, subscription, isPlatformAdmin=fal
   const [unread,setUnread]=useState(0);
   const [currentTime]=useState(()=>Date.now());
   const [settingsOpen,setSettingsOpen]=useState(pathname.startsWith("/settings"));
-  useEffect(()=>{void fetch("/api/notifications").then(r=>r.json()).then(value=>{setNoticeItems(value.notifications||[]);setUnread(value.unread||0)})},[]);
+  useEffect(()=>{let active=true;const load=()=>void fetch("/api/notifications?limit=10").then(r=>r.json()).then(value=>{if(active){setNoticeItems(value.notifications||[]);setUnread(value.unread||0)}}).catch(()=>undefined);load();const timer=window.setInterval(load,30_000);return()=>{active=false;window.clearInterval(timer)}},[]);
   const subscriptionEndDate=latestSubscriptionEnd(subscription);
   const trialDays=remainingDays(subscriptionEndDate,currentTime);
   const periodDays=remainingDays(subscriptionEndDate,currentTime);
@@ -93,7 +93,7 @@ export function AppShell({ children, userName, subscription, isPlatformAdmin=fal
       <label className="hidden items-center gap-2 rounded-xl border bg-card px-3 py-2 md:flex"><Search className="size-4 text-muted" /><input className="w-32 bg-transparent text-xs outline-none" placeholder={t("header.search")} /><kbd className="text-[10px] text-muted">{t("header.shortcut")}</kbd></label>
       <LanguageSelector />
       <button className="rounded-xl border bg-card p-2" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={t("common.toggleTheme")}>{theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}</button>
-      <div className="relative"><button className="relative rounded-xl border bg-card p-2" onClick={() => setNotifications(!notifications)}><Bell className="size-4" />{unread>0&&<span className="absolute end-1 top-1 grid size-4 place-items-center rounded-full bg-primary text-[8px] font-bold text-white">{Math.min(unread,9)}</span>}</button>{notifications && <div className="panel absolute end-0 top-12 max-h-96 w-80 overflow-auto rounded-2xl p-3"><div className="flex items-center justify-between p-2"><b className="text-sm">{t("notifications.title")}</b><button onClick={async()=>{await fetch("/api/notifications",{method:"POST"});setUnread(0);setNoticeItems(items=>items.map(item=>({...item,isRead:true})))}} className="text-xs text-primary">{t("notifications.markAll")}</button></div>{noticeItems.length?noticeItems.map(item=><Notice key={item.id} title={item.title} text={item.message} unread={!item.isRead}/>):<p className="p-4 text-xs text-muted">{t("notifications.empty")}</p>}</div>}</div>
+      <div className="relative"><button className="relative rounded-xl border bg-card p-2" onClick={() => setNotifications(!notifications)}><Bell className="size-4" />{unread>0&&<span className="absolute end-1 top-1 grid size-4 place-items-center rounded-full bg-primary text-[8px] font-bold text-white">{Math.min(unread,9)}</span>}</button>{notifications && <div className="panel absolute end-0 top-12 max-h-96 w-80 overflow-auto rounded-2xl p-3"><div className="flex items-center justify-between p-2"><b className="text-sm">{t("notifications.title")}</b><button onClick={async()=>{await fetch("/api/notifications",{method:"POST"});setUnread(0);setNoticeItems(items=>items.map(item=>({...item,isRead:true})))}} className="text-xs text-primary">{t("notifications.markAll")}</button></div>{noticeItems.length?noticeItems.map(item=><Notice key={item.id} title={item.title} text={item.message} unread={!item.isRead}/>):<p className="p-4 text-xs text-muted">{t("notifications.empty")}</p>}<Link href="/notifications" onClick={()=>setNotifications(false)} className="mt-2 block border-t p-3 text-center text-xs font-semibold text-primary">{t("notifications.viewAll")}</Link></div>}</div>
       <button title={t("auth.logout")} onClick={async()=>{localStorage.removeItem("logivya.selectedGroupIds");await fetch("/api/auth/logout",{method:"POST"});location.href="/login";}} className="ms-1 inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white"><span>{userName.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase()}</span><LogOut className="size-3.5"/></button>
     </div></header><div className={cn("border-b px-4 py-2 text-center text-xs font-medium md:px-8",banner.isPositive?"bg-success-soft text-success-foreground":"bg-danger-soft text-danger-foreground")}>{banner.text}</div><main className="mx-auto max-w-[1600px] p-4 md:p-8">{children}</main></div>
   </div>;

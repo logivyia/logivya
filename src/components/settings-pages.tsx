@@ -259,16 +259,43 @@ export function SubscriptionsSettingsPage() {
 export function DeleteAccountSettingsPage() {
   const { t } = useI18n();
   const [value, setValue] = useState("");
+  const [password, setPassword] = useState("");
+  const [scope, setScope] = useState<"USER" | "COMPANY">("USER");
   const [status, setStatus] = useState("");
+  const [jobs, setJobs] = useState<Array<{ publicId: string; scope: string; status: string; cancelUntil: string }>>([]);
+
+  const phrase = scope === "COMPANY" ? t("accountDeletion.companyPhrase") : t("accountDeletion.userPhrase");
+
+  const loadJobs = useCallback(async () => {
+    const response = await fetch("/api/privacy/account-deletion", { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    setJobs(payload.jobs ?? []);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadJobs(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadJobs]);
 
   async function close() {
-    const response = await fetch("/api/settings/delete-account", {
+    const response = await fetch("/api/privacy/account-deletion", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ confirmation: value === t("accountDeletion.confirmationPhrase") ? "CLOSE MY LOGIVYA ACCOUNT" : value }),
+      body: JSON.stringify({ scope, confirmation: scope === "COMPANY" ? "DELETE MY LOGIVYA COMPANY" : "DELETE MY LOGIVYA ACCOUNT", password }),
     });
-    if (response.ok) location.href = "/login";
-    else setStatus((await response.json()).error);
+    if (response.ok) {
+      setStatus(t("accountDeletion.queued"));
+      setValue("");
+      setPassword("");
+      await loadJobs();
+    } else setStatus((await response.json()).error);
+  }
+
+  async function cancel(publicId: string) {
+    const response = await fetch("/api/privacy/account-deletion", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ publicId, password }) });
+    setStatus(response.ok ? t("accountDeletion.canceled") : (await response.json()).error);
+    if (response.ok) await loadJobs();
   }
 
   return (
@@ -277,13 +304,16 @@ export function DeleteAccountSettingsPage() {
       <section className={`${panel} border-danger/45 bg-danger-soft text-danger-foreground`}>
         <AlertTriangle className="size-7 text-danger" />
         <h3 className="mt-4 font-semibold text-foreground">{t("accountDeletion.disableCompany")}</h3>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{t("accountDeletion.warning", { phrase: t("accountDeletion.confirmationPhrase") })}</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{t("accountDeletion.warning", { phrase })}</p>
+        <select className={`${input} mt-5 max-w-md`} value={scope} onChange={(event) => { setScope(event.target.value as "USER" | "COMPANY"); setValue(""); }}><option value="USER">{t("accountDeletion.userScope")}</option><option value="COMPANY">{t("accountDeletion.companyScope")}</option></select>
         <input className={`${input} mt-5 max-w-md`} value={value} onChange={(event) => setValue(event.target.value)} />
-        <button disabled={value !== t("accountDeletion.confirmationPhrase")} onClick={() => void close()} className="mt-4 flex items-center gap-2 rounded-xl bg-danger px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
+        <input className={`${input} mt-3 max-w-md`} type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={t("privacy.passwordPlaceholder")} />
+        <button disabled={value !== phrase || !password} onClick={() => void close()} className="mt-4 flex items-center gap-2 rounded-xl bg-danger px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
           <ShieldCheck className="size-4" />
           {t("accountDeletion.disableAction")}
         </button>
         {status ? <p className="mt-3 text-sm text-danger">{status}</p> : null}
+        {jobs.map((job) => <div key={job.publicId} className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3 text-sm text-foreground"><span><b>{job.publicId}</b><span className="ms-2 text-muted">{job.scope} / {job.status}</span></span>{job.status === "QUEUED" ? <button className="text-danger" disabled={!password} onClick={() => void cancel(job.publicId)}>{t("accountDeletion.cancelRequest")}</button> : null}</div>)}
       </section>
     </>
   );

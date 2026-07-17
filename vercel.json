@@ -15,6 +15,14 @@
     {
       "path": "/api/cron/monitoring",
       "schedule": "37 4 * * *"
+    },
+    {
+      "path": "/api/cron/privacy-maintenance",
+      "schedule": "47 5 * * *"
+    },
+    {
+      "path": "/api/cron/notifications",
+      "schedule": "7 2 * * *"
     }
   ]
 }

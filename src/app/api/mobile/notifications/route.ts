@@ -16,6 +16,8 @@ export async function GET(request: Request) {
       where: {
         companyId: company.id,
         userId: user.id,
+        archivedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
         ...(unreadOnly ? { isRead: false } : {}),
         ...(type ? { type } : {})
       },

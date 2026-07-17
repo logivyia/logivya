@@ -98,10 +98,15 @@ export async function requestNotificationPermissionAndRegister() {
   }
 
   if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "Logivya",
-      importance: Notifications.AndroidImportance.DEFAULT
-    });
+    await Promise.all([
+      createAndroidChannel("system", "Sistem", Notifications.AndroidImportance.DEFAULT),
+      createAndroidChannel("security", "Güvenlik", Notifications.AndroidImportance.HIGH),
+      createAndroidChannel("account", "Hesap", Notifications.AndroidImportance.DEFAULT),
+      createAndroidChannel("whatsapp", "WhatsApp bağlantısı", Notifications.AndroidImportance.HIGH),
+      createAndroidChannel("messages", "Mesajlar", Notifications.AndroidImportance.DEFAULT),
+      createAndroidChannel("support", "Destek", Notifications.AndroidImportance.DEFAULT),
+      createAndroidChannel("billing", "Abonelik ve ödemeler", Notifications.AndroidImportance.HIGH)
+    ]);
   }
 
   const token = await Notifications.getExpoPushTokenAsync(config.easProjectId ? { projectId: config.easProjectId } : undefined);
@@ -117,6 +122,11 @@ export async function requestNotificationPermissionAndRegister() {
 
   await trackEvent("push_token_registered", { platform });
   return { registered: true };
+}
+
+export async function getNotificationPermissionStatus() {
+  const permission = (await Notifications.getPermissionsAsync()) as PermissionLike;
+  return permission.granted ?? permission.status === "granted";
 }
 
 export function subscribeNotificationHandlers(onOpen?: (url: string) => void) {
@@ -164,8 +174,8 @@ export function subscribeNotificationHandlers(onOpen?: (url: string) => void) {
 }
 
 function getNotificationDeepLink(data: NotificationData) {
-  if (typeof data.url === "string") return data.url;
-  if (typeof data.deepLink === "string") return data.deepLink;
+  if (typeof data.url === "string" && isSafeNotificationDeepLink(data.url)) return data.url;
+  if (typeof data.deepLink === "string" && isSafeNotificationDeepLink(data.deepLink)) return data.deepLink;
 
   switch (data.type) {
     case LOGIVYA_NOTIFICATION_TYPES.WHATSAPP_DISCONNECTED:
@@ -197,4 +207,17 @@ function getNotificationDeepLink(data: NotificationData) {
     default:
       return undefined;
   }
+}
+
+function createAndroidChannel(id: string, name: string, importance: Notifications.AndroidImportance) {
+  return Notifications.setNotificationChannelAsync(id, {
+    name,
+    importance,
+    vibrationPattern: [0, 250, 180, 250],
+    enableVibrate: true
+  });
+}
+
+function isSafeNotificationDeepLink(value: string) {
+  return value.startsWith("logivya://") || /^https:\/\/(www\.)?logivya\.com(\/|$)/i.test(value);
 }

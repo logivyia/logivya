@@ -41,6 +41,7 @@ const adminRows: AdminRow[] = [
   { key: "security", icon: "shield-checkmark-outline", titleKey: "adminSecurityModule", descriptionKey: "adminSecurityDescription" },
   { key: "trialRisk", icon: "warning-outline", titleKey: "adminTrialRiskModule", descriptionKey: "adminTrialRiskDescription" },
   { key: "compliance", icon: "checkmark-done-outline", titleKey: "adminComplianceModule", descriptionKey: "adminComplianceDescription" },
+  { key: "privacy", icon: "lock-closed-outline", titleKey: "adminPrivacyModule", descriptionKey: "adminPrivacyDescription" },
   { key: "audit", icon: "document-text-outline", titleKey: "adminAuditModule", descriptionKey: "adminAuditDescription" },
   { key: "activity", icon: "pulse-outline", titleKey: "adminActivityModule", descriptionKey: "adminActivityDescription" },
   { key: "notifications", icon: "notifications-outline", titleKey: "adminNotificationsModule", descriptionKey: "adminNotificationsDescription" },
@@ -68,6 +69,13 @@ export function MoreScreen() {
   const canSeeAdmin = canSeeAdminHub(isPlatformAdmin);
 
   function openModule(moduleKey: AdminModuleKey) {
+    if (moduleKey === "notifications" || moduleKey === "announcements") {
+      navigation.navigate("Profile", {
+        screen: "AdminNotificationOperations",
+        params: { initialTab: moduleKey === "announcements" ? "announcements" : "dashboard" }
+      });
+      return;
+    }
     navigation.navigate("Profile", {
       screen: "PlatformModule",
       params: { moduleKey }

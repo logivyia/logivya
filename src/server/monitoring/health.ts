@@ -15,6 +15,7 @@ import {
 import { redisConnectionOptions } from "@/server/queues/client";
 import { getCoreQueueOperationalMetrics } from "@/server/queues/health";
 import { readWorkerHeartbeat, WORKER_HEARTBEAT_FRESH_MS } from "@/server/whatsapp/worker-heartbeat";
+import { readNotificationWorkerHeartbeat } from "@/server/notifications/worker-heartbeat";
 
 const DAY_MS = 24 * 60 * 60_000;
 const SNAPSHOT_STALE_AFTER_MS = 5 * 60_000;
@@ -446,6 +447,44 @@ async function checkSupportAndEmailHealth(): Promise<ServiceHealth[]> {
   }
 }
 
+async function checkNotificationPlatformHealth(): Promise<ServiceHealth> {
+  const since = new Date(Date.now() - DAY_MS);
+  const staleBefore = new Date(Date.now() - 10 * 60_000);
+  try {
+    const [queued, staleProcessing, deadLetters, delivered, failed, workerHeartbeat] = await Promise.all([
+      prisma.notificationOutbox.count({ where: { status: { in: ["PENDING", "QUEUED"] } } }),
+      prisma.notificationOutbox.count({ where: { status: "PROCESSING", leaseExpiresAt: { lt: new Date() } } }),
+      prisma.notificationDeadLetter.count({ where: { resolvedAt: null } }),
+      prisma.notificationDelivery.count({ where: { status: { in: ["SENT", "ACCEPTED", "DELIVERED"] }, createdAt: { gte: since } } }),
+      prisma.notificationDelivery.count({ where: { status: { in: ["FAILED", "BOUNCED", "REJECTED", "DEAD_LETTERED"] }, createdAt: { gte: since } } }),
+      readNotificationWorkerHeartbeat(),
+    ]);
+    const staleQueued = await prisma.notificationOutbox.count({
+      where: { status: { in: ["PENDING", "QUEUED"] }, availableAt: { lt: staleBefore } },
+    });
+    const attempts = delivered + failed;
+    const failureRate = attempts ? Number(((failed / attempts) * 100).toFixed(2)) : 0;
+    const workerAgeMs = workerHeartbeat ? Math.max(0, Date.now() - new Date(workerHeartbeat.lastHeartbeatAt).getTime()) : null;
+    const workerRequired = environment() === "production" || process.env.NOTIFICATION_WORKER_REQUIRED === "true";
+    const workerUnhealthy = workerRequired && (!workerHeartbeat || workerHeartbeat.status !== "HEALTHY" || (workerAgeMs ?? Number.POSITIVE_INFINITY) > 30_000);
+    const state: HealthState = workerUnhealthy || deadLetters >= 5 || staleQueued >= 25 || staleProcessing > 0 || (attempts >= 10 && failureRate >= 25)
+      ? "DEGRADED"
+      : "HEALTHY";
+    return service({
+      id: "notifications",
+      name: "Notification delivery platform",
+      state,
+      tier: 1,
+      summary: state === "HEALTHY" ? "Notification outbox, delivery and dead-letter evidence are within threshold." : "Notification backlog, failed deliveries or dead letters require review.",
+      safeErrorCode: state === "HEALTHY" ? null : "NOTIFICATION_DELIVERY_DEGRADED",
+      runbook: "/docs/runbooks/notification-delivery-failure.md",
+      metrics: { queued, staleQueued, staleProcessing, unresolvedDeadLetters: deadLetters, deliveredLast24h: delivered, failedLast24h: failed, failureRate, workerHeartbeatAgeMs: workerAgeMs, workerStatus: workerHeartbeat?.status ?? "MISSING", workerRelease: workerHeartbeat?.release ?? null },
+    });
+  } catch (error) {
+    return service({ id: "notifications", name: "Notification delivery platform", state: "UNKNOWN", tier: 1, summary: "Notification platform metrics could not be read.", safeErrorCode: errorCode(error, "NOTIFICATION_METRICS"), runbook: "/docs/runbooks/notification-delivery-failure.md" });
+  }
+}
+
 async function checkAuthAndSubscriptionHealth(): Promise<ServiceHealth[]> {
   const since = new Date(Date.now() - 60 * 60_000);
   try {
@@ -538,7 +577,7 @@ async function checkStorageAndPushHealth(): Promise<ServiceHealth[]> {
     ]);
     return [
       service({ id: "storage", name: "Session and object storage", state: snapshots > 0 ? "HEALTHY" : "UNKNOWN", tier: 1, summary: snapshots > 0 ? "Encrypted WhatsApp session snapshots are present in durable storage." : "No durable session snapshot evidence is available; object storage has no active probe.", safeErrorCode: snapshots > 0 ? null : "STORAGE_EVIDENCE_MISSING", metrics: { encryptedSessionSnapshots: snapshots, objectStorageConfigured: Boolean(process.env.S3_BUCKET) } }),
-      service({ id: "push", name: "Push notifications", state: "UNKNOWN", tier: 1, summary: "Push tokens and in-app notifications are counted, but provider delivery receipts are not integrated.", safeErrorCode: "PUSH_DELIVERY_RECEIPTS_NOT_CONFIGURED", metrics: { activePushTokens: pushTokens, notificationsLast24h } }),
+      service({ id: "push", name: "Push notifications", state: pushTokens > 0 ? "HEALTHY" : "UNKNOWN", tier: 1, summary: pushTokens > 0 ? "Encrypted push tokens are present; Expo receipts are reconciled by the notification worker." : "No active push token is available for provider delivery verification.", safeErrorCode: pushTokens > 0 ? null : "PUSH_ACTIVE_TOKEN_MISSING", metrics: { activePushTokens: pushTokens, notificationsLast24h, receiptProcessing: "NOTIFICATION_WORKER" } }),
     ];
   } catch (error) {
     const code = errorCode(error, "STORAGE_PUSH_METRICS");
@@ -569,7 +608,7 @@ export async function getSystemHealthSnapshot(): Promise<SystemHealthSnapshot> {
   const unknown = (id: string, name: string, tier: ServiceTier, code: string, runbook?: string) => service({ id, name, state: "UNKNOWN", tier, summary: `${name} monitoring evidence exceeded its bounded collection window.`, safeErrorCode: code, runbook });
   const queueFallback = { queues: [], service: unknown("queues", "BullMQ queues", 0, "QUEUE_PROBE_TIMEOUT", "/docs/runbooks/queue-backlog.md") };
   const workerFallback = { heartbeat: null, service: unknown("worker", "WhatsApp message worker", 0, "WORKER_PROBE_TIMEOUT", "/docs/runbooks/worker-heartbeat-missing.md") };
-  const [database, redis, queueResult, workerResult, messaging, sync, supportEmail, authSubscriptions, storagePush] = await Promise.all([
+  const [database, redis, queueResult, workerResult, messaging, sync, supportEmail, notificationPlatform, authSubscriptions, storagePush] = await Promise.all([
     bounded(checkDatabaseHealth, unknown("database", "PostgreSQL", 0, "DATABASE_PROBE_TIMEOUT", "/docs/runbooks/database-unavailable.md")),
     bounded(checkRedisHealth, unknown("redis", "Redis", 0, "REDIS_PROBE_TIMEOUT", "/docs/runbooks/redis-unavailable.md")),
     bounded(checkQueuesHealth, queueFallback),
@@ -577,6 +616,7 @@ export async function getSystemHealthSnapshot(): Promise<SystemHealthSnapshot> {
     bounded(checkMessagingAndSchedulerHealth, [unknown("messaging", "Message delivery", 0, "MESSAGING_PROBE_TIMEOUT", "/docs/runbooks/message-failure-spike.md"), unknown("scheduler", "Scheduled and recurring jobs", 1, "SCHEDULER_PROBE_TIMEOUT", "/docs/runbooks/queue-backlog.md")]),
     bounded(checkSyncHealth, unknown("sync", "Contact and group synchronization", 1, "SYNC_PROBE_TIMEOUT", "/docs/runbooks/whatsapp-reconnect-failure.md")),
     bounded(checkSupportAndEmailHealth, [unknown("support", "Support flow", 1, "SUPPORT_PROBE_TIMEOUT", "/docs/runbooks/support-flow-failure.md"), unknown("email", "Email delivery", 1, "EMAIL_PROBE_TIMEOUT", "/docs/runbooks/email-delivery-failure.md")]),
+    bounded(checkNotificationPlatformHealth, unknown("notifications", "Notification delivery platform", 1, "NOTIFICATION_PROBE_TIMEOUT", "/docs/runbooks/notification-delivery-failure.md")),
     bounded(checkAuthAndSubscriptionHealth, [unknown("authentication", "Authentication", 0, "AUTH_PROBE_TIMEOUT", "/docs/runbooks/security-incident.md"), unknown("subscriptions", "Subscription entitlements", 0, "SUBSCRIPTION_PROBE_TIMEOUT")]),
     bounded(checkStorageAndPushHealth, [unknown("storage", "Session and object storage", 1, "STORAGE_PROBE_TIMEOUT"), unknown("push", "Push notifications", 1, "PUSH_PROBE_TIMEOUT")]),
   ]);
@@ -596,6 +636,7 @@ export async function getSystemHealthSnapshot(): Promise<SystemHealthSnapshot> {
     ...messaging,
     sync,
     ...supportEmail,
+    notificationPlatform,
     ...authSubscriptions,
     ...storagePush,
     ...backupDeployment,

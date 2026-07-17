@@ -3,6 +3,7 @@ import { translateForLocale } from "@/i18n/server";
 import { LOGIVYA_PLATFORM_OWNER_EMAIL } from "@/server/auth/platform-owner";
 import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
+import { decryptPushToken } from "@/server/notifications/push-token-security";
 
 export const NOTIFICATION_TYPES = {
   WHATSAPP_CONNECTED: "whatsapp.connected",
@@ -110,6 +111,10 @@ export function serializeNotification(notification: {
   payload?: Prisma.JsonValue | null;
   isRead: boolean;
   createdAt: Date;
+  category?: string;
+  priority?: string;
+  deepLink?: string | null;
+  readAt?: Date | null;
 }) {
   return {
     id: notification.id,
@@ -121,6 +126,10 @@ export function serializeNotification(notification: {
     payload: notification.payload ?? null,
     read: notification.isRead,
     isRead: notification.isRead,
+    category: notification.category ?? "SYSTEM",
+    priority: notification.priority ?? "NORMAL",
+    deepLink: notification.deepLink ?? null,
+    readAt: notification.readAt?.toISOString() ?? null,
     createdAt: notification.createdAt.toISOString()
   };
 }
@@ -230,7 +239,7 @@ async function sendPushToUser(input: {
     where: { companyId: input.companyId, userId: input.userId, revokedAt: null },
     select: { id: true, token: true }
   });
-  const tokens = devices.filter((device) => isExpoPushToken(device.token));
+  const tokens = readablePushTokens(devices).filter((device) => isExpoPushToken(device.token));
   if (!tokens.length) return;
 
   const messages = tokens.map((device) => ({
@@ -238,6 +247,7 @@ async function sendPushToUser(input: {
     sound: "default",
     title: input.title,
     body: input.message,
+    channelId: androidChannelForType(input.type),
     data: {
       type: input.type,
       notificationId: input.notificationId,
@@ -273,19 +283,21 @@ export async function sendPushToUserStrict(input: {
   type: string;
   notificationId: string;
   payload?: NotificationPayload;
+  platform?: "ANDROID" | "IOS";
 }) {
   const devices = await prisma.mobilePushToken.findMany({
-    where: { companyId: input.companyId, userId: input.userId, revokedAt: null },
-    select: { token: true },
+    where: { companyId: input.companyId, userId: input.userId, revokedAt: null, ...(input.platform ? { platform: input.platform } : {}) },
+    select: { id: true, token: true },
   });
-  const tokens = devices.filter((device) => isExpoPushToken(device.token));
-  if (!tokens.length) return { delivered: 0, skipped: true };
+  const tokens = readablePushTokens(devices).filter((device) => isExpoPushToken(device.token));
+  if (!tokens.length) return { delivered: 0, skipped: true, providerMessageId: undefined, ticketIds: [] as string[], ticketDeviceMap: {} as Record<string, string>, invalidatedTokens: 0 };
 
   const messages = tokens.map((device) => ({
     to: device.token,
     sound: "default",
     title: input.title,
     body: input.message,
+    channelId: androidChannelForType(input.type),
     data: {
       type: input.type,
       notificationId: input.notificationId,
@@ -294,25 +306,82 @@ export async function sendPushToUserStrict(input: {
   }));
 
   let delivered = 0;
+  const ticketIds: string[] = [];
+  const ticketDeviceMap: Record<string, string> = {};
+  const invalidTokenIds: string[] = [];
+  const providerErrors: string[] = [];
   for (const chunk of chunkArray(messages, 100)) {
     const response = await fetch(EXPO_PUSH_URL, {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Accept-Encoding": "gzip, deflate",
-        "Content-Type": "application/json",
-      },
+      headers: expoPushHeaders(),
       body: JSON.stringify(chunk),
     });
     if (!response.ok) throw new Error(`EXPO_PUSH_${response.status}`);
-    delivered += chunk.length;
+    const body = await response.json().catch(() => null) as { data?: Array<{ status?: string; id?: string; message?: string; details?: { error?: string } }> } | null;
+    const tickets = Array.isArray(body?.data) ? body.data : [];
+    tickets.forEach((ticket, index) => {
+      const matchingDevice = tokens.find((device) => device.token === chunk[index]?.to);
+      if (ticket.status === "ok") {
+        delivered += 1;
+        if (ticket.id) {
+          ticketIds.push(ticket.id);
+          if (matchingDevice) ticketDeviceMap[ticket.id] = matchingDevice.id;
+        }
+      }
+      if (ticket.details?.error === "DeviceNotRegistered") {
+        if (matchingDevice) invalidTokenIds.push(matchingDevice.id);
+      }
+      if (ticket.status === "error") providerErrors.push(ticket.details?.error || ticket.message || "EXPO_PUSH_REJECTED");
+    });
+    if (!tickets.length) delivered += chunk.length;
   }
 
-  return { delivered, skipped: false };
+  if (invalidTokenIds.length) {
+    const invalidatedAt = new Date();
+    await prisma.$transaction([
+      prisma.mobilePushToken.updateMany({ where: { id: { in: invalidTokenIds } }, data: { revokedAt: invalidatedAt } }),
+      prisma.notificationDevice.updateMany({ where: { mobilePushTokenId: { in: invalidTokenIds } }, data: { enabled: false, invalidatedAt } }),
+    ]);
+  }
+
+  if (!delivered && providerErrors.length) throw new Error(`EXPO_PUSH_${providerErrors[0]!.replace(/[^A-Z0-9_.:-]/gi, "_")}`);
+  return { delivered, skipped: false, providerMessageId: ticketIds[0], ticketIds, ticketDeviceMap, invalidatedTokens: invalidTokenIds.length };
+}
+
+function expoPushHeaders() {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Accept-Encoding": "gzip, deflate",
+    "Content-Type": "application/json",
+  };
+  const token = process.env.EXPO_ACCESS_TOKEN?.trim();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+function androidChannelForType(type: string) {
+  if (type.startsWith("security.") || type.startsWith("auth.")) return "security";
+  if (type.startsWith("whatsapp.")) return "whatsapp";
+  if (type.startsWith("message.") || type.startsWith("campaign.")) return "messages";
+  if (type.startsWith("support.")) return "support";
+  if (type.startsWith("subscription.") || type.startsWith("billing.") || type.startsWith("payment.")) return "billing";
+  if (type.startsWith("account.") || type.startsWith("invitation.")) return "account";
+  return "system";
 }
 
 function isExpoPushToken(token: string) {
   return EXPO_TOKEN_PREFIXES.some((prefix) => token.startsWith(prefix)) && token.endsWith("]");
+}
+
+function readablePushTokens<T extends { id: string; token: string }>(devices: T[]) {
+  return devices.flatMap((device) => {
+    try {
+      return [{ ...device, token: decryptPushToken(device.token) }];
+    } catch (error) {
+      logger.error("notification.push_token.decrypt_failed", error, { pushTokenId: device.id });
+      return [];
+    }
+  });
 }
 
 function chunkArray<T>(items: T[], size: number) {

@@ -598,11 +598,18 @@
   "settings.trialDays": "{days} days",
   "settings.custom": "Custom",
   "accountDeletion.title": "Delete Account",
-  "accountDeletion.description": "Close company access. Message, invoice, and audit history is retained where legally required.",
-  "accountDeletion.disableCompany": "Disable company account",
-  "accountDeletion.warning": "This action closes all active sessions and stops campaigns. Type {phrase} below to continue.",
-  "accountDeletion.confirmationPhrase": "CLOSE MY LOGIVYA ACCOUNT",
-  "accountDeletion.disableAction": "Disable account",
+  "accountDeletion.description": "Submit and track a deletion request. Some records may need to be retained after legal review.",
+  "accountDeletion.disableCompany": "Request deletion",
+  "accountDeletion.warning": "The request enters a cancellation period and is not executed immediately. Type {phrase} below to continue.",
+  "accountDeletion.confirmationPhrase": "DELETE MY LOGIVYA ACCOUNT",
+  "accountDeletion.disableAction": "Submit deletion request",
+  "accountDeletion.userScope": "My user account",
+  "accountDeletion.companyScope": "My company and its data (owner only)",
+  "accountDeletion.userPhrase": "DELETE MY LOGIVYA ACCOUNT",
+  "accountDeletion.companyPhrase": "DELETE MY LOGIVYA COMPANY",
+  "accountDeletion.queued": "Your deletion request was queued and can be canceled during the waiting period.",
+  "accountDeletion.canceled": "Your deletion request was canceled.",
+  "accountDeletion.cancelRequest": "Cancel request",
   "billing.period.monthly": "Monthly",
   "billing.period.yearly": "Yearly",
   "billing.period.custom": "Custom",
@@ -857,11 +864,13 @@
   "cookies.title": "Cookie preferences",
   "cookies.description": "Essential cookies are used for sessions and security. Analytics and marketing cookies depend on your preference.",
   "cookies.essential": "Essential",
+  "cookies.functional": "Functional preferences",
   "cookies.analytics": "Analytics",
   "cookies.marketing": "Marketing",
   "cookies.acceptAll": "Accept all",
   "cookies.rejectOptional": "Reject optional cookies",
   "cookies.manage": "Manage preferences",
+  "cookies.save": "Save preferences",
   "history.pending": "Pending",
   "history.retrying": "Retrying",
   "history.created": "Created",
@@ -1129,6 +1138,7 @@
   "admin.menu.security": "Security",
   "admin.menu.trialRisk": "Trial risk",
   "admin.menu.compliance": "Compliance",
+  "admin.menu.privacy": "Privacy Center",
   "admin.menu.audit": "Audit center",
   "admin.menu.activity": "Activity center",
   "admin.menu.notifications": "Notifications",
@@ -1338,4 +1348,164 @@
   ,"billing.trialIdentityUsedDescription": "This WhatsApp account has already used its free trial. Select a paid plan to continue."
   ,"billing.trialReviewTitle": "Trial eligibility under review"
   ,"billing.trialReviewDescription": "Your trial eligibility requires a security review. You can still purchase a paid plan."
+  ,"settings.privacy": "Privacy and data"
+  ,"privacy.eyebrow": "Privacy controls"
+  ,"privacy.title": "Privacy and data"
+  ,"privacy.description": "Manage optional data preferences, request a copy of your data, and track privacy requests."
+  ,"privacy.loadFailed": "Privacy settings could not be loaded."
+  ,"privacy.preferenceFailed": "Your preference could not be updated."
+  ,"privacy.preferenceSaved": "Your preference was saved."
+  ,"privacy.noticesTitle": "Notices and terms"
+  ,"privacy.noticesDescription": "Review the current information provided about data processing and service terms."
+  ,"privacy.privacyPolicy": "Privacy Policy"
+  ,"privacy.kvkkNotice": "KVKK Notice"
+  ,"privacy.terms": "Terms of Service"
+  ,"privacy.preferencesTitle": "Optional preferences"
+  ,"privacy.preferencesDescription": "Required service and security processing cannot be disabled here."
+  ,"privacy.analyticsLabel": "Product analytics"
+  ,"privacy.analyticsDescription": "Allowlisted usage measurements used to improve the product."
+  ,"privacy.diagnosticsLabel": "Crash diagnostics"
+  ,"privacy.diagnosticsDescription": "Redacted technical diagnostics used to investigate application errors."
+  ,"privacy.marketingLabel": "Marketing communications"
+  ,"privacy.marketingDescription": "Product news and campaign messages, separate from service notices."
+  ,"privacy.exportTitle": "Download your data"
+  ,"privacy.exportDescription": "Create a private encrypted export. The download token is issued once and expires."
+  ,"privacy.passwordPlaceholder": "Current password"
+  ,"privacy.requestExport": "Request export"
+  ,"privacy.exportFailed": "The data export request could not be completed."
+  ,"privacy.exportQueued": "Your encrypted export is being prepared."
+  ,"privacy.exportTokenMissing": "The one-time download token is not available on this device. Request a new export."
+  ,"privacy.download": "Download"
+  ,"privacy.rightsTitle": "Privacy request"
+  ,"privacy.rightsDescription": "Submit and track an authenticated request about your personal data."
+  ,"privacy.requestAccess": "Access and information"
+  ,"privacy.requestRectification": "Correction"
+  ,"privacy.requestRestriction": "Restriction"
+  ,"privacy.requestObjection": "Objection"
+  ,"privacy.requestPortability": "Portability"
+  ,"privacy.requestOther": "Other"
+  ,"privacy.requestDescriptionPlaceholder": "Describe your request"
+  ,"privacy.submitRequest": "Submit request"
+  ,"privacy.requestFailed": "Your privacy request could not be submitted."
+  ,"privacy.requestReceived": "Your privacy request was received."
+  ,"privacy.requestHistory": "Request history"
+  ,"privacy.requestId": "Request ID"
+  ,"privacy.requestType": "Type"
+  ,"privacy.requestStatus": "Status"
+  ,"privacy.requestDate": "Date"
+  ,"privacy.deletionLink": "Request account or company deletion"
+  ,"common.all": "All"
+  ,"notifications.eyebrow": "Communication center"
+  ,"notifications.centerDescription": "Manage account, security, support, and operational notifications in one place."
+  ,"notifications.preferences": "Notification preferences"
+  ,"notifications.preferencesDescription": "Choose your channels while mandatory security notifications remain protected."
+  ,"notifications.preferencesSaved": "Notification preferences saved."
+  ,"notifications.preferencesSaveFailed": "Notification preferences could not be saved."
+  ,"notifications.loadFailed": "Notifications could not be loaded."
+  ,"notifications.category": "Category"
+  ,"notifications.open": "Open"
+  ,"notifications.markRead": "Mark as read"
+  ,"notifications.archive": "Archive"
+  ,"notifications.mandatory": "Mandatory notification"
+  ,"notifications.deliveryMode": "Delivery mode"
+  ,"notifications.immediate": "Immediate"
+  ,"notifications.dailyDigest": "Daily digest"
+  ,"notifications.weeklyDigest": "Weekly digest"
+  ,"notifications.quietStart": "Quiet hours start"
+  ,"notifications.quietEnd": "Quiet hours end"
+  ,"notifications.viewAll": "View all notifications"
+  ,"notifications.webPushTitle": "Browser notifications"
+  ,"notifications.webPushDescription": "Receive important Logivya notifications in this browser after you grant permission."
+  ,"notifications.webPushEnable": "Enable web notifications"
+  ,"notifications.webPushDisable": "Disable web notifications"
+  ,"notifications.webPushEnabled": "Web notifications are enabled for this browser."
+  ,"notifications.webPushDisabled": "Web notifications are disabled for this browser."
+  ,"notifications.webPushUnavailable": "Web notifications are unavailable in this browser or server configuration."
+  ,"notifications.webPushPermissionDenied": "Browser notification permission was not granted. You can change it in browser settings."
+  ,"notifications.webPushEnableFailed": "Web notifications could not be enabled."
+  ,"notifications.webPushDisableFailed": "Web notifications could not be disabled."
+  ,"notification.channel.in_app": "In-app"
+  ,"notification.channel.email": "Email"
+  ,"notification.channel.android_push": "Android push"
+  ,"notification.channel.ios_push": "iOS push"
+  ,"notification.channel.web_push": "Web push"
+  ,"notification.category.account": "Account"
+  ,"notification.category.security": "Security"
+  ,"notification.category.support": "Support"
+  ,"notification.category.subscription": "Subscription"
+  ,"notification.category.billing": "Billing"
+  ,"notification.category.invitation": "Invitation"
+  ,"notification.category.whatsapp": "WhatsApp"
+  ,"notification.category.message": "Message"
+  ,"notification.category.system": "System"
+  ,"notification.category.marketing": "Marketing"
+  ,"notification.category.compliance": "Compliance"
+  ,"notification.category.administration": "Administration"
+  ,"notification.category.backup": "Backup"
+  ,"notification.category.incident": "Incident"
+  ,"notifications.admin.platformAnnouncement": "Platform announcement"
+  ,"notifications.admin.platformAnnouncementDescription": "Create a draft, review its exact audience and channels, then explicitly approve publication."
+  ,"notifications.admin.title": "Title"
+  ,"notifications.admin.message": "Message"
+  ,"notifications.admin.deepLink": "Internal deep link (optional)"
+  ,"notifications.admin.locale": "Language"
+  ,"notifications.admin.priority": "Priority"
+  ,"notifications.admin.channels": "Channels"
+  ,"notifications.admin.startTime": "Start time"
+  ,"notifications.admin.endTime": "End time (optional)"
+  ,"notifications.admin.createDraft": "Create draft"
+  ,"notifications.admin.previewAndPublish": "Preview and publish"
+  ,"notifications.admin.cancel": "Cancel"
+  ,"notifications.admin.noAnnouncements": "No announcement drafts yet."
+  ,"notifications.admin.unresolvedDeadLetters": "Unresolved dead letters"
+  ,"notifications.admin.deadLetterDescription": "Retry only after the underlying provider or configuration issue is repaired."
+  ,"notifications.admin.event": "Event"
+  ,"notifications.admin.channel": "Channel"
+  ,"notifications.admin.error": "Error"
+  ,"notifications.admin.attempts": "Attempts"
+  ,"notifications.admin.date": "Date"
+  ,"notifications.admin.retry": "Retry"
+  ,"notifications.admin.noDeadLetters": "No unresolved dead letters."
+  ,"notifications.admin.versionedTemplates": "Versioned notification templates"
+  ,"notifications.admin.versionedTemplatesDescription": "New versions begin as drafts and require explicit administrator approval."
+  ,"notifications.admin.templateName": "Template name"
+  ,"notifications.admin.emailSubject": "Email subject"
+  ,"notifications.admin.templateBody": "Message body with {{variable}} placeholders"
+  ,"notifications.admin.requiredVariables": "Required variables, comma separated"
+  ,"notifications.admin.preview": "Preview"
+  ,"notifications.admin.testSelf": "Test myself"
+  ,"notifications.admin.active": "Active"
+  ,"notifications.admin.approve": "Approve"
+  ,"notifications.admin.noTemplates": "No versioned templates yet. Code fallbacks remain active."
+  ,"notifications.admin.providerReadiness": "Provider readiness"
+  ,"notifications.admin.providerReadinessDescription": "Only safe configuration metadata is shown. Credentials are never returned."
+  ,"notifications.admin.draftCreated": "Announcement draft created."
+  ,"notifications.admin.draftFailed": "Announcement draft could not be created."
+  ,"notifications.admin.previewStale": "The announcement preview is no longer current."
+  ,"notifications.admin.audience": "Audience"
+  ,"notifications.admin.schedule": "Schedule"
+  ,"notifications.admin.continueConfirmation": "Continue to the controlled publication confirmation?"
+  ,"notifications.admin.typeExactly": "Type exactly"
+  ,"notifications.admin.confirmationMismatch": "The confirmation text does not match."
+  ,"notifications.admin.largeAudience": "Large audience confirmation"
+  ,"notifications.admin.publishFailed": "The announcement could not be published."
+  ,"notifications.admin.announcementQueued": "Announcement queued for recipients"
+  ,"notifications.admin.cancelReason": "Enter the cancellation reason (at least 5 characters)."
+  ,"notifications.admin.announcementCanceled": "Announcement canceled."
+  ,"notifications.admin.cancelFailed": "The announcement could not be canceled."
+  ,"notifications.admin.retryReason": "Describe the repaired cause before retrying (at least 5 characters)."
+  ,"notifications.admin.retryQueued": "Delivery queued for a safe retry."
+  ,"notifications.admin.retryFailed": "The delivery could not be queued for retry."
+  ,"notifications.admin.templateDraftCreated": "Template draft created."
+  ,"notifications.admin.templateCreateFailed": "The template draft could not be created."
+  ,"notifications.admin.templateApproved": "Template approved and activated."
+  ,"notifications.admin.templateApproveFailed": "The template could not be approved."
+  ,"notifications.admin.templatePreviewFailed": "The template preview could not be generated."
+  ,"notifications.admin.testConfirm": "Send a controlled test only to your administrator account?"
+  ,"notifications.admin.testCompleted": "The controlled test was sent to your administrator account."
+  ,"notifications.admin.testFailed": "The controlled test could not be sent."
+  ,"notifications.admin.priorityLow": "Low"
+  ,"notifications.admin.priorityNormal": "Normal"
+  ,"notifications.admin.priorityHigh": "High"
+  ,"notifications.admin.priorityCritical": "Critical"
 }
