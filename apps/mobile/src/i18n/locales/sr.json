@@ -799,5 +799,7 @@
   "trialIneligibleTitle": "Besplatni probni period je već iskorišćen",
   "trialIdentityUsedDescription": "Ovaj WhatsApp nalog je već iskoristio besplatni probni period. Izaberite plaćeni plan da biste nastavili.",
   "trialReviewTitle": "Podobnost za probni period se proverava",
-  "trialReviewDescription": "Potrebna je bezbednosna provera. I dalje možete kupiti plaćeni plan."
+  "trialReviewDescription": "Potrebna je bezbednosna provera. I dalje možete kupiti plaćeni plan.",
+  "adminReleasesModule": "Centar izdanja",
+  "adminReleasesDescription": "Pratite potpisane artefakte, provere, testove, odobrenja, slanja u prodavnice i postepene objave."
 }

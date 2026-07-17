@@ -24,6 +24,7 @@ export type AdminModuleKey =
   | "systemHealth"
   | "backups"
   | "disasterRecovery"
+  | "releases"
   | "settings"
   | "featureFlags"
   | "announcements"
@@ -346,6 +347,17 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     endpoint: "/api/admin/modules/disaster-recovery",
     coverage: "read-only",
     pagination: "none"
+  },
+  releases: {
+    key: "releases",
+    title: "Surum Merkezi",
+    eyebrow: "Yayin Yonetimi",
+    description: "Imzali artifact, kontrol, test, onay ve magaza rollout kanitlari.",
+    endpoint: "/api/admin/modules/releases",
+    coverage: "read-only",
+    searchable: true,
+    statusOptions: ["DRAFT", "VALIDATING", "BLOCKED", "APPROVED", "BUILT", "SUBMITTED", "ROLLING_OUT", "COMPLETED", "ROLLED_BACK"],
+    pagination: "page"
   },
   settings: {
     key: "settings",

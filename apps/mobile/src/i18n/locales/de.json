@@ -799,5 +799,7 @@
   "trialIneligibleTitle": "Kostenlose Testphase bereits verwendet",
   "trialIdentityUsedDescription": "Dieses WhatsApp-Konto hat die kostenlose Testphase bereits verwendet. Wählen Sie einen kostenpflichtigen Plan, um fortzufahren.",
   "trialReviewTitle": "Testberechtigung wird geprüft",
-  "trialReviewDescription": "Ihre Testberechtigung erfordert eine Sicherheitsprüfung. Sie können weiterhin einen kostenpflichtigen Plan erwerben."
+  "trialReviewDescription": "Ihre Testberechtigung erfordert eine Sicherheitsprüfung. Sie können weiterhin einen kostenpflichtigen Plan erwerben.",
+  "adminReleasesModule": "Release-Center",
+  "adminReleasesDescription": "Überwachen Sie signierte Artefakte, Prüfungen, Tests, Freigaben, Store-Einreichungen und Rollouts."
 }

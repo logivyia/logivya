@@ -15,6 +15,7 @@ export const ADMIN_SNAPSHOT_MODULES = [
   "data-requests",
   "backups",
   "disaster-recovery",
+  "releases",
   "settings",
   "feature-flags",
   "announcements",
@@ -107,6 +108,8 @@ export async function getAdminModuleSnapshot(module: AdminSnapshotModule, query:
       return backupsSnapshot(query);
     case "disaster-recovery":
       return disasterRecoverySnapshot(query);
+    case "releases":
+      return releasesSnapshot(query);
     case "settings":
       return settingsSnapshot(query);
     case "feature-flags":
@@ -624,6 +627,89 @@ async function disasterRecoverySnapshot(query: SnapshotQuery) {
   ], [], true, "Recovery execution is intentionally unavailable without a protected backend workflow.");
 }
 
+async function releasesSnapshot(query: SnapshotQuery) {
+  const where: Prisma.ReleaseWhereInput = {
+    ...(query.status ? { status: query.status as never } : {}),
+    ...(query.search ? {
+      OR: [
+        { releaseId: { contains: query.search, mode: "insensitive" } },
+        { packageId: { contains: query.search, mode: "insensitive" } },
+        { versionName: { contains: query.search, mode: "insensitive" } },
+        { gitCommit: { contains: query.search, mode: "insensitive" } },
+      ],
+    } : {}),
+    ...dateWhere("createdAt", query),
+  };
+  const [rows, total, statusCounts, failedRequiredChecks] = await Promise.all([
+    prisma.release.findMany({
+      where,
+      select: {
+        id: true,
+        releaseId: true,
+        platform: true,
+        packageId: true,
+        versionCode: true,
+        versionName: true,
+        gitCommit: true,
+        apiContractVersion: true,
+        buildDate: true,
+        channel: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        artifacts: { select: { type: true, fileName: true, sha256: true }, orderBy: { createdAt: "desc" }, take: 1 },
+        checks: { select: { status: true, required: true } },
+        submissions: { select: { provider: true, track: true, status: true }, orderBy: { createdAt: "desc" }, take: 1 },
+        rolloutStages: { select: { provider: true, track: true, percentage: true, status: true }, orderBy: { createdAt: "desc" }, take: 1 },
+        _count: { select: { artifacts: true, checks: true, tests: true, approvals: true, submissions: true, rolloutStages: true } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: offset(query),
+      take: query.limit,
+    }),
+    prisma.release.count({ where }),
+    prisma.release.groupBy({ by: ["status"], where, _count: { _all: true } }),
+    prisma.releaseCheck.count({ where: { required: true, status: "FAILED", release: where } }),
+  ]);
+  const metrics: Record<string, SnapshotValue> = { releases: total, failedRequiredChecks };
+  for (const row of statusCounts) metrics[`status_${row.status}`] = row._count._all;
+  return snapshot("releases", query, total, metrics, rows.map((release) => {
+    const requiredChecks = release.checks.filter((check) => check.required);
+    const latestSubmission = release.submissions[0];
+    const latestRollout = release.rolloutStages[0];
+    const latestArtifact = release.artifacts[0];
+    return {
+      id: release.id,
+      title: release.releaseId,
+      subtitle: `${release.platform} · ${release.packageId}`,
+      status: release.status,
+      createdAt: release.createdAt.toISOString(),
+      updatedAt: release.updatedAt.toISOString(),
+      fields: {
+        versionCode: release.versionCode ?? null,
+        versionName: release.versionName,
+        channel: release.channel ?? null,
+        gitCommit: release.gitCommit.slice(0, 12),
+        apiContractVersion: release.apiContractVersion ?? null,
+        buildDate: iso(release.buildDate),
+        requiredChecks: requiredChecks.length,
+        passedChecks: requiredChecks.filter((check) => check.status === "PASSED").length,
+        failedChecks: requiredChecks.filter((check) => check.status === "FAILED").length,
+        artifacts: release._count.artifacts,
+        tests: release._count.tests,
+        approvals: release._count.approvals,
+        latestArtifact: latestArtifact?.fileName ?? null,
+        latestArtifactType: latestArtifact?.type ?? null,
+        latestArtifactSha256: latestArtifact?.sha256.slice(0, 16) ?? null,
+        store: latestSubmission ? `${latestSubmission.provider}:${latestSubmission.track}` : null,
+        storeStatus: latestSubmission?.status ?? null,
+        rollout: latestRollout ? `${latestRollout.provider}:${latestRollout.track}:${latestRollout.percentage}%` : null,
+        rolloutStatus: latestRollout?.status ?? null,
+      },
+    };
+  }), ["status", "dateFrom", "dateTo"], true, "Release records are imported only by the protected signed-release workflow; this view is read-only.");
+}
+
 async function settingsSnapshot(query: SnapshotQuery) {
   const rows = [
     systemItem("maintenance", "Maintenance mode", envBoolean("MAINTENANCE_MODE") ? "ENABLED" : "DISABLED", { configured: process.env.MAINTENANCE_MODE != null }),
@@ -680,7 +766,7 @@ function snapshot(
     items,
     pagination: { page: query.page, limit: query.limit, total, pages, nextPage: query.page < pages ? query.page + 1 : null },
     capabilities: {
-      search: ["billing", "whatsapp-accounts", "campaigns", "compliance", "audit", "notifications", "data-requests", "feature-flags", "announcements", "api-usage", "webhooks"].includes(module),
+      search: ["billing", "whatsapp-accounts", "campaigns", "compliance", "audit", "notifications", "data-requests", "releases", "feature-flags", "announcements", "api-usage", "webhooks"].includes(module),
       filters,
       actions: [],
       readOnly,

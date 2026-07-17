@@ -49,7 +49,7 @@ Recorded: 2026-07-17
 
 - Public SPF currently authorizes Cloudflare mail only. Resend sender-domain verification should still be rechecked with DKIM, SPF and DMARC evidence even though the controlled production send was accepted.
 - The selected no-new-cost cron mode is daily. Durable retries work, but retry latency follows the daily schedule; a continuously running paid worker remains intentionally deferred.
-- Play update acceptance from v127 to v129 must be completed through the Play internal-test track because a local upload-key APK cannot replace a Google Play-signed installation.
+- Play update acceptance from v127 to v129 completed through the Play internal-test track. The installer remained Google Play, the package identity was unchanged and application data was preserved.
 - Foreground, background, terminated-state push delivery and logout/user-switch token revocation still require a Play-installed v129 device smoke test.
 - Actual Web Push subscribe, delivery, revoke and deep-link behavior still requires a signed-in browser/device smoke test.
 

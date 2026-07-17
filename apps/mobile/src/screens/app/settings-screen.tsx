@@ -5,7 +5,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { logout } from "@/auth/auth-service";
 import { useSettingsStore } from "@/auth/settings-store";
-import { getCurrentAppVersion, getCurrentBuildChannel } from "@/api/mobileRelease";
+import { getCurrentAppVersion, getCurrentBuildChannel, getCurrentReleaseMetadata } from "@/api/mobileRelease";
 import { updateLocalePreference } from "@/api/locale-api";
 import { Screen } from "@/components/screen";
 import { useTranslation } from "@/i18n/use-translation";
@@ -18,6 +18,7 @@ export function SettingsScreen() {
   const { t, locale } = useTranslation();
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
   const { theme: selectedTheme, setTheme, setLocale, notificationsEnabled, setNotificationsEnabled, biometricEnabled, setBiometricEnabled } = useSettingsStore();
+  const release = getCurrentReleaseMetadata();
 
   async function handleLogout() {
     try {
@@ -61,8 +62,9 @@ export function SettingsScreen() {
         </SettingsSection>
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{t("about")}</Text>
-          <Text style={[styles.description, { color: theme.muted }]}>Logivya Mobile {getCurrentAppVersion()}</Text>
+          <Text style={[styles.description, { color: theme.muted }]}>Logivya Mobile {getCurrentAppVersion()} ({release.versionCode})</Text>
           <Text style={[styles.description, { color: theme.muted }]}>{t("releaseChannel")}: {String(getCurrentBuildChannel())}</Text>
+          <Text style={[styles.description, { color: theme.muted }]}>{release.releaseId} / {release.gitCommit.slice(0, 8)}</Text>
         </View>
         <Pressable accessibilityRole="button" onPress={handleLogout} style={[styles.logout, { borderColor: theme.border, backgroundColor: theme.card }]}>
           <Text style={[styles.logoutText, { color: theme.danger }]}>{t("logout")}</Text>

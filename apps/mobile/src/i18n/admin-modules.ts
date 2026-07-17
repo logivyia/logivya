@@ -25,6 +25,7 @@ export const adminModuleTranslationKeys: Record<AdminModuleKey, { title: Transla
   systemHealth: { title: "adminSystemHealthModule", description: "adminSystemHealthDescription" },
   backups: { title: "adminBackupsModule", description: "adminBackupsDescription" },
   disasterRecovery: { title: "adminDisasterRecoveryModule", description: "adminDisasterRecoveryDescription" },
+  releases: { title: "adminReleasesModule", description: "adminReleasesDescription" },
   settings: { title: "adminSettingsModule", description: "adminSettingsDescription" },
   featureFlags: { title: "adminFeatureFlagsModule", description: "adminFeatureFlagsDescription" },
   announcements: { title: "adminAnnouncementsModule", description: "adminAnnouncementsDescription" },

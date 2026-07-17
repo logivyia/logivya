@@ -16,7 +16,13 @@ Status: `LEGAL REVIEW REQUIRED`
 
 ## Permission findings
 
-Android requests network, notifications and vibration only. It does not request contacts, camera, location, advertising ID or broad storage access in the audited configuration. WhatsApp contacts are synchronized server-side; device contact permission must not be added for that feature.
+The verified source-candidate merge requests notification permission plus
+technical network, wake/boot, biometric storage and launcher-badge permissions.
+It does not request contacts, camera, location, advertising ID, AdServices ID or
+broad storage access. WhatsApp contacts are synchronized server-side; device
+contact permission must not be added for that feature. The already-published
+v129 AAB predates the source permission removal and is tracked separately in the
+production release audit.
 
 ## Release check
 

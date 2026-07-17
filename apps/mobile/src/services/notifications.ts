@@ -97,6 +97,22 @@ export async function requestNotificationPermissionAndRegister() {
     return { registered: false, reason: "permission-denied" };
   }
 
+  return registerNotificationDevice();
+}
+
+export async function registerNotificationDeviceIfPermissionGranted() {
+  configureNotificationRuntime();
+
+  if (!Device.isDevice) return { registered: false, reason: "physical-device-required" };
+
+  const permission = (await Notifications.getPermissionsAsync()) as PermissionLike;
+  const granted = permission.granted ?? permission.status === "granted";
+  if (!granted) return { registered: false, reason: "permission-not-granted" };
+
+  return registerNotificationDevice();
+}
+
+async function registerNotificationDevice() {
   if (Platform.OS === "android") {
     await Promise.all([
       createAndroidChannel("system", "Sistem", Notifications.AndroidImportance.DEFAULT),
@@ -117,7 +133,7 @@ export async function requestNotificationPermissionAndRegister() {
     token: token.data,
     deviceId,
     platform,
-    ...(Device.osVersion ? { appVersion: Device.osVersion } : {})
+    appVersion: config.appVersion
   });
 
   await trackEvent("push_token_registered", { platform });

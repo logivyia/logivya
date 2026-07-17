@@ -15,4 +15,10 @@ This is evidence preparation, not a completed Google Play Data Safety or Apple A
 | Support content/attachments | When submitted | Support | Hosting/email/object provider | Ticket/DSR and approved retention |
 | Billing/payment references | When purchasing | Subscription/invoice | Payment provider/database | Statutory/contract retention review |
 
-Android permissions are limited to Internet, notifications and generated vibration. No device contacts, location, camera, microphone, call log or SMS permission is requested.
+User-facing Android runtime permission is limited to notifications. Network,
+wake/boot, biometric storage and launcher-badge permissions are generated for
+connectivity, notification and secure-storage behavior. No device contacts,
+location, camera, microphone, call log, SMS, broad storage/photo, advertising
+ID or AdServices ID permission is requested by the verified source candidate.
+The exact release binary must still be reconciled before submitting store
+answers.

@@ -2,7 +2,7 @@
 
 Status: `LEGAL REVIEW REQUIRED`
 
-Audit date: 2026-07-16
+Audit date: 2026-07-17
 
 Scope: Desktop Web, Mobile Web, Android, API, PostgreSQL, Redis queues, Render worker, Vercel, Cloudflare R2 backup storage, email, push notifications, Firebase Analytics, Sentry, support, billing, WhatsApp metadata, groups, contacts, campaigns, message history, logs, audit records, backup and administration.
 
@@ -16,9 +16,9 @@ This report is an engineering and governance assessment. It is not a legal opini
 | Consent records | Working but incomplete | `ConsentRecord` stores type, version and a boolean decision. It lacks purpose code, status history, withdrawal, collection method, platform, locale, app version and evidence metadata. | Migrate additively and keep legacy fields readable. |
 | Registration notices | Legally unclear | Terms, privacy notice and KVKK notice are all presented as required acceptance checkboxes and recorded as granted consent. Transparency and consent are not separated. | Preserve the current registration contract until a reviewed notice design is approved; stop treating optional purposes as implied consent. |
 | Cookie controls | Misleading/incomplete | The banner stores only `all` or `essential`; granular checkbox state is not persisted and there is no durable withdrawal/settings path. | Add versioned granular preferences and prevent optional SDK/script activation without the relevant choice. |
-| Android permissions | Working and retained | Production requests `INTERNET`, `POST_NOTIFICATIONS` and generated `VIBRATE`; it does not request contacts, storage, camera or location. Backup and cleartext traffic are disabled. | Keep minimal and document just-in-time notification permission use. |
-| Mobile analytics | Working but incomplete | Firebase Analytics and Sentry SDKs are installed. Sentry redaction and PII-disabled behavior exist, but purpose-specific preference enforcement is incomplete. | Default optional analytics/diagnostics off until preference is known; add user controls and SDK audit. |
-| Account deletion | Technically unsafe | Current owner flow immediately disables the company and revokes sessions. It does not create a tracked request, verify recent authentication/2FA, expose cancellation/status, check legal hold or explain retained records. | Replace with a request and deletion-job workflow; do not run destructive production deletion before approval. |
+| Android permissions | Working in source; binary reconciliation pending | The source-candidate merged release manifest removes broad storage/photo, screen-capture and advertising identifiers; backup and cleartext are disabled. The already-published v129 binary predates this correction. | Re-run artifact inspection on the next unique version code and reconcile Play declarations before rollout. |
+| Mobile analytics | Working with release evidence pending | Firebase Analytics and Sentry SDKs are installed. Analytics collection defaults off and follows persisted purpose consent; Sentry redaction and PII-disabled behavior remain. | Verify provider-side defaults and physical-device withdrawal behavior for the exact release binary. |
+| Account deletion | Safe request workflow implemented | User/company requests use reauthentication, confirmation phrases, cancellation windows, owner rules, legal-hold-aware execution and a public source route. Destructive production execution remains gated. | Deploy and externally verify `/account-deletion`; complete legal review and restore/re-deletion tests before enabling enforcement. |
 | Company deletion | Missing | Account deletion and company shutdown are currently conflated. | Restrict company deletion to owner, add ownership transfer/member/subscription/financial/legal-hold checks. |
 | Data subject requests | Placeholder-only | `DataSubjectRequest` has a small type/status set and no public ID, identity verification, deadline, event timeline, response thread or admin workflow. | Expand additively and implement owner-scoped APIs plus audited admin actions. |
 | Data export | Missing | A legacy `exportUrl` field exists but no secure export pipeline exists. | Use private encrypted object storage, one-time authenticated downloads, expiry and cleanup. Never place public URLs in the record. |

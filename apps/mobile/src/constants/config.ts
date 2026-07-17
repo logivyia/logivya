@@ -8,6 +8,10 @@ const extra = Constants.expoConfig?.extra as {
   apiFallbackBaseUrls?: string[];
   sentryDsn?: string;
   buildMarker?: string;
+  releaseId?: string;
+  gitCommit?: string;
+  buildDate?: string;
+  apiContractVersion?: string;
   eas?: { projectId?: string };
 } | undefined;
 
@@ -29,6 +33,10 @@ export const config = {
   appVersion: Constants.expoConfig?.version ?? "unknown",
   versionCode: Constants.expoConfig?.android?.versionCode ?? 0,
   buildMarker: extra?.buildMarker ?? "unknown",
+  releaseId: extra?.releaseId ?? "unknown",
+  gitCommit: extra?.gitCommit ?? "unknown",
+  buildDate: extra?.buildDate ?? "unknown",
+  apiContractVersion: extra?.apiContractVersion ?? "unknown",
   easProjectId: extra?.eas?.projectId ?? "",
   requestTimeoutMs: 15000,
   retryCount: 2,

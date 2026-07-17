@@ -1,0 +1,242 @@
+name: Android Signed Release Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      latest_play_version_code:
+        description: "Highest versionCode already accepted by Google Play"
+        required: true
+        type: string
+      owner_approval_reference:
+        description: "Owner approval evidence or ticket reference"
+        required: true
+        type: string
+      android_acceptance_reference:
+        description: "Real-device Android acceptance evidence"
+        required: true
+        type: string
+      mobile_web_acceptance_reference:
+        description: "Authenticated mobile-web acceptance evidence"
+        required: true
+        type: string
+      desktop_web_acceptance_reference:
+        description: "Authenticated desktop-web acceptance evidence"
+        required: true
+        type: string
+      database_acceptance_reference:
+        description: "Migration and ownership audit evidence"
+        required: true
+        type: string
+      worker_redis_acceptance_reference:
+        description: "Worker, queue and Redis recovery evidence"
+        required: true
+        type: string
+      play_lineage_reference:
+        description: "Prior Google Play update/signing-lineage evidence"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-signed-release
+  cancel-in-progress: false
+
+jobs:
+  validate-build-and-sign:
+    name: Validate, build and sign release candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    environment: android-production-release
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: logivya_release
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d logivya_release"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: "true"
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/logivya_release
+      REDIS_URL: redis://127.0.0.1:6379
+      AUTH_SECRET: ci-auth-secret-at-least-thirty-two-characters
+      PASSWORD_PEPPER: ci-password-pepper-at-least-thirty-two-characters
+      SESSION_ENCRYPTION_KEY: ci-session-encryption-key-at-least-32-characters
+      FIELD_ENCRYPTION_ACTIVE_VERSION: v1
+      FIELD_ENCRYPTION_KEY_V1: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+      CRON_SECRET: ci-cron-secret-at-least-thirty-two-characters
+      WHATSAPP_PROVIDER: baileys
+      WHATSAPP_SESSION_DIR: ./artifacts/ci-sessions
+      ALLOW_LOCAL_PRODUCTION_WORKER: "0"
+      QUEUE_RECOVERY_INTEGRATION: "1"
+      WHATSAPP_SNAPSHOT_INTEGRATION: "1"
+      WORKER_RESTART_INTEGRATION: "1"
+      MIGRATION_FAILURE_INTEGRATION: "1"
+      PLAY_LATEST_VERSION_CODE: ${{ inputs.latest_play_version_code }}
+      LOGIVYA_GIT_COMMIT: ${{ github.sha }}
+      LOGIVYA_OWNER_APPROVAL_REFERENCE: ${{ inputs.owner_approval_reference }}
+      LOGIVYA_ANDROID_ACCEPTANCE_REFERENCE: ${{ inputs.android_acceptance_reference }}
+      LOGIVYA_MOBILE_WEB_ACCEPTANCE_REFERENCE: ${{ inputs.mobile_web_acceptance_reference }}
+      LOGIVYA_DESKTOP_WEB_ACCEPTANCE_REFERENCE: ${{ inputs.desktop_web_acceptance_reference }}
+      LOGIVYA_DATABASE_ACCEPTANCE_REFERENCE: ${{ inputs.database_acceptance_reference }}
+      LOGIVYA_WORKER_REDIS_ACCEPTANCE_REFERENCE: ${{ inputs.worker_redis_acceptance_reference }}
+      LOGIVYA_PLAY_ACCEPTANCE_REFERENCE: ${{ inputs.play_lineage_reference }}
+      LOGIVYA_REAL_ANDROID_ACCEPTANCE: passed
+      LOGIVYA_MOBILE_WEB_ACCEPTANCE: passed
+      LOGIVYA_DESKTOP_WEB_ACCEPTANCE: passed
+      LOGIVYA_WORKER_REDIS_ACCEPTANCE: passed
+      LOGIVYA_DATABASE_ACCEPTANCE: passed
+      LOGIVYA_PLAY_UPDATE_ACCEPTANCE: passed
+      SENTRY_DISABLE_AUTO_UPLOAD: "true"
+      BUNDLETOOL_VERSION: 1.18.1
+      BUNDLETOOL_SHA256: 675786493983787FFA11550BDB7C0715679A44E1643F3FF980A529E9C822595C
+
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.4.1
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android SDK components
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
+
+      - name: Install locked dependencies
+        run: |
+          npm ci
+          npm ci --prefix apps/mobile
+
+      - name: Prepare private Android build inputs
+        shell: bash
+        env:
+          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          FIREBASE_ANDROID_CONFIG_BASE64: ${{ secrets.FIREBASE_ANDROID_CONFIG_BASE64 }}
+          EXPECTED_UPLOAD_CERT_SHA256_SECRET: ${{ secrets.EXPECTED_UPLOAD_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          for required in ANDROID_UPLOAD_KEYSTORE_BASE64 ANDROID_UPLOAD_STORE_PASSWORD ANDROID_UPLOAD_KEY_ALIAS ANDROID_UPLOAD_KEY_PASSWORD FIREBASE_ANDROID_CONFIG_BASE64 EXPECTED_UPLOAD_CERT_SHA256_SECRET; do
+            if [ -z "${!required:-}" ]; then
+              echo "Missing required protected release secret: ${required}" >&2
+              exit 2
+            fi
+          done
+          mkdir -p "$GITHUB_WORKSPACE/.local-android/credentials"
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/.local-android/credentials/logivya-upload.jks"
+          printf '%s' "$FIREBASE_ANDROID_CONFIG_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/apps/mobile/google-services.json"
+          echo "LOGIVYA_UPLOAD_STORE_FILE=$GITHUB_WORKSPACE/.local-android/credentials/logivya-upload.jks" >> "$GITHUB_ENV"
+          echo "LOGIVYA_UPLOAD_STORE_PASSWORD=$ANDROID_UPLOAD_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "LOGIVYA_UPLOAD_KEY_ALIAS=$ANDROID_UPLOAD_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "LOGIVYA_UPLOAD_KEY_PASSWORD=$ANDROID_UPLOAD_KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "EXPECTED_UPLOAD_CERT_SHA256=$EXPECTED_UPLOAD_CERT_SHA256_SECRET" >> "$GITHUB_ENV"
+          echo "LOGIVYA_BUILD_DATE=$(git show -s --format=%cI "$GITHUB_SHA")" >> "$GITHUB_ENV"
+
+      - name: Verify release inputs and repository secrets
+        run: |
+          npm run release:secret-scan
+          npm run release:android:preflight
+          npm audit --omit=dev --audit-level=high
+          npm --prefix apps/mobile audit --omit=dev --audit-level=high
+
+      - name: Generate and validate database client
+        run: |
+          npx prisma generate
+          npx prisma validate
+          npx prisma migrate deploy
+          npx prisma migrate diff --from-config-datasource --to-schema=prisma/schema.prisma --exit-code
+          npm run audit:database-integrity -- --strict-snapshot-metadata
+          npm run audit:environment
+
+      - name: Compile and run protected regression gates
+        run: |
+          npm run i18n:check
+          npm run typecheck
+          npm run mobile:typecheck
+          npm run lint
+          npm run build
+          npm run test:baseline
+          npm run test:privacy
+          npm run test:notifications
+          npm run test:monitoring
+          npm run release:acceptance
+
+      - name: Build signed Android App Bundle
+        working-directory: apps/mobile/android
+        env:
+          NODE_ENV: production
+          APP_ENV: production
+        run: ./gradlew --no-daemon --stacktrace clean :app:bundleRelease
+
+      - name: Download and verify pinned bundletool
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/logivya-release-tools"
+          curl --fail --silent --show-error --location \
+            "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar" \
+            --output "$RUNNER_TEMP/logivya-release-tools/bundletool.jar"
+          echo "${BUNDLETOOL_SHA256}  $RUNNER_TEMP/logivya-release-tools/bundletool.jar" | sha256sum --check --strict
+          echo "BUNDLETOOL_JAR=$RUNNER_TEMP/logivya-release-tools/bundletool.jar" >> "$GITHUB_ENV"
+
+      - name: Name and verify signed artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_CODE=$(node -p "require('./apps/mobile/app.json').expo.android.versionCode")
+          VERSION_NAME=$(node -p "require('./apps/mobile/app.json').expo.version")
+          mkdir -p artifacts/releases
+          ARTIFACT_PATH="$GITHUB_WORKSPACE/artifacts/releases/logivya-v${VERSION_CODE}-${VERSION_NAME}-signed-release-candidate.aab"
+          cp apps/mobile/android/app/build/outputs/bundle/release/app-release.aab "$ARTIFACT_PATH"
+          echo "LOGIVYA_AAB_PATH=$ARTIFACT_PATH" >> "$GITHUB_ENV"
+          npm run release:android:verify -- --aab "$ARTIFACT_PATH" --bundletool "$BUNDLETOOL_JAR" --expected-cert-sha256 "$EXPECTED_UPLOAD_CERT_SHA256"
+
+      - name: Generate dependency SBOMs
+        shell: bash
+        run: |
+          npm sbom --sbom-format cyclonedx > artifacts/releases/web-sbom.cdx.json
+          npm sbom --prefix apps/mobile --sbom-format cyclonedx > artifacts/releases/mobile-sbom.cdx.json
+
+      - name: Upload signed release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: logivya-android-signed-release-${{ github.run_number }}
+          path: artifacts/releases/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Release boundary
+        run: echo "Signed candidate created. This workflow never submits to Google Play and never changes rollout state."

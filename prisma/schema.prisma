@@ -3227,3 +3227,207 @@ model AdminAccessLog {
   @@index([userId, createdAt])
   @@index([sensitive, createdAt])
 }
+
+enum ReleasePlatform {
+  ANDROID
+  IOS
+  WEB
+}
+
+enum ReleaseStatus {
+  DRAFT
+  VALIDATING
+  BLOCKED
+  APPROVED
+  BUILT
+  SUBMITTED
+  ROLLING_OUT
+  COMPLETED
+  ROLLED_BACK
+}
+
+enum ReleaseCheckStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  PASSED
+  FAILED
+  WAIVED_WITH_APPROVAL
+  NOT_APPLICABLE
+}
+
+enum ReleaseArtifactType {
+  AAB
+  APK
+  IPA
+  ARCHIVE
+  SBOM
+  SOURCE_MAP
+  RELEASE_MANIFEST
+  TEST_REPORT
+  SCREENSHOT
+  OTHER
+}
+
+enum StoreProvider {
+  GOOGLE_PLAY
+  APP_STORE
+}
+
+enum StoreSubmissionStatus {
+  NOT_STARTED
+  DRAFT
+  UPLOADED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
+enum RolloutStatus {
+  PLANNED
+  ACTIVE
+  PAUSED
+  HALTED
+  COMPLETED
+  ROLLED_BACK
+}
+
+model Release {
+  id                 String            @id @default(cuid())
+  releaseId          String            @unique
+  platform           ReleasePlatform
+  packageId          String
+  versionCode        Int?
+  versionName        String
+  gitCommit          String
+  apiContractVersion String?
+  buildDate          DateTime?
+  channel            String?
+  status             ReleaseStatus     @default(DRAFT)
+  notes              String?
+  artifacts          ReleaseArtifact[]
+  checks             ReleaseCheck[]
+  submissions        StoreSubmission[]
+  tests              TestExecution[]
+  approvals          Approval[]
+  rolloutStages      RolloutStage[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@unique([platform, packageId, versionCode])
+  @@index([platform, status, createdAt])
+  @@index([gitCommit])
+}
+
+model ReleaseArtifact {
+  id                       String              @id @default(cuid())
+  releaseId                String
+  type                     ReleaseArtifactType
+  fileName                 String
+  storageUri               String?
+  sha256                   String
+  sizeBytes                BigInt
+  signingCertificateSha256 String?
+  metadata                 Json?
+  release                  Release             @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  createdAt                DateTime            @default(now())
+
+  @@unique([releaseId, sha256])
+  @@index([releaseId, type])
+}
+
+model ReleaseCheck {
+  id              String             @id @default(cuid())
+  releaseId       String
+  key             String
+  name            String
+  status          ReleaseCheckStatus @default(NOT_STARTED)
+  required        Boolean            @default(true)
+  evidenceUri     String?
+  evidenceSummary String?
+  waiverReason    String?
+  completedBy     String?
+  completedAt     DateTime?
+  release         Release            @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@unique([releaseId, key])
+  @@index([releaseId, status])
+}
+
+model StoreSubmission {
+  id          String                @id @default(cuid())
+  releaseId   String
+  provider    StoreProvider
+  track       String
+  status      StoreSubmissionStatus @default(NOT_STARTED)
+  externalId  String?
+  submittedAt DateTime?
+  reviewedAt  DateTime?
+  notes       String?
+  release     Release               @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@unique([releaseId, provider, track])
+  @@index([provider, status, createdAt])
+}
+
+model TestExecution {
+  id          String             @id @default(cuid())
+  releaseId   String
+  suite       String
+  environment String
+  device      String?
+  status      ReleaseCheckStatus
+  reportUri   String?
+  summary     String?
+  startedAt   DateTime
+  completedAt DateTime?
+  release     Release            @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  createdAt   DateTime           @default(now())
+
+  @@index([releaseId, status])
+  @@index([suite, createdAt])
+}
+
+model Approval {
+  id         String           @id @default(cuid())
+  releaseId  String
+  kind       String
+  decision   ApprovalDecision
+  approvedBy String
+  reference  String
+  notes      String?
+  release    Release          @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  createdAt  DateTime         @default(now())
+
+  @@index([releaseId, kind, createdAt])
+  @@index([decision, createdAt])
+}
+
+model RolloutStage {
+  id          String        @id @default(cuid())
+  releaseId   String
+  provider    StoreProvider
+  track       String
+  percentage  Int
+  status      RolloutStatus @default(PLANNED)
+  metrics     Json?
+  haltReason  String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  release     Release       @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([releaseId, provider, track, percentage])
+  @@index([status, createdAt])
+}

@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
+import { config } from "@/constants/config";
 import { apiClient } from "@/api/client";
 
 export type MobileAppVersionPolicy = {
@@ -20,6 +21,16 @@ export function getCurrentAppVersion() {
 
 export function getCurrentBuildChannel() {
   return Constants.expoConfig?.extra?.environment || "development";
+}
+
+export function getCurrentReleaseMetadata() {
+  return {
+    releaseId: config.releaseId,
+    gitCommit: config.gitCommit,
+    buildDate: config.buildDate,
+    apiContractVersion: config.apiContractVersion,
+    versionCode: config.versionCode
+  };
 }
 
 export function getPlatformUpdateUrl(policy: MobileAppVersionPolicy) {

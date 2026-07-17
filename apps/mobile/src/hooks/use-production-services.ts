@@ -40,7 +40,7 @@ export function useProductionServices() {
   useEffect(() => {
     if (status !== "authenticated") return;
     import("@/services/notifications")
-      .then(({ requestNotificationPermissionAndRegister }) => requestNotificationPermissionAndRegister())
+      .then(({ registerNotificationDeviceIfPermissionGranted }) => registerNotificationDeviceIfPermissionGranted())
       .catch((error) => {
         captureAppError(error, { source: "push-registration" });
       });

@@ -50,6 +50,7 @@ const adminRows: AdminRow[] = [
   { key: "systemHealth", icon: "heart-outline", titleKey: "adminSystemHealthModule", descriptionKey: "adminSystemHealthDescription" },
   { key: "backups", icon: "server-outline", titleKey: "adminBackupsModule", descriptionKey: "adminBackupsDescription" },
   { key: "disasterRecovery", icon: "cloud-done-outline", titleKey: "adminDisasterRecoveryModule", descriptionKey: "adminDisasterRecoveryDescription" },
+  { key: "releases", icon: "rocket-outline", titleKey: "adminReleasesModule", descriptionKey: "adminReleasesDescription" },
   { key: "settings", icon: "settings-outline", titleKey: "adminSettingsModule", descriptionKey: "adminSettingsDescription" },
   { key: "featureFlags", icon: "flag-outline", titleKey: "adminFeatureFlagsModule", descriptionKey: "adminFeatureFlagsDescription" },
   { key: "announcements", icon: "megaphone-outline", titleKey: "adminAnnouncementsModule", descriptionKey: "adminAnnouncementsDescription" },

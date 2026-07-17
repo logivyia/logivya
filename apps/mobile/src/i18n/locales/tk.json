@@ -799,5 +799,7 @@
   "trialIneligibleTitle": "Mugt synag öň ulanyldy",
   "trialIdentityUsedDescription": "Bu WhatsApp hasaby mugt synag hukugyny öň ulanypdyr. Dowam etmek üçin tölegli meýilnama saýlaň.",
   "trialReviewTitle": "Synag hukugy barlanýar",
-  "trialReviewDescription": "Synag hukugyňyz howpsuzlyk barlagyny talap edýär. Tölegli meýilnama satyn alyp bilersiňiz."
+  "trialReviewDescription": "Synag hukugyňyz howpsuzlyk barlagyny talap edýär. Tölegli meýilnama satyn alyp bilersiňiz.",
+  "adminReleasesModule": "Goýberiş merkezi",
+  "adminReleasesDescription": "Gol çekilen artefaktlary, barlaglary, synaglary, tassyklamalary, dükan tabşyryklaryny we tapgyrlaýyn ýaýlymlary yzarlaň."
 }

@@ -27,6 +27,8 @@ function addObservabilityHeaders(headers: Headers) {
   headers.set("X-Logivya-App-Version", config.appVersion);
   headers.set("X-Logivya-Version-Code", String(config.versionCode));
   headers.set("X-Logivya-Build-Marker", config.buildMarker);
+  headers.set("X-Logivya-Release-Id", config.releaseId);
+  headers.set("X-Logivya-Api-Contract", config.apiContractVersion);
 }
 
 function messageForApiError(code: string, status: number, fallback?: string) {

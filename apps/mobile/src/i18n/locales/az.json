@@ -799,5 +799,7 @@
   "trialIneligibleTitle": "Pulsuz sınaq artıq istifadə edilib",
   "trialIdentityUsedDescription": "Bu WhatsApp hesabı pulsuz sınaq hüququndan artıq istifadə edib. Davam etmək üçün ödənişli plan seçin.",
   "trialReviewTitle": "Sınaq uyğunluğu yoxlanılır",
-  "trialReviewDescription": "Sınaq uyğunluğunuz təhlükəsizlik yoxlaması tələb edir. Ödənişli plan ala bilərsiniz."
+  "trialReviewDescription": "Sınaq uyğunluğunuz təhlükəsizlik yoxlaması tələb edir. Ödənişli plan ala bilərsiniz.",
+  "adminReleasesModule": "Buraxılış Mərkəzi",
+  "adminReleasesDescription": "İmzalanmış artefaktları, yoxlamaları, testləri, təsdiqləri, mağaza təqdimatlarını və mərhələli yayımları izləyin."
 }

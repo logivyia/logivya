@@ -66,6 +66,9 @@ function pluginName(plugin) {
 
 module.exports = ({ config }) => {
   const baseConfig = appJson.expo;
+  const appVersion = process.env.EXPO_PUBLIC_APP_VERSION || baseConfig.version;
+  const androidVersionCode = Number(process.env.ANDROID_VERSION_CODE || baseConfig.android?.versionCode || 4);
+  const releaseId = process.env.LOGIVYA_RELEASE_ID || baseConfig.extra?.releaseId || `android-v${androidVersionCode}-${appVersion}`;
   const androidGoogleServicesFile = nativeDiagnosticMode ? undefined : existingRelativeFile("google-services.json");
   const iosGoogleServicesFile = nativeDiagnosticMode ? undefined : existingRelativeFile("GoogleService-Info.plist");
   const hasFirebaseConfig = Boolean(androidGoogleServicesFile || iosGoogleServicesFile);
@@ -83,7 +86,7 @@ module.exports = ({ config }) => {
     slug: baseConfig.slug,
     owner: process.env.EXPO_PUBLIC_EAS_OWNER || undefined,
     scheme: "logivya",
-    version: process.env.EXPO_PUBLIC_APP_VERSION || baseConfig.version,
+    version: appVersion,
     jsEngine: disableHermes ? "jsc" : baseConfig.jsEngine || "hermes",
     newArchEnabled: disableNewArchitecture ? false : baseConfig.newArchEnabled,
     autolinking: nativeDiagnosticMode
@@ -112,7 +115,7 @@ module.exports = ({ config }) => {
       permissions: nativeDiagnosticMode ? ["INTERNET"] : baseConfig.android?.permissions,
       googleServicesFile: androidGoogleServicesFile,
       package: "com.logivya.mobile",
-      versionCode: Number(process.env.ANDROID_VERSION_CODE || baseConfig.android?.versionCode || 4),
+      versionCode: androidVersionCode,
       adaptiveIcon: {
         foregroundImage: "./assets/logivya/mobillogo1.png",
         backgroundColor: "#FFFFFF"
@@ -132,6 +135,10 @@ module.exports = ({ config }) => {
       environment,
       apiBaseUrl: getApiBaseUrl(),
       apiFallbackBaseUrls: getApiFallbackBaseUrls(),
+      releaseId,
+      gitCommit: process.env.LOGIVYA_GIT_COMMIT || process.env.GITHUB_SHA || process.env.VERCEL_GIT_COMMIT_SHA || baseConfig.extra?.gitCommit || "unknown",
+      buildDate: process.env.LOGIVYA_BUILD_DATE || baseConfig.extra?.buildDate || "unknown",
+      apiContractVersion: process.env.LOGIVYA_API_CONTRACT_VERSION || baseConfig.extra?.apiContractVersion || "2026-07-17",
       sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN || baseConfig.extra?.sentryDsn || "",
       nativeDiagnostic: nativeDiagnosticMode,
       eas: {

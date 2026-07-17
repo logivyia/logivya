@@ -13,7 +13,7 @@ import { useAuthBootstrap } from "@/hooks/use-auth-bootstrap";
 import { useProductionServices } from "@/hooks/use-production-services";
 import { linking } from "@/navigation/linking";
 import { RootNavigator } from "@/navigation/root-navigator";
-import { getActiveRouteName, trackScreenView } from "@/services/analytics";
+import { configureAnalyticsCollection, getActiveRouteName, trackScreenView } from "@/services/analytics";
 import { initCrashReporting, wrapWithCrashReporting } from "@/services/crash-reporting";
 import { OfflineQueryProvider } from "@/services/offline-query";
 import { installGlobalStartupGuards } from "@/services/startup-guards";
@@ -26,6 +26,7 @@ initCrashReporting();
 function App() {
   const systemScheme = useColorScheme();
   const preferredTheme = useSettingsStore((state) => state.theme);
+  const analyticsEnabled = useSettingsStore((state) => state.analyticsEnabled);
   const accountLocale = useAuthStore((state) => state.user?.locale);
   const applyAccountLocale = useSettingsStore((state) => state.applyAccountLocale);
   const themeMode = preferredTheme === "system" ? systemScheme ?? "light" : preferredTheme;
@@ -37,6 +38,10 @@ function App() {
   useEffect(() => {
     applyAccountLocale(accountLocale);
   }, [accountLocale, applyAccountLocale]);
+
+  useEffect(() => {
+    void configureAnalyticsCollection(analyticsEnabled);
+  }, [analyticsEnabled]);
 
   return (
     <ErrorBoundary>

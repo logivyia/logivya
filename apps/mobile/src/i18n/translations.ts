@@ -676,6 +676,7 @@ const baseTranslations = {
     adminSystemHealthModule: "Sistem Sağlığı",
     adminBackupsModule: "Yedekler",
     adminDisasterRecoveryModule: "Felaket Kurtarma",
+    adminReleasesModule: "Sürüm Merkezi",
     adminSettingsModule: "Ayarlar",
     adminFeatureFlagsModule: "Özellik Bayrakları",
     adminAnnouncementsModule: "Duyurular",
@@ -704,6 +705,7 @@ const baseTranslations = {
     ,adminSystemHealthDescription: "Servis ve entegrasyon durumları."
     ,adminBackupsDescription: "Yedekleme ve geri yükleme operasyonları."
     ,adminDisasterRecoveryDescription: "Kurtarma planı ve operasyonel süreklilik."
+    ,adminReleasesDescription: "İmzalı paketleri, doğrulama kontrollerini, testleri, onayları ve mağaza rollout kayıtlarını izleyin."
     ,adminSettingsDescription: "Yönetici ayarları ve platform yapılandırması."
     ,adminFeatureFlagsDescription: "Platform özelliklerinin operasyon durumu."
     ,adminAnnouncementsDescription: "Kullanıcı duyuruları ve platform mesajları."
@@ -1479,6 +1481,7 @@ const baseTranslations = {
     adminSystemHealthModule: "System Health",
     adminBackupsModule: "Backups",
     adminDisasterRecoveryModule: "Disaster Recovery",
+    adminReleasesModule: "Release Center",
     adminSettingsModule: "Settings",
     adminFeatureFlagsModule: "Feature Flags",
     adminAnnouncementsModule: "Announcements",
@@ -1507,6 +1510,7 @@ const baseTranslations = {
     ,adminSystemHealthDescription: "Service and integration status."
     ,adminBackupsDescription: "Backup and restore operations."
     ,adminDisasterRecoveryDescription: "Recovery plan and operational continuity."
+    ,adminReleasesDescription: "Monitor signed artifacts, validation checks, tests, approvals, store submissions, and rollout records."
     ,adminSettingsDescription: "Admin settings and platform configuration."
     ,adminFeatureFlagsDescription: "Operational status of platform features."
     ,adminAnnouncementsDescription: "User announcements and platform messages."

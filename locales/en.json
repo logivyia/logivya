@@ -889,6 +889,21 @@
   "legal.privacy.intro": "Logivya processes the personal data required to provide and secure the service, manage billing, and deliver support.",
   "legal.privacy.securityTitle": "Data security",
   "legal.privacy.securityBody": "Tenant isolation, encryption, access controls, and audit records are applied. Data requests can be sent to support@logivya.com.",
+  "legal.deletion.title": "Logivya account deletion",
+  "legal.deletion.intro": "You can request deletion of your Logivya account and the personal data associated with it from the app or from this web page.",
+  "legal.deletion.inAppTitle": "Request deletion in the app",
+  "legal.deletion.inAppBody": "Sign in, then open Settings, Privacy and data, and Delete account. The protected flow verifies your current password and requires an exact confirmation phrase.",
+  "legal.deletion.inAppAction": "Sign in to the deletion flow",
+  "legal.deletion.webTitle": "Request deletion without the app",
+  "legal.deletion.webBody": "Email support@logivya.com from the address registered to your account. Include the company name and state that you request account deletion. Never send your password, verification code, WhatsApp credential, or another secret.",
+  "legal.deletion.scopeTitle": "What the request covers",
+  "legal.deletion.scopeBody": "An approved user-account request removes or anonymizes the account and associated profile, sessions, device tokens and user-owned application data. Company deletion is a separate owner-only request and may require ownership transfer or member handling.",
+  "legal.deletion.retentionTitle": "Records that may be retained",
+  "legal.deletion.retentionBody": "Logivya may retain only records required for legal, accounting, security, fraud-prevention, dispute or legal-hold obligations. Retained records are restricted and are not used to continue the deleted account.",
+  "legal.deletion.impactTitle": "Subscriptions and WhatsApp sessions",
+  "legal.deletion.impactBody": "Support confirms subscription and company-owner consequences before execution. Approved execution revokes application sessions and removes the affected WhatsApp session credentials according to the verified deletion scope.",
+  "legal.deletion.timelineTitle": "Verification and timing",
+  "legal.deletion.timelineBody": "The request is recorded when received. Identity, ownership, subscription and legal-hold checks are completed before execution. In-app queued requests include a seven-day cancellation period; support confirms the expected completion date for each verified request.",
   "legal.terms.title": "Terms of Service",
   "legal.terms.usage": "Logivya may be used only for lawful messaging operations that respect recipient consent.",
   "legal.terms.prohibited": "Spam, abuse, unauthorized access, and activities that put platform security at risk are prohibited.",
@@ -1508,4 +1523,19 @@
   ,"notifications.admin.priorityNormal": "Normal"
   ,"notifications.admin.priorityHigh": "High"
   ,"notifications.admin.priorityCritical": "Critical"
+  ,"admin.menu.releases": "Release center"
+  ,"adminReleases.eyebrow": "Release governance"
+  ,"adminReleases.title": "Release Center"
+  ,"adminReleases.description": "Read-only evidence for artifacts, checks, tests, approvals, store submissions, and rollouts."
+  ,"adminReleases.releases": "Releases"
+  ,"adminReleases.artifacts": "Artifacts"
+  ,"adminReleases.blocked": "Blocked"
+  ,"adminReleases.failedChecks": "Failed required checks"
+  ,"adminReleases.empty": "No verified release record has been imported yet."
+  ,"adminReleases.releaseId": "Release ID"
+  ,"adminReleases.platform": "Platform"
+  ,"adminReleases.version": "Version"
+  ,"adminReleases.commit": "Commit"
+  ,"adminReleases.channel": "Channel"
+  ,"adminReleases.evidence": "Artifacts / checks / tests / approvals"
 }

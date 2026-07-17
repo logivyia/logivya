@@ -85,6 +85,7 @@ next-env.d.ts
 *.aab
 /artifacts/backups/
 /artifacts/restore-tests/
+/artifacts/releases/
 *.apk
 /apps/mobile/google-services.json
 /apps/mobile/android/app/google-services.json

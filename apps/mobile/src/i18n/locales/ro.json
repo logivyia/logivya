@@ -799,5 +799,7 @@
   "trialIneligibleTitle": "Perioada de probă gratuită a fost deja utilizată",
   "trialIdentityUsedDescription": "Acest cont WhatsApp a utilizat deja perioada de probă gratuită. Selectați un plan plătit pentru a continua.",
   "trialReviewTitle": "Eligibilitatea pentru probă este în curs de verificare",
-  "trialReviewDescription": "Eligibilitatea necesită o verificare de securitate. Puteți cumpăra în continuare un plan plătit."
+  "trialReviewDescription": "Eligibilitatea necesită o verificare de securitate. Puteți cumpăra în continuare un plan plătit.",
+  "adminReleasesModule": "Centrul de versiuni",
+  "adminReleasesDescription": "Monitorizați artefactele semnate, verificările, testele, aprobările, trimiterile în magazine și lansările etapizate."
 }

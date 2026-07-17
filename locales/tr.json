@@ -889,6 +889,21 @@
   "legal.privacy.intro": "Logivya, hizmetin sunulması ve güvenliği, faturalama yönetimi ve destek sağlanması için gerekli kişisel verileri işler.",
   "legal.privacy.securityTitle": "Veri güvenliği",
   "legal.privacy.securityBody": "Kiracı izolasyonu, şifreleme, erişim kontrolleri ve denetim kayıtları uygulanır. Veri talepleri support@logivya.com adresine iletilebilir.",
+  "legal.deletion.title": "Logivya hesap silme",
+  "legal.deletion.intro": "Logivya hesabınızın ve hesapla ilişkili kişisel verilerin silinmesini uygulama içinden veya bu web sayfasından talep edebilirsiniz.",
+  "legal.deletion.inAppTitle": "Uygulama içinden silme talebi",
+  "legal.deletion.inAppBody": "Giriş yaptıktan sonra Ayarlar, Gizlilik ve veriler, Hesabı sil yolunu açın. Korumalı akış güncel şifrenizi doğrular ve tam onay ifadesini girmenizi ister.",
+  "legal.deletion.inAppAction": "Silme akışına giriş yap",
+  "legal.deletion.webTitle": "Uygulama olmadan silme talebi",
+  "legal.deletion.webBody": "Hesabınıza kayıtlı e-posta adresinden support@logivya.com adresine yazın. Şirket adını ve hesabınızı silme talebinizi belirtin. Şifrenizi, doğrulama kodunuzu, WhatsApp kimlik bilginizi veya başka bir sırrı göndermeyin.",
+  "legal.deletion.scopeTitle": "Talebin kapsamı",
+  "legal.deletion.scopeBody": "Onaylanan kullanıcı hesabı talebi; hesabı ve ilişkili profil, oturum, cihaz belirteci ve kullanıcıya ait uygulama verilerini siler veya anonimleştirir. Şirket silme ayrı ve yalnızca şirket sahibine açık bir taleptir; sahiplik devri veya ekip kullanıcılarının ele alınması gerekebilir.",
+  "legal.deletion.retentionTitle": "Saklanabilecek kayıtlar",
+  "legal.deletion.retentionBody": "Logivya yalnızca hukuk, muhasebe, güvenlik, suistimal önleme, uyuşmazlık veya yasal saklama yükümlülükleri için gerekli kayıtları tutabilir. Tutulan kayıtlar kısıtlanır ve silinen hesabı kullanmaya devam etmek için işlenmez.",
+  "legal.deletion.impactTitle": "Abonelikler ve WhatsApp oturumları",
+  "legal.deletion.impactBody": "Destek ekibi işlemden önce abonelik ve şirket sahipliği sonuçlarını doğrular. Onaylanan işlem uygulama oturumlarını iptal eder ve doğrulanan silme kapsamındaki WhatsApp oturum kimlik bilgilerini kaldırır.",
+  "legal.deletion.timelineTitle": "Doğrulama ve süre",
+  "legal.deletion.timelineBody": "Talep alındığında kayda girer. İşlemden önce kimlik, sahiplik, abonelik ve yasal saklama kontrolleri tamamlanır. Uygulama içindeki kuyruklu taleplerde yedi günlük iptal süresi bulunur; destek ekibi doğrulanan her talep için beklenen tamamlanma tarihini bildirir.",
   "legal.terms.title": "Kullanım Koşulları",
   "legal.terms.usage": "Logivya yalnızca hukuka uygun ve alıcı izinlerine saygılı mesajlaşma operasyonlarında kullanılabilir.",
   "legal.terms.prohibited": "Spam, kötüye kullanım, yetkisiz erişim ve platform güvenliğini riske atan faaliyetler yasaktır.",
@@ -1508,4 +1523,19 @@
   ,"notifications.admin.priorityNormal": "Normal"
   ,"notifications.admin.priorityHigh": "Yüksek"
   ,"notifications.admin.priorityCritical": "Kritik"
+  ,"admin.menu.releases": "Sürüm merkezi"
+  ,"adminReleases.eyebrow": "Sürüm yönetişimi"
+  ,"adminReleases.title": "Sürüm Merkezi"
+  ,"adminReleases.description": "Paket, kontrol, test, onay, mağaza gönderimi ve rollout kanıtlarının salt okunur görünümü."
+  ,"adminReleases.releases": "Sürümler"
+  ,"adminReleases.artifacts": "Paketler"
+  ,"adminReleases.blocked": "Engellenen"
+  ,"adminReleases.failedChecks": "Başarısız zorunlu kontroller"
+  ,"adminReleases.empty": "Henüz doğrulanmış bir sürüm kaydı içe aktarılmadı."
+  ,"adminReleases.releaseId": "Sürüm kimliği"
+  ,"adminReleases.platform": "Platform"
+  ,"adminReleases.version": "Sürüm"
+  ,"adminReleases.commit": "Commit"
+  ,"adminReleases.channel": "Kanal"
+  ,"adminReleases.evidence": "Paket / kontrol / test / onay"
 }
