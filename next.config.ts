@@ -3,6 +3,10 @@ import type { NextConfig } from "next";
 const developmentScriptPolicy = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  experimental: {
+    cpus: 2,
+    staticGenerationMaxConcurrency: 2,
+  },
   async headers() {
     return [{
       source: "/(.*)",

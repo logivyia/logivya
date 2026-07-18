@@ -79,7 +79,7 @@ const CONTACT_HISTORY_FALLBACK_COOLDOWN_MS = Number(process.env.WHATSAPP_CONTACT
 const CONTACT_EVENT_BUFFER_WAIT_MS = Number(process.env.WHATSAPP_CONTACT_EVENT_BUFFER_WAIT_MS || 25_000);
 const CONTACT_OPEN_SYNC_STALE_MS = Number(process.env.WHATSAPP_CONTACT_OPEN_SYNC_STALE_MS || 6 * 60 * 60_000);
 const CONTACT_APP_STATE_COLLECTIONS = ["critical_unblock_low", "regular"] as const;
-const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V14_TRANSACTION_SAFE_BATCHING";
+const CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V15_NON_DESTRUCTIVE_RECONCILIATION";
 const PAIRING_CODE_REISSUE_RETRY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_REISSUE_RETRY_MS || process.env.WHATSAPP_PAIRING_PRESERVED_CODE_RETRY_MS || 10_000);
 const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
@@ -1279,11 +1279,12 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           await this.syncGroups(accountId);
           const contactState = await prisma.whatsAppAccount.findUnique({
             where: { id: accountId },
-            select: { lastContactSyncAt: true, _count: { select: { contacts: true } } },
+            select: { lastContactSyncAt: true, contactSyncImplementation: true, _count: { select: { contacts: true } } },
           });
           const contactSyncStale = !contactState?.lastContactSyncAt
             || Date.now() - contactState.lastContactSyncAt.getTime() >= CONTACT_OPEN_SYNC_STALE_MS;
-          if (identityReset.changed || !contactState?._count.contacts || contactSyncStale) {
+          const contactSyncUpgradeRequired = contactState?.contactSyncImplementation !== CONTACT_SYNC_IMPLEMENTATION;
+          if (identityReset.changed || !contactState?._count.contacts || contactSyncStale || contactSyncUpgradeRequired) {
             await enqueueWhatsAppJob(
               "sync-contacts",
               { action: "sync-contacts", accountId },
@@ -1299,6 +1300,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
               identityChanged: identityReset.changed,
               existingCount: contactState?._count.contacts ?? 0,
               stale: contactSyncStale,
+              implementationUpgradeRequired: contactSyncUpgradeRequired,
             });
           }
         }
@@ -1752,7 +1754,9 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       await flushContactPersistence(accountId);
       snapshot = [...(contactSnapshots.get(accountId)?.values() ?? [])];
       if (snapshot.length) {
-        await persistWhatsAppContacts(accountId, snapshot, { source: "BAILEYS_FULL_APP_STATE", fullSync: true });
+        // Baileys app-state events expose the session directory, not a provably complete phone address book.
+        // Reconcile additively so a partial event stream can never hide previously authorized contacts.
+        await persistWhatsAppContacts(accountId, snapshot, { source: "BAILEYS_FULL_APP_STATE" });
       }
       directoryStats = await persistedContactStats(accountId, account.userId);
       await backupWhatsAppSessionToDatabase(accountId, "contact.full_sync.app_state_synced").catch((error) =>
@@ -1888,7 +1892,10 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         }
       }
     }
-    await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { lastContactSyncAt: new Date() } });
+    await prisma.whatsAppAccount.update({
+      where: { id: accountId },
+      data: { lastContactSyncAt: new Date(), contactSyncImplementation: CONTACT_SYNC_IMPLEMENTATION },
+    });
     logger.info("whatsapp.contacts.sync_completed", { accountId, snapshotCount: snapshot.length, verifiedCount });
     return { count: verifiedCount, implementation: CONTACT_SYNC_IMPLEMENTATION };
   }

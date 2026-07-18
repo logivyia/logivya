@@ -203,6 +203,18 @@ async function main() {
   assert(memberContacts.contacts.length === 1 && memberContacts.contacts[0]?.phone === "905550000002", "Invited member must see only the member's account contacts.");
   await expectError(() => resolveOwnedWhatsAppContacts({ companyId: professional.company.id, userId: professional.owner.id, accountId: ownerAccount.id }, [memberContacts.contacts[0]!.id]), "WHATSAPP_CONTACT_OWNERSHIP_MISMATCH");
 
+  await persistWhatsAppContacts(ownerAccount.id, [
+    { id: "905550000003@s.whatsapp.net", name: "İkinci Kişi" },
+    { id: "905550000003@s.whatsapp.net" },
+  ], { source: "INTEGRATION_DUPLICATE_EVENT" });
+  await persistWhatsAppContacts(ownerAccount.id, [
+    { id: "905550000001@s.whatsapp.net" },
+  ], { source: "INTEGRATION_PARTIAL_EVENT" });
+  const reconciledContacts = await listOwnedWhatsAppContacts({ companyId: professional.company.id, userId: professional.owner.id, accountId: ownerAccount.id, page: 1, limit: 10 });
+  const retainedNamedContact = reconciledContacts.contacts.find((contact) => contact.phone === "905550000003");
+  assert(reconciledContacts.contacts.length === 2, "A partial provider event must not deactivate an omitted existing contact.");
+  assert(retainedNamedContact?.displayName === "İkinci Kişi", "A duplicate unnamed provider row must not overwrite a stronger saved name.");
+
   const ownerGroup = await prisma.whatsAppGroup.create({
     data: {
       companyId: professional.company.id,

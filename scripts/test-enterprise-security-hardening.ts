@@ -11,6 +11,15 @@ function read(file: string) {
   return readFileSync(path.join(root, file), "utf8");
 }
 
+function assertPermissionNotGranted(manifest: string, permission: string) {
+  const escaped = permission.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const declarations = manifest.match(new RegExp(`<uses-permission\\b[^>]*android:name=["']${escaped}["'][^>]*/?>`, "g")) ?? [];
+  assert(
+    declarations.every((declaration) => declaration.includes("tools:node=\"remove\"")),
+    `${permission} must be absent or explicitly removed from the merged Android manifest.`,
+  );
+}
+
 function encode(value: unknown) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
@@ -67,8 +76,8 @@ assert(sessions.includes("where: { userId, revokedAt: null"), "Session list and 
 assert(proxy.includes("isApiRequest && hasSession && !hasBearerToken"), "Cookie-authenticated API mutations must enforce same-origin CSRF checks.");
 assert(vercelIgnore.includes("/sessions"), "Only the repository-root session snapshot directory may be excluded from Vercel uploads.");
 assert(!/^sessions$/m.test(vercelIgnore), "Vercel uploads must not exclude API session routes.");
-assert(!manifest.includes("android.permission.READ_EXTERNAL_STORAGE"));
-assert(!manifest.includes("android.permission.WRITE_EXTERNAL_STORAGE"));
+assertPermissionNotGranted(manifest, "android.permission.READ_EXTERNAL_STORAGE");
+assertPermissionNotGranted(manifest, "android.permission.WRITE_EXTERNAL_STORAGE");
 assert(!manifest.includes("android.permission.SYSTEM_ALERT_WINDOW"));
 assert(manifest.includes('android:allowBackup="false"'));
 assert(manifest.includes('android:usesCleartextTraffic="false"'));

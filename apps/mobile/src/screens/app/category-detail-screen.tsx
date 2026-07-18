@@ -5,7 +5,7 @@ import type { RouteProp } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { getMobileCategoryContacts } from "@/api/mobileCategories";
-import { getMobileContactDisplayName, getMobileContacts, syncMobileContacts, type MobileWhatsAppContact } from "@/api/mobileContacts";
+import { getMobileContactDisplayName, getMobileContactPhoneLabel, getMobileContacts, syncMobileContacts, type MobileWhatsAppContact } from "@/api/mobileContacts";
 import type { MobileGroup } from "@/api/mobileGroups";
 import { getMobileSubscription } from "@/api/mobileSubscription";
 import { CategoryColorPicker, DEFAULT_CATEGORY_COLOR, isValidCategoryColor, normalizeCategoryColor } from "@/components/category-color-picker";
@@ -327,7 +327,7 @@ function AssignableContact({ contact, selected, onToggle }: { contact: CategoryC
       <SelectionBox selected={selected} />
       <View style={styles.groupBody}>
         <Text style={[styles.groupTitle, { color: theme.text }]} numberOfLines={2}>{displayName}</Text>
-        {contact.phone ? <Text style={[styles.meta, { color: theme.muted }]}>+{contact.phone}</Text> : null}
+        {getMobileContactPhoneLabel(contact) ? <Text style={[styles.meta, { color: theme.muted }]}>{getMobileContactPhoneLabel(contact)}</Text> : null}
       </View>
     </Pressable>
   );

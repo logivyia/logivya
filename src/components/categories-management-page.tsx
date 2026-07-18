@@ -53,6 +53,15 @@ function audienceSummary(category: Category, t: Translate) {
   return t("categories.noAudienceAssigned");
 }
 
+function contactPhoneLabel(contact: Contact) {
+  const digits = contact.phone.replace(/\D/g, "");
+  if (!digits) return null;
+  const displayName = (contact.displayName || contact.name || "").trim();
+  const displayDigits = displayName.replace(/\D/g, "");
+  if (/^[+\d\s().-]+$/.test(displayName) && displayDigits === digits) return null;
+  return `+${digits}`;
+}
+
 export function CategoriesManagementPage() {
   const { t } = useI18n();
   const [data, setData] = useState<Data | null>(null);
@@ -351,7 +360,7 @@ export function CategoriesManagementPage() {
                     return (
                       <label key={contact.id} className={cn("flex min-h-14 items-center gap-3 rounded-lg border p-3 text-sm", selected && "border-primary bg-accent text-accent-foreground")}>
                         <input type="checkbox" checked={selected} onChange={() => toggleContact(contact.id)} className="size-4" />
-                        <span className="min-w-0"><b className="block truncate">{contact.displayName || contact.name}</b>{contact.phone ? <small className="text-muted">+{contact.phone}</small> : null}</span>
+                        <span className="min-w-0"><b className="block truncate">{contact.displayName || contact.name}</b>{contactPhoneLabel(contact) ? <small className="text-muted">{contactPhoneLabel(contact)}</small> : null}</span>
                       </label>
                     );
                   })}

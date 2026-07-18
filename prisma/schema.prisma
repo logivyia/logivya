@@ -979,6 +979,7 @@ model WhatsAppAccount {
   lastMessageAt              DateTime?
   lastGroupSyncAt            DateTime?
   lastContactSyncAt          DateTime?
+  contactSyncImplementation  String?
   lastConnectionLatencyMs    Int?
   batteryState               String?
   healthScore                Int                @default(0)

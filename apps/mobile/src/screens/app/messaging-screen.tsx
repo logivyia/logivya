@@ -5,7 +5,7 @@ import DateTimePicker, { type DateTimePickerEvent } from "@react-native-communit
 import { Ionicons } from "@expo/vector-icons";
 
 import { getMobileCategories, type MobileCategory } from "@/api/mobileCategories";
-import { getMobileContactDisplayName, getMobileContacts, syncMobileContacts, type MobileWhatsAppContact } from "@/api/mobileContacts";
+import { getMobileContactDisplayName, getMobileContactPhoneLabel, getMobileContacts, syncMobileContacts, type MobileWhatsAppContact } from "@/api/mobileContacts";
 import { getMobileGroups, type MobileGroup } from "@/api/mobileGroups";
 import { createRecurringMobileMessage, scheduleMobileMessage, sendMobileMessage, type MobileMessageResponse } from "@/api/mobileMessages";
 import { getMobileSubscription } from "@/api/mobileSubscription";
@@ -588,7 +588,7 @@ export function MessagingScreen() {
                       <SelectableRow
                         key={contact.id}
                         label={displayName}
-                        meta={contact.phone ? `+${contact.phone}` : undefined}
+                        meta={getMobileContactPhoneLabel(contact)}
                         selected={selectedContacts.includes(contact.id)}
                         onPress={() => toggle(contact.id, selectedContacts, setSelectedContacts)}
                       />

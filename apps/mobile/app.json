@@ -3,7 +3,7 @@
     "name": "Logivya",
     "slug": "logivya-mobile",
     "scheme": "logivya",
-    "version": "1.0.100",
+    "version": "1.0.101",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -32,7 +32,7 @@
     },
     "android": {
       "package": "com.logivya.mobile",
-      "versionCode": 130,
+      "versionCode": 131,
       "googleServicesFile": "./google-services.json",
       "icon": "./assets/logivya/mobillogo1.png",
       "adaptiveIcon": {
@@ -50,8 +50,8 @@
         "https://logivya.com",
         "https://logivya.vercel.app"
       ],
-      "buildMarker": "PRODUCTION_RELEASE_GOVERNANCE_V130",
-      "releaseId": "android-v130-1.0.100",
+      "buildMarker": "WHATSAPP_CONTACT_SYNC_NAME_RESTORATION_V131",
+      "releaseId": "android-v131-1.0.101",
       "gitCommit": "e1121b97c28128cc4d15344cf4d7464cfc4bd688",
       "buildDate": "2026-07-17T15:31:59Z",
       "apiContractVersion": "2026-07-17",

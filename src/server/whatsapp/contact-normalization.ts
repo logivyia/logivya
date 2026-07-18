@@ -29,6 +29,7 @@ function usableDisplayName(value: string | null | undefined, phone: string) {
   if (!candidate) return null;
 
   const lower = candidate.toLowerCase();
+  if (lower === "null" || lower === "undefined") return null;
   if (lower.endsWith("@s.whatsapp.net") || lower.endsWith("@lid") || lower.endsWith("@g.us")) return null;
 
   const candidateDigits = candidate.replace(/\D/g, "");
@@ -64,10 +65,13 @@ export function resolveWhatsAppContactDisplayIdentity(contact: ContactDisplayFie
     { value: usableDisplayName(contact.pushName, contact.phone), source: "PUSH_NAME" },
   ];
 
-  if (contact.displayName && contact.displayNameSource && contact.displayNameSource !== "PHONE_FALLBACK") {
+  if (contact.displayName) {
+    const source = contact.displayNameSource && contact.displayNameSource !== "PHONE_FALLBACK"
+      ? contact.displayNameSource
+      : "SAVED_NAME";
     candidates.push({
       value: usableDisplayName(contact.displayName, contact.phone),
-      source: contact.displayNameSource,
+      source,
     });
   }
 

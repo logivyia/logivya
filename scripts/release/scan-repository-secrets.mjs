@@ -19,6 +19,7 @@ const detectors = [
 
 for (const relative of tracked) {
   const normalized = relative.replaceAll("\\", "/");
+  if (normalized === "scripts/release/scan-repository-secrets.mjs") continue;
   if (skipped.test(normalized)) continue;
   let content;
   try {

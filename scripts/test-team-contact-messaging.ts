@@ -11,7 +11,7 @@ import {
   resolveWhatsAppContactDisplayIdentity,
   resolveWhatsAppContactDisplayName,
 } from "../src/server/whatsapp/contact-normalization";
-import { normalizeWhatsAppAccountIdentity } from "../src/server/whatsapp/contacts";
+import { mergeNormalizedProviderContact, normalizeWhatsAppAccountIdentity } from "../src/server/whatsapp/contacts";
 import { collectGroupParticipantContacts } from "../src/server/whatsapp/group-participant-contacts";
 
 const root = process.cwd();
@@ -78,6 +78,13 @@ assert(resolveWhatsAppContactDisplayName({ phone: "905551112233", name: "Saved N
 assert(resolveWhatsAppContactDisplayName({ phone: "905551112233", name: "905551112233", pushName: null }) === "+905551112233", "A valid phone-only contact must remain visible through normalized phone fallback.");
 const unicodeContactName = "J\u00f6rg \u00c7a\u011flar";
 assert(resolveWhatsAppContactDisplayName({ phone: "491701234567", name: unicodeContactName, pushName: null }) === unicodeContactName, "Unicode contact names must remain intact.");
+assert(resolveWhatsAppContactDisplayName({ phone: "8613812345678", name: "李小龙", pushName: null }) === "李小龙", "International Unicode contact names must remain intact.");
+assert(resolveWhatsAppContactDisplayName({ phone: "905551112233", name: "undefined", pushName: null }) === "+905551112233", "Invalid provider placeholders must fall back to the normalized phone number.");
+assert(resolveWhatsAppContactDisplayName({ phone: "905551112233", displayName: "Persisted Contact" }) === "Persisted Contact", "A valid legacy persisted display name must survive when provenance is unavailable.");
+const namedDuplicate = normalizeProviderContact({ id: "905551112233@s.whatsapp.net", name: "Kayıtlı Kişi" });
+const unnamedDuplicate = normalizeProviderContact({ id: "905551112233@s.whatsapp.net" });
+assert(namedDuplicate && unnamedDuplicate, "Direct provider contacts must normalize before duplicate merging.");
+assert(mergeNormalizedProviderContact(namedDuplicate, unnamedDuplicate).displayName === "Kayıtlı Kişi", "A later unnamed duplicate must not overwrite a stronger saved name.");
 assert(
   resolveWhatsAppContactDisplayIdentity({
     phone: "905551112233",
@@ -158,11 +165,16 @@ assert(contacts.includes("contact.name ?? previous?.name"), "Partial provider pa
 assert(contacts.includes("contact.pushName ?? previous?.pushName"), "Partial provider payloads must not erase an existing WhatsApp push name.");
 assert(contacts.includes("displayNameSource"), "The backend must persist the authoritative contact display-name source.");
 assert(contacts.includes("contactSyncRun"), "Contact refresh requests must have durable synchronization-run state.");
+assert(read("prisma/schema.prisma").includes("contactSyncImplementation"), "Accounts must record the last completed contact-sync implementation for one-time existing-session repair.");
 assert(contacts.includes("CONTACT_PERSISTENCE_BATCH_SIZE = 40"), "Large contact directories must persist in transaction-safe batches without imposing a total-contact limit.");
+assert(contacts.includes("mergeNormalizedProviderContact"), "Duplicate provider rows must merge without dropping a stronger saved name.");
+assert(!contacts.includes("externalContactId: { notIn: normalizedContacts"), "A partial provider snapshot must never deactivate previously authorized contacts.");
 assert(!contacts.includes('{ OR: [{ name: { not: null } }, { pushName: { not: null } }] }'), "Phone-fallback contacts must not be removed from the user-facing directory.");
 
 const baileysProvider = read("src/worker/baileys-provider.ts");
-assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V14_TRANSACTION_SAFE_BATCHING"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
+assert(baileysProvider.includes('CONTACT_SYNC_IMPLEMENTATION = "CONTACT_DIRECTORY_V15_NON_DESTRUCTIVE_RECONCILIATION"'), "Contact sync jobs must expose their deployed implementation marker for production verification.");
+assert(baileysProvider.includes("contactSyncUpgradeRequired"), "Restored sessions on an older contact-sync implementation must queue a one-time reconciliation.");
+assert(baileysProvider.includes("contactSyncImplementation: CONTACT_SYNC_IMPLEMENTATION"), "Only a completed reconciliation may advance the account contact-sync implementation marker.");
 assert(baileysProvider.includes('mode === "PAIR_PHONE" || mode === "PAIR_QR"'), "Every fresh QR or phone pairing must request complete contact history.");
 assert(baileysProvider.includes("syncFullHistory: syncContactHistory"), "Contact bootstrap must explicitly request supported Baileys history sync data.");
 assert(baileysProvider.includes('CONTACT_APP_STATE_COLLECTIONS = ["critical_unblock_low", "regular"]'), "Contact bootstrap must fetch both saved contacts and PN-for-LID aliases.");
@@ -176,7 +188,8 @@ assert(baileysProvider.includes('"whatsapp.contacts.full_sync_started"'), "A man
 assert(baileysProvider.includes("contactPhoneJidsByLid"), "Contact sync must retain LID-to-phone mappings across partial events.");
 assert(baileysProvider.includes('keys.set({ "lid-mapping": values })'), "LID-to-phone mappings must survive worker restarts in the account-owned auth state.");
 assert(baileysProvider.includes("hydrateLidMappingsFromSession"), "Restored sessions must resolve buffered LID contacts from persistent reverse mappings.");
-assert(baileysProvider.includes('source: "BAILEYS_FULL_APP_STATE", fullSync: true'), "A complete app-state snapshot must persist named native LID targets and deactivate superseded aliases.");
+assert(baileysProvider.includes('source: "BAILEYS_FULL_APP_STATE"'), "App-state contacts must be persisted for existing-session repair.");
+assert(!baileysProvider.includes('fullSync: true'), "Baileys app-state deltas must never be treated as a complete physical address book.");
 assert(baileysProvider.includes('!contact.externalContactId.endsWith("@lid")'), "Opaque LID targets must not be misinterpreted as phone numbers by availability lookup.");
 assert(baileysProvider.includes("normalizableSnapshotCount"), "Production contact sync must expose privacy-safe normalization diagnostics.");
 assert(baileysProvider.includes("appStateSyncError"), "Production contact sync must make app-state persistence failures auditable.");
@@ -264,6 +277,8 @@ assert(mobileComposer.includes("contactRequestVersionRef"), "Mobile contact sear
 assert(mobileComposer.includes("currentSyncAt !== previousSyncAt"), "Mobile refresh must wait for a completed contact sync timestamp.");
 assert(!mobileComposer.includes("label={contact.name || contact.pushName || contact.phone}"), "Mobile UI must use the canonical display-name resolver.");
 assert(read("apps/mobile/src/api/mobileContacts.ts").includes("getMobileContactDisplayName"), "Mobile contact labels must pass through a dedicated display-name sanitizer.");
+assert(read("apps/mobile/src/api/mobileContacts.ts").includes("getMobileContactPhoneLabel"), "Mobile contact rows must hide a duplicate phone subtitle when the primary label is already the phone fallback.");
+assert(read("src/components/campaign-composer-page.tsx").includes("contactPhoneLabel"), "Web contact rows must hide duplicate phone fallback subtitles.");
 assert(read("src/components/campaign-composer-page.tsx").includes("currentSyncAt !== previousSyncAt"), "Web refresh must wait for a completed contact sync timestamp.");
 assert(read("package.json").includes("npm run test:whatsapp-contacts && npm run test:category-contact-assignment && tsx scripts/release-acceptance-gate.ts"), "The release gate must run contact directory and category assignment contracts.");
 

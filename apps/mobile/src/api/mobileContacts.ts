@@ -46,6 +46,15 @@ export function getMobileContactDisplayName(contact: Pick<MobileWhatsAppContact,
   return digits ? `+${digits}` : contact.phone;
 }
 
+export function getMobileContactPhoneLabel(contact: Pick<MobileWhatsAppContact, "phone" | "name" | "pushName"> & Partial<Pick<MobileWhatsAppContact, "displayName">>) {
+  const digits = contact.phone.replace(/\D/g, "");
+  if (!digits) return undefined;
+  const displayName = getMobileContactDisplayName(contact).trim();
+  const displayDigits = displayName.replace(/\D/g, "");
+  if (/^[+\d\s().-]+$/.test(displayName) && displayDigits === digits) return undefined;
+  return `+${digits}`;
+}
+
 export function getMobileContacts(params: { page?: number; limit?: number; search?: string } = {}) {
   const query = new URLSearchParams();
   query.set("page", String(params.page ?? 1));

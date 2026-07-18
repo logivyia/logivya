@@ -47,6 +47,14 @@ function contactDisplayName(contact: Contact) {
   return digits ? `+${digits}` : contact.phone;
 }
 
+function contactPhoneLabel(contact: Contact, displayName: string) {
+  const digits = contact.phone.replace(/\D/g, "");
+  if (!digits) return null;
+  const displayDigits = displayName.replace(/\D/g, "");
+  if (/^[+\d\s().-]+$/.test(displayName) && displayDigits === digits) return null;
+  return `+${digits}`;
+}
+
 function formatCategoryAudience(category: Category, t: ReturnType<typeof useI18n>["t"]) {
   const groups = category._count.groups ?? 0;
   const contacts = category._count.contacts ?? 0;
@@ -526,7 +534,7 @@ export function CampaignComposerPage() {
                         checked={selectedContacts.includes(contact.id)}
                         onChange={(event) => setSelectedContacts((value) => event.target.checked ? [...new Set([...value, contact.id])] : value.filter((id) => id !== contact.id))}
                       />
-                      <span className="min-w-0"><b className="block truncate">{displayName}</b>{contact.phone ? <small className="text-muted">+{contact.phone}</small> : null}</span>
+                      <span className="min-w-0"><b className="block truncate">{displayName}</b>{contactPhoneLabel(contact, displayName) ? <small className="text-muted">{contactPhoneLabel(contact, displayName)}</small> : null}</span>
                     </label>
                   ))}
                 </div>

@@ -14,7 +14,26 @@ import {
 export { normalizeProviderContact, normalizeWhatsAppContactJid, type ProviderContactRecord } from "@/server/whatsapp/contact-normalization";
 
 type ContactScope = { companyId: string; userId: string; accountId?: string };
+type NormalizedProviderContact = NonNullable<ReturnType<typeof normalizeProviderContact>>;
 const CONTACT_PERSISTENCE_BATCH_SIZE = 40;
+
+export function mergeNormalizedProviderContact(previous: NormalizedProviderContact, incoming: NormalizedProviderContact) {
+  const phone = incoming.phone || previous.phone;
+  const name = incoming.name ?? previous.name;
+  const pushName = incoming.pushName ?? previous.pushName;
+  const notifyName = incoming.notifyName ?? previous.notifyName;
+  const verifiedName = incoming.verifiedName ?? previous.verifiedName;
+  const identity = resolveWhatsAppContactDisplayIdentity({
+    phone,
+    name,
+    pushName,
+    notifyName,
+    verifiedName,
+    displayName: previous.displayName,
+    displayNameSource: previous.displayNameSource,
+  });
+  return { ...previous, ...incoming, phone, name, pushName, notifyName, verifiedName, ...identity };
+}
 
 export function normalizeWhatsAppAccountIdentity(value: string | null | undefined) {
   const identity = value?.split(":")[0]?.split("@")[0]?.replace(/\D/g, "") ?? "";
@@ -61,17 +80,19 @@ export function ownedWhatsAppContactWhere(scope: ContactScope): Prisma.ContactWh
   };
 }
 
-export async function persistWhatsAppContacts(accountId: string, contacts: ProviderContactRecord[], options: { fullSync?: boolean; source?: string } = {}) {
+export async function persistWhatsAppContacts(accountId: string, contacts: ProviderContactRecord[], options: { source?: string } = {}) {
   const account = await prisma.whatsAppAccount.findUnique({
     where: { id: accountId },
     select: { id: true, userId: true, companyId: true, archivedAt: true },
   });
   if (!account || account.archivedAt || !account.userId) throw new Error("WHATSAPP_ACCOUNT_OWNERSHIP_REQUIRED");
 
-  const deduplicated = new Map<string, NonNullable<ReturnType<typeof normalizeProviderContact>>>();
+  const deduplicated = new Map<string, NormalizedProviderContact>();
   for (const contact of contacts) {
     const normalized = normalizeProviderContact(contact);
-    if (normalized) deduplicated.set(normalized.externalContactId, normalized);
+    if (!normalized) continue;
+    const previous = deduplicated.get(normalized.externalContactId);
+    deduplicated.set(normalized.externalContactId, previous ? mergeNormalizedProviderContact(previous, normalized) : normalized);
   }
   const normalizedContacts = [...deduplicated.values()];
   const syncedAt = new Date();
@@ -154,12 +175,6 @@ export async function persistWhatsAppContacts(accountId: string, contacts: Provi
       });
     }));
   }
-  if (options.fullSync && normalizedContacts.length > 0) {
-    await prisma.contact.updateMany({
-      where: { accountId, externalContactId: { notIn: normalizedContacts.map((contact) => contact.externalContactId) } },
-      data: { isActive: false },
-    });
-  }
   await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { lastContactSyncAt: syncedAt } });
 
   logger.info("whatsapp.contacts.persisted", {
@@ -168,7 +183,6 @@ export async function persistWhatsAppContacts(accountId: string, contacts: Provi
     whatsappAccountId: accountId,
     receivedCount: contacts.length,
     persistedCount: normalizedContacts.length,
-    fullSync: Boolean(options.fullSync),
     source: options.source ?? "BAILEYS",
   });
   const fallbackCount = normalizedContacts.filter((contact) => contact.displayNameSource === "PHONE_FALLBACK").length;
@@ -211,6 +225,8 @@ export async function listOwnedWhatsAppContacts(input: ContactScope & {
           { displayName: { contains: search, mode: "insensitive" as const } },
           { name: { contains: search, mode: "insensitive" as const } },
           { pushName: { contains: search, mode: "insensitive" as const } },
+          { notifyName: { contains: search, mode: "insensitive" as const } },
+          { verifiedName: { contains: search, mode: "insensitive" as const } },
           { phone: { contains: search } },
         ],
       }] : []),
