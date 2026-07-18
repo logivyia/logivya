@@ -268,6 +268,11 @@ async function main() {
 }
 
 void main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  if (error instanceof Error) {
+    console.error(`${error.name}: ${error.message || "No error message"}`);
+    if (error.stack) console.error(error.stack);
+  } else {
+    console.error(String(error));
+  }
   process.exit(1);
 });

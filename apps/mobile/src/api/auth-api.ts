@@ -1,4 +1,5 @@
 import { apiClient } from "@/api/client";
+import { config } from "@/constants/config";
 import { getMobilePlatform } from "@/utils/device";
 import type { AuthSessionPayload, AuthTokens, LoginResponsePayload, MobileCompany, MobileUser } from "@/types/api";
 
@@ -19,8 +20,9 @@ export function loginRequest(input: { identifier: string; password: string; devi
   return apiClient.post<LoginResponsePayload>("/api/mobile/auth/login", {
     ...input,
     identifier: normalizeIdentifier(input.identifier),
-    platform: getMobilePlatform()
-  }, { auth: false });
+    platform: getMobilePlatform(),
+    appVersion: input.appVersion ?? config.appVersion,
+  }, { auth: false, retry: false, hostFallback: false });
 }
 
 export function verifyMfaLoginRequest(input: {
@@ -34,7 +36,8 @@ export function verifyMfaLoginRequest(input: {
   return apiClient.post<AuthSessionPayload>("/api/mobile/auth/mfa/verify", {
     ...input,
     platform: getMobilePlatform(),
-  }, { auth: false });
+    appVersion: input.appVersion ?? config.appVersion,
+  }, { auth: false, retry: false, hostFallback: false });
 }
 
 export function acceptInvitationRequest(invitationToken: string) {

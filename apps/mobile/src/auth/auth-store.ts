@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 import type { AuthTokens, MobileCompany, MobileUser } from "@/types/api";
 
-type AuthStatus = "booting" | "authenticated" | "unauthenticated";
+type AuthStatus = "booting" | "recovering" | "authenticated" | "unauthenticated";
 
 type AuthState = {
   status: AuthStatus;
@@ -12,6 +12,7 @@ type AuthState = {
   isPlatformAdmin: boolean;
   tokens: AuthTokens | null;
   setBooting: () => void;
+  setRecovering: () => void;
   setSession: (session: {
     user: MobileUser;
     company: MobileCompany;
@@ -33,6 +34,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   isPlatformAdmin: false,
   tokens: null,
   setBooting: () => set({ status: "booting" }),
+  setRecovering: () => set({ status: "recovering" }),
   setSession: (session) =>
     set({
       status: "authenticated",

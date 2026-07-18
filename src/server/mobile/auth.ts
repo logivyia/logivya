@@ -2,12 +2,14 @@ import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { MobilePlatform, type Company, type CompanyUser, type User } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { hashOpaqueToken } from "@/server/security/authentication";
+import { decryptPrivateValue, encryptPrivateValue } from "@/server/security/private-fields";
 
 const ACCESS_TOKEN_SECONDS = 15 * 60;
 const REFRESH_TOKEN_DAYS = 30;
 const ACCESS_TOKEN_ISSUER = "logivya";
 const ACCESS_TOKEN_AUDIENCE = "logivya-mobile";
 const CLOCK_SKEW_SECONDS = 60;
+const REFRESH_RETRY_GRACE_MS = 90_000;
 
 type AccessPayload = {
   typ: "mobile_access";
@@ -160,6 +162,7 @@ export async function createMobileSession(input: {
 
 export async function rotateRefreshToken(refreshToken: string, request: Request) {
   const refresh = createRefreshToken();
+  const replacementTokenEncrypted = encryptPrivateValue(refresh.token);
   const incomingHash = hashOpaqueToken(refreshToken);
   const now = new Date();
   const result = await prisma.$transaction(async (tx) => {
@@ -171,12 +174,55 @@ export async function rotateRefreshToken(refreshToken: string, request: Request)
     if (!existing) {
       const replay = await tx.mobileRefreshTokenHistory.findUnique({
         where: { tokenHash: incomingHash },
-        include: { session: true },
+        include: { session: { include: { user: true } } },
       });
       if (!replay) return { kind: "missing" as const };
+
+      const membership = await tx.companyUser.findUnique({
+        where: { companyId_userId: { companyId: replay.session.companyId, userId: replay.session.userId } },
+      });
+      let recoveredRefreshToken: string | null = null;
+      if (
+        replay.replacementTokenEncrypted
+        && replay.recoveryExpiresAt
+        && replay.recoveryExpiresAt > now
+        && !replay.session.revokedAt
+        && replay.session.expiresAt > now
+        && replay.session.user.status === "ACTIVE"
+        && membership?.status === "ACTIVE"
+        && (!replay.session.user.mfaRequired || Boolean(replay.session.mfaVerifiedAt))
+      ) {
+        try {
+          const candidate = decryptPrivateValue(replay.replacementTokenEncrypted);
+          if (hashOpaqueToken(candidate) === replay.session.refreshTokenHash) recoveredRefreshToken = candidate;
+        } catch {
+          recoveredRefreshToken = null;
+        }
+      }
+
+      if (recoveredRefreshToken && membership) {
+        await tx.mobileRefreshTokenHistory.update({
+          where: { id: replay.id },
+          data: { retryAcceptedAt: now, retryCount: { increment: 1 } },
+        });
+        await tx.mobileDeviceSession.update({
+          where: { id: replay.sessionId },
+          data: { lastUsedAt: now },
+        });
+        return {
+          kind: "recovered" as const,
+          companyId: replay.session.companyId,
+          userId: replay.session.userId,
+          sessionId: replay.sessionId,
+          role: membership.role,
+          refreshToken: recoveredRefreshToken,
+          refreshExpiresAt: replay.session.expiresAt,
+        };
+      }
+
       await tx.mobileRefreshTokenHistory.update({
         where: { id: replay.id },
-        data: { replayDetectedAt: now },
+        data: { replayDetectedAt: now, replacementTokenEncrypted: null },
       });
       await tx.mobileDeviceSession.updateMany({
         where: { id: replay.sessionId, revokedAt: null },
@@ -207,7 +253,14 @@ export async function rotateRefreshToken(refreshToken: string, request: Request)
     }
     await tx.mobileRefreshTokenHistory.deleteMany({ where: { sessionId: existing.id, expiresAt: { lte: now } } });
     await tx.mobileRefreshTokenHistory.create({
-      data: { sessionId: existing.id, tokenHash: incomingHash, expiresAt: existing.expiresAt, consumedAt: now },
+      data: {
+        sessionId: existing.id,
+        tokenHash: incomingHash,
+        expiresAt: existing.expiresAt,
+        consumedAt: now,
+        replacementTokenEncrypted,
+        recoveryExpiresAt: new Date(now.getTime() + REFRESH_RETRY_GRACE_MS),
+      },
     });
     const session = await tx.mobileDeviceSession.update({
       where: { id: existing.id },
@@ -219,6 +272,8 @@ export async function rotateRefreshToken(refreshToken: string, request: Request)
       companyId: existing.companyId,
       sessionId: session.id,
       role: membership.role,
+      refreshToken: refresh.token,
+      refreshExpiresAt: refresh.expiresAt,
     };
   });
 
@@ -253,12 +308,26 @@ export async function rotateRefreshToken(refreshToken: string, request: Request)
     throw new Error("UNAUTHORIZED");
   }
   if (result.kind === "missing") throw new Error("UNAUTHORIZED");
+  if (result.kind === "recovered") {
+    const { tryRecordSecurityEvent } = await import("@/server/security/events");
+    await tryRecordSecurityEvent({
+      request,
+      companyId: result.companyId,
+      userId: result.userId,
+      severity: "INFO",
+      type: "AUTH_REFRESH_TOKEN_RETRY_RECOVERED",
+      message: "A repeated mobile refresh request was recovered without revoking the active session.",
+      result: "ALLOWED",
+      source: "mobile-auth",
+      metadata: { sessionId: result.sessionId },
+    });
+  }
   const access = createAccessToken({ userId: result.userId, companyId: result.companyId, sessionId: result.sessionId, role: result.role });
   return {
     ...access,
-    refreshToken: refresh.token,
-    refreshTokenExpiresAt: refresh.expiresAt.toISOString(),
-    refreshExpiresAt: refresh.expiresAt,
+    refreshToken: result.refreshToken,
+    refreshTokenExpiresAt: result.refreshExpiresAt.toISOString(),
+    refreshExpiresAt: result.refreshExpiresAt,
     tokenType: "Bearer" as const,
   };
 }

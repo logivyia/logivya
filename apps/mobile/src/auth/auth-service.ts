@@ -1,7 +1,7 @@
 import { acceptInvitationCodeRequest, acceptInvitationRequest, loginRequest, logoutRequest, meRequest, registerRequest, verifyMfaLoginRequest } from "@/api/auth-api";
 import { isAuthenticationRejection } from "@/api/api-errors";
 import { useAuthStore } from "@/auth/auth-store";
-import { clearMobileRuntimeSessionState, clearMobileSessionState } from "@/auth/session-cleanup";
+import { clearMobileSessionState } from "@/auth/session-cleanup";
 import { normalizeAuthTokens } from "@/auth/token-normalizer";
 import { readMfaTrustedDeviceToken, readTokens, saveMfaTrustedDeviceToken, saveTokens } from "@/storage/secure-storage";
 import { getOrCreateDeviceId } from "@/storage/device-storage";
@@ -94,6 +94,7 @@ export async function register(input: {
 }
 
 export async function restoreSession() {
+  useAuthStore.getState().setBooting();
   const tokens = await readTokens();
   if (!tokens) {
     useAuthStore.getState().clearSession();
@@ -112,7 +113,6 @@ export async function restoreSession() {
       return;
     }
 
-    clearMobileRuntimeSessionState();
     throw error;
   }
 }

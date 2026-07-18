@@ -33,6 +33,13 @@ export class SecureTokenStorageError extends Error {
   }
 }
 
+export class SecureTokenReadError extends Error {
+  constructor() {
+    super(translateCurrent("operationFailedError"));
+    this.name = "SecureTokenReadError";
+  }
+}
+
 function toSecureStoreString(value: unknown) {
   if (value === null || value === undefined) return null;
   if (typeof value === "string") return value;
@@ -107,8 +114,7 @@ export async function readTokens(): Promise<StoredTokens | null> {
     }
   } catch (error) {
     captureAppError(error, { source: "secure-store-read-tokens" });
-    await clearTokens();
-    return null;
+    throw error instanceof SecureTokenReadError ? error : new SecureTokenReadError();
   }
 
   const storedAccessToken = asStoredString(accessToken);
