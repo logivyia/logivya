@@ -51,6 +51,7 @@ assert(authApi.includes("appVersion: input.appVersion ?? config.appVersion"), "M
 const serverAuth = read("src/server/mobile/auth.ts");
 assert(serverAuth.includes("AUTH_REFRESH_TOKEN_RETRY_RECOVERED"), "A lost refresh response must be recoverable without session revocation.");
 assert(serverAuth.includes("replacementTokenEncrypted"), "Replacement refresh tokens must only be retained encrypted.");
+assert(serverAuth.includes("MOBILE_REFRESH_RECOVERY_KEY_"), "Refresh recovery encryption must use a dedicated, rotatable key.");
 assert(serverAuth.includes("hashOpaqueToken(candidate) === replay.session.refreshTokenHash"), "Recovered refresh tokens must match the active session hash.");
 assert(serverAuth.includes("AUTH_REFRESH_TOKEN_REPLAY_DETECTED"), "True refresh token replay detection must remain enforced.");
 

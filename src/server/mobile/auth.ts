@@ -2,7 +2,7 @@ import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { MobilePlatform, type Company, type CompanyUser, type User } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { hashOpaqueToken } from "@/server/security/authentication";
-import { decryptPrivateValue, encryptPrivateValue } from "@/server/security/private-fields";
+import { decryptSensitiveField, encryptSensitiveField, parseEncryptedField, serializeEncryptedField, type EncryptionKeyring } from "@/server/security/encryption";
 
 const ACCESS_TOKEN_SECONDS = 15 * 60;
 const REFRESH_TOKEN_DAYS = 30;
@@ -10,6 +10,23 @@ const ACCESS_TOKEN_ISSUER = "logivya";
 const ACCESS_TOKEN_AUDIENCE = "logivya-mobile";
 const CLOCK_SKEW_SECONDS = 60;
 const REFRESH_RETRY_GRACE_MS = 90_000;
+
+function refreshRecoveryKeyring(): EncryptionKeyring {
+  const activeVersion = (process.env.MOBILE_REFRESH_RECOVERY_ACTIVE_VERSION || "v1").toLowerCase();
+  const encoded = process.env[`MOBILE_REFRESH_RECOVERY_KEY_${activeVersion.toUpperCase()}`];
+  if (!encoded) throw new Error("MOBILE_REFRESH_RECOVERY_KEY_NOT_CONFIGURED");
+  const key = Buffer.from(encoded, "base64url");
+  if (key.length !== 32) throw new Error("MOBILE_REFRESH_RECOVERY_KEY_NOT_CONFIGURED");
+  return { activeVersion, keys: { [activeVersion]: key } };
+}
+
+function encryptRefreshRecoveryToken(value: string) {
+  return serializeEncryptedField(encryptSensitiveField(value, refreshRecoveryKeyring()));
+}
+
+function decryptRefreshRecoveryToken(value: string) {
+  return decryptSensitiveField(parseEncryptedField(value), refreshRecoveryKeyring());
+}
 
 type AccessPayload = {
   typ: "mobile_access";
@@ -162,7 +179,7 @@ export async function createMobileSession(input: {
 
 export async function rotateRefreshToken(refreshToken: string, request: Request) {
   const refresh = createRefreshToken();
-  const replacementTokenEncrypted = encryptPrivateValue(refresh.token);
+  const replacementTokenEncrypted = encryptRefreshRecoveryToken(refresh.token);
   const incomingHash = hashOpaqueToken(refreshToken);
   const now = new Date();
   const result = await prisma.$transaction(async (tx) => {
@@ -193,7 +210,7 @@ export async function rotateRefreshToken(refreshToken: string, request: Request)
         && (!replay.session.user.mfaRequired || Boolean(replay.session.mfaVerifiedAt))
       ) {
         try {
-          const candidate = decryptPrivateValue(replay.replacementTokenEncrypted);
+          const candidate = decryptRefreshRecoveryToken(replay.replacementTokenEncrypted);
           if (hashOpaqueToken(candidate) === replay.session.refreshTokenHash) recoveredRefreshToken = candidate;
         } catch {
           recoveredRefreshToken = null;
