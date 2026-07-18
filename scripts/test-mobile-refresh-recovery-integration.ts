@@ -56,8 +56,29 @@ async function main() {
       headers: { "user-agent": "logivya-release-proof/132" },
     });
 
-    const rotated = await rotateRefreshToken(initial.refreshToken, request);
-    const recovered = await rotateRefreshToken(initial.refreshToken, request);
+    type RotatedTokens = Awaited<ReturnType<typeof rotateRefreshToken>>;
+    const liveBaseUrl = process.env.MOBILE_AUTH_INTEGRATION_BASE_URL?.replace(/\/+$/, "");
+    async function rotate(token: string): Promise<RotatedTokens> {
+      if (!liveBaseUrl) return rotateRefreshToken(token, request);
+      const response = await fetch(`${liveBaseUrl}/api/mobile/auth/refresh`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "user-agent": "logivya-release-proof/132" },
+        body: JSON.stringify({ refreshToken: token }),
+      });
+      const payload = await response.json() as {
+        data?: { tokens?: RotatedTokens };
+        error?: { code?: string };
+      };
+      if (!response.ok || !payload.data?.tokens) {
+        const error = new Error(payload.error?.code || `HTTP_${response.status}`) as Error & { status?: number };
+        error.status = response.status;
+        throw error;
+      }
+      return payload.data.tokens;
+    }
+
+    const rotated = await rotate(initial.refreshToken);
+    const recovered = await rotate(initial.refreshToken);
     if (recovered.refreshToken !== rotated.refreshToken) {
       throw new Error("Recovered refresh token differs from the active replacement.");
     }
@@ -75,9 +96,9 @@ async function main() {
     });
     let replayRejected = false;
     try {
-      await rotateRefreshToken(initial.refreshToken, request);
+      await rotate(initial.refreshToken);
     } catch (error) {
-      replayRejected = error instanceof Error && error.message === "UNAUTHORIZED";
+      replayRejected = error instanceof Error && (error.message === "UNAUTHORIZED" || (error as Error & { status?: number }).status === 401);
     }
     if (!replayRejected) throw new Error("Expired refresh replay was not rejected.");
 
@@ -90,6 +111,7 @@ async function main() {
       trueReplayRejection: "PASSED",
       retryCount: history.retryCount,
       appVersion: session.appVersion,
+      executionMode: liveBaseUrl ? "LIVE_HTTP" : "DIRECT",
     }));
   } finally {
     if (companyId) {
