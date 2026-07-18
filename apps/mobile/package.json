@@ -1,6 +1,6 @@
 {
   "name": "@logivya/mobile",
-  "version": "1.0.101",
+  "version": "1.0.103",
   "private": true,
   "main": "index.js",
   "scripts": {
