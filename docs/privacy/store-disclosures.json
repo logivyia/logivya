@@ -21,7 +21,8 @@
     "WAKE_LOCK",
     "RECEIVE_BOOT_COMPLETED",
     "USE_BIOMETRIC",
-    "USE_FINGERPRINT"
+    "USE_FINGERPRINT",
+    "DETECT_SCREEN_CAPTURE"
   ],
   "generatedTechnicalPermissionGroups": ["firebase-messaging", "launcher-badges", "install-referrer"],
   "prohibitedUnexpectedPermissions": [
@@ -35,7 +36,6 @@
     "READ_EXTERNAL_STORAGE",
     "READ_MEDIA_IMAGES",
     "WRITE_EXTERNAL_STORAGE",
-    "DETECT_SCREEN_CAPTURE",
     "AD_ID",
     "ACCESS_ADSERVICES_ATTRIBUTION",
     "ACCESS_ADSERVICES_AD_ID"

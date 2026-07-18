@@ -93,7 +93,6 @@ const removedPermissions = [
   "android.permission.READ_EXTERNAL_STORAGE",
   "android.permission.READ_MEDIA_IMAGES",
   "android.permission.WRITE_EXTERNAL_STORAGE",
-  "android.permission.DETECT_SCREEN_CAPTURE",
   "com.google.android.gms.permission.AD_ID",
   "android.permission.ACCESS_ADSERVICES_ATTRIBUTION",
   "android.permission.ACCESS_ADSERVICES_AD_ID",
@@ -103,6 +102,16 @@ for (const permission of removedPermissions) {
   const removalDeclaration = new RegExp(`android:name="${escaped}"[^>]*tools:node="remove"`);
   check(`Manifest removes ${permission}`, removalDeclaration.test(manifest), "AndroidManifest.xml");
 }
+
+const screenCapturePermission = "android.permission.DETECT_SCREEN_CAPTURE";
+const screenCaptureDeclaration = new RegExp(
+  `android:name="${screenCapturePermission.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*android:minSdkVersion="34"`,
+);
+check(
+  "Android 14 screen capture callback permission",
+  screenCaptureDeclaration.test(manifest) && !manifest.includes(`${screenCapturePermission}\" tools:node=\"remove`),
+  "required by expo-screen-capture 8 on Android 14+",
+);
 
 check("Public account deletion resource", existsSync(accountDeletionPath), "src/app/account-deletion/page.tsx");
 check("Firebase Android configuration", existsSync(path.join(root, "apps/mobile/google-services.json")), "apps/mobile/google-services.json");

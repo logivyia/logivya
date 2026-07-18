@@ -77,7 +77,6 @@ const forbiddenPermissions = [
   "android.permission.READ_EXTERNAL_STORAGE",
   "android.permission.READ_MEDIA_IMAGES",
   "android.permission.WRITE_EXTERNAL_STORAGE",
-  "android.permission.DETECT_SCREEN_CAPTURE",
   "com.google.android.gms.permission.AD_ID",
   "android.permission.ACCESS_ADSERVICES_ATTRIBUTION",
   "android.permission.ACCESS_ADSERVICES_AD_ID",
@@ -93,6 +92,11 @@ check("Compile SDK", compileSdk >= targetSdk, String(compileSdk));
 check("Cleartext traffic disabled", /android:usesCleartextTraffic="false"/.test(manifest), "merged manifest");
 check("Application backup disabled", /android:allowBackup="false"/.test(manifest), "merged manifest");
 check("Release is not debuggable", !/android:debuggable="true"/.test(manifest), "merged manifest");
+check(
+  "Android 14 screen capture callback permission",
+  uniquePermissions.includes("android.permission.DETECT_SCREEN_CAPTURE"),
+  "required by expo-screen-capture 8 on Android 14+",
+);
 for (const permission of forbiddenPermissions) {
   check(`Forbidden permission absent: ${permission}`, !uniquePermissions.includes(permission), "merged manifest");
 }

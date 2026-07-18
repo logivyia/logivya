@@ -41,7 +41,8 @@
       },
       "permissions": [
         "INTERNET",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "DETECT_SCREEN_CAPTURE"
       ]
     },
     "extra": {
