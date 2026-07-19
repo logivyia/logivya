@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-19T14:27:25.277Z",
+  "status": "PASSED",
+  "artifact": {
+    "fileName": "logivya-1.0.106-v136-closed-test.aab",
+    "sizeBytes": 60729447,
+    "sha256": "44FBECDA483363A9CDB21B510B4434161108D2BA40D26859E86B9616B69F2BE9",
+    "packageName": "com.logivya.mobile",
+    "versionCode": 136,
+    "versionName": "1.0.106",
+    "minSdk": 24,
+    "targetSdk": 36,
+    "compileSdk": 36,
+    "abis": [
+      "arm64-v8a",
+      "armeabi-v7a",
+      "x86",
+      "x86_64"
+    ],
+    "permissions": [
+      "android.permission.ACCESS_NETWORK_STATE",
+      "android.permission.ACCESS_WIFI_STATE",
+      "android.permission.DETECT_SCREEN_CAPTURE",
+      "android.permission.INTERNET",
+      "android.permission.POST_NOTIFICATIONS",
+      "android.permission.READ_APP_BADGE",
+      "android.permission.RECEIVE_BOOT_COMPLETED",
+      "android.permission.USE_BIOMETRIC",
+      "android.permission.USE_FINGERPRINT",
+      "android.permission.VIBRATE",
+      "android.permission.WAKE_LOCK",
+      "com.anddoes.launcher.permission.UPDATE_COUNT",
+      "com.google.android.c2dm.permission.RECEIVE",
+      "com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE",
+      "com.htc.launcher.permission.READ_SETTINGS",
+      "com.htc.launcher.permission.UPDATE_SHORTCUT",
+      "com.huawei.android.launcher.permission.CHANGE_BADGE",
+      "com.huawei.android.launcher.permission.READ_SETTINGS",
+      "com.huawei.android.launcher.permission.WRITE_SETTINGS",
+      "com.logivya.mobile.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+      "com.majeur.launcher.permission.UPDATE_BADGE",
+      "com.oppo.launcher.permission.READ_SETTINGS",
+      "com.oppo.launcher.permission.WRITE_SETTINGS",
+      "com.sec.android.provider.badge.permission.READ",
+      "com.sec.android.provider.badge.permission.WRITE",
+      "com.sonyericsson.home.permission.BROADCAST_BADGE",
+      "com.sonymobile.home.permission.PROVIDER_INSERT_BADGE",
+      "me.everything.badger.permission.BADGE_COUNT_READ",
+      "me.everything.badger.permission.BADGE_COUNT_WRITE"
+    ],
+    "uploadCertificateSha256": "90ED684102500A915046DF804E9DB404CA61395819DC8DD025AC085D71FA6BA0"
+  },
+  "tooling": {
+    "bundletoolFileName": "bundletool-all-1.18.1.jar",
+    "bundletoolSha256": "675786493983787FFA11550BDB7C0715679A44E1643F3FF980A529E9C822595C"
+  },
+  "source": {
+    "gitCommit": "100bca613f53af6ed50ab9b2f0e243c46e16b12b"
+  },
+  "approvals": {
+    "owner": null,
+    "androidDevice": null,
+    "mobileWeb": null,
+    "desktopWeb": null,
+    "database": null,
+    "workerRedis": null,
+    "playLineage": null
+  },
+  "observations": {
+    "localDevelopmentEndpointStrings": [
+      "base/assets/index.android.bundle",
+      "base/dex/classes3.dex"
+    ],
+    "note": "Compiled framework code can contain inactive development URL strings; runtime production URL is enforced by preflight and the embedded production endpoint check."
+  },
+  "checks": [
+    {
+      "name": "Bundletool validation",
+      "status": "PASSED",
+      "evidence": "bundletool-all-1.18.1.jar"
+    },
+    {
+      "name": "Package identifier",
+      "status": "PASSED",
+      "evidence": "com.logivya.mobile"
+    },
+    {
+      "name": "Version code",
+      "status": "PASSED",
+      "evidence": "136 / source 136"
+    },
+    {
+      "name": "Version name",
+      "status": "PASSED",
+      "evidence": "1.0.106 / source 1.0.106"
+    },
+    {
+      "name": "Minimum SDK",
+      "status": "PASSED",
+      "evidence": "24"
+    },
+    {
+      "name": "Target SDK",
+      "status": "PASSED",
+      "evidence": "36"
+    },
+    {
+      "name": "Compile SDK",
+      "status": "PASSED",
+      "evidence": "36"
+    },
+    {
+      "name": "Cleartext traffic disabled",
+      "status": "PASSED",
+      "evidence": "merged manifest"
+    },
+    {
+      "name": "Application backup disabled",
+      "status": "PASSED",
+      "evidence": "merged manifest"
+    },
+    {
+      "name": "Release is not debuggable",
+      "status": "PASSED",
+      "evidence": "merged manifest"
+    },
+    {
+      "name": "Android 14 screen capture callback permission",
+      "status": "PASSED",
+      "evidence": "required by expo-screen-capture 8 on Android 14+"
+    },
+    {
+      "name": "Forbidden permission absent: android.permission.READ_EXTERNAL_STORAGE",
+      "status": "PASSED",
+      "evidence": "merged manifest"
+    },
+    {
+      "name": "Forbidden permission absent: android.permission.READ_MEDIA_IMAGES",
+      "status": "PASSED",
+      "evidence": "merged manifest"
+    },
+    {
+      "name": "Forbidden permission absent: android.permission.WRITE_EXTERNAL_STORAGE",
+      "status": "PASSED",
+      "evidence": "merged manifest"
+    },
+    {
+      "name": "Forbidden permission absent: com.google.android.gms.permission.AD_ID",
+      "status": "PASSED",
+      "evidence": "merged manifest"
+    },
+    {
+      "name": "Forbidden permission absent: android.permission.ACCESS_ADSERVICES_ATTRIBUTION",
+      "status": "PASSED",
+      "evidence": "merged manifest"
+    },
+    {
+      "name": "Forbidden permission absent: android.permission.ACCESS_ADSERVICES_AD_ID",
+      "status": "PASSED",
+      "evidence": "merged manifest"
+    },
+    {
+      "name": "Required Android ABIs",
+      "status": "PASSED",
+      "evidence": "arm64-v8a, armeabi-v7a, x86, x86_64"
+    },
+    {
+      "name": "JAR signature",
+      "status": "PASSED",
+      "evidence": "jarsigner verified"
+    },
+    {
+      "name": "Upload certificate readable",
+      "status": "PASSED",
+      "evidence": "90ED684102500A915046DF804E9DB404CA61395819DC8DD025AC085D71FA6BA0"
+    },
+    {
+      "name": "Upload certificate lineage",
+      "status": "PASSED",
+      "evidence": "90ED684102500A915046DF804E9DB404CA61395819DC8DD025AC085D71FA6BA0"
+    },
+    {
+      "name": "Production API endpoint embedded",
+      "status": "PASSED",
+      "evidence": "https://www.logivya.com"
+    },
+    {
+      "name": "AAB embedded secret scan",
+      "status": "PASSED",
+      "evidence": "no findings"
+    }
+  ]
+}
