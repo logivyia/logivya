@@ -280,6 +280,13 @@ assert(read("apps/mobile/src/api/mobileContacts.ts").includes("getMobileContactD
 assert(read("apps/mobile/src/api/mobileContacts.ts").includes("getMobileContactPhoneLabel"), "Mobile contact rows must hide a duplicate phone subtitle when the primary label is already the phone fallback.");
 assert(read("src/components/campaign-composer-page.tsx").includes("contactPhoneLabel"), "Web contact rows must hide duplicate phone fallback subtitles.");
 assert(read("src/components/campaign-composer-page.tsx").includes("currentSyncAt !== previousSyncAt"), "Web refresh must wait for a completed contact sync timestamp.");
-assert(read("package.json").includes("npm run test:whatsapp-contacts && npm run test:category-contact-assignment && tsx scripts/release-acceptance-gate.ts"), "The release gate must run contact directory and category assignment contracts.");
+const releaseAcceptance = (JSON.parse(read("package.json")) as { scripts?: Record<string, string> }).scripts?.["release:acceptance"] ?? "";
+const contactDirectoryIndex = releaseAcceptance.indexOf("npm run test:whatsapp-contacts");
+const categoryAssignmentIndex = releaseAcceptance.indexOf("npm run test:category-contact-assignment");
+const finalGateIndex = releaseAcceptance.indexOf("tsx scripts/release-acceptance-gate.ts");
+assert(
+  contactDirectoryIndex >= 0 && categoryAssignmentIndex > contactDirectoryIndex && finalGateIndex > categoryAssignmentIndex,
+  "The release gate must run contact directory and category assignment contracts before the final evidence gate.",
+);
 
 console.log("Team seats, invitation lifecycle, contact privacy, typed delivery and cross-platform UI contracts passed.");
