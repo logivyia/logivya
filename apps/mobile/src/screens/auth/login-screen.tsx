@@ -1,17 +1,18 @@
 import { useEffect, useState } from "react";
 import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import * as Clipboard from "expo-clipboard";
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import { completeMfaLogin, login } from "@/auth/auth-service";
+import { completeMfaLogin, finishMfaSetupLogin, login } from "@/auth/auth-service";
 import { BrandHeader } from "@/components/brand-header";
 import { PrimaryButton } from "@/components/primary-button";
 import { Screen } from "@/components/screen";
 import { TextField } from "@/components/text-field";
 import { useTranslation } from "@/i18n/use-translation";
 import { useTheme } from "@/theme/theme-provider";
-import type { MfaLoginChallengePayload } from "@/types/api";
+import type { AuthSessionPayload, MfaLoginChallengePayload } from "@/types/api";
 import type { AuthStackParamList } from "@/types/navigation";
 
 function getLoginErrorMessage(error: unknown, t: ReturnType<typeof useTranslation>["t"]) {
@@ -33,6 +34,7 @@ export function LoginScreen() {
   const [mfaChallenge, setMfaChallenge] = useState<MfaLoginChallengePayload | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [rememberDevice, setRememberDevice] = useState(false);
+  const [mfaSetupSession, setMfaSetupSession] = useState<AuthSessionPayload | null>(null);
 
   useEffect(() => {
     function captureInvitation(url: string | null) {
@@ -65,12 +67,20 @@ export function LoginScreen() {
     if (!mfaChallenge) return;
     setLoading(true);
     try {
-      await completeMfaLogin(mfaChallenge, mfaCode, rememberDevice, invitationToken);
+      const pendingSession = await completeMfaLogin(mfaChallenge, mfaCode, rememberDevice, invitationToken);
+      if (pendingSession) setMfaSetupSession(pendingSession);
     } catch (error) {
       Alert.alert(t("loginFailed"), getLoginErrorMessage(error, t));
     } finally {
       setLoading(false);
     }
+  }
+
+  async function finishMfaSetup() {
+    if (!mfaSetupSession) return;
+    setLoading(true);
+    try { await finishMfaSetupLogin(mfaSetupSession, invitationToken); }
+    catch (error) { Alert.alert(t("loginFailed"), getLoginErrorMessage(error, t)); setLoading(false); }
   }
 
   return (
@@ -79,6 +89,15 @@ export function LoginScreen() {
         <BrandHeader />
         {mfaChallenge ? (
           <View style={styles.form}>
+            {mfaSetupSession?.recoveryCodes?.length ? <>
+              <Text style={[styles.title, { color: theme.text }]}>{t("mfaRecoveryCodes")}</Text>
+              <Text style={[styles.subtitle, { color: theme.muted }]}>{t("mfaRecoveryWarning")}</Text>
+              <View style={[styles.detailPanel, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Text selectable style={[styles.recoveryCodes, { color: theme.text }]}>{mfaSetupSession.recoveryCodes.join("\n")}</Text>
+              </View>
+              <PrimaryButton title={t("mfaCopyCodes")} icon="copy-outline" onPress={() => void Clipboard.setStringAsync(mfaSetupSession.recoveryCodes!.join("\n"))} />
+              <PrimaryButton title={t("continue")} loading={loading} onPress={finishMfaSetup} />
+            </> : <>
             <Text style={[styles.title, { color: theme.text }]}>{t(mfaChallenge.mfaSetupRequired ? "mfaSetupTitle" : "mfaTitle")}</Text>
             <Text style={[styles.subtitle, { color: theme.muted }]}>{t(mfaChallenge.mfaSetupRequired ? "mfaSetupSubtitle" : "mfaSubtitle")}</Text>
             {mfaChallenge.qrCodeDataUrl ? (
@@ -92,14 +111,7 @@ export function LoginScreen() {
                 <Text selectable style={[styles.secret, { color: theme.text }]}>{mfaChallenge.secret}</Text>
               </View>
             ) : null}
-            {mfaChallenge.recoveryCodes?.length ? (
-              <View style={[styles.detailPanel, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                <Text style={[styles.smallLabel, { color: theme.text }]}>{t("mfaRecoveryCodes")}</Text>
-                <Text style={[styles.recoveryWarning, { color: theme.muted }]}>{t("mfaRecoveryWarning")}</Text>
-                <Text selectable style={[styles.recoveryCodes, { color: theme.text }]}>{mfaChallenge.recoveryCodes.join("\n")}</Text>
-              </View>
-            ) : null}
-            <TextField label={t("mfaCode")} autoCapitalize="characters" autoCorrect={false} value={mfaCode} onChangeText={setMfaCode} />
+            <TextField label={t("mfaCode")} keyboardType="number-pad" maxLength={6} autoComplete="one-time-code" autoCapitalize="none" autoCorrect={false} value={mfaCode} onChangeText={(value) => setMfaCode(value.replace(/\D/gu, "").slice(0, 6))} />
             <View style={styles.rememberRow}>
               <Text style={[styles.rememberText, { color: theme.text }]}>{t("mfaRememberDevice")}</Text>
               <Switch value={rememberDevice} onValueChange={setRememberDevice} />
@@ -108,6 +120,7 @@ export function LoginScreen() {
             <Pressable onPress={() => { setMfaChallenge(null); setMfaCode(""); }} style={styles.centerLink}>
               <Text style={{ color: theme.primary }}>{t("mfaBackToLogin")}</Text>
             </Pressable>
+            </>}
           </View>
         ) : (
           <View style={styles.form}>

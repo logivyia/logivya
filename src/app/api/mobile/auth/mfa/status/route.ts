@@ -1,11 +1,12 @@
 import { prisma } from "@/server/db";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { mobileError, mobileSafeError, mobileSuccess } from "@/server/mobile/response";
+import { pendingMfaEnrollmentStatus } from "@/server/security/mfa";
 
 export async function GET(request: Request) {
   try {
     const context = await requireMobileAuth(request);
-    const [credential, trustedDevices, recentEvents] = await Promise.all([
+    const [credential, trustedDevices, recentEvents, setup] = await Promise.all([
       prisma.mfaCredential.findFirst({
         where: { userId: context.user.id, verifiedAt: { not: null }, revokedAt: null },
         orderBy: { verifiedAt: "desc" },
@@ -20,8 +21,9 @@ export async function GET(request: Request) {
         where: { userId: context.user.id }, orderBy: { createdAt: "desc" }, take: 20,
         select: { id: true, type: true, severity: true, message: true, ipAddress: true, createdAt: true },
       }),
+      pendingMfaEnrollmentStatus(context.user.id),
     ]);
-    return mobileSuccess({ enabled: Boolean(credential), required: context.user.mfaRequired, enabledAt: credential?.verifiedAt, recoveryCodesRemaining: credential?.recoveryCodes.length ?? 0, trustedDevices, recentEvents });
+    return mobileSuccess({ enabled: Boolean(credential), required: context.user.mfaRequired, enabledAt: credential?.verifiedAt, recoveryCodesRemaining: credential?.recoveryCodes.length ?? 0, trustedDevices, recentEvents, ...setup });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") return mobileError("UNAUTHORIZED", "Oturum gecersiz.", { status: 401 });
     return mobileSafeError(error);

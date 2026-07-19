@@ -132,7 +132,7 @@ export async function POST(request: Request) {
         platform: parsed.data.platform,
         appVersion: parsed.data.appVersion,
       });
-      const enrollment = purpose === "SETUP" ? await createAndStoreMfaEnrollment(user.id, user.email) : null;
+      const enrollment = purpose === "SETUP" ? await createAndStoreMfaEnrollment(user.id, user.email, { replacePending: true }) : null;
       await recordMfaSecurityEvent({
         request,
         userId: user.id,

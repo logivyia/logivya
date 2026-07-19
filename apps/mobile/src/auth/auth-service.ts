@@ -67,7 +67,24 @@ export async function completeMfaLogin(
   invitationCode?: string,
 ) {
   const deviceId = await getOrCreateDeviceId();
-  const session = await verifyMfaLoginRequest({ challengeToken: challenge.challengeToken, code, rememberDevice, deviceId, deviceName: "Android" });
+  const session = await verifyMfaLoginRequest({
+    challengeToken: challenge.challengeToken,
+    code,
+    rememberDevice,
+    deviceId,
+    deviceName: "Android",
+    ...(challenge.setupToken ? { setupToken: challenge.setupToken } : {}),
+  });
+  if (session.recoveryCodes?.length) return session;
+  await applyAuthenticatedSession(session, invitationToken, invitationCode);
+  return null;
+}
+
+export async function finishMfaSetupLogin(
+  session: AuthSessionPayload,
+  invitationToken?: string,
+  invitationCode?: string,
+) {
   await applyAuthenticatedSession(session, invitationToken, invitationCode);
 }
 

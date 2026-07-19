@@ -1,13 +1,14 @@
 import { z } from "zod";
 
-import { recordMfaSecurityEvent, revokeUserSecuritySessions } from "@/server/auth/mfa-challenge";
+import { notifyMfaSecurityChange, recordMfaSecurityEvent, revokeUserSecuritySessions } from "@/server/auth/mfa-challenge";
 import { prisma } from "@/server/db";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { readMobileJson } from "@/server/mobile/request-json";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
-import { activateMfaCredential, verifyAndConsumeMfaCode } from "@/server/security/mfa";
+import { verifyPendingMfaEnrollment } from "@/server/security/mfa";
+import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 
-const schema = z.object({ code: z.string().trim().min(6).max(64) });
+const schema = z.object({ setupToken: z.string().min(32).max(256), code: z.string().trim().regex(/^\d{6}$/u) });
 
 export async function POST(request: Request) {
   try {
@@ -16,13 +17,14 @@ export async function POST(request: Request) {
     if (!body.ok) return body.response;
     const parsed = schema.safeParse(body.data);
     if (!parsed.success) return mobileValidationError(parsed.error);
-    const verification = await verifyAndConsumeMfaCode({ userId: context.user.id, code: parsed.data.code, allowUnverifiedCredential: true });
-    if (!verification.ok) return mobileError(verification.reason, "Dogrulama kodu gecersiz.", { status: 401 });
-    await activateMfaCredential(context.user.id, verification.credentialId);
+    await enforceOperationRateLimit({ scope: "mobile-mfa-enrollment-verify", subject: context.user.id, maxAttempts: 7, windowMs: 10 * 60_000, request });
+    const verification = await verifyPendingMfaEnrollment({ userId: context.user.id, setupToken: parsed.data.setupToken, code: parsed.data.code });
+    if (!verification.ok) return mobileError(verification.reason, "Dogrulama kodu gecersiz.", { status: verification.reason === "TOO_MANY_TOTP_ATTEMPTS" ? 429 : 401 });
     await prisma.mobileDeviceSession.update({ where: { id: context.sessionId }, data: { mfaVerifiedAt: new Date() } });
     await revokeUserSecuritySessions(context.user.id, { mobileSessionId: context.sessionId });
     await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_ENABLED", message: "Iki adimli dogrulama mobil uygulamadan etkinlestirildi." });
-    return mobileSuccess({ ok: true });
+    await notifyMfaSecurityChange({ userId: context.user.id, companyId: context.company.id, type: "security.mfa_enabled", title: "Iki adimli dogrulama etkin", message: "Authenticator dogrulamasi hesabinizi korumak icin etkinlestirildi." });
+    return mobileSuccess({ ok: true, recoveryCodes: verification.recoveryCodes });
   } catch (error) {
     return mobileSafeError(error);
   }

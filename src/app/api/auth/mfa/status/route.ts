@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
+import { pendingMfaEnrollmentStatus } from "@/server/security/mfa";
 
 export async function GET() {
   try {
     const context = await requireApiSession();
-    const [credential, trustedDevices, recentEvents] = await Promise.all([
+    const [credential, trustedDevices, recentEvents, setup] = await Promise.all([
       prisma.mfaCredential.findFirst({
         where: { userId: context.user.id, verifiedAt: { not: null }, revokedAt: null },
         orderBy: { verifiedAt: "desc" },
@@ -23,12 +24,14 @@ export async function GET() {
         take: 20,
         select: { id: true, type: true, severity: true, message: true, ipAddress: true, createdAt: true },
       }),
+      pendingMfaEnrollmentStatus(context.user.id),
     ]);
     return NextResponse.json({
       enabled: Boolean(credential),
       required: context.user.mfaRequired,
       enabledAt: credential?.verifiedAt,
       recoveryCodesRemaining: credential?.recoveryCodes.length ?? 0,
+      ...setup,
       trustedDevices,
       recentEvents,
     });

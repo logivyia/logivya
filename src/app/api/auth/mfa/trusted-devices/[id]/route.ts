@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { recordMfaSecurityEvent } from "@/server/auth/mfa-challenge";
+import { notifyMfaSecurityChange, recordMfaSecurityEvent } from "@/server/auth/mfa-challenge";
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
 
@@ -14,6 +14,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     });
     if (!revoked.count) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
     await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_TRUSTED_DEVICE_REVOKED", message: "Guvenilir cihaz yetkisi kaldirildi.", severity: "MEDIUM" });
+    await notifyMfaSecurityChange({ userId: context.user.id, companyId: context.company.id, type: "security.mfa_trusted_device_revoked", title: "Guvenilir cihaz kaldirildi", message: "Bir cihazin iki adimli dogrulama guveni iptal edildi." });
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });

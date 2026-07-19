@@ -6,6 +6,7 @@ import {
   consumeMfaChallenge,
   MFA_CHALLENGE_COOKIE,
   MFA_TRUSTED_DEVICE_COOKIE,
+  notifyMfaSecurityChange,
   readMfaChallenge,
   recordMfaSecurityEvent,
   registerMfaChallengeFailure,
@@ -15,7 +16,7 @@ import {
 import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
 import { createSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
-import { activateMfaCredential, verifyAndConsumeMfaCode } from "@/server/security/mfa";
+import { verifyAndConsumeMfaCode, verifyPendingMfaEnrollment } from "@/server/security/mfa";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 
 const schema = z.object({
@@ -23,6 +24,7 @@ const schema = z.object({
   rememberDevice: z.boolean().optional().default(false),
   deviceFingerprint: z.string().trim().min(8).max(160).optional(),
   deviceName: z.string().trim().max(120).optional(),
+  setupToken: z.string().min(32).max(256).optional(),
 });
 
 export async function POST(request: Request) {
@@ -48,11 +50,11 @@ export async function POST(request: Request) {
       throw new Error("MFA_CHALLENGE_INVALID");
     }
 
-    const verification = await verifyAndConsumeMfaCode({
-      userId: challenge.userId,
-      code: parsed.data.code,
-      allowUnverifiedCredential: challenge.purpose === "SETUP",
-    });
+    const verification = challenge.purpose === "SETUP"
+      ? parsed.data.setupToken
+        ? await verifyPendingMfaEnrollment({ userId: challenge.userId, setupToken: parsed.data.setupToken, code: parsed.data.code })
+        : { ok: false as const, reason: "TWO_FACTOR_SETUP_NOT_FOUND" as const }
+      : await verifyAndConsumeMfaCode({ userId: challenge.userId, code: parsed.data.code });
     if (!verification.ok) {
       const failure = await registerMfaChallengeFailure(challenge.id);
       await prisma.loginAttempt.create({
@@ -80,9 +82,6 @@ export async function POST(request: Request) {
       );
     }
 
-    if (challenge.purpose === "SETUP") {
-      await activateMfaCredential(challenge.userId, verification.credentialId);
-    }
     await consumeMfaChallenge(challenge.id);
     await createSession(challenge.userId, challenge.companyId, request, { mfaVerified: true });
     await prisma.loginAttempt.create({
@@ -121,7 +120,24 @@ export async function POST(request: Request) {
       message: verification.method === "RECOVERY" ? "Kurtarma kodu ile giris yapildi." : "Iki adimli dogrulama basarili oldu.",
       severity: verification.method === "RECOVERY" ? "MEDIUM" : "INFO",
     });
-    return NextResponse.json({ ok: true, isAdmin: isPlatformAdmin, isPlatformAdmin });
+    if (challenge.purpose === "SETUP") {
+      await notifyMfaSecurityChange({
+        userId: challenge.userId,
+        companyId: challenge.companyId,
+        type: "security.mfa_enabled",
+        title: "Iki adimli dogrulama etkin",
+        message: "Authenticator dogrulamasi hesabinizi korumak icin etkinlestirildi.",
+      });
+    }
+    return NextResponse.json(
+      {
+        ok: true,
+        isAdmin: isPlatformAdmin,
+        isPlatformAdmin,
+        ...(challenge.purpose === "SETUP" && "recoveryCodes" in verification ? { recoveryCodes: verification.recoveryCodes } : {}),
+      },
+      { headers: { "Cache-Control": "no-store, private", Pragma: "no-cache" } },
+    );
   } catch (error) {
     const code = error instanceof Error ? error.message : "MFA_ERROR";
     const status = code === "RATE_LIMITED" || code === "MFA_CHALLENGE_LOCKED" ? 429 : 401;

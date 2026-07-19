@@ -30,7 +30,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (body.action === "RESET_MFA" || body.action === "REQUIRE_MFA") {
       await prisma.$transaction([
         prisma.user.update({ where: { id }, data: { mfaRequired: body.action === "REQUIRE_MFA", mfaRequiredAt: body.action === "REQUIRE_MFA" ? now : null } }),
-        prisma.mfaCredential.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: now } }),
+        prisma.mfaCredential.updateMany({
+          where: { userId: id, revokedAt: null },
+          data: { revokedAt: now, setupKey: null, setupTokenHash: null, setupExpiresAt: null, setupLockedUntil: null },
+        }),
         prisma.trustedDevice.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: now } }),
         prisma.mfaLoginChallenge.updateMany({ where: { userId: id, consumedAt: null }, data: { consumedAt: now } }),
         prisma.userSession.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: now } }),

@@ -2,6 +2,8 @@ import { randomBytes } from "node:crypto";
 
 import { prisma } from "@/server/db";
 import { hashOpaqueToken } from "@/server/security/authentication";
+import { createNotification } from "@/server/notifications/service";
+import { logger } from "@/server/observability/logger";
 
 export const MFA_CHALLENGE_COOKIE = "logivya_mfa_challenge";
 export const MFA_TRUSTED_DEVICE_COOKIE = "logivya_mfa_trusted_device";
@@ -175,4 +177,29 @@ export async function recordMfaSecurityEvent(input: {
     source: "mfa",
     metadata: input.metadata,
   });
+}
+
+export async function notifyMfaSecurityChange(input: {
+  userId: string;
+  companyId: string;
+  type: string;
+  title: string;
+  message: string;
+}) {
+  try {
+    await createNotification({
+      companyId: input.companyId,
+      userId: input.userId,
+      type: input.type,
+      title: input.title,
+      message: input.message,
+      payload: { category: "SECURITY" },
+    });
+  } catch (error) {
+    logger.error("mfa.security_notification_failed", error, {
+      companyId: input.companyId,
+      userId: input.userId,
+      notificationType: input.type,
+    });
+  }
 }

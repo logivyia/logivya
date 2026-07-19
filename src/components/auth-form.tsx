@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, LoaderCircle, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Copy, LoaderCircle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -17,9 +17,9 @@ type MfaChallenge = {
   mfaRequired: true;
   mfaSetupRequired: boolean;
   expiresAt: string;
+  setupToken?: string;
   secret?: string;
   qrCodeDataUrl?: string;
-  recoveryCodes?: string[];
 };
 const loginFields = [{ name: "identifier", type: "text", required: true }, { name: "password", type: "password", required: true }] as const;
 const registerFields = [
@@ -75,6 +75,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const [mfaChallenge, setMfaChallenge] = useState<MfaChallenge | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [rememberDevice, setRememberDevice] = useState(false);
+  const [mfaRecoveryCodes, setMfaRecoveryCodes] = useState<string[]>([]);
   const fields = mode === "login" ? loginFields : registerFields;
 
   useEffect(() => {
@@ -168,11 +169,16 @@ export function AuthForm({ mode }: { mode: Mode }) {
     const response = await fetch("/api/auth/mfa/login/verify", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: mfaCode, rememberDevice, deviceFingerprint: browserFingerprint(), deviceName: navigator.userAgent.includes("Mobile") ? "Mobile Web" : "Web Browser" }),
+      body: JSON.stringify({ code: mfaCode, rememberDevice, setupToken: mfaChallenge?.setupToken, deviceFingerprint: browserFingerprint(), deviceName: navigator.userAgent.includes("Mobile") ? "Mobile Web" : "Web Browser" }),
     });
     const result = await response.json();
     if (!response.ok) {
       setError(apiErrorMessage(t, result));
+      setLoading(false);
+      return;
+    }
+    if (Array.isArray(result.recoveryCodes) && result.recoveryCodes.length) {
+      setMfaRecoveryCodes(result.recoveryCodes);
       setLoading(false);
       return;
     }
@@ -192,18 +198,27 @@ export function AuthForm({ mode }: { mode: Mode }) {
           {invitationToken ? <p className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm font-medium text-orange-800">{t("auth.continueWithInvitation")}</p> : null}
         </div>
         {mfaChallenge ? <form className="grid gap-4" onSubmit={verifyMfa}>
+          {mfaRecoveryCodes.length ? <>
+            <div className="flex items-center gap-3">
+              <span className="grid size-11 place-items-center rounded-full bg-emerald-100 text-emerald-700"><ShieldCheck className="size-5" /></span>
+              <div><h2 className="text-xl font-semibold text-slate-950">{t("auth.mfaRecoveryCodes")}</h2><p className="mt-1 text-sm text-slate-600">{t("auth.mfaRecoveryWarning")}</p></div>
+            </div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3"><pre className="grid grid-cols-1 gap-1 whitespace-pre-wrap font-mono text-xs text-amber-950 sm:grid-cols-2">{mfaRecoveryCodes.join("\n")}</pre></div>
+            <button type="button" onClick={() => void navigator.clipboard.writeText(mfaRecoveryCodes.join("\n"))} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700"><Copy className="size-4" />{t("security.copyCodes")}</button>
+            <button type="button" onClick={() => void finishLogin()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 font-semibold text-white"><ArrowRight className="size-4" />{t("common.continue")}</button>
+          </> : <>
           <div className="flex items-center gap-3">
             <span className="grid size-11 place-items-center rounded-full bg-orange-100 text-orange-700"><ShieldCheck className="size-5" /></span>
             <div><h2 className="text-xl font-semibold text-slate-950">{t(mfaChallenge.mfaSetupRequired ? "auth.mfaSetupTitle" : "auth.mfaTitle")}</h2><p className="mt-1 text-sm text-slate-600">{t(mfaChallenge.mfaSetupRequired ? "auth.mfaSetupDescription" : "auth.mfaDescription")}</p></div>
           </div>
           {mfaChallenge.qrCodeDataUrl ? <div className="mx-auto rounded-lg border border-slate-200 bg-white p-2"><Image unoptimized width={224} height={224} src={mfaChallenge.qrCodeDataUrl} alt={t("auth.mfaQrAlt")} className="size-56" /></div> : null}
           {mfaChallenge.secret ? <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-600">{t("auth.mfaManualKey")}</p><code className="mt-1 block break-all text-sm text-slate-950">{mfaChallenge.secret}</code></div> : null}
-          {mfaChallenge.recoveryCodes?.length ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-3"><p className="text-sm font-semibold text-amber-900">{t("auth.mfaRecoveryCodes")}</p><p className="mt-1 text-xs text-amber-800">{t("auth.mfaRecoveryWarning")}</p><pre className="mt-3 grid grid-cols-2 gap-1 whitespace-pre-wrap font-mono text-xs text-amber-950">{mfaChallenge.recoveryCodes.join("\n")}</pre></div> : null}
-          <label><span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.mfaCode")}</span><input required autoFocus value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} autoComplete="one-time-code" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-center font-mono text-lg tracking-[.2em] text-slate-950 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100" /></label>
+          <label><span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.mfaCode")}</span><input required autoFocus inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={(event) => setMfaCode(event.target.value.replace(/\D/gu, "").slice(0, 6))} autoComplete="one-time-code" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-center font-mono text-lg tracking-[.2em] text-slate-950 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100" /></label>
           <label className="flex items-center gap-3 text-sm text-slate-700"><input type="checkbox" checked={rememberDevice} onChange={(event) => setRememberDevice(event.target.checked)} className="size-4 accent-orange-500" />{t("auth.mfaRememberDevice")}</label>
           {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-danger">{error}</p>}
           <button disabled={loading || mfaCode.trim().length < 6} className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 font-semibold text-white disabled:opacity-60">{loading ? <LoaderCircle className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}{t("auth.mfaVerify")}</button>
-          <button type="button" onClick={() => { setMfaChallenge(null); setMfaCode(""); setError(""); }} className="inline-flex items-center justify-center gap-2 text-sm font-semibold text-slate-600"><ArrowLeft className="size-4" />{t("auth.mfaBack")}</button>
+          <button type="button" onClick={() => { setMfaChallenge(null); setMfaCode(""); setError(""); setMfaRecoveryCodes([]); }} className="inline-flex items-center justify-center gap-2 text-sm font-semibold text-slate-600"><ArrowLeft className="size-4" />{t("auth.mfaBack")}</button>
+          </>}
         </form> : <form className="grid gap-4 sm:grid-cols-2" onSubmit={submit}>
           {fields.map((field) => <label key={field.name} className={mode === "login" ? "sm:col-span-2" : ""}>
             <span className="mb-2 block text-xs font-medium text-slate-700">{t(`auth.${field.name}`)}</span>

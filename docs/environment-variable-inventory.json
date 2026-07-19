@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-07-16T15:13:16.899Z",
-  "referencedCount": 190,
-  "documentedCount": 228,
+  "generatedAt": "2026-07-19T11:03:57.449Z",
+  "referencedCount": 237,
+  "documentedCount": 279,
   "missingFromExample": [],
   "publicSecretShaped": [],
   "variables": [
@@ -42,6 +42,18 @@
       ]
     },
     {
+      "name": "ALLOW_PRODUCTION_AUTH_INTEGRATION_TEST",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/test-mobile-refresh-recovery-integration.ts"
+      ]
+    },
+    {
       "name": "ANDROID_VERSION_CODE",
       "documented": true,
       "public": false,
@@ -74,7 +86,8 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "apps/mobile/app.config.js"
+        "apps/mobile/app.config.js",
+        "scripts/release/android-preflight.mjs"
       ]
     },
     {
@@ -114,6 +127,7 @@
       "runtime": true,
       "testOnly": false,
       "files": [
+        "scripts/test-notification-platform.ts",
         "src/lib/whatsapp/session-manager.ts",
         "src/server/mobile/auth.ts",
         "src/server/observability/privacy.ts",
@@ -267,6 +281,18 @@
       ]
     },
     {
+      "name": "BUNDLETOOL_JAR",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/verify-android-bundle.mjs"
+      ]
+    },
+    {
       "name": "CATEGORY_CONTACT_API_BASE_URL",
       "documented": true,
       "public": false,
@@ -323,9 +349,11 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/app/api/cron/monitoring/route.ts",
         "src/app/api/cron/invitation-delivery/route.ts",
+        "src/app/api/cron/monitoring/route.ts",
+        "src/app/api/cron/notifications/route.ts",
         "src/app/api/cron/observability-retention/route.ts",
+        "src/app/api/cron/privacy-maintenance/route.ts",
         "src/app/api/cron/subscriptions/expire/route.ts",
         "src/app/api/cron/support-notifications/route.ts",
         "src/app/api/internal/platform/bootstrap/route.ts"
@@ -353,6 +381,7 @@
         "scripts/audit-team-contact-migration.ts",
         "scripts/audit-whatsapp-group-duplicates.ts",
         "scripts/audit-whatsapp-group-isolation.ts",
+        "scripts/diagnose-mobile-auth-production.ts",
         "scripts/diagnose-production-activity.ts",
         "scripts/diagnose-whatsapp-pairing-state.ts",
         "scripts/inspect-whatsapp-live.ts",
@@ -448,6 +477,31 @@
       "files": [
         "src/app/(platform)/admin/settings/platform/page.tsx",
         "src/server/admin/module-snapshots.ts"
+      ]
+    },
+    {
+      "name": "EXPECTED_UPLOAD_CERT_SHA256",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/verify-android-bundle.mjs"
+      ]
+    },
+    {
+      "name": "EXPO_ACCESS_TOKEN",
+      "documented": true,
+      "public": false,
+      "secret": true,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/notifications/expo-receipts.ts",
+        "src/server/notifications/service.ts"
       ]
     },
     {
@@ -583,22 +637,9 @@
       "testOnly": false,
       "files": [
         "scripts/check-whatsapp-production.ts",
-        "scripts/test-enterprise-mfa.ts",
         "src/lib/whatsapp/session-manager.ts",
         "src/server/security/mfa.ts",
         "src/server/security/private-fields.ts"
-      ]
-    },
-    {
-      "name": "FIELD_ENCRYPTION_KEY_V1",
-      "documented": true,
-      "public": false,
-      "secret": false,
-      "buildTime": false,
-      "runtime": true,
-      "testOnly": false,
-      "files": [
-        "scripts/test-enterprise-mfa.ts"
       ]
     },
     {
@@ -626,6 +667,19 @@
       "testOnly": false,
       "files": [
         "src/server/monitoring/health.ts"
+      ]
+    },
+    {
+      "name": "GITHUB_SHA",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "apps/mobile/app.config.js",
+        "scripts/release/verify-android-bundle.mjs"
       ]
     },
     {
@@ -703,6 +757,30 @@
       ]
     },
     {
+      "name": "L10N_OFFLINE_ONLY",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/build-localization-catalogs.mjs"
+      ]
+    },
+    {
+      "name": "L10N_TARGET_LOCALES",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/build-localization-catalogs.mjs"
+      ]
+    },
+    {
       "name": "LOG_ENVIRONMENT",
       "documented": true,
       "public": false,
@@ -751,9 +829,11 @@
       "runtime": true,
       "testOnly": false,
       "files": [
+        "scripts/notification-worker.ts",
+        "scripts/test-observability-integration.ts",
+        "src/app/api/cron/notifications/route.ts",
         "src/app/api/health/version/route.ts",
         "src/server/monitoring/health.ts",
-        "scripts/test-observability-integration.ts",
         "src/server/observability/logger.ts",
         "src/server/security/audit.ts",
         "src/server/whatsapp/worker-heartbeat.ts",
@@ -786,6 +866,186 @@
       ]
     },
     {
+      "name": "LOGIVYA_AAB_PATH",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/verify-android-bundle.mjs"
+      ]
+    },
+    {
+      "name": "LOGIVYA_ANDROID_ACCEPTANCE_REFERENCE",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/verify-android-bundle.mjs"
+      ]
+    },
+    {
+      "name": "LOGIVYA_API_CONTRACT_VERSION",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "apps/mobile/app.config.js"
+      ]
+    },
+    {
+      "name": "LOGIVYA_BUILD_DATE",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "apps/mobile/app.config.js"
+      ]
+    },
+    {
+      "name": "LOGIVYA_DATABASE_ACCEPTANCE_REFERENCE",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/verify-android-bundle.mjs"
+      ]
+    },
+    {
+      "name": "LOGIVYA_DESKTOP_WEB_ACCEPTANCE_REFERENCE",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/verify-android-bundle.mjs"
+      ]
+    },
+    {
+      "name": "LOGIVYA_GIT_COMMIT",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "apps/mobile/app.config.js"
+      ]
+    },
+    {
+      "name": "LOGIVYA_MOBILE_WEB_ACCEPTANCE_REFERENCE",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/verify-android-bundle.mjs"
+      ]
+    },
+    {
+      "name": "LOGIVYA_OWNER_APPROVAL_REFERENCE",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/verify-android-bundle.mjs"
+      ]
+    },
+    {
+      "name": "LOGIVYA_PLAY_ACCEPTANCE_REFERENCE",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/verify-android-bundle.mjs"
+      ]
+    },
+    {
+      "name": "LOGIVYA_RELEASE_ALLOW_DIRTY",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/android-preflight.mjs"
+      ]
+    },
+    {
+      "name": "LOGIVYA_RELEASE_ID",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "apps/mobile/app.config.js"
+      ]
+    },
+    {
+      "name": "LOGIVYA_RELEASE_MANIFEST_OUTPUT",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/verify-android-bundle.mjs"
+      ]
+    },
+    {
+      "name": "LOGIVYA_RELEASE_PREFLIGHT_OUTPUT",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/android-preflight.mjs"
+      ]
+    },
+    {
+      "name": "LOGIVYA_WORKER_REDIS_ACCEPTANCE_REFERENCE",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/verify-android-bundle.mjs"
+      ]
+    },
+    {
       "name": "MAINTENANCE_MODE",
       "documented": true,
       "public": false,
@@ -810,6 +1070,31 @@
       "files": [
         "scripts/test-enterprise-subscription.ts",
         "src/server/messages/advertising-policy.ts"
+      ]
+    },
+    {
+      "name": "MFA_FIELD_ENCRYPTION_ACTIVE_VERSION",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/test-enterprise-mfa.ts",
+        "src/server/security/mfa.ts"
+      ]
+    },
+    {
+      "name": "MFA_FIELD_ENCRYPTION_KEY_V1",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/test-enterprise-mfa.ts"
       ]
     },
     {
@@ -847,6 +1132,18 @@
       "testOnly": false,
       "files": [
         "src/app/api/mobile/app-version/route.ts"
+      ]
+    },
+    {
+      "name": "MOBILE_AUTH_INTEGRATION_BASE_URL",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/test-mobile-refresh-recovery-integration.ts"
       ]
     },
     {
@@ -934,6 +1231,18 @@
       "testOnly": false,
       "files": [
         "src/app/api/mobile/app-version/route.ts"
+      ]
+    },
+    {
+      "name": "MOBILE_REFRESH_RECOVERY_ACTIVE_VERSION",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/mobile/auth.ts"
       ]
     },
     {
@@ -1057,20 +1366,104 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "src/app/api/health/version/route.ts",
-        "src/server/monitoring/health.ts",
         "apps/mobile/app.config.js",
         "next.config.ts",
         "src/app/api/auth/login/route.ts",
         "src/app/api/auth/mfa/login/verify/route.ts",
+        "src/app/api/health/version/route.ts",
         "src/app/api/preferences/locale/route.ts",
         "src/lib/email/templates/support-ticket.ts",
         "src/server/auth/session.ts",
         "src/server/db.ts",
+        "src/server/monitoring/health.ts",
         "src/server/observability/alerts.ts",
         "src/server/observability/logger.ts",
         "src/server/support/errors.ts",
         "src/server/whatsapp/worker-heartbeat.ts"
+      ]
+    },
+    {
+      "name": "NOTIFICATION_CRON_HEARTBEAT_MAX_AGE_MS",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/notifications/worker-heartbeat.ts"
+      ]
+    },
+    {
+      "name": "NOTIFICATION_DEVICE_RETENTION_DAYS",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/notifications/engine.ts"
+      ]
+    },
+    {
+      "name": "NOTIFICATION_PROCESSING_MODE",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/notifications/worker-heartbeat.ts"
+      ]
+    },
+    {
+      "name": "NOTIFICATION_RETENTION_DAYS",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/notifications/engine.ts"
+      ]
+    },
+    {
+      "name": "NOTIFICATION_WORKER_ID",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/notification-worker.ts"
+      ]
+    },
+    {
+      "name": "NOTIFICATION_WORKER_POLL_MS",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/notification-worker.ts"
+      ]
+    },
+    {
+      "name": "NOTIFICATION_WORKER_REQUIRED",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/monitoring/health.ts"
       ]
     },
     {
@@ -1135,12 +1528,17 @@
         "src/app/api/admin/security/re-auth/route.ts",
         "src/app/api/auth/login/route.ts",
         "src/app/api/auth/mfa/disable/route.ts",
+        "src/app/api/auth/mfa/enroll/route.ts",
+        "src/app/api/auth/mfa/recovery-codes/route.ts",
         "src/app/api/auth/register/route.ts",
         "src/app/api/mobile/auth/login/route.ts",
         "src/app/api/mobile/auth/mfa/disable/route.ts",
+        "src/app/api/mobile/auth/mfa/enroll/route.ts",
+        "src/app/api/mobile/auth/mfa/recovery-codes/route.ts",
         "src/app/api/mobile/auth/register/route.ts",
         "src/server/auth/password-reset.ts",
         "src/server/mobile/auth.ts",
+        "src/server/privacy/auth.ts",
         "src/server/security/mfa.ts"
       ]
     },
@@ -1193,6 +1591,18 @@
       ]
     },
     {
+      "name": "PLAY_LATEST_VERSION_CODE",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/release/android-preflight.mjs"
+      ]
+    },
+    {
       "name": "PORT",
       "documented": true,
       "public": false,
@@ -1202,6 +1612,128 @@
       "testOnly": false,
       "files": [
         "src/worker/health.ts"
+      ]
+    },
+    {
+      "name": "PRIVACY_DELETION_DELAY_DAYS",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/privacy/requests.ts"
+      ]
+    },
+    {
+      "name": "PRIVACY_EXPORT_ENCRYPTION_KEY",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/privacy/export.ts"
+      ]
+    },
+    {
+      "name": "PRIVACY_EXPORT_KEY_VERSION",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/privacy/export.ts"
+      ]
+    },
+    {
+      "name": "PRIVACY_EXPORT_S3_ACCESS_KEY_ID",
+      "documented": true,
+      "public": false,
+      "secret": true,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/privacy/export.ts"
+      ]
+    },
+    {
+      "name": "PRIVACY_EXPORT_S3_BUCKET",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/privacy/export.ts"
+      ]
+    },
+    {
+      "name": "PRIVACY_EXPORT_S3_ENDPOINT",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/privacy/export.ts"
+      ]
+    },
+    {
+      "name": "PRIVACY_EXPORT_S3_REGION",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/privacy/export.ts"
+      ]
+    },
+    {
+      "name": "PRIVACY_EXPORT_S3_SECRET_ACCESS_KEY",
+      "documented": true,
+      "public": false,
+      "secret": true,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/privacy/export.ts"
+      ]
+    },
+    {
+      "name": "PRIVACY_OPERATIONAL_RESPONSE_DAYS",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/privacy/requests.ts"
+      ]
+    },
+    {
+      "name": "PRIVACY_RETENTION_ENFORCEMENT",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/app/api/admin/privacy/retention/route.ts",
+        "src/app/api/cron/privacy-maintenance/route.ts",
+        "src/server/privacy/export.ts"
       ]
     },
     {
@@ -1321,9 +1853,9 @@
       "runtime": true,
       "testOnly": false,
       "files": [
-        "scripts/test-monitoring-contracts.ts",
         "scripts/inspect-whatsapp-queue.ts",
         "scripts/inspect-whatsapp-rate-limit.ts",
+        "scripts/test-monitoring-contracts.ts",
         "scripts/test-queue-recovery-integration.ts",
         "scripts/test-worker-restart-integration.mjs",
         "src/server/queues/client.ts",
@@ -1341,6 +1873,7 @@
       "runtime": false,
       "testOnly": false,
       "files": [
+        "scripts/notification-worker.ts",
         "src/app/api/health/version/route.ts",
         "src/server/monitoring/health.ts",
         "src/server/observability/logger.ts",
@@ -1662,6 +2195,18 @@
       ]
     },
     {
+      "name": "TRANSLATION_CONTACT_EMAIL",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "scripts/build-localization-catalogs.mjs"
+      ]
+    },
+    {
       "name": "TRIAL_FIELD_ENCRYPTION_KEY",
       "documented": true,
       "public": false,
@@ -1682,6 +2227,7 @@
       "runtime": true,
       "testOnly": false,
       "files": [
+        "scripts/test-notification-platform.ts",
         "src/server/security/private-fields.ts"
       ]
     },
@@ -1734,12 +2280,50 @@
       "runtime": false,
       "testOnly": false,
       "files": [
+        "apps/mobile/app.config.js",
+        "src/app/api/cron/notifications/route.ts",
         "src/app/api/health/version/route.ts",
         "src/server/monitoring/health.ts",
         "src/server/observability/logger.ts",
         "src/server/security/audit.ts",
         "src/server/whatsapp/worker-heartbeat.ts",
         "src/worker/baileys-provider.ts"
+      ]
+    },
+    {
+      "name": "WEB_PUSH_VAPID_PRIVATE_KEY",
+      "documented": true,
+      "public": false,
+      "secret": true,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/notifications/web-push.ts"
+      ]
+    },
+    {
+      "name": "WEB_PUSH_VAPID_PUBLIC_KEY",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/notifications/web-push.ts"
+      ]
+    },
+    {
+      "name": "WEB_PUSH_VAPID_SUBJECT",
+      "documented": true,
+      "public": false,
+      "secret": false,
+      "buildTime": false,
+      "runtime": true,
+      "testOnly": false,
+      "files": [
+        "src/server/notifications/web-push.ts"
       ]
     },
     {

@@ -86,6 +86,8 @@ next-env.d.ts
 /artifacts/backups/
 /artifacts/restore-tests/
 /artifacts/releases/
+encrypted-postgres-backup-*.zip
+restore-proof-*.zip
 *.apk
 /apps/mobile/google-services.json
 /apps/mobile/android/app/google-services.json

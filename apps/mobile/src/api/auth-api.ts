@@ -32,6 +32,7 @@ export function verifyMfaLoginRequest(input: {
   deviceId: string;
   deviceName?: string;
   appVersion?: string;
+  setupToken?: string;
 }) {
   return apiClient.post<AuthSessionPayload>("/api/mobile/auth/mfa/verify", {
     ...input,

@@ -111,7 +111,7 @@ export async function POST(request: Request) {
       deviceId: parsed.data.deviceFingerprint,
       platform: "WEB",
     });
-    const enrollment = purpose === "SETUP" ? await createAndStoreMfaEnrollment(user.id, user.email) : null;
+    const enrollment = purpose === "SETUP" ? await createAndStoreMfaEnrollment(user.id, user.email, { replacePending: true }) : null;
     const cookieStore = await cookies();
     cookieStore.set(MFA_CHALLENGE_COOKIE, challenge.token, {
       httpOnly: true,
@@ -127,13 +127,16 @@ export async function POST(request: Request) {
       type: purpose === "SETUP" ? "MFA_SETUP_REQUIRED" : "MFA_CHALLENGE_ISSUED",
       message: purpose === "SETUP" ? "Iki adimli dogrulama kurulumu istendi." : "Iki adimli dogrulama kodu istendi.",
     });
-    return NextResponse.json({
-      ok: false,
-      mfaRequired: true,
-      mfaSetupRequired: purpose === "SETUP",
-      expiresAt: challenge.expiresAt.toISOString(),
-      ...(enrollment ?? {}),
-    }, { status: 202 });
+    return NextResponse.json(
+      {
+        ok: false,
+        mfaRequired: true,
+        mfaSetupRequired: purpose === "SETUP",
+        expiresAt: challenge.expiresAt.toISOString(),
+        ...(enrollment ?? {}),
+      },
+      { status: 202, headers: { "Cache-Control": "no-store, private", Pragma: "no-cache" } },
+    );
   }
 
   await createSession(user.id, membership.companyId, request, {

@@ -3,7 +3,7 @@
     "name": "Logivya",
     "slug": "logivya-mobile",
     "scheme": "logivya",
-    "version": "1.0.103",
+    "version": "1.0.105",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -32,7 +32,7 @@
     },
     "android": {
       "package": "com.logivya.mobile",
-      "versionCode": 133,
+      "versionCode": 135,
       "googleServicesFile": "./google-services.json",
       "icon": "./assets/logivya/mobillogo1.png",
       "adaptiveIcon": {
@@ -51,10 +51,10 @@
         "https://logivya.com",
         "https://logivya.vercel.app"
       ],
-      "buildMarker": "ANDROID_STARTUP_PERMISSION_RECOVERY_V133",
-      "releaseId": "android-v133-1.0.103",
-      "gitCommit": "e1c0187068e6802cf9c040bcf3e9cb17f878115a",
-      "buildDate": "2026-07-18T21:24:56Z",
+      "buildMarker": "FINAL_PRODUCTION_READINESS_TOTP_2FA_V135",
+      "releaseId": "android-v135-1.0.105",
+      "gitCommit": "7b1e9f1bb87919fd8425ea7c3808dc808877852f",
+      "buildDate": "2026-07-19T11:05:00Z",
       "apiContractVersion": "2026-07-19",
       "sentryDsn": "",
       "eas": {

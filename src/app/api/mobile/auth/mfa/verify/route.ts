@@ -4,6 +4,7 @@ import { hasPermission, PERMISSIONS } from "@/server/auth/permissions";
 import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
 import {
   consumeMfaChallenge,
+  notifyMfaSecurityChange,
   readMfaChallenge,
   recordMfaSecurityEvent,
   registerMfaChallengeFailure,
@@ -14,7 +15,7 @@ import { prisma } from "@/server/db";
 import { createMobileSession, parseMobilePlatform } from "@/server/mobile/auth";
 import { readMobileJson } from "@/server/mobile/request-json";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
-import { activateMfaCredential, verifyAndConsumeMfaCode } from "@/server/security/mfa";
+import { verifyAndConsumeMfaCode, verifyPendingMfaEnrollment } from "@/server/security/mfa";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 
 const schema = z.object({
@@ -25,6 +26,7 @@ const schema = z.object({
   deviceName: z.string().max(120).optional(),
   platform: z.string().optional(),
   appVersion: z.string().max(40).optional(),
+  setupToken: z.string().min(32).max(256).optional(),
 });
 
 export async function POST(request: Request) {
@@ -51,11 +53,11 @@ export async function POST(request: Request) {
     if (!membership || membership.status !== "ACTIVE" || challenge.user.status !== "ACTIVE") {
       return mobileError("MFA_CHALLENGE_INVALID", "Dogrulama isteginin suresi doldu.", { status: 401 });
     }
-    const verification = await verifyAndConsumeMfaCode({
-      userId: challenge.userId,
-      code: parsed.data.code,
-      allowUnverifiedCredential: challenge.purpose === "SETUP",
-    });
+    const verification = challenge.purpose === "SETUP"
+      ? parsed.data.setupToken
+        ? await verifyPendingMfaEnrollment({ userId: challenge.userId, setupToken: parsed.data.setupToken, code: parsed.data.code })
+        : { ok: false as const, reason: "TWO_FACTOR_SETUP_NOT_FOUND" as const }
+      : await verifyAndConsumeMfaCode({ userId: challenge.userId, code: parsed.data.code });
     if (!verification.ok) {
       const failure = await registerMfaChallengeFailure(challenge.id);
       await prisma.loginAttempt.create({
@@ -72,7 +74,6 @@ export async function POST(request: Request) {
       });
       return mobileError(failure.locked ? "MFA_CHALLENGE_LOCKED" : verification.reason, "Dogrulama kodu gecersiz.", { status: failure.locked ? 429 : 401 });
     }
-    if (challenge.purpose === "SETUP") await activateMfaCredential(challenge.userId, verification.credentialId);
     await consumeMfaChallenge(challenge.id);
     const tokens = await createMobileSession({
       userId: challenge.userId,
@@ -103,6 +104,15 @@ export async function POST(request: Request) {
       message: verification.method === "RECOVERY" ? "Mobil giriste kurtarma kodu kullanildi." : "Mobil iki adimli dogrulama basarili oldu.",
       severity: verification.method === "RECOVERY" ? "MEDIUM" : "INFO",
     });
+    if (challenge.purpose === "SETUP") {
+      await notifyMfaSecurityChange({
+        userId: challenge.userId,
+        companyId: challenge.companyId,
+        type: "security.mfa_enabled",
+        title: "Iki adimli dogrulama etkin",
+        message: "Authenticator dogrulamasi hesabinizi korumak icin etkinlestirildi.",
+      });
+    }
     return mobileSuccess({
       tokens,
       trustedDeviceToken: trusted?.token,
@@ -112,6 +122,7 @@ export async function POST(request: Request) {
       isAdmin: isPlatformAdmin,
       isPlatformAdmin,
       permissions: PERMISSIONS.filter((permission) => hasPermission(membership.role, permission)),
+      ...(challenge.purpose === "SETUP" && "recoveryCodes" in verification ? { recoveryCodes: verification.recoveryCodes } : {}),
     });
   } catch (error) {
     if (error instanceof Error && error.message === "RATE_LIMITED") return mobileError("RATE_LIMITED", "Cok fazla deneme yapildi.", { status: 429 });

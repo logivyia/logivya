@@ -2461,19 +2461,27 @@ model EmailVerificationToken {
 }
 
 model MfaCredential {
-  id                  String                  @id @default(cuid())
-  userId              String
-  type                String
-  secretEncrypted     String
-  recoveryCodesHashed String[]
-  verifiedAt          DateTime?
-  lastUsedCounter     Int?
-  revokedAt           DateTime?
-  createdAt           DateTime                @default(now())
-  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  recoveryCodes       TwoFactorRecoveryCode[]
+  id                       String                  @id @default(cuid())
+  userId                   String
+  type                     String
+  secretEncrypted          String
+  recoveryCodesHashed      String[]
+  verifiedAt               DateTime?
+  lastUsedCounter          Int?
+  setupTokenHash           String?                 @unique
+  setupKey                 String?                 @unique
+  setupExpiresAt           DateTime?
+  setupAttempts            Int                     @default(0)
+  setupLockedUntil         DateTime?
+  recoveryCodesGeneratedAt DateTime?
+  revokedAt                DateTime?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  user                     User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recoveryCodes            TwoFactorRecoveryCode[]
 
   @@index([userId, revokedAt])
+  @@index([userId, verifiedAt, setupExpiresAt])
 }
 
 model MfaLoginChallenge {
