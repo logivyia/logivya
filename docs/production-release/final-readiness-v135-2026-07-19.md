@@ -4,28 +4,30 @@ Date: 2026-07-19
 Candidate: Android `135 / 1.0.105`
 Release ID: `android-v135-1.0.105`
 Runtime marker: `FINAL_PRODUCTION_READINESS_TOTP_2FA_V135`
-Source commit deployed and Android-compiled: `102bd4cc3c1d3e70a135818d4cb362f7bb09efd2`
+Production runtime commit: `102bd4cc3c1d3e70a135818d4cb362f7bb09efd2`
+Closed-test AAB source commit: `95120ccd5997a2af66fd7110dd612904ffc02736`
 Release branch: `codex/final-production-readiness-v135`
 
 ## Executive Decision
 
 **NO-GO for Google Play production and Apple App Store submission.**
 
-The code, database, production web deployment, automated stable-core checks, MFA contracts, backup/restore pipeline, and Android release compilation have strong positive evidence. The master release policy nevertheless blocks final store artifacts until the exact candidates pass real-device and store-channel acceptance. Apple signing credentials, App Store validation, authenticated browser smoke tests, Google Play internal-track installation, legal approval, and store declaration evidence remain incomplete.
+The code, database, production web deployment, automated stable-core checks, MFA contracts, backup/restore pipeline, and signed Android bundle have strong positive evidence. The exact signed AAB is now available as a Google Play Closed Testing release candidate. Production certification remains blocked until this exact candidate passes real-device and store-channel acceptance. Apple signing credentials, App Store validation, authenticated browser smoke tests, Google Play closed-track installation, legal approval, and store declaration evidence remain incomplete.
 
-No final Android AAB was generated from this candidate. The successful Android artifact below is a release APK used only to prove native compilation, signing, version metadata, and ABI coverage.
+A signed Android AAB was generated for Closed Testing only. It is not a production-certified artifact. The AAB verification report, checksum and build manifest are archived under `docs/production-release/artifacts/android/v135/`.
 
 ## Release Baseline
 
 | Check | Result | Evidence |
 | --- | --- | --- |
 | Protected release branch | PASS | `codex/final-production-readiness-v135` |
-| Source commit recorded | PASS | `102bd4cc3c1d3e70a135818d4cb362f7bb09efd2` |
+| Source commit recorded | PASS | Runtime `102bd4cc3c1d3e70a135818d4cb362f7bb09efd2`; closed-test AAB `95120ccd5997a2af66fd7110dd612904ffc02736` |
 | Source pushed to origin | PASS | `origin/codex/final-production-readiness-v135` |
 | Production deployment | PASS | Vercel deployment `dpl_ExXAaLemwyAJ6ntSkfxHHPPXHHvx` is Ready |
 | Production aliases | PASS | `https://www.logivya.com`, `https://logivya.com`, and Vercel aliases point to the deployment |
 | Final release tag | BLOCKED | A release tag is not created for a NO-GO candidate |
-| Final store AAB / IPA | BLOCKED | Exact-candidate device and store gates are incomplete |
+| Closed-test Android AAB | PASS | Signed v135 candidate archived with checksum and verification report |
+| Production-certified AAB / IPA | BLOCKED | Exact-candidate device and store gates are incomplete |
 
 ## Database, Backup, and Migration
 
@@ -125,6 +127,7 @@ Cross-account access was denied and the ownership model resolved to `USER_OWNED_
 | Cleartext disabled | PASS | Android manifest/preflight |
 | Release preflight | PASS | Package, version, release ID, source commit, permissions and signing checks |
 | Native release compile | PASS | `:app:assembleRelease` completed in a short physical build path |
+| Signed closed-test AAB | PASS | `:app:bundleRelease` completed; SHA-256 `E4BFEB88497633AA47B6CE61AFC1C26EA167F8AA427DD031F078A078D4507842` |
 | Upload signer | PASS | SHA-256 `90ed684102500a915046df804e9db404ca61395819dc8dd025ac085d71fa6ba0` |
 | ABI coverage | PASS | `arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64` |
 | Release APK SHA-256 | PASS | `059D604FB6B9D2099145294D795AA38C6D05385E70F6DF607603F2ABB1BD3726` |
@@ -132,7 +135,7 @@ Cross-account access was denied and the ownership model resolved to `USER_OWNED_
 | Real Android installation | BLOCKED | `adb devices` returned no connected device |
 | Upgrade from current Play build | BLOCKED | Exact v134-to-v135 Play internal-track update not run |
 | Critical real-device journeys | BLOCKED | Login, pairing, sync, send, delete, notifications and background lifecycle not exercised on v135 |
-| Final AAB | BLOCKED | Master gate forbids AAB before the exact-candidate real-device and Play checks |
+| Production-certified AAB | BLOCKED | Closed-test RC exists, but exact-candidate real-device and Play checks are incomplete |
 
 The first local compile attempt failed only because the OneDrive path exceeded Windows C++ filename limits. A physical short-path copy resolved that environmental issue without dropping any ABI. The first short-path run then reached Sentry upload and failed because no local token was present. Re-running with the documented release setting `SENTRY_DISABLE_AUTO_UPLOAD=true` completed successfully.
 
@@ -186,7 +189,7 @@ No verified code-level P0 was found in automated tests, production health, migra
 ## Required Evidence Before Re-evaluation
 
 1. Configure and validate Apple distribution credentials interactively, add the required iOS service configuration, build the exact commit, and pass App Store Connect/TestFlight validation.
-2. Produce the final AAB only after external gates are ready, upload that exact file to Play internal testing, and prove the v134-to-v135 upgrade.
+2. Upload the archived v135 AAB to Play Closed Testing, install that exact file through Play, and prove the v134-to-v135 upgrade.
 3. Run the master real-device matrix on supported Android and iOS devices, recording device/OS/build/result/evidence for every critical journey.
 4. Run authenticated desktop and mobile-web smoke journeys with separate normal-user, Professional-user and super-admin accounts.
 5. Record a production-like worker/Redis interruption, retry, reconnect and queue-recovery drill without duplicate delivery.
