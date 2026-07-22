@@ -40,6 +40,7 @@ for (const marker of [
 }
 
 const provider = read("src/worker/baileys-provider.ts");
+const linkedDeviceMetadata = read("src/worker/whatsapp-linked-device-metadata.ts");
 assert(provider.includes("STABLE WHATSAPP/MESSAGE CORE"), "Baileys provider must carry the stable-core warning.");
 for (const marker of [
   "backupWhatsAppSessionToDatabase(accountId, \"creds.update\")",
@@ -79,10 +80,7 @@ for (const marker of [
   "fetchCurrentWhatsAppWebVersion",
   'source: "wa-web"',
   "waVersionSource",
-  "Browsers.ubuntu",
-  'WHATSAPP_PAIRING_BROWSER_NAME || "Chrome"',
-  'WHATSAPP_PAIRING_BROWSER_OS || "ubuntu"',
-  "resolveWhatsAppBrowser",
+  "resolveWhatsAppLinkedDeviceMetadata",
   "WHATSAPP_COMPANION_PLATFORM_ID",
   "WHATSAPP_COMPANION_PLATFORM_DISPLAY",
   "companionPlatformId",
@@ -95,6 +93,17 @@ for (const marker of [
   "WA_GROUP_SYNC_SUCCESS",
 ]) {
   assert(provider.includes(marker), `Baileys provider must emit structured marker: ${marker}`);
+}
+for (const marker of [
+  "WHATSAPP_LINKED_DEVICE_NAME",
+  "WHATSAPP_PAIRING_BROWSER_NAME",
+  "Browsers.ubuntu",
+  "Browsers.macOS",
+  "Browsers.windows",
+  "SAFE_CLIENT_NAME",
+  "companionPlatformDisplay",
+]) {
+  assert(linkedDeviceMetadata.includes(marker), `Linked-device metadata helper is missing marker: ${marker}`);
 }
 
 const pairingFlow = read("src/server/whatsapp/pairing-code-flow.ts");

@@ -3,7 +3,7 @@
  * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
  * Do not modify without running the full WhatsApp regression test suite.
  */
-import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, fetchLatestWaWebVersion, getPlatformId, useMultiFileAuthState, type Contact as BaileysContact, type WAMessageKey, type WASocket } from "@whiskeysockets/baileys";
+import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, fetchLatestWaWebVersion, useMultiFileAuthState, type Contact as BaileysContact, type WAMessageKey, type WASocket } from "@whiskeysockets/baileys";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import QRCode from "qrcode";
@@ -28,6 +28,7 @@ import {
   whatsappSessionDirectory,
 } from "@/lib/whatsapp/session-manager";
 import type { DeleteContactMessageInput, DeleteGroupMessageInput, DeleteResult, GroupResult, RequestPairingCodeOptions, SendContactMessageInput, SendGroupMessageInput, SendResult, SessionResult, WhatsAppProvider } from "@/server/whatsapp/provider";
+import { resolveWhatsAppLinkedDeviceMetadata } from "@/worker/whatsapp-linked-device-metadata";
 
 type SessionMode = "PAIR_QR" | "PAIR_PHONE" | "RESTORE" | "RECONNECT";
 type StartSessionOptions = { syncContactHistory?: boolean };
@@ -85,18 +86,16 @@ const PAIRING_RETRY_SCHEDULED_ERROR = "WHATSAPP_PAIRING_RETRY_SCHEDULED";
 const MISSING_CREDENTIALS_GRACE_ATTEMPTS = Number(process.env.WHATSAPP_MISSING_CREDENTIALS_GRACE_ATTEMPTS || 6);
 const RECONNECT_BACKOFF_MS = [5_000, 10_000, 20_000, 40_000, 60_000, 120_000] as const;
 const WHATSAPP_PAIRING_COUNTRY_CODE = (process.env.WHATSAPP_PAIRING_COUNTRY_CODE || process.env.WHATSAPP_COUNTRY_CODE || "TR").toUpperCase();
-const WHATSAPP_PAIRING_BROWSER_NAME = process.env.WHATSAPP_PAIRING_BROWSER_NAME || "Chrome";
-const WHATSAPP_PAIRING_BROWSER_OS = (process.env.WHATSAPP_PAIRING_BROWSER_OS || "ubuntu").toLowerCase();
+const WHATSAPP_LINKED_DEVICE_METADATA = resolveWhatsAppLinkedDeviceMetadata();
+const WHATSAPP_BROWSER = WHATSAPP_LINKED_DEVICE_METADATA.browser;
+const WHATSAPP_COMPANION_PLATFORM_ID = WHATSAPP_LINKED_DEVICE_METADATA.companionPlatformId;
+const WHATSAPP_COMPANION_PLATFORM_DISPLAY = WHATSAPP_LINKED_DEVICE_METADATA.companionPlatformDisplay;
 
-function resolveWhatsAppBrowser() {
-  if (WHATSAPP_PAIRING_BROWSER_OS === "macos") return Browsers.macOS(WHATSAPP_PAIRING_BROWSER_NAME);
-  if (WHATSAPP_PAIRING_BROWSER_OS === "windows") return Browsers.windows(WHATSAPP_PAIRING_BROWSER_NAME);
-  return Browsers.ubuntu(WHATSAPP_PAIRING_BROWSER_NAME);
+if (WHATSAPP_LINKED_DEVICE_METADATA.usedFallbackName) {
+  logger.warn("whatsapp.linked_device_name.invalid_fallback", {
+    fallbackClientName: WHATSAPP_LINKED_DEVICE_METADATA.clientName,
+  });
 }
-
-const WHATSAPP_BROWSER = resolveWhatsAppBrowser();
-const WHATSAPP_COMPANION_PLATFORM_ID = getPlatformId(WHATSAPP_BROWSER[1]);
-const WHATSAPP_COMPANION_PLATFORM_DISPLAY = `${WHATSAPP_BROWSER[1]} (${WHATSAPP_BROWSER[0]})`;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -756,6 +755,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
       companionPlatformId: WHATSAPP_COMPANION_PLATFORM_ID,
       companionPlatformDisplay: WHATSAPP_COMPANION_PLATFORM_DISPLAY,
+      linkedDeviceNameFallback: WHATSAPP_LINKED_DEVICE_METADATA.usedFallbackName,
     };
     logger.warn("whatsapp.pairing.same_code_refreshed", { accountId, ...refreshMetadata });
     await auditAccount(accountId, "whatsapp.pairing.code_refreshed", refreshMetadata).catch((error) =>
@@ -1127,6 +1127,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       countryCode: WHATSAPP_PAIRING_COUNTRY_CODE,
       companionPlatformId: WHATSAPP_COMPANION_PLATFORM_ID,
       companionPlatformDisplay: WHATSAPP_COMPANION_PLATFORM_DISPLAY,
+      linkedDeviceNameFallback: WHATSAPP_LINKED_DEVICE_METADATA.usedFallbackName,
       waVersion: version,
       waVersionSource: versionInfo.source,
       waVersionIsLatest: versionInfo.isLatest,
