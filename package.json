@@ -101,6 +101,7 @@
     "audit:support-production": "tsx scripts/audit-support-production.ts",
     "proof:category-contact-api": "tsx scripts/proof-category-contact-api.ts",
     "test:enterprise-subscription": "tsx scripts/test-enterprise-subscription.ts",
+    "test:starter-attribution": "tsx scripts/test-starter-attribution.ts",
     "test:team-contact-messaging:integration": "tsx scripts/test-team-contact-integration.ts",
     "test:team-contact-messaging:api": "tsx scripts/test-team-contact-api-smoke.ts",
     "audit:seven-day-trial": "tsx scripts/audit-seven-day-trial-migration.ts",

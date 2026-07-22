@@ -23,7 +23,7 @@ import {
 } from "@/server/whatsapp/contacts";
 import { createNotification, NOTIFICATION_TYPES } from "@/server/notifications/service";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
-import { applyAdvertisingDeliveryPolicy } from "@/server/messages/advertising-policy";
+import { composeOutboundMessage } from "@/server/messages/outbound-composer";
 import { createMessageCorrelationId, readCampaignCorrelationId, withCampaignMetadata } from "@/server/messages/correlation";
 import { traceMessageStage } from "@/server/messages/delivery-tracing";
 import { isDeleteWindowOpen, parseStoredMessageKey, updateCampaignDeleteAggregate } from "@/server/messages/delete-for-everyone";
@@ -362,7 +362,7 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
   if (!jobData.recipientId) throw new Error("MESSAGE_JOB_RECIPIENT_MISSING");
   const recipient = await prisma.messageRecipient.findUnique({
     where: { id: jobData.recipientId },
-    include: { campaign: true, group: true, contact: true, account: { select: { id: true, companyId: true, userId: true } } },
+    include: { campaign: true, group: true, contact: true, account: { select: { id: true, companyId: true, userId: true, provider: true } } },
   });
   const correlationId = jobData.correlationId ?? readCampaignCorrelationId(recipient?.campaign.contentJson) ?? createMessageCorrelationId();
   const baseLog = {
@@ -431,11 +431,53 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
   }
   await prisma.messageCampaign.updateMany({ where: { id: recipient.campaignId, status: "QUEUED" }, data: { status: "SENDING" } });
   try {
-    const currentSubscription = await subscriptionAccess.getCurrent(recipient.campaign.companyId);
-    if (!currentSubscription?.valid || !currentSubscription.entitlements.messageSend) throw new Error("SUBSCRIPTION_LOCKED");
-    if (targetType === "GROUP" && !currentSubscription.entitlements.groupMessaging) throw new Error("GROUP_MESSAGING_NOT_AVAILABLE");
-    if (targetType === "CONTACT" && !currentSubscription.entitlements.contactMessaging) throw new Error("CONTACT_MESSAGING_REQUIRES_PROFESSIONAL");
-    const deliveryPolicy = applyAdvertisingDeliveryPolicy(recipient.campaign.content, currentSubscription.entitlements.advertisingEnabled);
+    const deliveryPolicy = await composeOutboundMessage({
+      companyId: recipient.campaign.companyId,
+      userId: recipient.campaign.createdById,
+      whatsappAccountId: recipient.accountId,
+      originalText: recipient.campaign.content,
+      messageType: targetType,
+      recipientId: recipient.id,
+      transportAdapter: recipient.account.provider,
+      existingRendering: {
+        renderedContent: recipient.renderedContent ?? "",
+        attributionApplied: recipient.attributionApplied,
+        attributionLocale: recipient.attributionLocale,
+        attributionVersion: recipient.attributionVersion,
+        effectivePlanCode: recipient.effectivePlanCode,
+        renderedAt: recipient.renderedAt,
+      },
+    });
+    if (targetType === "GROUP" && !deliveryPolicy.entitlements.groupMessaging) throw new Error("GROUP_MESSAGING_NOT_AVAILABLE");
+    if (targetType === "CONTACT" && !deliveryPolicy.entitlements.contactMessaging) throw new Error("CONTACT_MESSAGING_REQUIRES_PROFESSIONAL");
+    logger.info("message.outbound_payload.prepared", {
+      ...baseLog,
+      targetType,
+      whatsappAccountId: recipient.accountId,
+      planCode: deliveryPolicy.effectivePlanCode,
+      brandingRequired: deliveryPolicy.attributionApplied,
+      brandingLocale: deliveryPolicy.attributionLocale,
+      brandingVersion: deliveryPolicy.attributionVersion,
+      finalBodyLength: deliveryPolicy.finalBodyLength,
+      finalPayloadHash: deliveryPolicy.finalPayloadHash,
+      transportAdapter: recipient.account.provider,
+      reusedStableRendering: deliveryPolicy.reusedStableRendering,
+    });
+    if (!deliveryPolicy.reusedStableRendering) {
+      await traceMessageStage("worker.recipient.persist_rendering", baseLog, async () => {
+        await prisma.messageRecipient.update({
+          where: { id: recipient.id },
+          data: {
+            renderedContent: deliveryPolicy.content,
+            attributionApplied: deliveryPolicy.attributionApplied,
+            attributionLocale: deliveryPolicy.attributionLocale,
+            attributionVersion: deliveryPolicy.attributionVersion,
+            effectivePlanCode: deliveryPolicy.effectivePlanCode,
+            renderedAt: deliveryPolicy.renderedAt,
+          },
+        });
+      });
+    }
     const sendOutcome = targetType === "CONTACT"
       ? await (async () => {
           const target = await prisma.contact.findFirst({

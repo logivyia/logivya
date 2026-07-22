@@ -25,6 +25,7 @@ export type CompanyEntitlements = {
   platformDelete: boolean;
   adFreeMessaging: boolean;
   advertisingEnabled: boolean;
+  messageBrandingRequired: boolean;
   advancedSupport: boolean;
   teamSeats: number;
   whatsappConnections: number;
@@ -51,6 +52,9 @@ export function deriveCompanyEntitlements(plan: Plan | null | undefined, active:
   const contactMessaging = Boolean(active && (rule?.contactMessaging ?? plan?.contactMessagingEnabled));
   const deleteForEveryone = Boolean(active && (rule?.deleteForEveryone ?? plan?.deleteForEveryoneEnabled !== false));
   const advertisingEnabled = Boolean(active && (rule?.advertisingEnabled ?? plan?.advertisingEnabled));
+  const messageBrandingRequired = Boolean(active && (
+    rule?.messageBrandingRequired ?? plan?.advertisingEnabled
+  ));
 
   return {
     accountAccess: true,
@@ -69,6 +73,7 @@ export function deriveCompanyEntitlements(plan: Plan | null | undefined, active:
     platformDelete: true,
     adFreeMessaging: Boolean(active && plan && !advertisingEnabled),
     advertisingEnabled,
+    messageBrandingRequired,
     advancedSupport: Boolean(active && (rule?.advancedSupport ?? true)),
     teamSeats: active ? Math.max(1, rule?.totalUserSeats ?? plan?.maxTeamUsers ?? 1) : 0,
     whatsappConnections: active ? Math.max(1, rule?.whatsappConnections ?? plan?.maxWhatsappAccounts ?? 1) : 0,
@@ -126,6 +131,7 @@ export async function resolveCompanyEntitlementSummary(
     canCreateRecurringMessages: entitlements.recurringMessages,
     canDeleteForEveryone: entitlements.deleteForEveryone,
     isAdvertisingEnabled: entitlements.advertisingEnabled,
+    isMessageBrandingRequired: entitlements.messageBrandingRequired,
     canAccessAdvancedSupport: entitlements.advancedSupport,
     canManageBilling: actor?.role === "OWNER",
     canManageTeam: actor?.role === "OWNER",

@@ -15,6 +15,7 @@ export type CorePlanRule = {
   deleteForEveryone: boolean;
   advancedSupport: boolean;
   advertisingEnabled: boolean;
+  messageBrandingRequired: boolean;
 };
 
 export const CORE_PLAN_MATRIX: Record<CorePlanCode, CorePlanRule> = {
@@ -29,6 +30,7 @@ export const CORE_PLAN_MATRIX: Record<CorePlanCode, CorePlanRule> = {
     deleteForEveryone: true,
     advancedSupport: true,
     advertisingEnabled: true,
+    messageBrandingRequired: true,
   },
   starter: {
     monthlyPriceTry: 280,
@@ -41,6 +43,7 @@ export const CORE_PLAN_MATRIX: Record<CorePlanCode, CorePlanRule> = {
     deleteForEveryone: true,
     advancedSupport: true,
     advertisingEnabled: true,
+    messageBrandingRequired: true,
   },
   professional: {
     monthlyPriceTry: 380,
@@ -53,6 +56,7 @@ export const CORE_PLAN_MATRIX: Record<CorePlanCode, CorePlanRule> = {
     deleteForEveryone: true,
     advancedSupport: true,
     advertisingEnabled: false,
+    messageBrandingRequired: false,
   },
 };
 
@@ -61,5 +65,6 @@ export function isCorePlanCode(slug?: string | null): slug is CorePlanCode {
 }
 
 export function corePlanRule(slug?: string | null) {
-  return isCorePlanCode(slug) ? CORE_PLAN_MATRIX[slug] : null;
+  const normalized = slug?.trim().toLowerCase();
+  return isCorePlanCode(normalized) ? CORE_PLAN_MATRIX[normalized] : null;
 }

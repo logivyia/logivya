@@ -25,23 +25,25 @@ assert.equal(CORE_PLAN_MATRIX.starter.totalUserSeats, 2);
 assert.equal(CORE_PLAN_MATRIX.starter.whatsappConnections, 2);
 assert.equal(CORE_PLAN_MATRIX.starter.contactMessaging, false);
 assert.equal(CORE_PLAN_MATRIX.starter.advertisingEnabled, true);
+assert.equal(CORE_PLAN_MATRIX.starter.messageBrandingRequired, true);
 assert.equal(CORE_PLAN_MATRIX.professional.monthlyPriceTry, 380);
 assert.equal(CORE_PLAN_MATRIX.professional.totalUserSeats, 3);
 assert.equal(CORE_PLAN_MATRIX.professional.whatsappConnections, 3);
 assert.equal(CORE_PLAN_MATRIX.professional.contactMessaging, true);
 assert.equal(CORE_PLAN_MATRIX.professional.advertisingEnabled, false);
+assert.equal(CORE_PLAN_MATRIX.professional.messageBrandingRequired, false);
 assert.deepEqual([...CORE_PLAN_CODES], ["trial", "starter", "professional"]);
 assert.deepEqual([...PURCHASABLE_PLAN_CODES], ["starter", "professional"]);
 
-const previousAttribution = process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT;
-delete process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT;
-assert.deepEqual(applyAdvertisingDeliveryPolicy("Mesaj", true), { content: "Mesaj", attributionApplied: false, attributionConfigured: false });
-process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT = "Logivya ile gönderildi";
-assert.equal(applyAdvertisingDeliveryPolicy("Mesaj", true).content, "Mesaj\n\nLogivya ile gönderildi");
-assert.equal(applyAdvertisingDeliveryPolicy("Mesaj\n\nLogivya ile gönderildi", true).content, "Mesaj\n\nLogivya ile gönderildi");
+assert.equal(
+  applyAdvertisingDeliveryPolicy("Mesaj", true, "tr").content,
+  "Mesaj\n\nBu mesaj logivya.com üzerinden gönderilmiştir.",
+);
+assert.equal(
+  applyAdvertisingDeliveryPolicy("Message", true, "en").content,
+  "Message\n\nThis message was sent via logivya.com.",
+);
 assert.equal(applyAdvertisingDeliveryPolicy("Mesaj", false).content, "Mesaj");
-if (previousAttribution === undefined) delete process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT;
-else process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT = previousAttribution;
 
 assert.doesNotThrow(() => assertPlanSeatCompatibility({ usedSeats: 2, targetSeatLimit: 2, planSlug: "starter" }));
 assert.throws(

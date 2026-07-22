@@ -11,6 +11,11 @@ import { apiErrorMessage } from "@/i18n/api-error";
 type Campaign = {
   id: string;
   title: string;
+  content: string;
+  originalContent: string;
+  brandingApplied: boolean;
+  brandingLocale: string | null;
+  brandingPlanCode: string | null;
   status: string;
   totalRecipients: number;
   sentCount: number;
@@ -212,7 +217,12 @@ export function MessageHistoryStablePage() {
                           }
                         />
                       </td>
-                      <td className="px-5 py-4 font-medium">{campaign.title}</td>
+                      <td className="max-w-sm px-5 py-4 align-top">
+                        <span className="font-medium">{campaign.title}</span>
+                        <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-muted">
+                          {campaign.content}
+                        </p>
+                      </td>
                       <td className="px-5 py-4">{statusLabel(t, "message", campaign.status)}</td>
                       <td className="px-5 py-4">
                         {t("history.sentFailed", {

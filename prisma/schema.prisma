@@ -966,6 +966,10 @@ model WhatsAppAccount {
   companyId                  String
   label                      String?
   phoneNumber                String?
+  countryIso                 String?
+  messageLocale              String?
+  connectionMethod           String?
+  pairedAt                   DateTime?
   displayName                String?
   provider                   String
   providerSessionId          String?
@@ -1239,6 +1243,12 @@ model MessageRecipient {
   errorMessage                 String?
   sentAt                       DateTime?
   failedAt                     DateTime?
+  renderedContent              String?
+  attributionApplied           Boolean?
+  attributionLocale            String?
+  attributionVersion           String?
+  effectivePlanCode            String?
+  renderedAt                   DateTime?
   campaign                     MessageCampaign         @relation(fields: [campaignId], references: [id])
   account                      WhatsAppAccount         @relation(fields: [accountId], references: [id])
   group                        WhatsAppGroup?          @relation(fields: [groupId], references: [id])

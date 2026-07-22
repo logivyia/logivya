@@ -19,7 +19,21 @@ export async function GET(request: Request) {
         ...(!showDeleted ? { deletedAt: null } : {}),
         ...(status ? { status: status as never } : {}),
       },
-      include: { createdBy: { select: { name: true } }, _count: { select: { recipients: true } } },
+      include: {
+        createdBy: { select: { name: true } },
+        _count: { select: { recipients: true } },
+        recipients: {
+          where: { renderedContent: { not: null } },
+          orderBy: { renderedAt: "desc" },
+          take: 1,
+          select: {
+            renderedContent: true,
+            attributionApplied: true,
+            attributionLocale: true,
+            effectivePlanCode: true,
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
       take: 51,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -37,14 +51,23 @@ export async function GET(request: Request) {
     const statusCount = (campaignId: string, statuses: string[]) => targetCounts
       .filter((item) => item.campaignId === campaignId && statuses.includes(item.status))
       .reduce((total, item) => total + item._count._all, 0);
-    const campaigns = await attachDeleteState(visibleRows.map((campaign) => ({
-      ...campaign,
-      groupCount: targetCount(campaign.id, "GROUP"),
-      contactCount: targetCount(campaign.id, "CONTACT"),
-      pendingCount: statusCount(campaign.id, ["PENDING", "QUEUED", "PROCESSING", "SENDING"]),
-      retryingCount: statusCount(campaign.id, ["RETRYING"]),
-      completedAt: ["COMPLETED", "PARTIALLY_COMPLETED", "FAILED"].includes(campaign.status) ? campaign.updatedAt : null,
-    })));
+    const campaigns = await attachDeleteState(visibleRows.map((row) => {
+      const { recipients, ...campaign } = row;
+      const rendered = recipients[0] ?? null;
+      return {
+        ...campaign,
+        originalContent: campaign.content,
+        content: rendered?.renderedContent ?? campaign.content,
+        brandingApplied: rendered?.attributionApplied === true,
+        brandingLocale: rendered?.attributionLocale ?? null,
+        brandingPlanCode: rendered?.effectivePlanCode ?? null,
+        groupCount: targetCount(campaign.id, "GROUP"),
+        contactCount: targetCount(campaign.id, "CONTACT"),
+        pendingCount: statusCount(campaign.id, ["PENDING", "QUEUED", "PROCESSING", "SENDING"]),
+        retryingCount: statusCount(campaign.id, ["RETRYING"]),
+        completedAt: ["COMPLETED", "PARTIALLY_COMPLETED", "FAILED"].includes(campaign.status) ? campaign.updatedAt : null,
+      };
+    }));
     return NextResponse.json({ campaigns, nextCursor: hasMore ? rows[49]?.id : null });
   } catch {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
