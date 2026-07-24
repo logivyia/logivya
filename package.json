@@ -60,6 +60,7 @@
     "test:message-root-cause": "tsx scripts/test-message-delivery-root-cause.ts",
     "test:smart-schedule-date": "tsx scripts/test-smart-schedule-date.ts",
     "test:mobile-auth-resilience": "tsx scripts/test-mobile-auth-resilience.ts",
+    "test:mobile-dashboard-contract": "tsx scripts/test-mobile-dashboard-contract.ts",
     "test:password-policy": "tsx scripts/test-password-policy.ts",
     "test:password-policy:integration": "tsx scripts/test-password-registration-integration.ts",
     "test:stable-core": "tsx scripts/test-stable-core-contracts.ts && npm run test:mobile-auth-resilience && npm run test:whatsapp-session-persistence && npm run test:message-pipeline && npm run test:delete-for-everyone && npm run test:continuous-message-delivery && npm run audit:whatsapp-groups",

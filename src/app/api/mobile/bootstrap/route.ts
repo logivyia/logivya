@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { hasPermission, PERMISSIONS } from "@/server/auth/permissions";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { prisma } from "@/server/db";
@@ -5,7 +6,7 @@ import { requireMobileAuth } from "@/server/mobile/auth";
 import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
 import { mobileSafeError, mobileSuccess } from "@/server/mobile/response";
 import { serializeSubscription } from "@/server/mobile/subscription";
-import { isRecoverableWhatsAppStatus } from "@/lib/whatsapp/account-status-machine";
+import { RECOVERABLE_ACCOUNT_STATUSES } from "@/lib/whatsapp/account-status-machine";
 import { requestWhatsAppSessionRestoreForAccounts } from "@/server/whatsapp/session-restore";
 
 export async function GET(request: Request) {
@@ -63,6 +64,38 @@ export async function GET(request: Request) {
       });
     }
     const subscriptionStatus = serializeSubscription(subscription?.subscription ?? null);
+    const recoverableAccountWhere = {
+      companyId: company.id,
+      userId: user.id,
+      archivedAt: null,
+      status: { in: [...RECOVERABLE_ACCOUNT_STATUSES] },
+      OR: [{ lastError: null }, { lastError: { notIn: ["WHATSAPP_LOGGED_OUT"] } }],
+    } satisfies Prisma.WhatsAppAccountWhereInput;
+    const showContacts = subscriptionStatus.entitlements.contactMessaging;
+    const [whatsappAccountCount, connectedWhatsAppAccountCount, syncedWhatsAppGroupCount, contactCount] = await Promise.all([
+      prisma.whatsAppAccount.count({ where: { companyId: company.id, userId: user.id, archivedAt: null } }),
+      prisma.whatsAppAccount.count({ where: recoverableAccountWhere }),
+      prisma.whatsAppGroup.count({
+        where: {
+          companyId: company.id,
+          userId: user.id,
+          isArchived: false,
+          canSend: true,
+          account: recoverableAccountWhere,
+        },
+      }),
+      showContacts
+        ? prisma.contact.count({
+            where: {
+              companyId: company.id,
+              userId: user.id,
+              isActive: true,
+              NOT: { displayNameSource: "PHONE_FALLBACK" },
+              account: recoverableAccountWhere,
+            },
+          })
+        : Promise.resolve(0),
+    ]);
     const isPlatformAdmin = isAuthorizedLogivyaPlatformAdmin({ email: user.email });
     return mobileSuccess({
       user: { id: user.id, name: user.name, email: user.email, phone: user.phone, locale: user.locale, timezone: user.timezone, role: membership.role, isPlatformAdmin },
@@ -75,7 +108,7 @@ export async function GET(request: Request) {
       trial: { isTrial: subscriptionStatus.isTrial, remainingDays: subscriptionStatus.isTrial ? subscriptionStatus.remainingDays : 0 },
       unreadNotificationsCount: unreadNotifications,
       whatsapp: {
-        connectedCount: connectedAccounts.filter((account) => isRecoverableWhatsAppStatus(account.status, account.lastError)).length,
+        connectedCount: connectedWhatsAppAccountCount,
         accounts: connectedAccounts.map((account) => ({
           id: account.id,
           label: account.label,
@@ -86,6 +119,13 @@ export async function GET(request: Request) {
           contactCount: account._count.contacts,
           lastSyncedAt: account.lastSyncedAt,
         })),
+      },
+      dashboardMetrics: {
+        whatsappAccountCount,
+        connectedWhatsAppAccountCount,
+        syncedWhatsAppGroupCount,
+        contactCount,
+        showContacts,
       },
       featureFlags,
       app: { minimumSupportedVersion: process.env.MOBILE_MIN_SUPPORTED_VERSION || "1.0.0" },
