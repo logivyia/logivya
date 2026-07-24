@@ -71,8 +71,13 @@ function createRecoveryCodeSet() {
   return { recoveryCodes, recoveryCodesHashed: recoveryCodes.map(hashRecoveryCode) };
 }
 
-function matchingTotpCounter(secretEncrypted: string, code: string, now = Date.now(), afterTimeStep?: number | null) {
-  if (!/^\d{6}$/u.test(code)) return null;
+function matchingTotpCounter(
+  secretEncrypted: string | null,
+  code: string,
+  now = Date.now(),
+  afterTimeStep?: number | null,
+) {
+  if (!secretEncrypted || !/^\d{6}$/u.test(code)) return null;
   const secret = decryptSensitiveField(parseEncryptedField(secretEncrypted), encryptionKeyring());
   const result = verifySync({
     secret,
@@ -290,7 +295,7 @@ export async function replaceRecoveryCodes(userId: string) {
   return set.recoveryCodes;
 }
 
-export function verifyTotp(secretEncrypted: string, code: string) {
+export function verifyTotp(secretEncrypted: string | null, code: string) {
   return matchingTotpCounter(secretEncrypted, code.trim()) !== null;
 }
 

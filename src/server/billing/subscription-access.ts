@@ -1,5 +1,6 @@
 import { prisma } from "@/server/db";
 import { resolveCompanyEntitlements, resolveCompanyEntitlementSummary } from "@/server/billing/company-entitlements";
+import { evaluateMessageTargetAccess, type MessageTargetCounts } from "@/server/billing/message-target-access";
 
 export const INACTIVE_SUBSCRIPTION_MESSAGE =
   "Aboneliginiz aktif degil. Mesaj gondermek veya yeni WhatsApp hesabi baglamak icin paketinizi yenileyin.";
@@ -55,17 +56,16 @@ export class SubscriptionAccessService {
     return { allowed: true, limit: undefined, used: requestedRecipients };
   }
 
-  async canSendTargets(companyId: string, targets: { groupCount: number; contactCount: number }) {
+  async canSendTargets(companyId: string, targets: MessageTargetCounts) {
     const current = await this.getCurrent(companyId);
-    const used = targets.groupCount + targets.contactCount;
-    if (!current?.valid) return { allowed: false, reason: "subscription.inactive", limit: undefined, used };
-    if (targets.groupCount > 0 && !current.entitlements.groupMessaging) {
-      return { allowed: false, reason: "entitlement.groupMessaging", limit: undefined, used };
-    }
-    if (targets.contactCount > 0 && !current.entitlements.contactMessaging) {
-      return { allowed: false, reason: "entitlement.contactMessaging", limit: undefined, used };
-    }
-    return { allowed: true, reason: undefined, limit: undefined, used };
+    return evaluateMessageTargetAccess(
+      {
+        active: Boolean(current?.valid),
+        groupMessaging: Boolean(current?.entitlements.groupMessaging),
+        contactMessaging: Boolean(current?.entitlements.contactMessaging),
+      },
+      targets,
+    );
   }
 
   async canUseContactMessaging(companyId: string) {

@@ -38,11 +38,11 @@ function plan(slug: string, maxTeamUsers: number, contactMessagingEnabled: boole
 }
 
 const trial = deriveCompanyEntitlements(plan("trial", 1, true), true);
-const starter = deriveCompanyEntitlements(plan("starter", 2, false), true);
+const starter = deriveCompanyEntitlements(plan("starter", 2, true), true);
 const professional = deriveCompanyEntitlements(plan("professional", 3, true), true);
 const inactiveProfessional = deriveCompanyEntitlements(plan("professional", 3, true), false);
 assert(trial.teamSeats === 1 && trial.contactMessaging, "Seven-day trial must have one seat and explicit contact access.");
-assert(starter.teamSeats === 2 && starter.groupMessaging && !starter.contactMessaging, "Starter must have two seats and remain group-only.");
+assert(starter.teamSeats === 2 && starter.groupMessaging && starter.contactMessaging, "Starter must have two seats and support group and contact messaging.");
 assert(professional.teamSeats === 3 && professional.groupMessaging && professional.contactMessaging, "Professional must have three seats and contact access.");
 assert(!inactiveProfessional.messageSend && !inactiveProfessional.contactMessaging, "Inactive subscriptions must not retain message entitlements.");
 
@@ -222,9 +222,11 @@ assert(read("package.json").includes("node scripts/patch-baileys-contact-jid.mjs
 assert(read("Dockerfile.worker").includes("COPY scripts/patch-baileys-contact-jid.mjs"), "The production worker image must include the Baileys compatibility patch before npm ci.");
 
 const pipeline = read("src/server/messages/delivery-pipeline.ts");
+const recipientTargets = read("src/server/messages/recipient-targets.ts");
 assert(pipeline.includes('traceMessageStage("subscription.contact_access"'), "Contact entitlement must be checked before contact ownership resolution.");
-assert(pipeline.includes('targetType: "GROUP"'), "Group recipients must persist GROUP target type.");
-assert(pipeline.includes('targetType: "CONTACT"'), "Contact recipients must persist CONTACT target type.");
+assert(pipeline.includes("buildMessageRecipientRows(groups, contacts)"), "Delivery pipeline must retain both resolved target collections.");
+assert(recipientTargets.includes('targetType: "GROUP"'), "Group recipients must persist GROUP target type.");
+assert(recipientTargets.includes('targetType: "CONTACT"'), "Contact recipients must persist CONTACT target type.");
 assert(pipeline.includes("resolveOwnedWhatsAppContacts"), "Contact targets must resolve through the account-scoped ownership service.");
 
 const worker = read("src/worker/index.ts");

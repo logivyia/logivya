@@ -12,6 +12,7 @@ import { requestGroupSyncIfStale, resolveCurrentWhatsAppAccount } from "@/server
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
 import { createMessageCorrelationId, withCampaignMetadata } from "@/server/messages/correlation";
 import { traceMessageStage } from "@/server/messages/delivery-tracing";
+import { buildMessageRecipientRows } from "@/server/messages/recipient-targets";
 import { resolveOwnedWhatsAppContacts } from "@/server/whatsapp/contacts";
 import { resolveCategoryContactsForSend } from "@/server/categories/category-targets";
 
@@ -386,22 +387,7 @@ export async function createMessageDeliveryCampaign(
         resolvedContactCount: contacts.length,
       }),
       recipients: {
-        create: [
-          ...groups.map((group) => ({
-            accountId: group.accountId,
-            groupId: group.id,
-            targetType: "GROUP" as const,
-            recipientName: group.name,
-            recipientExternalId: group.externalGroupId,
-          })),
-          ...contacts.map((contact) => ({
-            accountId: contact.accountId,
-            contactId: contact.id,
-            targetType: "CONTACT" as const,
-            recipientName: contact.name || contact.pushName || contact.phone,
-            recipientExternalId: contact.externalContactId,
-          })),
-        ],
+        create: buildMessageRecipientRows(groups, contacts),
       },
     },
     include: { recipients: true },

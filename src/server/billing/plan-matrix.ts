@@ -37,7 +37,7 @@ export const CORE_PLAN_MATRIX: Record<CorePlanCode, CorePlanRule> = {
     totalUserSeats: 2,
     whatsappConnections: 2,
     groupMessaging: true,
-    contactMessaging: false,
+    contactMessaging: true,
     scheduledMessaging: true,
     recurringMessaging: true,
     deleteForEveryone: true,
