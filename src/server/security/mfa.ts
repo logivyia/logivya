@@ -101,8 +101,8 @@ function constantTimeCodeEqual(actual: string, expected: string) {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-function matchingTotpCounter(secretEncrypted: string, code: string, now = Date.now()) {
-  if (!/^\d{6}$/u.test(code)) return null;
+function matchingTotpCounter(secretEncrypted: string | null, code: string, now = Date.now()) {
+  if (!secretEncrypted || !/^\d{6}$/u.test(code)) return null;
   const secret = decryptSensitiveField(parseEncryptedField(secretEncrypted), encryptionKeyring());
   const currentCounter = Math.floor(now / (TOTP_PERIOD_SECONDS * 1000));
   for (const offset of [0, -1, 1]) {
@@ -189,7 +189,7 @@ export async function replaceRecoveryCodes(userId: string) {
   return set.recoveryCodes;
 }
 
-export function verifyTotp(secretEncrypted: string, code: string) {
+export function verifyTotp(secretEncrypted: string | null, code: string) {
   return matchingTotpCounter(secretEncrypted, code.trim()) !== null;
 }
 

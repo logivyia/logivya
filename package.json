@@ -92,6 +92,7 @@
     "test:seven-day-trial": "tsx scripts/test-seven-day-trial.ts",
     "test:seven-day-trial:integration": "tsx scripts/test-seven-day-trial-integration.ts",
     "test:team-contact-messaging": "tsx scripts/test-team-contact-messaging.ts",
+    "test:starter-contact-regression": "tsx scripts/test-starter-contact-regression.ts",
     "test:whatsapp-contacts": "node scripts/patch-baileys-contact-jid.mjs && tsx scripts/test-team-contact-messaging.ts",
     "test:category-contact-assignment": "tsx scripts/test-category-contact-assignment.ts",
     "test:support-center:contracts": "tsx scripts/test-support-center-contracts.ts",
