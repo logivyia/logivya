@@ -24,6 +24,7 @@
     "test:audit": "tsx scripts/test-audit-observability.ts",
     "test:security": "tsx scripts/test-security-observability.ts && npm run test:admin-security && npm run test:security-hardening",
     "test:security-hardening": "tsx scripts/test-enterprise-security-hardening.ts",
+    "test:play-integrity": "tsx scripts/test-play-integrity.ts",
     "test:tenant-isolation": "npm run test:admin-security && npm run audit:whatsapp-groups",
     "test:integration": "tsx scripts/test-observability-integration.ts",
     "test:observability-load": "tsx scripts/test-observability-load.ts",
