@@ -42,8 +42,8 @@ jobs:
       BACKUP_SECONDARY_STORAGE_SECRET_KEY: ${{ secrets.BACKUP_SECONDARY_STORAGE_SECRET_KEY }}
       BACKUP_SECONDARY_STORAGE_SERVER_SIDE_ENCRYPTION: NONE
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
           cache: npm
@@ -51,7 +51,7 @@ jobs:
       - name: Create, verify and replicate encrypted backup
         run: npm run backup:database -- --upload --require-secondary
       - name: Preserve encrypted recovery copy in workflow artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: encrypted-postgres-backup-${{ github.run_id }}
           path: artifacts/backups/*
@@ -95,14 +95,14 @@ jobs:
       RESTORE_DATABASE_NAME: logivya_restore
       RESTORE_DATABASE_USER: postgres
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
           cache: npm
       - run: npm ci
       - name: Download encrypted recovery artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: encrypted-postgres-backup-${{ github.run_id }}
           path: artifacts/restore-drill
@@ -158,7 +158,7 @@ jobs:
           }, null, 2)}\n`);
           NODE
       - name: Preserve sanitized restore proof
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: restore-proof-${{ github.run_id }}
           path: artifacts/restore-proof/restore-drill.json
