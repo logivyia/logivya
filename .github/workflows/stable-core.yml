@@ -21,13 +21,13 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_DB: logivya_ci
+          POSTGRES_DB: logivya_test
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d logivya_ci"
+          --health-cmd "pg_isready -U postgres -d logivya_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -42,7 +42,7 @@ jobs:
           --health-retries 10
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/logivya_ci
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/logivya_test
       REDIS_URL: redis://127.0.0.1:6379
       AUTH_SECRET: ci-auth-secret-at-least-thirty-two-characters
       PASSWORD_PEPPER: ci-password-pepper-at-least-thirty-two-characters
