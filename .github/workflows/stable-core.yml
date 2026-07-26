@@ -80,6 +80,8 @@ jobs:
       - run: npm run typecheck
       - run: npm run mobile:typecheck
       - run: npm test
+      - name: Seed isolated integration database
+        run: npm run db:seed
       - name: Verify Starter team and contact messaging integration
         run: npm run test:team-contact-messaging:integration
       - run: npm run lint
