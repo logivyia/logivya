@@ -80,5 +80,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run mobile:typecheck
       - run: npm test
+      - name: Verify Starter team and contact messaging integration
+        run: npm run test:team-contact-messaging:integration
       - run: npm run lint
       - run: npm run build

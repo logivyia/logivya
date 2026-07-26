@@ -119,7 +119,7 @@ async function main() {
   assert((await subscriptionAccess.getCurrent(starter.company.id))?.plan.slug === "starter", "Invited member's company must resolve the one authoritative Starter subscription.");
   assert((await subscriptionAccess.canSendTargets(starter.company.id, { groupCount: 1, contactCount: 0 })).allowed, "Starter company must retain group messaging.");
   const starterContactAccess = await subscriptionAccess.canSendTargets(starter.company.id, { groupCount: 0, contactCount: 1 });
-  assert(!starterContactAccess.allowed && starterContactAccess.reason === "entitlement.contactMessaging", "Starter contact messaging must be rejected by the backend entitlement service.");
+  assert(starterContactAccess.allowed, "Starter company must retain contact messaging.");
 
   const memberSession = await prisma.userSession.create({
     data: {

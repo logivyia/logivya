@@ -23,7 +23,7 @@ assert.equal(CORE_PLAN_MATRIX.trial.contactMessaging, true);
 assert.equal(CORE_PLAN_MATRIX.starter.monthlyPriceTry, 280);
 assert.equal(CORE_PLAN_MATRIX.starter.totalUserSeats, 2);
 assert.equal(CORE_PLAN_MATRIX.starter.whatsappConnections, 2);
-assert.equal(CORE_PLAN_MATRIX.starter.contactMessaging, false);
+assert.equal(CORE_PLAN_MATRIX.starter.contactMessaging, true);
 assert.equal(CORE_PLAN_MATRIX.starter.advertisingEnabled, true);
 assert.equal(CORE_PLAN_MATRIX.professional.monthlyPriceTry, 380);
 assert.equal(CORE_PLAN_MATRIX.professional.totalUserSeats, 3);
