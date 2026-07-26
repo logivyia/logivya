@@ -1,6 +1,6 @@
 # LOGIVYA Shared MFA Authentication Incident
 
-Status: ACTIVE - RELEASE BLOCKED
+Status: RESOLVED - PRODUCTION VALIDATED - ANDROID v152 NOT REQUIRED
 
 Opened: 2026-07-26
 
@@ -23,7 +23,8 @@ Owner: Production authentication incident response
    - VERIFIED: The submitted iOS build must remain untouched.
 3. Affected production versions
    - VERIFIED: Android versionCode 151.
-   - VERIFIED: Vercel production deployment `dpl_8RyvfwnoyTfMfgzahN1Q8nWP4Wiz`.
+   - VERIFIED: Failed Vercel production deployment `dpl_8RyvfwnoyTfMfgzahN1Q8nWP4Wiz`.
+   - VERIFIED: Corrected Vercel production deployment `dpl_DXYAwr19PeZJy5XwtKsr1mydU4FB`.
 4. Reproduction steps
    - VERIFIED: Submit valid email/password, receive the Authenticator challenge, submit the current six-digit TOTP, then receive a generic error or Android recovery screen.
 5. Latest failure timestamps
@@ -31,20 +32,25 @@ Owner: Production authentication incident response
    - VERIFIED: Android v151 MFA challenge issued at `2026-07-26T09:08:11.289Z`; additional v151 challenges occurred at 08:57, 08:46, 08:44, and 08:43 UTC.
 6. Correlation references
    - VERIFIED: Android exposed a reference beginning with `mobile-recovery-ms`.
-   - NOT CONFIRMED: Historical requests did not persist a complete end-to-end correlation ID.
+   - VERIFIED after repair: web valid TOTP `9d7d4d54-e4d6-48f8-a75a-bb6c78406cc8`.
+   - VERIFIED after repair: Android v151 valid TOTP `cc00ac97-6ffd-4ad4-9951-b59c1194ca4f`.
+   - VERIFIED after repair: Android v151 invalid TOTP `c877941b-9bae-4366-a475-3dd2edb5b883`.
 7. HTTP status codes
    - NOT CONFIRMED: The historical failed response status is not retained in the available audit record.
+   - VERIFIED after repair: valid web TOTP returned 200; valid Android v151 TOTP returned 200; invalid Android TOTP returned 401.
 8. Backend authentication stage reached
    - VERIFIED: Credential verification and MFA challenge persistence completed.
    - VERIFIED: The v151 web request reached TOTP code comparison and recorded `MFA_INVALID`.
 9. Exact stage where the flow failed
    - VERIFIED for the recorded web attempt: TOTP verification returned invalid before session creation.
    - VERIFIED for the current GitHub deployment contract: encrypted TOTP secret lookup fails before code comparison when only the production `MFA_FIELD_ENCRYPTION_*` variables are present.
+   - VERIFIED after repair: secret decryption, TOTP verification, session creation, and token/cookie delivery all completed.
 10. Safe exception type
     - VERIFIED by a deterministic production-contract reproduction: `Error("MFA_ENCRYPTION_NOT_CONFIGURED")`.
     - NOT CONFIRMED: The historical Vercel runtime stack trace is outside the 30-minute log retention window.
 11. Relevant backend version
-    - VERIFIED: Git commit `388ef803efb603744f856902df00ed00168b4e59`.
+    - VERIFIED failed version: Git commit `388ef803efb603744f856902df00ed00168b4e59`.
+    - VERIFIED repaired version: Git commit `246e0cfade2bd9d43249da5f2157b0041b26b13f`.
 12. Relevant Android versionCode
     - VERIFIED: 151.
 13. Web client version
@@ -60,12 +66,13 @@ Owner: Production authentication incident response
     - VERIFIED: Challenges were issued and persisted for both web and Android v151.
 18. Session creation result
     - VERIFIED for the recorded failed attempt: Not reached.
-    - NOT CONFIRMED for a current valid-code attempt.
+    - VERIFIED after repair: web and Android v151 session creation succeeded.
 19. Cookie or token delivery result
     - VERIFIED for the recorded failed attempt: Not reached.
-    - NOT CONFIRMED for a current valid-code attempt.
+    - VERIFIED after repair: web cookie delivery and Android access/refresh token delivery succeeded.
 20. Android bootstrap result
-    - VERIFIED: Affected Android attempts do not reach a stable authenticated bootstrap and may enter `mobile-recovery-ms`.
+    - VERIFIED before repair: affected Android attempts did not reach a stable authenticated bootstrap and could enter `mobile-recovery-ms`.
+    - VERIFIED after repair: the Android v151 production API contract reached authenticated `/api/mobile/auth/me`.
 21. Confirmed root cause
     - VERIFIED code/config contract break: production defines `MFA_FIELD_ENCRYPTION_ACTIVE_VERSION` and `MFA_FIELD_ENCRYPTION_KEY_V1`, while commit `388ef803` reads only `FIELD_ENCRYPTION_ACTIVE_VERSION` and `FIELD_ENCRYPTION_KEY_*`.
 22. Contributing causes
@@ -90,6 +97,11 @@ Owner: Production authentication incident response
     - Session creation failure does not silently destroy the challenge.
     - Web cookie session, Android token session, profile bootstrap, refresh, logout, and re-login.
     - Stable safe error codes and correlation IDs; no secret-bearing diagnostics.
+
+26. Release decision
+    - GO for the shared production backend authentication repair.
+    - Android v151 works against the repaired backend; no versionCode 152 AAB is required.
+    - The iOS submission was not modified or resubmitted.
 
 ## Production Evidence
 
@@ -200,4 +212,51 @@ New evidence:
 - A dedicated `v1` key and a different legacy `v1` key can coexist while credentials encrypted by the legacy key remain verifiable.
 - Existing RFC 6238 and mobile auth resilience suites remain green.
 
-Next action: Commit the reviewed repair, pass GitHub CI, deploy the backward-compatible backend/web change, then capture a fresh real web and Android v151 MFA attempt.
+Next action: Completed in Attempt 2.
+
+### Attempt 2 - Production deployment and correlated end-to-end validation
+
+Status: PASSED / INCIDENT RESOLVED
+
+Change made:
+
+- Fast-forwarded commit `246e0cfade2bd9d43249da5f2157b0041b26b13f` to `main`.
+- Deployed the repaired backend/web bundle to Vercel production.
+- Ran a temporary isolated production tenant through registration, MFA enrollment, logout, challenged login, valid/invalid TOTP, web profile bootstrap, Android v151 token issuance, and Android profile bootstrap.
+- Retired and anonymized the temporary tenant while preserving the append-only audit trail; revoked every temporary session and MFA credential.
+
+Reason for the change: Local deterministic tests proved the old code/config contract failed, but release approval required a real production session and profile bootstrap on both affected client contracts.
+
+Deployment identifier:
+
+- Vercel: `dpl_DXYAwr19PeZJy5XwtKsr1mydU4FB`
+- Git: `246e0cfade2bd9d43249da5f2157b0041b26b13f`
+- Production aliases: `https://www.logivya.com`, `https://logivya.com`
+
+Test results:
+
+- PASS: GitHub `Security Gates` run `30200652263`.
+- PASS: GitHub `Stable Core Gate` run `30200652273`.
+- PASS: `/api/health/live` returned `{"status":"ok"}`.
+- PASS: Web MFA enrollment and enrollment verification.
+- PASS: Web valid TOTP, cookie session creation, and `/api/auth/me` bootstrap.
+- PASS: Android v151 MFA challenge, valid TOTP, access/refresh token creation, and `/api/mobile/auth/me` bootstrap.
+- PASS: Android invalid TOTP returned HTTP 401 with `MFA_INVALID`.
+- PASS: Vercel stage logs recorded `CHALLENGE_LOOKUP`, `TOTP_SECRET_DECRYPTION`, `TOTP_VERIFICATION`, `SESSION_CREATION`, and `TOKEN_OR_COOKIE_DELIVERY` with no secret material.
+- PASS: Post-test active temporary users, memberships, web sessions, mobile sessions, and MFA credentials all equal zero.
+
+Production result:
+
+- Web valid TOTP correlation `9d7d4d54-e4d6-48f8-a75a-bb6c78406cc8` reached cookie delivery in 69 ms.
+- Android v151 valid TOTP correlation `cc00ac97-6ffd-4ad4-9951-b59c1194ca4f` reached token delivery in 73 ms.
+- Android invalid TOTP correlation `c877941b-9bae-4366-a475-3dd2edb5b883` was rejected at TOTP verification with HTTP 401.
+
+Environment changes:
+
+- None. The code was corrected to honor the existing production `MFA_FIELD_ENCRYPTION_*` contract and retain legacy-key compatibility.
+
+Final action:
+
+- Close the shared authentication incident.
+- Keep Android versionCode 151; do not create versionCode 152 for this backend-only repair.
+- Leave the iOS submission untouched.
