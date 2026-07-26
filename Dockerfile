@@ -12,13 +12,16 @@ COPY . .
 RUN npm run postinstall
 RUN npm run build
 
+FROM builder AS production-dependencies
+RUN npm prune --omit=dev --ignore-scripts
+
 FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup -S logivya && adduser -S logivya -G logivya
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=production-dependencies /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 RUN chown -R logivya:logivya /app
