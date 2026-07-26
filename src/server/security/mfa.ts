@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import QRCode from "qrcode";
 
+import { activeTotpCredentialWhere, TOTP_CREDENTIAL_TYPE } from "@/server/auth/mfa-credential-policy";
 import { prisma } from "@/server/db";
 import { hashOpaqueToken } from "@/server/security/authentication";
 import {
@@ -159,13 +160,13 @@ export async function createAndStoreMfaEnrollment(userId: string, email: string)
   const enrollment = await createMfaEnrollment(email);
   const credential = await prisma.$transaction(async (tx) => {
     await tx.mfaCredential.updateMany({
-      where: { userId, verifiedAt: null, revokedAt: null },
+      where: { userId, type: TOTP_CREDENTIAL_TYPE, verifiedAt: null, revokedAt: null },
       data: { revokedAt: new Date() },
     });
     return tx.mfaCredential.create({
       data: {
         userId,
-        type: "TOTP",
+        type: TOTP_CREDENTIAL_TYPE,
         secretEncrypted: enrollment.secretEncrypted,
         recoveryCodesHashed: [],
         recoveryCodes: {
@@ -187,7 +188,7 @@ export async function activateMfaCredential(userId: string, credentialId: string
   const now = new Date();
   await prisma.$transaction([
     prisma.mfaCredential.updateMany({
-      where: { userId, id: { not: credentialId }, revokedAt: null },
+      where: { userId, type: TOTP_CREDENTIAL_TYPE, id: { not: credentialId }, revokedAt: null },
       data: { revokedAt: now },
     }),
     prisma.mfaCredential.update({
@@ -203,7 +204,7 @@ export async function activateMfaCredential(userId: string, credentialId: string
 
 export async function replaceRecoveryCodes(userId: string) {
   const credential = await prisma.mfaCredential.findFirst({
-    where: { userId, verifiedAt: { not: null }, revokedAt: null },
+    where: activeTotpCredentialWhere(userId),
     orderBy: { verifiedAt: "desc" },
   });
   if (!credential) throw new Error("MFA_NOT_ENROLLED");
@@ -228,11 +229,7 @@ export async function verifyAndConsumeMfaCode(input: {
   allowUnverifiedCredential?: boolean;
 }) {
   const credential = await prisma.mfaCredential.findFirst({
-    where: {
-      userId: input.userId,
-      revokedAt: null,
-      ...(input.allowUnverifiedCredential ? {} : { verifiedAt: { not: null } }),
-    },
+    where: activeTotpCredentialWhere(input.userId, input.allowUnverifiedCredential),
     orderBy: { createdAt: "desc" },
     include: { recoveryCodes: true },
   });

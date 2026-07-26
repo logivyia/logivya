@@ -12,7 +12,7 @@ import { writeAuditLog } from "@/server/security/audit";
 import { resolvePreferredLoginMembership } from "@/server/team/login-membership";
 import { createAndStoreMfaEnrollment } from "@/server/security/mfa";
 import {
-  findActiveMfaCredential,
+  findActiveTotpCredential,
   issueMfaChallenge,
   recordMfaSecurityEvent,
   validateTrustedDevice,
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
       return mobileError("FORBIDDEN", "Çalışma alanı bulunamadı.", { status: 403 });
     }
 
-    const activeCredential = await findActiveMfaCredential(user.id);
+    const activeCredential = await findActiveTotpCredential(user.id);
     const trustedDevice = activeCredential
       ? await validateTrustedDevice(user.id, parsed.data.trustedDeviceToken, parsed.data.deviceId)
       : null;

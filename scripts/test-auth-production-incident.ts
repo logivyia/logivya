@@ -34,6 +34,20 @@ function totp(secret: string, now = Date.now()) {
 }
 
 async function main() {
+  const { activeTotpCredentialWhere, TOTP_CREDENTIAL_TYPE } = await import("../src/server/auth/mfa-credential-policy");
+  assert.equal(TOTP_CREDENTIAL_TYPE, "TOTP");
+  assert.deepEqual(activeTotpCredentialWhere("user-1"), {
+    userId: "user-1",
+    type: "TOTP",
+    revokedAt: null,
+    verifiedAt: { not: null },
+  });
+  assert.deepEqual(activeTotpCredentialWhere("user-1", true), {
+    userId: "user-1",
+    type: "TOTP",
+    revokedAt: null,
+  });
+
   delete process.env.FIELD_ENCRYPTION_ACTIVE_VERSION;
   delete process.env.FIELD_ENCRYPTION_KEY_V1;
   process.env.MFA_FIELD_ENCRYPTION_ACTIVE_VERSION = "v1";
@@ -67,6 +81,8 @@ async function main() {
   const webSession = read("src/server/auth/session.ts");
   const mobileSession = read("src/server/mobile/auth.ts");
   const diagnostics = read("src/server/auth/diagnostics.ts");
+  const mfaService = read("src/server/security/mfa.ts");
+  const mfaChallenge = read("src/server/auth/mfa-challenge.ts");
 
   assert(!webRoute.includes("consumeMfaChallenge("), "Web MFA must not consume its challenge before session creation.");
   assert(!mobileRoute.includes("consumeMfaChallenge("), "Mobile MFA must not consume its challenge before session creation.");
@@ -78,6 +94,8 @@ async function main() {
   assert(diagnostics.includes("AUTH_SESSION_CREATE_FAILED"), "Authentication diagnostics must expose a safe session-stage error code.");
   assert(!diagnostics.includes("totpCode"), "Authentication diagnostics must never log a TOTP code.");
   assert(!diagnostics.includes("refreshToken"), "Authentication diagnostics must never log a refresh token.");
+  assert(mfaService.includes("activeTotpCredentialWhere"), "MFA verification must ignore active non-TOTP credentials.");
+  assert(mfaChallenge.includes("activeTotpCredentialWhere"), "Login challenge detection must ignore active non-TOTP credentials.");
 
   console.log("Production authentication incident contracts passed.");
 }

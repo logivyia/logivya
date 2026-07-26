@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { loginSchema } from "@/features/auth/schemas";
 import {
-  findActiveMfaCredential,
+  findActiveTotpCredential,
   issueMfaChallenge,
   MFA_CHALLENGE_COOKIE,
   MFA_CHALLENGE_TTL_MS,
@@ -111,7 +111,7 @@ export async function POST(request: Request) {
   const membership = await resolvePreferredLoginMembership(user.id);
   if (!membership) return NextResponse.json({ error: "auth.workspaceUnavailable" }, { status: 403 });
 
-  const activeCredential = await findActiveMfaCredential(user.id);
+  const activeCredential = await findActiveTotpCredential(user.id);
   const trustedToken = (await cookies()).get(MFA_TRUSTED_DEVICE_COOKIE)?.value;
   const trustedDevice = activeCredential ? await validateTrustedDevice(user.id, trustedToken, parsed.data.deviceFingerprint) : null;
 

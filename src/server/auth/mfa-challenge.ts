@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 
+import { activeTotpCredentialWhere } from "@/server/auth/mfa-credential-policy";
 import { prisma } from "@/server/db";
 import { hashOpaqueToken } from "@/server/security/authentication";
 
@@ -90,9 +91,9 @@ export async function consumeMfaChallenge(challengeId: string) {
   if (consumed.count !== 1) throw new Error("MFA_CHALLENGE_INVALID");
 }
 
-export async function findActiveMfaCredential(userId: string) {
+export async function findActiveTotpCredential(userId: string) {
   return prisma.mfaCredential.findFirst({
-    where: { userId, verifiedAt: { not: null }, revokedAt: null },
+    where: activeTotpCredentialWhere(userId),
     orderBy: { verifiedAt: "desc" },
   });
 }
