@@ -15,17 +15,46 @@ const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const TOTP_PERIOD_SECONDS = 30;
 const TOTP_DIGITS = 6;
 
-function encryptionKeyring(): EncryptionKeyring {
-  const activeVersion = process.env.FIELD_ENCRYPTION_ACTIVE_VERSION || "v1";
+function keyringForPrefix(prefix: "MFA_FIELD_ENCRYPTION" | "FIELD_ENCRYPTION") {
+  const activeVersion = (process.env[`${prefix}_ACTIVE_VERSION`] || "v1").toLowerCase();
   const keys: Record<string, Buffer> = {};
 
   for (const [name, value] of Object.entries(process.env)) {
-    const match = name.match(/^FIELD_ENCRYPTION_KEY_(.+)$/);
+    const match = name.match(new RegExp(`^${prefix}_KEY_(.+)$`, "u"));
     if (match && value) keys[match[1].toLowerCase()] = Buffer.from(value, "base64url");
   }
 
-  if (!keys[activeVersion.toLowerCase()]) throw new Error("MFA_ENCRYPTION_NOT_CONFIGURED");
-  return { activeVersion: activeVersion.toLowerCase(), keys };
+  return { activeVersion, keys };
+}
+
+function encryptionKeyrings() {
+  return [
+    keyringForPrefix("MFA_FIELD_ENCRYPTION"),
+    keyringForPrefix("FIELD_ENCRYPTION"),
+  ].filter((keyring) => Object.keys(keyring.keys).length > 0);
+}
+
+function encryptionKeyring(): EncryptionKeyring {
+  const keyring = encryptionKeyrings()[0];
+  if (!keyring) throw new Error("MFA_ENCRYPTION_NOT_CONFIGURED");
+  const { activeVersion, keys } = keyring;
+  const activeKey = keys[activeVersion];
+  if (!activeKey || activeKey.length !== 32) throw new Error("MFA_ENCRYPTION_NOT_CONFIGURED");
+  return { activeVersion, keys };
+}
+
+function decryptMfaSecret(secretEncrypted: string) {
+  const field = parseEncryptedField(secretEncrypted);
+
+  for (const keyring of encryptionKeyrings()) {
+    try {
+      return decryptSensitiveField(field, keyring);
+    } catch {
+      // Continue through legacy keyrings so pre-rotation credentials remain readable.
+    }
+  }
+
+  throw new Error("MFA_SECRET_DECRYPTION_FAILED");
 }
 
 function encodeBase32(bytes: Buffer) {
@@ -103,7 +132,7 @@ function constantTimeCodeEqual(actual: string, expected: string) {
 
 function matchingTotpCounter(secretEncrypted: string | null, code: string, now = Date.now()) {
   if (!secretEncrypted || !/^\d{6}$/u.test(code)) return null;
-  const secret = decryptSensitiveField(parseEncryptedField(secretEncrypted), encryptionKeyring());
+  const secret = decryptMfaSecret(secretEncrypted);
   const currentCounter = Math.floor(now / (TOTP_PERIOD_SECONDS * 1000));
   for (const offset of [0, -1, 1]) {
     const counter = currentCounter + offset;

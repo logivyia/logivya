@@ -148,24 +148,42 @@ export async function createMobileSession(input: {
   appVersion?: string | null;
   userAgent?: string | null;
   mfaVerified?: boolean;
+  mfaChallengeId?: string;
 }) {
+  mobileJwtSecret();
   const refresh = createRefreshToken();
-  await prisma.mobileDeviceSession.updateMany({
-    where: { userId: input.userId, companyId: input.companyId, deviceId: input.deviceId, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
-  const session = await prisma.mobileDeviceSession.create({
-    data: {
-      userId: input.userId,
-      companyId: input.companyId,
-      deviceId: input.deviceId,
-      platform: input.platform,
-      appVersion: input.appVersion,
-      userAgent: input.userAgent,
-      refreshTokenHash: refresh.tokenHash,
-      expiresAt: refresh.expiresAt,
-      mfaVerifiedAt: input.mfaVerified ? new Date() : null,
-    },
+  const session = await prisma.$transaction(async (tx) => {
+    if (input.mfaChallengeId) {
+      const consumed = await tx.mfaLoginChallenge.updateMany({
+        where: {
+          id: input.mfaChallengeId,
+          userId: input.userId,
+          companyId: input.companyId,
+          channel: "MOBILE",
+          consumedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        data: { consumedAt: new Date() },
+      });
+      if (consumed.count !== 1) throw new Error("MFA_CHALLENGE_INVALID");
+    }
+    await tx.mobileDeviceSession.updateMany({
+      where: { userId: input.userId, companyId: input.companyId, deviceId: input.deviceId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return tx.mobileDeviceSession.create({
+      data: {
+        userId: input.userId,
+        companyId: input.companyId,
+        deviceId: input.deviceId,
+        platform: input.platform,
+        appVersion: input.appVersion,
+        userAgent: input.userAgent,
+        refreshTokenHash: refresh.tokenHash,
+        expiresAt: refresh.expiresAt,
+        mfaVerifiedAt: input.mfaVerified ? new Date() : null,
+      },
+    });
   });
   const access = createAccessToken({ userId: input.userId, companyId: input.companyId, sessionId: session.id, role: input.role });
   return {

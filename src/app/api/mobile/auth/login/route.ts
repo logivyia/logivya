@@ -20,6 +20,7 @@ import {
 import { keyedIdentifierHash } from "@/server/observability/privacy";
 import { tryRecordSecurityEvent } from "@/server/security/events";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
+import { authenticationDiagnostics } from "@/server/auth/diagnostics";
 
 const schema = z.object({
   identifier: z.string().trim().min(3).max(254),
@@ -31,7 +32,13 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
+  const diagnostics = authenticationDiagnostics(
+    request,
+    request.headers.get("x-client-platform"),
+    request.headers.get("x-logivya-app-version"),
+  );
   try {
+    diagnostics.started("CREDENTIAL_VERIFICATION");
     const body = await readMobileJson(request);
     if (!body.ok) return body.response;
 
@@ -79,6 +86,7 @@ export async function POST(request: Request) {
     const validPassword = user ? await verifyPassword(user.passwordHash, parsed.data.password, process.env.PASSWORD_PEPPER ?? "") : false;
 
     if (!user || user.status !== "ACTIVE" || !validPassword) {
+      diagnostics.rejected("CREDENTIAL_VERIFICATION", "INVALID_CREDENTIALS", 401, { userId: user?.id });
       await prisma.loginAttempt.create({
         data: {
           userId: user?.id,
@@ -110,6 +118,7 @@ export async function POST(request: Request) {
       return mobileError("UNAUTHORIZED", "E-posta/telefon veya parola hatalı.", { status: 401 });
     }
 
+    diagnostics.succeeded("CREDENTIAL_VERIFICATION", { userId: user.id });
     const membership = await resolvePreferredLoginMembership(user.id, parsed.data.deviceId);
     if (!membership) {
       logger.warn("Mobile login rejected: active membership missing", { userId: user.id });
@@ -122,6 +131,7 @@ export async function POST(request: Request) {
       : null;
     if ((activeCredential || user.mfaRequired) && !trustedDevice) {
       const purpose = activeCredential ? "LOGIN" as const : "SETUP" as const;
+      diagnostics.started("CHALLENGE_CREATION", { userId: user.id });
       const challenge = await issueMfaChallenge({
         userId: user.id,
         companyId: membership.companyId,
@@ -132,6 +142,7 @@ export async function POST(request: Request) {
         platform: parsed.data.platform,
         appVersion: parsed.data.appVersion,
       });
+      diagnostics.succeeded("CHALLENGE_CREATION", { userId: user.id });
       const enrollment = purpose === "SETUP" ? await createAndStoreMfaEnrollment(user.id, user.email) : null;
       await recordMfaSecurityEvent({
         request,
@@ -146,9 +157,11 @@ export async function POST(request: Request) {
         challengeToken: challenge.token,
         expiresAt: challenge.expiresAt.toISOString(),
         ...(enrollment ?? {}),
+        correlationId: diagnostics.correlationId,
       });
     }
 
+    diagnostics.started("SESSION_CREATION", { userId: user.id });
     const tokens = await createMobileSession({
       userId: user.id,
       companyId: membership.companyId,
@@ -159,6 +172,7 @@ export async function POST(request: Request) {
       userAgent: request.headers.get("user-agent"),
       mfaVerified: Boolean(activeCredential),
     });
+    diagnostics.succeeded("SESSION_CREATION", { userId: user.id });
     await prisma.loginAttempt.create({
       data: { userId: user.id, email: user.email, ipAddress: ip, userAgent: request.headers.get("user-agent"), success: true },
     });
@@ -188,6 +202,7 @@ export async function POST(request: Request) {
 
     const isPlatformAdmin = isAuthorizedLogivyaPlatformAdmin({ email: user.email });
 
+    diagnostics.succeeded("TOKEN_OR_COOKIE_DELIVERY", { userId: user.id, statusCode: 200 });
     return mobileSuccess({
       tokens,
       user: { id: user.id, name: user.name, email: user.email, phone: user.phone, locale: user.locale, role: membership.role, isPlatformAdmin },
@@ -199,8 +214,10 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (error instanceof Error && error.message === "MOBILE_AUTH_SECRET_MISSING") {
+      diagnostics.failed("SESSION_CREATION", error);
       return mobileError("CONFIGURATION_ERROR", "Mobil kimlik doğrulama yapılandırılmamış.", { status: 503 });
     }
+    diagnostics.failed("CREDENTIAL_VERIFICATION", error);
     logger.error("Mobile login failed unexpectedly", error);
     return mobileSafeError(error);
   }

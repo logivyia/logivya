@@ -88,6 +88,7 @@
     "test:whatsapp:v3-load": "tsx scripts/simulate-whatsapp-v3-load.ts",
     "test:admin-security": "tsx scripts/test-admin-security.ts",
     "test:enterprise-mfa": "tsx scripts/test-enterprise-mfa.ts",
+    "test:auth-incident": "tsx scripts/test-auth-production-incident.ts",
     "test:mobile-admin-parity": "tsx scripts/test-mobile-admin-parity.ts",
     "test:subscription-admin": "tsx scripts/test-subscription-admin.ts",
     "test:seven-day-trial": "tsx scripts/test-seven-day-trial.ts",

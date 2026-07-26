@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
-  consumeMfaChallenge,
   MFA_CHALLENGE_COOKIE,
   MFA_TRUSTED_DEVICE_COOKIE,
   readMfaChallenge,
@@ -12,6 +11,11 @@ import {
   requestIp,
   trustDevice,
 } from "@/server/auth/mfa-challenge";
+import {
+  authenticationDiagnostics,
+  authenticationResponseHeaders,
+  type AuthenticationStage,
+} from "@/server/auth/diagnostics";
 import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
 import { createSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
@@ -26,13 +30,33 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
+  const diagnostics = authenticationDiagnostics(request, "web");
+  const headers = authenticationResponseHeaders(diagnostics.correlationId);
+  let stage: AuthenticationStage = "REQUEST_RECEIVED";
+
+  function errorResponse(code: string, status: number, extra?: Record<string, unknown>) {
+    return NextResponse.json(
+      { error: code, code, correlationId: diagnostics.correlationId, ...extra },
+      { status, headers },
+    );
+  }
+
   try {
+    diagnostics.started(stage);
     const parsed = schema.safeParse(await request.json());
-    if (!parsed.success) return NextResponse.json({ error: "MFA_CODE_INVALID" }, { status: 400 });
+    if (!parsed.success) {
+      diagnostics.rejected(stage, "MFA_CODE_INVALID", 400);
+      return errorResponse("MFA_CODE_INVALID", 400);
+    }
     const cookieStore = await cookies();
     const challengeToken = cookieStore.get(MFA_CHALLENGE_COOKIE)?.value;
-    if (!challengeToken) return NextResponse.json({ error: "MFA_CHALLENGE_INVALID" }, { status: 401 });
+    if (!challengeToken) {
+      diagnostics.rejected("CHALLENGE_LOOKUP", "MFA_CHALLENGE_EXPIRED", 401);
+      return errorResponse("MFA_CHALLENGE_EXPIRED", 401);
+    }
 
+    stage = "CHALLENGE_LOOKUP";
+    diagnostics.started(stage);
     await enforceOperationRateLimit({
       scope: "web-mfa-verify",
       subject: `${requestIp(request)}:${challengeToken.slice(0, 12)}`,
@@ -41,6 +65,7 @@ export async function POST(request: Request) {
       request,
     });
     const challenge = await readMfaChallenge(challengeToken, "WEB");
+    diagnostics.succeeded(stage, { userId: challenge.userId, challengeId: challenge.id });
     const membership = await prisma.companyUser.findUnique({
       where: { companyId_userId: { companyId: challenge.companyId, userId: challenge.userId } },
     });
@@ -48,11 +73,14 @@ export async function POST(request: Request) {
       throw new Error("MFA_CHALLENGE_INVALID");
     }
 
+    stage = "TOTP_SECRET_DECRYPTION";
+    diagnostics.started(stage, { userId: challenge.userId, challengeId: challenge.id });
     const verification = await verifyAndConsumeMfaCode({
       userId: challenge.userId,
       code: parsed.data.code,
       allowUnverifiedCredential: challenge.purpose === "SETUP",
     });
+    stage = "TOTP_VERIFICATION";
     if (!verification.ok) {
       const failure = await registerMfaChallengeFailure(challenge.id);
       await prisma.loginAttempt.create({
@@ -74,17 +102,27 @@ export async function POST(request: Request) {
         severity: failure.locked ? "HIGH" : "MEDIUM",
         metadata: { attempts: failure.attempts, reason: verification.reason },
       });
-      return NextResponse.json(
-        { error: failure.locked ? "MFA_CHALLENGE_LOCKED" : verification.reason, attemptsRemaining: Math.max(0, 5 - failure.attempts) },
-        { status: failure.locked ? 429 : 401 },
+      const code = failure.locked ? "MFA_RATE_LIMITED" : verification.reason;
+      const status = failure.locked ? 429 : verification.reason === "MFA_CODE_REUSED" ? 409 : 401;
+      diagnostics.rejected(stage, code, status, { userId: challenge.userId, challengeId: challenge.id });
+      return errorResponse(
+        code,
+        status,
+        { attemptsRemaining: Math.max(0, 5 - failure.attempts) },
       );
     }
+    diagnostics.succeeded(stage, { userId: challenge.userId, challengeId: challenge.id });
 
     if (challenge.purpose === "SETUP") {
       await activateMfaCredential(challenge.userId, verification.credentialId);
     }
-    await consumeMfaChallenge(challenge.id);
-    await createSession(challenge.userId, challenge.companyId, request, { mfaVerified: true });
+    stage = "SESSION_CREATION";
+    diagnostics.started(stage, { userId: challenge.userId, challengeId: challenge.id });
+    await createSession(challenge.userId, challenge.companyId, request, {
+      mfaVerified: true,
+      mfaChallengeId: challenge.id,
+    });
+    diagnostics.succeeded(stage, { userId: challenge.userId, challengeId: challenge.id });
     await prisma.loginAttempt.create({
       data: { userId: challenge.userId, email: challenge.user.email, ipAddress: requestIp(request), userAgent: request.headers.get("user-agent"), success: true },
     });
@@ -121,10 +159,14 @@ export async function POST(request: Request) {
       message: verification.method === "RECOVERY" ? "Kurtarma kodu ile giris yapildi." : "Iki adimli dogrulama basarili oldu.",
       severity: verification.method === "RECOVERY" ? "MEDIUM" : "INFO",
     });
-    return NextResponse.json({ ok: true, isAdmin: isPlatformAdmin, isPlatformAdmin });
+    stage = "TOKEN_OR_COOKIE_DELIVERY";
+    diagnostics.succeeded(stage, { userId: challenge.userId, challengeId: challenge.id, statusCode: 200 });
+    return NextResponse.json(
+      { ok: true, isAdmin: isPlatformAdmin, isPlatformAdmin, correlationId: diagnostics.correlationId },
+      { headers },
+    );
   } catch (error) {
-    const code = error instanceof Error ? error.message : "MFA_ERROR";
-    const status = code === "RATE_LIMITED" || code === "MFA_CHALLENGE_LOCKED" ? 429 : 401;
-    return NextResponse.json({ error: code }, { status });
+    const failure = diagnostics.failed(stage, error);
+    return errorResponse(failure.code, failure.status);
   }
 }

@@ -24,6 +24,7 @@ import { tryRecordSecurityEvent } from "@/server/security/events";
 import { writeAuditLog } from "@/server/security/audit";
 import { logger } from "@/server/observability/logger";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
+import { authenticationDiagnostics, authenticationResponseHeaders } from "@/server/auth/diagnostics";
 
 const schema = loginSchema.extend({
   deviceFingerprint: z.string().trim().min(8).max(160).optional(),
@@ -31,10 +32,19 @@ const schema = loginSchema.extend({
 });
 
 export async function POST(request: Request) {
+  const diagnostics = authenticationDiagnostics(request, "web");
+  const responseHeaders = authenticationResponseHeaders(diagnostics.correlationId);
+  diagnostics.started("CREDENTIAL_VERIFICATION");
   const ipAddress = requestIp(request);
   const userAgent = request.headers.get("user-agent");
   const parsed = schema.safeParse(await request.json());
-  if (!parsed.success) return NextResponse.json({ error: "auth.invalidCredentials" }, { status: 400 });
+  if (!parsed.success) {
+    diagnostics.rejected("CREDENTIAL_VERIFICATION", "INVALID_CREDENTIALS", 400);
+    return NextResponse.json(
+      { error: "auth.invalidCredentials", correlationId: diagnostics.correlationId },
+      { status: 400, headers: responseHeaders },
+    );
+  }
 
   const identifier = parsed.data.identifier.trim().toLowerCase();
   const normalizedPhone = identifier.replace(/\D/gu, "");
@@ -76,6 +86,7 @@ export async function POST(request: Request) {
   });
 
   if (!user || user.status !== "ACTIVE" || !(await verifyPassword(user.passwordHash, parsed.data.password, process.env.PASSWORD_PEPPER ?? ""))) {
+    diagnostics.rejected("CREDENTIAL_VERIFICATION", "INVALID_CREDENTIALS", 401, { userId: user?.id });
     await prisma.loginAttempt.create({
       data: { userId: user?.id, email: identifier, ipAddress, userAgent, success: false, failureReason: "INVALID_CREDENTIALS" },
     });
@@ -90,8 +101,12 @@ export async function POST(request: Request) {
       errorCode: "INVALID_CREDENTIALS",
       metadata: { identifierType: identifier.includes("@") ? "email" : "phone", identifierHash: keyedIdentifierHash(identifier), knownUser: Boolean(user) },
     });
-    return NextResponse.json({ error: "auth.invalidCredentials" }, { status: 401 });
+    return NextResponse.json(
+      { error: "auth.invalidCredentials", correlationId: diagnostics.correlationId },
+      { status: 401, headers: responseHeaders },
+    );
   }
+  diagnostics.succeeded("CREDENTIAL_VERIFICATION", { userId: user.id });
 
   const membership = await resolvePreferredLoginMembership(user.id);
   if (!membership) return NextResponse.json({ error: "auth.workspaceUnavailable" }, { status: 403 });
@@ -102,6 +117,7 @@ export async function POST(request: Request) {
 
   if ((activeCredential || user.mfaRequired) && !trustedDevice) {
     const purpose = activeCredential ? "LOGIN" as const : "SETUP" as const;
+    diagnostics.started("CHALLENGE_CREATION", { userId: user.id });
     const challenge = await issueMfaChallenge({
       userId: user.id,
       companyId: membership.companyId,
@@ -111,6 +127,7 @@ export async function POST(request: Request) {
       deviceId: parsed.data.deviceFingerprint,
       platform: "WEB",
     });
+    diagnostics.succeeded("CHALLENGE_CREATION", { userId: user.id });
     const enrollment = purpose === "SETUP" ? await createAndStoreMfaEnrollment(user.id, user.email) : null;
     const cookieStore = await cookies();
     cookieStore.set(MFA_CHALLENGE_COOKIE, challenge.token, {
@@ -133,14 +150,17 @@ export async function POST(request: Request) {
       mfaSetupRequired: purpose === "SETUP",
       expiresAt: challenge.expiresAt.toISOString(),
       ...(enrollment ?? {}),
-    }, { status: 202 });
+      correlationId: diagnostics.correlationId,
+    }, { status: 202, headers: responseHeaders });
   }
 
+  diagnostics.started("SESSION_CREATION", { userId: user.id });
   await createSession(user.id, membership.companyId, request, {
     mfaVerified: Boolean(activeCredential),
     deviceName: parsed.data.deviceName,
     deviceFingerprint: parsed.data.deviceFingerprint,
   });
+  diagnostics.succeeded("SESSION_CREATION", { userId: user.id });
   await prisma.loginAttempt.create({
     data: { userId: user.id, email: user.email, ipAddress, userAgent, success: true },
   });
@@ -178,5 +198,9 @@ export async function POST(request: Request) {
     await prisma.adminSessionEvent.create({ data: { userId: user.id, type: "ADMIN_LOGIN", ipAddress, userAgent } });
   }
 
-  return NextResponse.json({ ok: true, isAdmin: isPlatformAdmin, isPlatformAdmin });
+  diagnostics.succeeded("TOKEN_OR_COOKIE_DELIVERY", { userId: user.id, statusCode: 200 });
+  return NextResponse.json(
+    { ok: true, isAdmin: isPlatformAdmin, isPlatformAdmin, correlationId: diagnostics.correlationId },
+    { headers: responseHeaders },
+  );
 }

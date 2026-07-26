@@ -11,13 +11,31 @@ export async function createSession(
   userId: string,
   companyId: string,
   request: Request,
-  options: { mfaVerified?: boolean; deviceName?: string | null; deviceFingerprint?: string | null } = {},
+  options: {
+    mfaVerified?: boolean;
+    mfaChallengeId?: string;
+    deviceName?: string | null;
+    deviceFingerprint?: string | null;
+  } = {},
 ) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
   const cookieStore = await cookies();
   const previousToken = cookieStore.get(SESSION_COOKIE)?.value;
   const session = await prisma.$transaction(async (tx) => {
+    if (options.mfaChallengeId) {
+      const consumed = await tx.mfaLoginChallenge.updateMany({
+        where: {
+          id: options.mfaChallengeId,
+          userId,
+          companyId,
+          consumedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        data: { consumedAt: new Date() },
+      });
+      if (consumed.count !== 1) throw new Error("MFA_CHALLENGE_INVALID");
+    }
     if (previousToken) {
       await tx.userSession.updateMany({
         where: { sessionTokenHash: hashOpaqueToken(previousToken), revokedAt: null },
