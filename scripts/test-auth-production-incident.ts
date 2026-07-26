@@ -78,6 +78,7 @@ async function main() {
 
   const webRoute = read("src/app/api/auth/mfa/login/verify/route.ts");
   const mobileRoute = read("src/app/api/mobile/auth/mfa/verify/route.ts");
+  const mobileLoginRoute = read("src/app/api/mobile/auth/login/route.ts");
   const webSession = read("src/server/auth/session.ts");
   const mobileSession = read("src/server/mobile/auth.ts");
   const diagnostics = read("src/server/auth/diagnostics.ts");
@@ -96,6 +97,14 @@ async function main() {
   assert(!diagnostics.includes("refreshToken"), "Authentication diagnostics must never log a refresh token.");
   assert(mfaService.includes("activeTotpCredentialWhere"), "MFA verification must ignore active non-TOTP credentials.");
   assert(mfaChallenge.includes("activeTotpCredentialWhere"), "Login challenge detection must ignore active non-TOTP credentials.");
+  assert(
+    mobileLoginRoute.includes('availableMethods: ["TOTP"] as const'),
+    "Android v151 MFA challenges must always include a render-safe availableMethods array.",
+  );
+  assert(
+    mobileLoginRoute.includes('selectedMethod: "TOTP" as const'),
+    "Android v151 must receive an immediately usable TOTP method instead of an empty method chooser.",
+  );
 
   console.log("Production authentication incident contracts passed.");
 }

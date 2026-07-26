@@ -1,6 +1,6 @@
 # LOGIVYA Shared MFA Authentication Incident
 
-Status: MITIGATED - REAL ACCOUNT VALIDATION PENDING / RELEASE BLOCKED
+Status: ACTIVE - REAL ACCOUNT AUTHENTICATION FAILED / NO-GO / RELEASE BLOCKED
 
 Opened: 2026-07-26
 
@@ -12,6 +12,13 @@ Owner: Production authentication incident response
 - LIKELY: Strongly supported, but not yet reproduced against the current production runtime.
 - NOT CONFIRMED: Plausible and still requires evidence.
 - RULED OUT: Direct evidence contradicts this explanation.
+
+## Reopening Notice
+
+- VERIFIED: The affected real user reports that production web login still fails after the current production deployment.
+- VERIFIED: The affected real user reports that signed Android versionCode 151 still cannot complete login and exposes recovery reference `mobile-recovery-ms1rw0j5-h0qp4w33`.
+- INVALIDATED AS RELEASE PROOF: The temporary synthetic account completed the production flow, but it did not prove that the affected real account or the signed Android v151 client was repaired.
+- NO-GO: No new Android AAB may be generated and the submitted iOS build must remain untouched until the affected real account succeeds on both production web and signed Android v151.
 
 ## Required Incident Record
 
@@ -210,7 +217,7 @@ Next action: Commit the reviewed repair, pass GitHub CI, deploy the backward-com
 
 ### Attempt 2 - Method-isolated MFA credential selection
 
-Status: PRODUCTION PROOF PASSED / REAL ACCOUNT CONFIRMATION PENDING
+Status: SYNTHETIC PROOF PASSED / REAL-ACCOUNT ACCEPTANCE FAILED
 
 Change made:
 
@@ -276,3 +283,42 @@ Release decision:
 - No Android AAB is required for this backend-only correction.
 - Android versionCode 152 remains blocked until the affected real account completes web and Android login.
 - The submitted iOS build remains untouched.
+
+### Attempt 3 - Real-account incident reopening
+
+Status: ACTIVE / NO-GO
+
+Reason:
+
+- The affected real account still cannot authenticate on production web.
+- Signed Android versionCode 151 still enters a recovery path and exposes reference `mobile-recovery-ms1rw0j5-h0qp4w33`.
+- Attempt 2 proved only that one synthetic credential arrangement can pass the backend. It did not establish the state, client behavior, or full bootstrap result of the affected real account.
+
+Current investigation:
+
+- Locate the exact source and timestamp encoded by the Android recovery reference.
+- Correlate that reference with production login, MFA, session, refresh-token, and profile-bootstrap diagnostics.
+- Re-audit the affected account using privacy-safe metadata only.
+- Trace the exact API origin and deployed contract embedded in signed Android versionCode 151.
+
+Confirmed Android v151 evidence:
+
+- The timestamp segment `ms1rw0j5` resolves to `2026-07-26T12:27:05.009Z`.
+- Production request `mob-ms1rw041-5llcicntwb` reached `www.logivya.com`, deployment `dpl_ARG8LjcFTCZGWoUPHuSiFc6Y25bS`, and backend commit `48822d7f9cb7441ae5e8b0771e8116215eb5d01f`.
+- The real account passed credential verification and MFA challenge creation. `/api/mobile/auth/login` returned HTTP 200 at `2026-07-26T12:27:04.836Z`.
+- No `/api/mobile/auth/mfa/verify` request followed.
+- The signed v151 bundle generates `mobile-recovery-*` only in its root React error boundary.
+- The signed v151 login screen calls `mfaChallenge.availableMethods.map(...)`, while the deployed mobile login endpoint omitted `availableMethods`.
+- VERIFIED ROOT CAUSE FOR ANDROID V151: an unversioned client/backend MFA challenge contract mismatch caused a root render exception immediately after successful challenge creation.
+
+Correction in progress:
+
+- Add the backward-compatible `availableMethods`, `selectedMethod`, `preferredMethod`, and `recoveryAvailable` fields to mobile MFA challenge responses.
+- Keep TOTP selected by default so v151 does not call undeployed method-selection endpoints.
+- Add a release contract regression assertion for the fields required by the already-published v151 client.
+
+Release decision:
+
+- Android versionCode 152: BLOCKED.
+- Existing iOS submission: UNTOUCHED.
+- Production authentication: NO-GO until real web and signed Android v151 success are directly observed.

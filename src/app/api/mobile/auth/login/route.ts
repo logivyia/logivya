@@ -156,6 +156,12 @@ export async function POST(request: Request) {
         mfaSetupRequired: purpose === "SETUP",
         challengeToken: challenge.token,
         expiresAt: challenge.expiresAt.toISOString(),
+        // Android v151 renders the MFA screen from this additive method contract.
+        // Keep these fields present even while TOTP is the only login method.
+        availableMethods: ["TOTP"] as const,
+        selectedMethod: "TOTP" as const,
+        preferredMethod: "TOTP" as const,
+        recoveryAvailable: Boolean(activeCredential),
         ...(enrollment ?? {}),
         correlationId: diagnostics.correlationId,
       });
