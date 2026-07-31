@@ -13,6 +13,7 @@ const worker = read("src/worker/index.ts");
 const pipeline = read("src/server/messages/delivery-pipeline.ts");
 const repair = read("scripts/repair-stuck-message-delivery.ts");
 const queueClient = read("src/server/queues/client.ts");
+const readiness = read("src/server/messages/delivery-readiness.ts");
 
 for (const marker of ["nextRunAt", "recurringOccurrenceKey", "@@index([scheduleType, status, nextRunAt])"]) {
   assert(schema.includes(marker), `Durable queue schema marker missing: ${marker}`);
@@ -40,5 +41,7 @@ assert(repair.includes("--apply"), "Stuck message repair must default to dry-run
 assert(repair.includes("process.exitCode = 2"), "Stuck message repair must stop without mutations when no queue consumer is available.");
 assert(repair.includes("repair-recipient-${recipient.id}"), "Stuck message repair must use deterministic job ids.");
 assert(queueClient.includes("process.env.REDIS_URL || process.env.KV_URL"), "Queue client must support the Vercel KV Redis alias.");
+assert(readiness.includes("readWorkerHeartbeat"), "Queue readiness must use the durable worker heartbeat when Redis cannot enumerate BullMQ clients.");
+assert(readiness.includes("heartbeat.queueNames.includes(queueName)"), "Queue readiness heartbeat must prove the requested queue is consumed.");
 
 console.log("Durable queue recovery contracts passed.");
