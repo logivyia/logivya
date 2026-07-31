@@ -22,6 +22,7 @@ function assertNotMatches(source: string, pattern: RegExp, label: string) {
 }
 
 const deliveryPipeline = read("src/server/messages/delivery-pipeline.ts");
+const deliveryReadiness = read("src/server/messages/delivery-readiness.ts");
 const subscriptionAccess = read("src/server/billing/subscription-access.ts");
 const sendableGroups = read("src/server/whatsapp/sendable-groups.ts");
 const worker = read("src/worker/index.ts");
@@ -49,6 +50,10 @@ assertIncludes(deliveryPipeline, 'traceMessageStage("subscription.message_access
 assertIncludes(deliveryPipeline, 'traceMessageStage("queue.recipients.enqueue"', "delivery tracing");
 assertIncludes(deliveryPipeline, 'traceMessageStage("queue.delivery_readiness"', "delivery readiness tracing");
 assertIncludes(deliveryPipeline, "assertMessageDeliveryQueueReady", "delivery queue consumer guard");
+assertIncludes(deliveryReadiness, "readWorkerHeartbeat", "serverless-safe worker readiness evidence");
+assertIncludes(deliveryReadiness, "isWorkerHeartbeatFresh", "fresh worker heartbeat guard");
+assertIncludes(deliveryReadiness, 'heartbeat.queueNames.includes(queueName)', "queue-specific heartbeat guard");
+assertIncludes(deliveryReadiness, 'consumerEvidence: "bullmq" | "heartbeat" | "none"', "readiness evidence telemetry");
 assertIncludes(deliveryPipeline, "message.queue.recipient.enqueued", "queue observability");
 assertIncludes(queueClient, "process.env.REDIS_URL || process.env.KV_URL", "Vercel Redis environment compatibility");
 assertIncludes(deliveryPipeline, "subscriptionAccess.canSendTargets", "shared subscription access");

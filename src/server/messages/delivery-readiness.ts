@@ -2,12 +2,14 @@ import type { Queue } from "bullmq";
 import { logger } from "@/server/observability/logger";
 import { campaignQueue, messageQueue } from "@/server/queues/client";
 import { QUEUES } from "@/server/queues/contracts";
+import { isWorkerHeartbeatFresh, readWorkerHeartbeat } from "@/server/whatsapp/worker-heartbeat";
 
 type MessageScheduleType = "SEND_NOW" | "SCHEDULED" | "RECURRING";
 
 type ReadinessDetails = {
   queueName: string;
   workerCount: number | null;
+  consumerEvidence: "bullmq" | "heartbeat" | "none";
   paused: boolean | null;
   counts: Record<string, number>;
 };
@@ -48,14 +50,24 @@ async function inspectQueue(queueName: string, createQueue: () => Queue): Promis
   let queue: Queue | null = null;
   try {
     queue = createQueue();
-    const [workerCount, paused, counts] = await withTimeout(Promise.all([
-      queue.getWorkersCount(),
+    const [paused, counts, heartbeat] = await withTimeout(Promise.all([
       queue.isPaused(),
       queue.getJobCounts("waiting", "active", "delayed", "failed"),
+      readWorkerHeartbeat().catch(() => null),
     ]));
+    const bullWorkerCount = await withTimeout(queue.getWorkersCount()).catch(() => null);
+    const heartbeatConsumer = Boolean(
+      heartbeat &&
+      isWorkerHeartbeatFresh(heartbeat) &&
+      heartbeat.status !== "STOPPED" &&
+      heartbeat.status !== "DRAINING" &&
+      heartbeat.queueNames.includes(queueName),
+    );
+    const workerCount = heartbeatConsumer ? Math.max(1, bullWorkerCount ?? 0) : bullWorkerCount;
     return {
       queueName,
       workerCount,
+      consumerEvidence: (bullWorkerCount ?? 0) > 0 ? "bullmq" : heartbeatConsumer ? "heartbeat" : "none",
       paused,
       counts,
     };
@@ -64,6 +76,7 @@ async function inspectQueue(queueName: string, createQueue: () => Queue): Promis
     return {
       queueName,
       workerCount: null,
+      consumerEvidence: "none",
       paused: null,
       counts: {},
     };
