@@ -2,12 +2,18 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import IORedis from "ioredis";
 import { requestObservabilityIds } from "@/server/observability/request-id";
+import { redisConnectionUrl } from "@/server/queues/client";
 
 let redis: IORedis | undefined;
 
 function redisClient() {
-  if (!process.env.REDIS_URL) throw new Error("ADMIN_RATE_LIMIT_UNAVAILABLE");
-  redis ??= new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: 1, enableOfflineQueue: false });
+  let url: string;
+  try {
+    url = redisConnectionUrl();
+  } catch {
+    throw new Error("ADMIN_RATE_LIMIT_UNAVAILABLE");
+  }
+  redis ??= new IORedis(url, { maxRetriesPerRequest: 1, enableOfflineQueue: false });
   return redis;
 }
 

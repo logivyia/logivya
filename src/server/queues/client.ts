@@ -1,9 +1,14 @@
 import { Queue } from "bullmq";
 import { DEFAULT_JOB_OPTIONS, QUEUES } from "@/server/queues/contracts";
 
-export function redisConnectionOptions() {
-  const value = process.env.REDIS_URL;
+export function redisConnectionUrl() {
+  const value = process.env.REDIS_URL || process.env.KV_URL;
   if (!value) throw new Error("REDIS_URL is required");
+  return value;
+}
+
+export function redisConnectionOptions() {
+  const value = redisConnectionUrl();
   const url = new URL(value);
   const db = url.pathname && url.pathname !== "/" ? Number(url.pathname.slice(1)) : undefined;
   return {
