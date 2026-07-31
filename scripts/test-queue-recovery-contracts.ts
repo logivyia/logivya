@@ -40,6 +40,7 @@ assert(pipeline.includes("assertMessageDeliveryQueueReady"), "Message creation m
 assert(repair.includes("--apply"), "Stuck message repair must default to dry-run and require --apply for mutations.");
 assert(repair.includes("process.exitCode = 2"), "Stuck message repair must stop without mutations when no queue consumer is available.");
 assert(repair.includes("repair-recipient-${recipient.id}"), "Stuck message repair must use deterministic job ids.");
+assert(repair.includes("disconnectWorkerHeartbeatClient"), "Stuck message repair must close its heartbeat Redis connection after each run.");
 assert(queueClient.includes("process.env.REDIS_URL || process.env.KV_URL"), "Queue client must support the Vercel KV Redis alias.");
 assert(readiness.includes("readWorkerHeartbeat"), "Queue readiness must use the durable worker heartbeat when Redis cannot enumerate BullMQ clients.");
 assert(readiness.includes("heartbeat.queueNames.includes(queueName)"), "Queue readiness heartbeat must prove the requested queue is consumed.");
