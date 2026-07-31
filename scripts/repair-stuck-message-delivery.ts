@@ -6,6 +6,7 @@ import { updateMessageCampaignDeliveryAggregate } from "@/server/messages/delive
 import { logger } from "@/server/observability/logger";
 import { messageQueue } from "@/server/queues/client";
 import { SCHEDULED_MESSAGE_JOB_OPTIONS, WHATSAPP_MESSAGE_JOB_OPTIONS } from "@/server/queues/contracts";
+import { disconnectWorkerHeartbeatClient } from "@/server/whatsapp/worker-heartbeat";
 
 const ACTIVE_JOB_STATES = new Set(["active", "waiting", "delayed", "prioritized", "waiting-children"]);
 
@@ -186,7 +187,9 @@ async function main() {
   console.log(JSON.stringify(summary, null, 2));
 }
 
-main().catch((error) => {
-  console.error(JSON.stringify({ error: safeErrorMessage(error) }, null, 2));
-  process.exitCode = 1;
-});
+main()
+  .catch((error) => {
+    console.error(JSON.stringify({ error: safeErrorMessage(error) }, null, 2));
+    process.exitCode = 1;
+  })
+  .finally(() => disconnectWorkerHeartbeatClient());
