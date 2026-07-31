@@ -25,6 +25,7 @@ const deliveryPipeline = read("src/server/messages/delivery-pipeline.ts");
 const subscriptionAccess = read("src/server/billing/subscription-access.ts");
 const sendableGroups = read("src/server/whatsapp/sendable-groups.ts");
 const worker = read("src/worker/index.ts");
+const queueClient = read("src/server/queues/client.ts");
 const provider = read("src/worker/baileys-provider.ts");
 const sessionManager = read("src/lib/whatsapp/session-manager.ts");
 const workerHealth = read("src/server/whatsapp/worker-health.ts");
@@ -46,7 +47,10 @@ assertIncludes(mobileScheduleRoute, "createMobileMessageCampaign", "mobile sched
 assertIncludes(deliveryPipeline, 'traceMessageStage("auth.permission"', "delivery tracing");
 assertIncludes(deliveryPipeline, 'traceMessageStage("subscription.message_access"', "delivery tracing");
 assertIncludes(deliveryPipeline, 'traceMessageStage("queue.recipients.enqueue"', "delivery tracing");
+assertIncludes(deliveryPipeline, 'traceMessageStage("queue.delivery_readiness"', "delivery readiness tracing");
+assertIncludes(deliveryPipeline, "assertMessageDeliveryQueueReady", "delivery queue consumer guard");
 assertIncludes(deliveryPipeline, "message.queue.recipient.enqueued", "queue observability");
+assertIncludes(queueClient, "process.env.REDIS_URL || process.env.KV_URL", "Vercel Redis environment compatibility");
 assertIncludes(deliveryPipeline, "subscriptionAccess.canSendTargets", "shared subscription access");
 assertIncludes(deliveryPipeline, "resolveSendableWhatsAppGroups", "shared group resolver");
 assertNotMatches(deliveryPipeline, /maxMessagesPerDay|maxMessagesPerMonth|maxGroups|dailyMessageLimit|monthlyMessageLimit/, "delivery pipeline");
@@ -100,6 +104,9 @@ assertIncludes(whatsAppRequestGuards, "const redisClient = await readyClient()",
 
 assertIncludes(worker, 'traceMessageStage("worker.target.resolve"', "worker target tracing");
 assertIncludes(worker, 'traceMessageStage("worker.baileys.send"', "worker send tracing");
+assertIncludes(worker, "message.target_resolution_failed", "worker must fail missing targets after claiming recipients");
+assertIncludes(worker, "isPermanentMessageDeliveryError", "worker must not retry permanent target or ownership failures");
+assertIncludes(worker, "updateMessageCampaignDeliveryAggregate", "worker must aggregate delivery state after success and failure");
 assertIncludes(worker, "MESSAGE_JOB_TENANT_MISMATCH", "worker tenant protection");
 assertIncludes(worker, "MESSAGE_JOB_OWNERSHIP_MISMATCH", "worker user/account ownership protection");
 assertIncludes(worker, "message.recurring.group_resolution_failed", "recurring ownership revalidation");

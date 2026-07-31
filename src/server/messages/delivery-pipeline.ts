@@ -11,6 +11,7 @@ import { writeAuditLog } from "@/server/security/audit";
 import { requestGroupSyncIfStale, resolveCurrentWhatsAppAccount } from "@/server/whatsapp/account-scope";
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
 import { createMessageCorrelationId, withCampaignMetadata } from "@/server/messages/correlation";
+import { assertMessageDeliveryQueueReady, isMessageDeliveryReadinessError } from "@/server/messages/delivery-readiness";
 import { traceMessageStage } from "@/server/messages/delivery-tracing";
 import { buildMessageRecipientRows } from "@/server/messages/recipient-targets";
 import { resolveOwnedWhatsAppContacts } from "@/server/whatsapp/contacts";
@@ -190,6 +191,29 @@ export async function createMessageDeliveryCampaign(
     }
     if (scheduleType === "RECURRING" && !input.recurringRule) {
       throw new MessageDeliveryError("RECURRING_RULE_REQUIRED", "Tekrarlayan gonderim kurali eksik.", 400, undefined, correlationId);
+    }
+  });
+
+  await traceMessageStage("queue.delivery_readiness", traceContext, async () => {
+    try {
+      await assertMessageDeliveryQueueReady({
+        companyId: actor.companyId,
+        userId: actor.userId,
+        source: input.source,
+        scheduleType,
+        correlationId,
+      });
+    } catch (error) {
+      if (isMessageDeliveryReadinessError(error)) {
+        throw new MessageDeliveryError(
+          error.code,
+          "Mesaj teslim sistemi su anda hazir degil. Lutfen birkac dakika sonra tekrar deneyin.",
+          503,
+          error.details,
+          correlationId,
+        );
+      }
+      throw error;
     }
   });
 

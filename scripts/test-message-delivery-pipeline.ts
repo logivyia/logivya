@@ -13,6 +13,7 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const pipeline = read("src/server/messages/delivery-pipeline.ts");
 assert(pipeline.includes("createMessageCorrelationId()"), "Message pipeline must create correlation IDs.");
+assert(pipeline.includes("assertMessageDeliveryQueueReady"), "Message pipeline must reject new campaigns when the delivery queue has no consumer.");
 assert(pipeline.includes("resolveCurrentWhatsAppAccount"), "Message pipeline must resolve the current scoped WhatsApp account.");
 assert(pipeline.includes("resolveSendableWhatsAppGroups(actor.companyId, requestedIds, { userId: actor.userId, accountId: currentAccount.id })"), "Message pipeline must resolve groups by actor and current account scope.");
 assert(!/isAuthorizedLogivyaPlatformAdmin|requirePlatformAdmin|burakidim@gmail\.com/i.test(pipeline), "Message pipeline must not depend on platform admin state.");
@@ -37,6 +38,9 @@ for (const value of [
   "withWhatsAppAccountLock",
   "WHATSAPP_ACCOUNT_LOCK_TIMEOUT",
   "provider.sendGroupMessage",
+  "message.target_resolution_failed",
+  "isPermanentMessageDeliveryError",
+  "updateMessageCampaignDeliveryAggregate",
   "correlationId",
 ]) {
   assert(worker.includes(value), `Worker is missing message delivery guard/log marker: ${value}`);

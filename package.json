@@ -70,6 +70,7 @@
     "release:secret-scan": "node scripts/release/scan-repository-secrets.mjs",
     "audit:whatsapp-groups": "tsx scripts/audit-whatsapp-group-isolation.ts",
     "repair:whatsapp-group-ownership": "tsx scripts/repair-whatsapp-group-ownership.ts --apply",
+    "repair:stuck-message-delivery": "tsx scripts/repair-stuck-message-delivery.ts",
     "audit:migration-safety": "tsx scripts/audit-migration-safety.ts",
     "audit:database-integrity": "node scripts/audit-database-integrity.mjs",
     "audit:environment": "node scripts/audit-environment-variables.mjs --write",

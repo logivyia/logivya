@@ -11,6 +11,8 @@ const schema = read("prisma/schema.prisma");
 const recovery = read("src/server/queues/recovery.ts");
 const worker = read("src/worker/index.ts");
 const pipeline = read("src/server/messages/delivery-pipeline.ts");
+const repair = read("scripts/repair-stuck-message-delivery.ts");
+const queueClient = read("src/server/queues/client.ts");
 
 for (const marker of ["nextRunAt", "recurringOccurrenceKey", "@@index([scheduleType, status, nextRunAt])"]) {
   assert(schema.includes(marker), `Durable queue schema marker missing: ${marker}`);
@@ -33,5 +35,10 @@ assert(worker.includes("reconcileDurableMessageQueues"), "Worker startup must re
 assert(worker.includes('if (!claimed.count) {'), "Delete processing must stop when another job owns the durable claim.");
 assert(pipeline.includes("nextRunAt: firstRecurringRunAt"), "Recurring campaign creation must persist its first run time.");
 assert(pipeline.includes("runAt: nextRunAt.toISOString()"), "Recurring jobs must carry their exact durable run time.");
+assert(pipeline.includes("assertMessageDeliveryQueueReady"), "Message creation must fail closed when no message worker can consume the queue.");
+assert(repair.includes("--apply"), "Stuck message repair must default to dry-run and require --apply for mutations.");
+assert(repair.includes("process.exitCode = 2"), "Stuck message repair must stop without mutations when no queue consumer is available.");
+assert(repair.includes("repair-recipient-${recipient.id}"), "Stuck message repair must use deterministic job ids.");
+assert(queueClient.includes("process.env.REDIS_URL || process.env.KV_URL"), "Queue client must support the Vercel KV Redis alias.");
 
 console.log("Durable queue recovery contracts passed.");

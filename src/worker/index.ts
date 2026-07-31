@@ -5,7 +5,7 @@ import { prisma } from "@/server/db";
 import { QUEUES, WHATSAPP_MESSAGE_JOB_OPTIONS } from "@/server/queues/contracts";
 import { BaileysWhatsAppProvider } from "@/worker/baileys-provider";
 import { parseRecurringRule } from "@/server/queues/recurring";
-import { deadLetterQueue, messageQueue, redisConnectionOptions, whatsappQueue } from "@/server/queues/client";
+import { deadLetterQueue, messageQueue, redisConnectionOptions, redisConnectionUrl, whatsappQueue } from "@/server/queues/client";
 import { reconcileDurableMessageQueues, scheduleFollowingRecurringRun } from "@/server/queues/recovery";
 import { logger } from "@/server/observability/logger";
 import { raiseOperationalAlert } from "@/server/observability/alerts";
@@ -25,6 +25,7 @@ import { createNotification, NOTIFICATION_TYPES } from "@/server/notifications/s
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { composeOutboundMessage } from "@/server/messages/outbound-composer";
 import { createMessageCorrelationId, readCampaignCorrelationId, withCampaignMetadata } from "@/server/messages/correlation";
+import { updateMessageCampaignDeliveryAggregate } from "@/server/messages/delivery-state";
 import { traceMessageStage } from "@/server/messages/delivery-tracing";
 import { isDeleteWindowOpen, parseStoredMessageKey, updateCampaignDeleteAggregate } from "@/server/messages/delete-for-everyone";
 import type { MessageRecipientJobPayload } from "@/server/messages/delivery-pipeline";
@@ -41,7 +42,7 @@ const workerId = process.env.WORKER_ID || `${os.hostname()}-${process.pid}`;
 const workerStartedAt = new Date().toISOString();
 const workerCapacity = 8;
 let activeWorkerJobs = 0;
-if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required");
+const redisUrl = redisConnectionUrl();
 
 function hostnameFromConnectionString(value: string | undefined) {
   if (!value) return null;
@@ -65,7 +66,7 @@ function assertLocalWorkerDoesNotConsumeProductionQueues() {
   const localWorker = /(^|[-_])local([-_]|$)/i.test(workerId);
   if (!localWorker) return;
   const remoteTargets = [
-    isRemoteConnectionString(process.env.REDIS_URL) ? "REDIS_URL" : null,
+    isRemoteConnectionString(redisUrl) ? "REDIS_URL" : null,
     isRemoteConnectionString(process.env.DATABASE_URL) ? "DATABASE_URL" : null,
   ].filter((target): target is string => Boolean(target));
   if (!remoteTargets.length) return;
@@ -111,6 +112,11 @@ function isRecoverableWhatsAppSendError(error: unknown) {
 function isExplicitWhatsAppAuthFailure(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /WHATSAPP_LOGGED_OUT|LOGGED_OUT|AUTH_REQUIRED|WHATSAPP_CREDENTIALS_MISSING/i.test(message);
+}
+
+function isPermanentMessageDeliveryError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /MESSAGE_TARGET_MISSING|MESSAGE_JOB_COMPANY_MISMATCH|MESSAGE_JOB_CAMPAIGN_MISMATCH|MESSAGE_JOB_TENANT_MISMATCH|MESSAGE_JOB_OWNERSHIP_MISMATCH|WHATSAPP_CONTACT_OWNERSHIP_MISMATCH|WHATSAPP_GROUP_OWNERSHIP_MISMATCH|GROUP_MESSAGING_NOT_AVAILABLE|CONTACT_MESSAGING_REQUIRES_PROFESSIONAL|SUBSCRIPTION_LOCKED|MESSAGE_ATTRIBUTION_LENGTH_EXCEEDED/i.test(message);
 }
 
 function errorMessage(error: unknown) {
@@ -380,43 +386,6 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
     return;
   }
   const targetType = recipient.targetType;
-  if ((targetType === "GROUP" && !recipient.group) || (targetType === "CONTACT" && !recipient.contact)) {
-    logger.warn("message.job.skipped", { ...baseLog, reason: "MESSAGE_TARGET_MISSING", targetType });
-    return;
-  }
-  if (jobData.companyId && jobData.companyId !== recipient.campaign.companyId) {
-    logger.error("message.job.company_mismatch", new Error("MESSAGE_JOB_COMPANY_MISMATCH"), { ...baseLog, actualCompanyId: recipient.campaign.companyId });
-    throw new Error("MESSAGE_JOB_COMPANY_MISMATCH");
-  }
-  if (jobData.campaignId && jobData.campaignId !== recipient.campaignId) {
-    logger.error("message.job.campaign_mismatch", new Error("MESSAGE_JOB_CAMPAIGN_MISMATCH"), { ...baseLog, actualCampaignId: recipient.campaignId });
-    throw new Error("MESSAGE_JOB_CAMPAIGN_MISMATCH");
-  }
-  const targetCompanyId = targetType === "CONTACT" ? recipient.contact!.companyId : recipient.group!.companyId;
-  if (targetCompanyId !== recipient.campaign.companyId || recipient.account.companyId !== recipient.campaign.companyId) {
-    logger.error("message.job.tenant_mismatch", new Error("MESSAGE_JOB_TENANT_MISMATCH"), {
-      ...baseLog,
-      targetType,
-      targetCompanyId,
-      accountCompanyId: recipient.account.companyId,
-      campaignCompanyId: recipient.campaign.companyId,
-    });
-    throw new Error("MESSAGE_JOB_TENANT_MISMATCH");
-  }
-  const targetUserId = targetType === "CONTACT" ? recipient.contact!.userId : recipient.group!.userId;
-  const targetAccountId = targetType === "CONTACT" ? recipient.contact!.accountId : recipient.group!.accountId;
-  if (targetUserId !== recipient.campaign.createdById || recipient.account.userId !== recipient.campaign.createdById || targetAccountId !== recipient.accountId) {
-    logger.error("message.job.ownership_mismatch", new Error("MESSAGE_JOB_OWNERSHIP_MISMATCH"), {
-      ...baseLog,
-      targetType,
-      targetUserId,
-      accountUserId: recipient.account.userId,
-      campaignCreatedById: recipient.campaign.createdById,
-      targetAccountId,
-      recipientAccountId: recipient.accountId,
-    });
-    throw new Error("MESSAGE_JOB_OWNERSHIP_MISMATCH");
-  }
   if (recipient.status === "SENT" || ["CANCELED", "CANCELING", "DELETED"].includes(recipient.campaign.status)) {
     logger.info("message.job.skipped", { ...baseLog, recipientStatus: recipient.status, campaignStatus: recipient.campaign.status });
     return;
@@ -431,6 +400,44 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
   }
   await prisma.messageCampaign.updateMany({ where: { id: recipient.campaignId, status: "QUEUED" }, data: { status: "SENDING" } });
   try {
+    logger.info("message.job.started", { ...baseLog, targetType, attempt: job.attemptsMade + 1 });
+    if ((targetType === "GROUP" && !recipient.group) || (targetType === "CONTACT" && !recipient.contact)) {
+      logger.warn("message.target_resolution_failed", { ...baseLog, reason: "MESSAGE_TARGET_MISSING", targetType });
+      throw new Error("MESSAGE_TARGET_MISSING");
+    }
+    if (jobData.companyId && jobData.companyId !== recipient.campaign.companyId) {
+      logger.error("message.job.company_mismatch", new Error("MESSAGE_JOB_COMPANY_MISMATCH"), { ...baseLog, actualCompanyId: recipient.campaign.companyId });
+      throw new Error("MESSAGE_JOB_COMPANY_MISMATCH");
+    }
+    if (jobData.campaignId && jobData.campaignId !== recipient.campaignId) {
+      logger.error("message.job.campaign_mismatch", new Error("MESSAGE_JOB_CAMPAIGN_MISMATCH"), { ...baseLog, actualCampaignId: recipient.campaignId });
+      throw new Error("MESSAGE_JOB_CAMPAIGN_MISMATCH");
+    }
+    const targetCompanyId = targetType === "CONTACT" ? recipient.contact!.companyId : recipient.group!.companyId;
+    if (targetCompanyId !== recipient.campaign.companyId || recipient.account.companyId !== recipient.campaign.companyId) {
+      logger.error("message.job.tenant_mismatch", new Error("MESSAGE_JOB_TENANT_MISMATCH"), {
+        ...baseLog,
+        targetType,
+        targetCompanyId,
+        accountCompanyId: recipient.account.companyId,
+        campaignCompanyId: recipient.campaign.companyId,
+      });
+      throw new Error("MESSAGE_JOB_TENANT_MISMATCH");
+    }
+    const targetUserId = targetType === "CONTACT" ? recipient.contact!.userId : recipient.group!.userId;
+    const targetAccountId = targetType === "CONTACT" ? recipient.contact!.accountId : recipient.group!.accountId;
+    if (targetUserId !== recipient.campaign.createdById || recipient.account.userId !== recipient.campaign.createdById || targetAccountId !== recipient.accountId) {
+      logger.error("message.job.ownership_mismatch", new Error("MESSAGE_JOB_OWNERSHIP_MISMATCH"), {
+        ...baseLog,
+        targetType,
+        targetUserId,
+        accountUserId: recipient.account.userId,
+        campaignCreatedById: recipient.campaign.createdById,
+        targetAccountId,
+        recipientAccountId: recipient.accountId,
+      });
+      throw new Error("MESSAGE_JOB_OWNERSHIP_MISMATCH");
+    }
     const deliveryPolicy = await composeOutboundMessage({
       companyId: recipient.campaign.companyId,
       userId: recipient.campaign.createdById,
@@ -614,39 +621,27 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
       if (finalAttempt) return;
       throw error;
     }
+    const permanentFailure = isPermanentMessageDeliveryError(error);
     await prisma.messageRecipient.update({
       where: { id: recipient.id },
-      data: { status: finalAttempt ? "FAILED" : "PENDING", failedAt: finalAttempt ? new Date() : null, errorMessage },
+      data: { status: finalAttempt || permanentFailure ? "FAILED" : "PENDING", failedAt: finalAttempt || permanentFailure ? new Date() : null, errorMessage },
     });
-    if (finalAttempt) {
+    if (finalAttempt || permanentFailure) {
       logger.error("MESSAGE_FAILED", error, { ...baseLog, accountId: recipient.accountId });
       const queue = deadLetterQueue();
       try {
-        await queue.add("message-send-failed", { ...jobData, companyId: recipient.campaign.companyId, campaignId: recipient.campaignId, recipientId: recipient.id, correlationId, errorMessage }, { jobId: `dead-letter-${recipient.id}` });
+        await queue.add("message-send-failed", { ...jobData, companyId: recipient.campaign.companyId, campaignId: recipient.campaignId, recipientId: recipient.id, correlationId, errorMessage, permanentFailure }, { jobId: `dead-letter-${recipient.id}` });
       } finally {
         await queue.close();
       }
     }
-    logger.error("message.send.failed", error, { ...baseLog, accountId: recipient.accountId, finalAttempt });
+    logger.error("message.send.failed", error, { ...baseLog, accountId: recipient.accountId, finalAttempt, permanentFailure });
+    if (permanentFailure) return;
     throw error;
   } finally {
-    const counts = await prisma.messageRecipient.groupBy({ by: ["status"], where: { campaignId: recipient.campaignId }, _count: { _all: true } });
-    const count = (status: string) => counts.find((item) => item.status === status)?._count._all ?? 0;
-    const pending = count("PENDING") + count("SENDING") + count("QUEUED") + count("PROCESSING") + count("RETRYING");
-    const sent = count("SENT"), failed = count("FAILED"), canceled = count("CANCELED");
-    const nextStatus = pending ? "SENDING" : failed ? sent ? "PARTIALLY_COMPLETED" : "FAILED" : "COMPLETED";
-    const updatedCampaign = await prisma.messageCampaign.update({
-      where: { id: recipient.campaignId },
-      data: {
-        sentCount: sent,
-        failedCount: failed,
-        canceledCount: canceled,
-        status: nextStatus,
-      },
-      select: { id: true, companyId: true, createdById: true, title: true, status: true, sentCount: true, failedCount: true, totalRecipients: true },
-    });
-    if (!pending && ["COMPLETED", "PARTIALLY_COMPLETED", "FAILED"].includes(nextStatus) && recipient.campaign.status !== nextStatus) {
-      void createCampaignFinalNotification(updatedCampaign).catch((error) => logger.error("notification.campaign_final.failed", error, { campaignId: updatedCampaign.id, correlationId }));
+    const aggregate = await updateMessageCampaignDeliveryAggregate(recipient.campaignId, { correlationId, workerId });
+    if (aggregate && !aggregate.pending && ["COMPLETED", "PARTIALLY_COMPLETED", "FAILED"].includes(aggregate.nextStatus) && aggregate.previousStatus !== aggregate.nextStatus) {
+      void createCampaignFinalNotification(aggregate.campaign).catch((error) => logger.error("notification.campaign_final.failed", error, { campaignId: aggregate.campaign.id, correlationId }));
     }
   }
 }, {
