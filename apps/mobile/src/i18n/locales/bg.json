@@ -788,7 +788,7 @@
   "mfaActivity": "Сигурност дейности",
   "mfaNoActivity": "Все още няма активност по сигурността.",
   "verifyEmailTitle": "Потвърдете имейл адреса си",
-  "verifyEmailTrialDescription": "7-дневният пробен период започва след потвърждение на имейла и първата успешна връзка с WhatsApp.",
+  "verifyEmailTrialDescription": "7-дневният пробен период започва автоматично при първото успешно свързване с WhatsApp.",
   "resendVerificationEmail": "Изпрати отново имейла за потвърждение",
   "verificationEmailSent": "Имейлът за потвърждение е изпратен.",
   "emailAlreadyVerified": "Имейл адресът ви вече е потвърден.",

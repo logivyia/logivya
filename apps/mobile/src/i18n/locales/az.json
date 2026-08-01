@@ -788,7 +788,7 @@
   "mfaActivity": "Təhlükəsizlik fəaliyyəti",
   "mfaNoActivity": "Hələ heç bir təhlükəsizlik fəaliyyəti yoxdur.",
   "verifyEmailTitle": "E-poçt ünvanınızı təsdiqləyin",
-  "verifyEmailTrialDescription": "7 günlük sınaq e-poçt təsdiqindən və ilk uğurlu WhatsApp bağlantısından sonra başlayır.",
+  "verifyEmailTrialDescription": "7 günlük sınaq ilk uğurlu WhatsApp bağlantısı qurulan anda avtomatik başlayır.",
   "resendVerificationEmail": "Təsdiq e-poçtunu yenidən göndər",
   "verificationEmailSent": "Təsdiq e-poçtu göndərildi.",
   "emailAlreadyVerified": "E-poçt ünvanınız artıq təsdiqlənib.",

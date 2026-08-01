@@ -70,9 +70,22 @@ for (const file of [
 
 const trialService = read("src/server/billing/trial-service.ts");
 assert(trialService.includes("pg_advisory_xact_lock"), "Trial activation must serialize verified identity decisions.");
+assert(trialService.includes("trial-owner:"), "Trial activation must serialize decisions for the same tenant owner.");
 assert(trialService.includes("PENDING_IDENTITY"), "Registration must wait for verified WhatsApp identity.");
 assert(trialService.includes('source: "TRIAL"'), "Verified eligible identities must create a company trial subscription.");
 assert(trialService.includes("TRIAL_IDENTITY_ALREADY_USED"), "A previously consumed WhatsApp identity must not receive another trial.");
+assert(!trialService.includes("EMAIL_VERIFICATION_REQUIRED"), "Email verification must not block WhatsApp trial activation.");
+assert(trialService.includes("account.lastConnectedAt ?? new Date()"), "Trial time must come from the successful WhatsApp connection timestamp.");
+assert(trialService.includes("TRIAL_TRANSACTION_ATTEMPTS"), "Concurrent first-connection callbacks must retry serialization conflicts.");
+assert(trialService.includes("reconcileConnectedPendingTrials"), "Previously connected pending trial owners must have a controlled repair path.");
+
+for (const file of [
+  "src/components/billing-subscriptions-page.tsx",
+  "apps/mobile/src/screens/app/subscription-screen.tsx",
+]) {
+  const content = read(file);
+  assert(!content.includes("verifyEmailTrialDescription"), `${file} must not present email verification as a trial prerequisite.`);
+}
 
 const access = read("src/server/billing/subscription-access.ts");
 assert(access.includes('["ACTIVE", "TRIALING"]'), "Active trial subscriptions must pass the central subscription guard.");

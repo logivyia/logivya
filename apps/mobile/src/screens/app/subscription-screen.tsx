@@ -27,12 +27,10 @@ export function SubscriptionScreen() {
     entitlements,
     loading,
     requesting,
-    resendingVerification,
     error,
     success,
     load,
     requestUpgrade,
-    resendVerification,
   } = useSubscriptionStore();
   const normalizedRole = userRole?.trim().toUpperCase();
   const canManageTeam = normalizedRole === "OWNER" || normalizedRole === "ADMIN";
@@ -87,18 +85,7 @@ export function SubscriptionScreen() {
           </View>
         </SurfaceCard>
 
-        {entitlements?.emailVerificationRequired ? (
-          <SurfaceCard style={styles.card}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>{t("verifyEmailTitle")}</Text>
-            <Text style={[styles.meta, { color: theme.muted }]}>{t("verifyEmailTrialDescription")}</Text>
-            <PrimaryButton
-              icon="mail-outline"
-              title={t("resendVerificationEmail")}
-              loading={resendingVerification}
-              onPress={() => void resendVerification()}
-            />
-          </SurfaceCard>
-        ) : entitlements?.trialEligibilityStatus === "PENDING_IDENTITY" ? (
+        {entitlements?.trialEligibilityStatus === "PENDING_IDENTITY" ? (
           <SurfaceCard style={styles.card}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>{t("trialReadyTitle")}</Text>
             <Text style={[styles.meta, { color: theme.muted }]}>{t("trialReadyDescription")}</Text>

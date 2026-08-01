@@ -788,7 +788,7 @@
   "mfaActivity": "Sicherheitsaktivität",
   "mfaNoActivity": "Noch keine Sicherheitsaktivität.",
   "verifyEmailTitle": "Bestätigen Sie Ihre E-Mail-Adresse",
-  "verifyEmailTrialDescription": "Ihre 7-tägige Testphase beginnt nach der E-Mail-Bestätigung und der ersten erfolgreichen WhatsApp-Verbindung.",
+  "verifyEmailTrialDescription": "Ihre 7-tägige Testphase beginnt automatisch mit der ersten erfolgreichen WhatsApp-Verbindung.",
   "resendVerificationEmail": "Bestätigungs-E-Mail erneut senden",
   "verificationEmailSent": "Bestätigungs-E-Mail wurde gesendet.",
   "emailAlreadyVerified": "Ihre E-Mail-Adresse ist bereits bestätigt.",

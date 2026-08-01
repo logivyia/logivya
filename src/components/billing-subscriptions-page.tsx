@@ -31,7 +31,6 @@ export function BillingSubscriptionsPage() {
   const { locale, t } = useI18n();
   const [data, setData] = useState<Data | null>(null);
   const [status, setStatus] = useState("");
-  const [resendingVerification, setResendingVerification] = useState(false);
 
   const load = useCallback(async () => {
     const [subscription, payments, invoices] = await Promise.all([
@@ -63,15 +62,6 @@ export function BillingSubscriptionsPage() {
     void load();
   }
 
-  async function resendVerification() {
-    setResendingVerification(true);
-    const response = await fetch("/api/auth/email-verification/resend", { method: "POST" });
-    const value = await response.json();
-    setStatus(response.ok ? t(value.alreadyVerified ? "billing.emailAlreadyVerified" : "billing.verificationEmailSent") : (value.error || t("errors.generic")));
-    setResendingVerification(false);
-    void load();
-  }
-
   if (!data) return <LoaderCircle className="size-7 animate-spin text-primary" />;
   const sub = data.subscription;
   const subscriptionEnd = sub?.endsAt;
@@ -86,15 +76,7 @@ export function BillingSubscriptionsPage() {
 
       {status && <p className="mb-5 rounded-xl border bg-card p-4 text-sm">{status}</p>}
 
-      {data.entitlements?.emailVerificationRequired ? (
-        <section className={`${panel} mb-6`}>
-          <h3 className="font-semibold">{t("billing.verifyEmailTitle")}</h3>
-          <p className="mt-2 text-sm text-muted">{t("billing.verifyEmailTrialDescription")}</p>
-          <button className={`${button} mt-4`} disabled={resendingVerification} onClick={() => void resendVerification()}>
-            {t("billing.resendVerificationEmail")}
-          </button>
-        </section>
-      ) : data.entitlements?.trialEligibilityStatus === "PENDING_IDENTITY" ? (
+      {data.entitlements?.trialEligibilityStatus === "PENDING_IDENTITY" ? (
         <section className={`${panel} mb-6`}>
           <h3 className="font-semibold">{t("billing.trialReadyTitle")}</h3>
           <p className="mt-2 text-sm text-muted">{t("billing.trialReadyDescription")}</p>

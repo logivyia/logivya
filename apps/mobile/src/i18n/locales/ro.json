@@ -788,7 +788,7 @@
   "mfaActivity": "Activitate de securitate",
   "mfaNoActivity": "Încă nu există activitate de securitate.",
   "verifyEmailTitle": "Verificați adresa de e-mail",
-  "verifyEmailTrialDescription": "Perioada de probă de 7 zile începe după verificarea e-mailului și prima conectare reușită la WhatsApp.",
+  "verifyEmailTrialDescription": "Perioada de probă de 7 zile începe automat la prima conectare reușită la WhatsApp.",
   "resendVerificationEmail": "Retrimite e-mailul de verificare",
   "verificationEmailSent": "E-mailul de verificare a fost trimis.",
   "emailAlreadyVerified": "Adresa dvs. de e-mail este deja verificată.",

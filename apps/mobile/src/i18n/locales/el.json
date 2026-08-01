@@ -788,7 +788,7 @@
   "mfaActivity": "Δραστηριότητα ασφάλειας",
   "mfaNoActivity": "Δεν υπάρχει ακόμα δραστηριότητα ασφάλειας.",
   "verifyEmailTitle": "Επαληθεύστε τη διεύθυνση email σας",
-  "verifyEmailTrialDescription": "Η δοκιμή 7 ημερών ξεκινά μετά την επαλήθευση email και την πρώτη επιτυχημένη σύνδεση WhatsApp.",
+  "verifyEmailTrialDescription": "Η δοκιμή 7 ημερών ξεκινά αυτόματα με την πρώτη επιτυχημένη σύνδεση WhatsApp.",
   "resendVerificationEmail": "Επανάληψη αποστολής email επαλήθευσης",
   "verificationEmailSent": "Το email επαλήθευσης στάλθηκε.",
   "emailAlreadyVerified": "Η διεύθυνση email σας έχει ήδη επαληθευτεί.",

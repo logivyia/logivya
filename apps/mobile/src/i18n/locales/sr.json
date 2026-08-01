@@ -788,7 +788,7 @@
   "mfaActivity": "Bezbednosne aktivnosti",
   "mfaNoActivity": "Još nema bezbednosnih aktivnosti.",
   "verifyEmailTitle": "Potvrdite adresu e-pošte",
-  "verifyEmailTrialDescription": "Probni period od 7 dana počinje nakon potvrde e-pošte i prvog uspešnog WhatsApp povezivanja.",
+  "verifyEmailTrialDescription": "Probni period od 7 dana počinje automatski pri prvom uspešnom WhatsApp povezivanju.",
   "resendVerificationEmail": "Ponovo pošalji poruku za potvrdu",
   "verificationEmailSent": "Poruka za potvrdu je poslata.",
   "emailAlreadyVerified": "Vaša adresa e-pošte je već potvrđena.",

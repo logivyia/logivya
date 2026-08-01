@@ -93,7 +93,7 @@
     "test:mobile-admin-parity": "tsx scripts/test-mobile-admin-parity.ts",
     "test:subscription-admin": "tsx scripts/test-subscription-admin.ts",
     "test:seven-day-trial": "tsx scripts/test-seven-day-trial.ts",
-    "test:seven-day-trial:integration": "tsx scripts/test-seven-day-trial-integration.ts",
+    "test:seven-day-trial:integration": "node --conditions=react-server --import tsx scripts/test-seven-day-trial-integration.ts",
     "test:team-contact-messaging": "tsx scripts/test-team-contact-messaging.ts",
     "test:starter-contact-regression": "tsx scripts/test-starter-contact-regression.ts",
     "test:whatsapp-contacts": "node scripts/patch-baileys-contact-jid.mjs && tsx scripts/test-team-contact-messaging.ts",
