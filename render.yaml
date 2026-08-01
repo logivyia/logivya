@@ -16,6 +16,12 @@ services:
         sync: false
       - key: REDIS_URL
         sync: false
+      - key: TRIAL_IDENTITY_HASH_KEY
+        sync: false
+      - key: FIELD_ENCRYPTION_ACTIVE_VERSION
+        value: v1
+      - key: FIELD_ENCRYPTION_KEY_V1
+        sync: false
       - key: WHATSAPP_SESSION_SECRET
         sync: false
       - key: WHATSAPP_PROVIDER

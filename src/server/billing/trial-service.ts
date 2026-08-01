@@ -15,6 +15,13 @@ type PendingTrialInput = {
 };
 
 const IDENTITY_CONSUMING_STATUSES = ["ACTIVE", "CONSUMED", "PAID_USAGE"] as const;
+const TRIAL_TRANSACTION_ATTEMPTS = 3;
+
+function isRetryableTrialTransactionError(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  const code = String(error.code);
+  return code === "P2034" || code === "40001";
+}
 
 function optionalHash(purpose: string, value?: string | null) {
   const normalized = value?.trim();
@@ -70,17 +77,16 @@ async function supportingRisk(tx: Prisma.TransactionClient, candidate: {
   const signals: string[] = [];
   let score = 0;
   const status = { in: [...IDENTITY_CONSUMING_STATUSES] };
-  const checks = await Promise.all([
-    candidate.registrationPhoneHash
-      ? tx.trialEntitlement.count({ where: { id: { not: candidate.id }, registrationPhoneHash: candidate.registrationPhoneHash, status } })
-      : 0,
-    candidate.registrationIpHash
-      ? tx.trialEntitlement.count({ where: { id: { not: candidate.id }, registrationIpHash: candidate.registrationIpHash, status } })
-      : 0,
-    candidate.deviceFingerprintHash
-      ? tx.trialEntitlement.count({ where: { id: { not: candidate.id }, deviceFingerprintHash: candidate.deviceFingerprintHash, status } })
-      : 0,
-  ]);
+  const registrationPhoneMatches = candidate.registrationPhoneHash
+    ? await tx.trialEntitlement.count({ where: { id: { not: candidate.id }, registrationPhoneHash: candidate.registrationPhoneHash, status } })
+    : 0;
+  const registrationIpMatches = candidate.registrationIpHash
+    ? await tx.trialEntitlement.count({ where: { id: { not: candidate.id }, registrationIpHash: candidate.registrationIpHash, status } })
+    : 0;
+  const deviceFingerprintMatches = candidate.deviceFingerprintHash
+    ? await tx.trialEntitlement.count({ where: { id: { not: candidate.id }, deviceFingerprintHash: candidate.deviceFingerprintHash, status } })
+    : 0;
+  const checks = [registrationPhoneMatches, registrationIpMatches, deviceFingerprintMatches];
   if (checks[0]) { score += 25; signals.push("REGISTRATION_PHONE_REUSED"); }
   if (checks[1]) { score += 15; signals.push("REGISTRATION_NETWORK_REUSED"); }
   if (checks[2]) { score += 35; signals.push("DEVICE_FINGERPRINT_REUSED"); }
@@ -147,7 +153,7 @@ async function recordPaidIdentity(
 export async function activateTrialAfterVerifiedWhatsAppConnection(accountId: string) {
   const account = await prisma.whatsAppAccount.findUnique({
     where: { id: accountId },
-    select: { id: true, companyId: true, userId: true, phoneNumber: true, deviceId: true, status: true },
+    select: { id: true, companyId: true, userId: true, phoneNumber: true, deviceId: true, status: true, lastConnectedAt: true },
   });
   if (!account?.userId || account.status !== "CONNECTED" || !account.phoneNumber || !account.deviceId) {
     return { outcome: "IDENTITY_NOT_READY" as const };
@@ -158,15 +164,13 @@ export async function activateTrialAfterVerifiedWhatsAppConnection(accountId: st
   const phoneHash = keyedPrivateHash("verified-whatsapp-phone", phone);
   const identityHash = keyedPrivateHash("verified-whatsapp-identity", identity);
   const phoneEncrypted = encryptPrivateValue(phone);
+  const connectedAt = account.lastConnectedAt ?? new Date();
 
   return prisma.$transaction(async (tx) => {
-    await acquireIdentityLocks(tx, [phoneHash, identityHash]);
-    const [company, current, candidate, accountUser] = await Promise.all([
-      tx.company.findUnique({ where: { id: account.companyId }, select: { ownerId: true } }),
-      resolveCompanyEntitlements(account.companyId, tx),
-      tx.trialEntitlement.findUnique({ where: { companyId_userId: { companyId: account.companyId, userId: account.userId! } } }),
-      tx.user.findUnique({ where: { id: account.userId! }, select: { emailVerifiedAt: true } }),
-    ]);
+    await acquireIdentityLocks(tx, [`trial-owner:${account.companyId}:${account.userId}`, phoneHash, identityHash]);
+    const company = await tx.company.findUnique({ where: { id: account.companyId }, select: { ownerId: true } });
+    const current = await resolveCompanyEntitlements(account.companyId, tx);
+    const candidate = await tx.trialEntitlement.findUnique({ where: { companyId_userId: { companyId: account.companyId, userId: account.userId! } } });
     if (!company) return { outcome: "COMPANY_NOT_FOUND" as const };
 
     if (current?.valid && current.subscription.source !== "TRIAL") {
@@ -199,20 +203,6 @@ export async function activateTrialAfterVerifiedWhatsAppConnection(accountId: st
 
     if (!candidate || candidate.status !== "PENDING_IDENTITY" || company.ownerId !== account.userId) {
       return { outcome: "NO_PENDING_TRIAL" as const };
-    }
-
-    if (!accountUser?.emailVerifiedAt) {
-      const entitlement = await tx.trialEntitlement.update({
-        where: { id: candidate.id },
-        data: {
-          whatsappAccountId: account.id,
-          phoneEncrypted,
-          phoneHash,
-          whatsappIdentityHash: identityHash,
-          decisionCode: "EMAIL_VERIFICATION_REQUIRED",
-        },
-      });
-      return { outcome: "EMAIL_VERIFICATION_REQUIRED" as const, entitlement };
     }
 
     const duplicate = await tx.trialEntitlement.findFirst({
@@ -255,7 +245,7 @@ export async function activateTrialAfterVerifiedWhatsAppConnection(accountId: st
 
     const plan = await tx.plan.findUnique({ where: { slug: "trial" } });
     if (!plan?.isActive) throw new Error("TRIAL_PLAN_NOT_CONFIGURED");
-    const startedAt = new Date();
+    const startedAt = connectedAt;
     const endsAt = trialEndsAt(startedAt);
     const subscription = await tx.subscription.create({
       data: {
@@ -283,7 +273,7 @@ export async function activateTrialAfterVerifiedWhatsAppConnection(accountId: st
         whatsappIdentityHash: identityHash,
         riskScore: risk.score,
         riskSignals: risk.signals,
-        decisionCode: "TRIAL_STARTED_AFTER_WHATSAPP_VERIFICATION",
+        decisionCode: "TRIAL_STARTED_AFTER_WHATSAPP_CONNECTION",
         startedAt,
         endsAt,
         consumedAt: startedAt,
@@ -303,7 +293,7 @@ export async function activateTrialAfterVerifiedWhatsAppConnection(accountId: st
         companyId: account.companyId,
         subscriptionId: subscription.id,
         actorUserId: account.userId,
-        eventType: "TRIAL_STARTED_AFTER_IDENTITY_VERIFICATION",
+        eventType: "TRIAL_STARTED_AFTER_WHATSAPP_CONNECTION",
         newState: { plan: plan.slug, startedAt: startedAt.toISOString(), endsAt: endsAt.toISOString(), entitlementId: entitlement.id },
       },
     });
@@ -321,12 +311,45 @@ export async function activateTrialAfterVerifiedWhatsAppConnection(accountId: st
 }
 
 export async function safelyEvaluateTrialAfterConnection(accountId: string) {
-  try {
-    const result = await activateTrialAfterVerifiedWhatsAppConnection(accountId);
-    logger.info("trial.identity_evaluated", { accountId, outcome: result.outcome });
-    return result;
-  } catch (error) {
-    logger.error("trial.identity_evaluation_failed", error, { accountId });
-    return { outcome: "EVALUATION_FAILED" as const };
+  for (let attempt = 1; attempt <= TRIAL_TRANSACTION_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await activateTrialAfterVerifiedWhatsAppConnection(accountId);
+      logger.info("trial.identity_evaluated", { accountId, outcome: result.outcome, attempt });
+      return result;
+    } catch (error) {
+      if (isRetryableTrialTransactionError(error) && attempt < TRIAL_TRANSACTION_ATTEMPTS) {
+        logger.warn("trial.identity_evaluation_retry", { accountId, attempt });
+        continue;
+      }
+      logger.error("trial.identity_evaluation_failed", error, { accountId, attempt });
+      return { outcome: "TRIAL_ACTIVATION_FAILED" as const };
+    }
   }
+  return { outcome: "TRIAL_ACTIVATION_FAILED" as const };
+}
+
+export async function reconcileConnectedPendingTrials(limit = 100) {
+  const take = Math.min(Math.max(Math.trunc(limit), 1), 500);
+  const candidates = await prisma.trialEntitlement.findMany({
+    where: {
+      status: "PENDING_IDENTITY",
+      whatsappAccountId: { not: null },
+      whatsappAccount: { is: { status: "CONNECTED", archivedAt: null } },
+    },
+    orderBy: { createdAt: "asc" },
+    take,
+    select: { id: true, whatsappAccountId: true },
+  });
+
+  const results: Array<{ entitlementId: string; accountId: string; outcome: string }> = [];
+  for (const candidate of candidates) {
+    if (!candidate.whatsappAccountId) continue;
+    const result = await safelyEvaluateTrialAfterConnection(candidate.whatsappAccountId);
+    results.push({
+      entitlementId: candidate.id,
+      accountId: candidate.whatsappAccountId,
+      outcome: result.outcome,
+    });
+  }
+  return results;
 }
