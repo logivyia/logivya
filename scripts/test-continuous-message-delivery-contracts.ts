@@ -27,13 +27,18 @@ const accountStatus = read("src/lib/whatsapp/account-status-machine.ts");
 for (const marker of [
   "const intentionallyStoppedSockets = new WeakSet<WASocket>()",
   "private async keepAliveSocket",
-  "socket.sendPresenceUpdate(\"available\")",
+  "markOnlineOnConnect: false",
   "private async markTransientConnectionLoss",
   "private async handleMissingCredentials",
   "MISSING_CREDENTIALS_GRACE_ATTEMPTS",
 ]) {
   assert(provider.includes(marker), `Continuous delivery provider contract missing: ${marker}`);
 }
+
+const keepAliveBlock = sliceBetween(provider, "private async keepAliveSocket", "private startHeartbeat");
+assert(keepAliveBlock.includes("socket.ws.isOpen"), "Heartbeat health must use the underlying WebSocket state.");
+assert(!keepAliveBlock.includes("sendPresenceUpdate"), "Heartbeat must not advertise active presence and suppress primary-phone notifications.");
+assert(!provider.includes('sendPresenceUpdate("available")'), "Stable worker must never force the linked account into active presence.");
 
 const sendBlock = sliceBetween(provider, "async sendGroupMessage", "async deleteGroupMessage");
 assert(sendBlock.indexOf("sockets.get(input.accountId)?.user") < sendBlock.indexOf("hasRestorableWhatsAppCredentials(input.accountId)"), "Message send must check the live socket before DB credential restore checks.");

@@ -560,14 +560,9 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
   }
 
   private async keepAliveSocket(accountId: string, socket: WASocket) {
-    if (sockets.get(accountId) !== socket || !socket.user) return false;
-    try {
-      await socket.sendPresenceUpdate("available");
-      return sockets.get(accountId) === socket && Boolean(socket.user);
-    } catch (error) {
-      logger.warn("whatsapp.keepalive.failed", { accountId, reason: errorMessage(error) });
-      return false;
-    }
+    // Baileys owns the protocol keepalive. Sending "available" here suppresses
+    // notifications on the primary phone by making this companion look active.
+    return sockets.get(accountId) === socket && Boolean(socket.user) && socket.ws.isOpen;
   }
 
   private startHeartbeat(accountId: string, socket: WASocket) {
