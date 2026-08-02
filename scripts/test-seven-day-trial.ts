@@ -71,8 +71,18 @@ for (const file of [
 const trialService = read("src/server/billing/trial-service.ts");
 assert(trialService.includes("pg_advisory_xact_lock"), "Trial activation must serialize verified identity decisions.");
 assert(trialService.includes("PENDING_IDENTITY"), "Registration must wait for verified WhatsApp identity.");
+assert(!trialService.includes("EMAIL_VERIFICATION_REQUIRED"), "Email verification must not block the WhatsApp-activated trial.");
+assert(!trialService.includes("emailVerifiedAt"), "Trial activation must not depend on email verification state.");
 assert(trialService.includes('source: "TRIAL"'), "Verified eligible identities must create a company trial subscription.");
 assert(trialService.includes("TRIAL_IDENTITY_ALREADY_USED"), "A previously consumed WhatsApp identity must not receive another trial.");
+
+const whatsappWorker = read("src/worker/baileys-provider.ts");
+assert(whatsappWorker.includes("await safelyEvaluateTrialAfterConnection(accountId)"), "WhatsApp connection must finish trial activation before continuing.");
+
+const planMatrix = read("src/server/billing/plan-matrix.ts");
+const trialPlan = planMatrix.slice(planMatrix.indexOf("trial:"), planMatrix.indexOf("starter:"));
+assert(trialPlan.includes("groupMessaging: true"), "The seven-day trial must allow group messaging.");
+assert(trialPlan.includes("contactMessaging: true"), "The seven-day trial must allow contact messaging.");
 
 const access = read("src/server/billing/subscription-access.ts");
 assert(access.includes('["ACTIVE", "TRIALING"]'), "Active trial subscriptions must pass the central subscription guard.");

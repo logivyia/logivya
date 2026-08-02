@@ -161,11 +161,10 @@ export async function activateTrialAfterVerifiedWhatsAppConnection(accountId: st
 
   return prisma.$transaction(async (tx) => {
     await acquireIdentityLocks(tx, [phoneHash, identityHash]);
-    const [company, current, candidate, accountUser] = await Promise.all([
+    const [company, current, candidate] = await Promise.all([
       tx.company.findUnique({ where: { id: account.companyId }, select: { ownerId: true } }),
       resolveCompanyEntitlements(account.companyId, tx),
       tx.trialEntitlement.findUnique({ where: { companyId_userId: { companyId: account.companyId, userId: account.userId! } } }),
-      tx.user.findUnique({ where: { id: account.userId! }, select: { emailVerifiedAt: true } }),
     ]);
     if (!company) return { outcome: "COMPANY_NOT_FOUND" as const };
 
@@ -199,20 +198,6 @@ export async function activateTrialAfterVerifiedWhatsAppConnection(accountId: st
 
     if (!candidate || candidate.status !== "PENDING_IDENTITY" || company.ownerId !== account.userId) {
       return { outcome: "NO_PENDING_TRIAL" as const };
-    }
-
-    if (!accountUser?.emailVerifiedAt) {
-      const entitlement = await tx.trialEntitlement.update({
-        where: { id: candidate.id },
-        data: {
-          whatsappAccountId: account.id,
-          phoneEncrypted,
-          phoneHash,
-          whatsappIdentityHash: identityHash,
-          decisionCode: "EMAIL_VERIFICATION_REQUIRED",
-        },
-      });
-      return { outcome: "EMAIL_VERIFICATION_REQUIRED" as const, entitlement };
     }
 
     const duplicate = await tx.trialEntitlement.findFirst({

@@ -1270,7 +1270,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           logger.info("WA_ACCOUNT_CONNECTED", { accountId, mode: currentMode, phoneNumber: maskPhoneNumber(phoneNumber) });
           await auditAccount(accountId, "whatsapp.connected", { phoneNumber: maskPhoneNumber(phoneNumber), mode: currentMode });
           settleInitialized();
-          void safelyEvaluateTrialAfterConnection(accountId);
+          await safelyEvaluateTrialAfterConnection(accountId);
           await this.syncGroups(accountId);
           const contactState = await prisma.whatsAppAccount.findUnique({
             where: { id: accountId },
