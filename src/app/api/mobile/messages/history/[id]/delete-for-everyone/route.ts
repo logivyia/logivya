@@ -9,7 +9,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const { id } = await params;
     const { company, membership, user } = await requireMobileAuth(request);
-    requirePermission(membership.role, "delete_campaigns");
+    // The server-side campaign/account checks below restrict this to messages
+    // created by the current user. OPERATORs may revoke their own sends without
+    // receiving broad campaign-deletion privileges.
+    requirePermission(membership.role, "send_messages");
     await enforceOperationRateLimit({
       scope: "message.delete-everyone",
       subject: `${company.id}:${user.id}`,

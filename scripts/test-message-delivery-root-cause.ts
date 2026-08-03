@@ -115,7 +115,10 @@ assertIncludes(worker, "updateMessageCampaignDeliveryAggregate", "worker must ag
 assertIncludes(worker, "MESSAGE_JOB_TENANT_MISMATCH", "worker tenant protection");
 assertIncludes(worker, "MESSAGE_JOB_OWNERSHIP_MISMATCH", "worker user/account ownership protection");
 assertIncludes(worker, "message.recurring.group_resolution_failed", "recurring ownership revalidation");
-assertIncludes(worker, "WHATSAPP_RESTORING_CONNECTION", "worker recoverable retry");
+assertIncludes(worker, "WHATSAPP_DELIVERY_RETRIES_EXHAUSTED", "worker bounded retry exhaustion");
+assertNotMatches(worker, /recoverable-recipient-\$\{recipient\.id\}-\$\{Date\.now\(\)\}/, "worker unbounded retry fan-out");
+assertIncludes(provider, 'throw new Error("WHATSAPP_CREDENTIALS_MISSING")', "missing credentials must require fresh pairing");
+assertIncludes(provider, 'throw new Error("WHATSAPP_LOGGED_OUT")', "logged-out accounts must not enter reconnect retry loops");
 assertIncludes(worker, 'action === "pairing-refresh"', "worker must support live refresh of reused pairing codes");
 assertIncludes(pairingFlow, "refreshRequestedAt", "pairing flow must wait for worker refresh before returning reused codes");
 assertIncludes(pairingFlow, 'action: "pairing-refresh"', "pairing flow must enqueue refresh jobs for reused pairing codes");

@@ -116,7 +116,7 @@ function isExplicitWhatsAppAuthFailure(error: unknown) {
 
 function isPermanentMessageDeliveryError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
-  return /MESSAGE_TARGET_MISSING|MESSAGE_JOB_COMPANY_MISMATCH|MESSAGE_JOB_CAMPAIGN_MISMATCH|MESSAGE_JOB_TENANT_MISMATCH|MESSAGE_JOB_OWNERSHIP_MISMATCH|WHATSAPP_CONTACT_OWNERSHIP_MISMATCH|WHATSAPP_GROUP_OWNERSHIP_MISMATCH|GROUP_MESSAGING_NOT_AVAILABLE|CONTACT_MESSAGING_REQUIRES_PROFESSIONAL|SUBSCRIPTION_LOCKED|MESSAGE_ATTRIBUTION_LENGTH_EXCEEDED/i.test(message);
+  return /MESSAGE_TARGET_MISSING|MESSAGE_JOB_COMPANY_MISMATCH|MESSAGE_JOB_CAMPAIGN_MISMATCH|MESSAGE_JOB_TENANT_MISMATCH|MESSAGE_JOB_OWNERSHIP_MISMATCH|WHATSAPP_CONTACT_OWNERSHIP_MISMATCH|WHATSAPP_GROUP_OWNERSHIP_MISMATCH|WHATSAPP_ACCOUNT_NOT_FOUND|WHATSAPP_LOGGED_OUT|WHATSAPP_CREDENTIALS_MISSING|GROUP_MESSAGING_NOT_AVAILABLE|CONTACT_MESSAGING_REQUIRES_PROFESSIONAL|SUBSCRIPTION_LOCKED|MESSAGE_ATTRIBUTION_LENGTH_EXCEEDED/i.test(message);
 }
 
 function errorMessage(error: unknown) {
@@ -535,48 +535,48 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
     if (recoverable) {
       await prisma.messageRecipient.update({
         where: { id: recipient.id },
-        data: { status: "RETRYING", failedAt: null, errorMessage: finalAttempt ? "WHATSAPP_RESTORING_CONNECTION" : "WHATSAPP_RETRYING_CONNECTION" },
+        data: {
+          status: finalAttempt ? "FAILED" : "RETRYING",
+          failedAt: finalAttempt ? new Date() : null,
+          errorMessage: finalAttempt ? "WHATSAPP_DELIVERY_RETRIES_EXHAUSTED" : "WHATSAPP_RETRYING_CONNECTION",
+        },
       });
-      const activePairing = await isPhonePairingActive(recipient.accountId).catch(() => false);
-      if (activePairing) {
-        logger.warn("message.reconnect.skipped_active_pairing", { ...baseLog, accountId: recipient.accountId, finalAttempt });
-      } else {
-        await prisma.whatsAppAccount.updateMany({
-          where: { id: recipient.accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
-          data: { status: "CONNECTING", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
-        });
-        const reconnectQueue = whatsappQueue();
-        try {
-          await reconnectQueue.add("reconnect", { action: "reconnect", accountId: recipient.accountId }, { jobId: `send-reconnect-${recipient.accountId}`, removeOnComplete: 50, removeOnFail: 100 });
-        } catch (queueError) {
-          logger.error("message.reconnect.enqueue_failed", queueError, { ...baseLog, accountId: recipient.accountId });
-        } finally {
-          await reconnectQueue.close().catch(() => undefined);
+      if (!finalAttempt) {
+        const activePairing = await isPhonePairingActive(recipient.accountId).catch(() => false);
+        if (activePairing) {
+          logger.warn("message.reconnect.skipped_active_pairing", { ...baseLog, accountId: recipient.accountId, finalAttempt });
+        } else {
+          await prisma.whatsAppAccount.updateMany({
+            where: { id: recipient.accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
+            data: { status: "CONNECTING", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
+          });
+          const reconnectQueue = whatsappQueue();
+          try {
+            await reconnectQueue.add("reconnect", { action: "reconnect", accountId: recipient.accountId }, { jobId: `send-reconnect-${recipient.accountId}`, removeOnComplete: 50, removeOnFail: 100 });
+          } catch (queueError) {
+            logger.error("message.reconnect.enqueue_failed", queueError, { ...baseLog, accountId: recipient.accountId });
+          } finally {
+            await reconnectQueue.close().catch(() => undefined);
+          }
         }
       }
       if (finalAttempt) {
-        const retryQueue = messageQueue();
-        const delay = Math.min(120_000, Number(process.env.WHATSAPP_RECOVERABLE_RETRY_DELAY_MS || 20_000));
+        const errorCode = "WHATSAPP_DELIVERY_RETRIES_EXHAUSTED";
+        logger.error("MESSAGE_FAILED", error, { ...baseLog, accountId: recipient.accountId, reason: errorCode });
+        const queue = deadLetterQueue();
         try {
-          const retryPayload: MessageRecipientJobPayload = { ...jobData, companyId: recipient.campaign.companyId, campaignId: recipient.campaignId, recipientId: recipient.id, correlationId, source: "recoverable-retry", recoveryRetry: true };
-          await retryQueue.add(
-            "send-recipient",
-            retryPayload,
-            {
-              jobId: `recoverable-recipient-${recipient.id}-${Date.now()}`,
-              delay,
-              ...WHATSAPP_MESSAGE_JOB_OPTIONS,
-            },
+          await queue.add(
+            "message-send-failed",
+            { ...jobData, companyId: recipient.campaign.companyId, campaignId: recipient.campaignId, recipientId: recipient.id, correlationId, errorMessage: errorCode, permanentFailure: false },
+            { jobId: `dead-letter-${recipient.id}` },
           );
-        } catch (queueError) {
-          logger.error("message.recoverable_retry.enqueue_failed", queueError, { ...baseLog, accountId: recipient.accountId });
         } finally {
-          await retryQueue.close().catch(() => undefined);
+          await queue.close().catch(() => undefined);
         }
+      } else {
+        logger.warn("MESSAGE_RETRY", { ...baseLog, accountId: recipient.accountId, finalAttempt });
+        logger.warn("message.send.retrying_connection", { ...baseLog, accountId: recipient.accountId, finalAttempt });
       }
-      logger.warn("MESSAGE_RETRY", { ...baseLog, accountId: recipient.accountId, finalAttempt });
-      logger.warn("message.send.retrying_connection", { ...baseLog, accountId: recipient.accountId, finalAttempt });
-      if (finalAttempt) return;
       throw error;
     }
     const permanentFailure = isPermanentMessageDeliveryError(error);

@@ -556,7 +556,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     }
 
     await this.markFreshPairingRequired(accountId, reason);
-    throw new Error("WHATSAPP_RECONNECT_REQUIRED");
+    throw new Error("WHATSAPP_CREDENTIALS_MISSING");
   }
 
   private async keepAliveSocket(accountId: string, socket: WASocket) {
@@ -1634,7 +1634,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         where: { id: input.accountId, archivedAt: null },
         data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_LOGGED_OUT", recoveryLevel: 5, healthScore: 0 },
       });
-      throw new Error("WHATSAPP_RECONNECT_REQUIRED");
+      throw new Error("WHATSAPP_LOGGED_OUT");
     }
     if (account.lastError === "WHATSAPP_CREDENTIALS_MISSING") {
       const hasLiveSocket = Boolean(sockets.get(input.accountId)?.user);
@@ -1917,7 +1917,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
         where: { id: input.accountId, archivedAt: null },
         data: { status: "RECONNECT_REQUIRED", lastError: "WHATSAPP_LOGGED_OUT", recoveryLevel: 5, healthScore: 0 },
       });
-      throw new Error("WHATSAPP_RECONNECT_REQUIRED");
+      throw new Error("WHATSAPP_LOGGED_OUT");
     }
     if (account.lastError === "WHATSAPP_CREDENTIALS_MISSING") {
       const hasLiveSocket = Boolean(sockets.get(input.accountId)?.user);
