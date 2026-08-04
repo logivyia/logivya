@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { CORE_PLAN_CODES, CORE_PLAN_MATRIX, PURCHASABLE_PLAN_CODES } from "../src/server/billing/plan-matrix";
-import { applyAdvertisingDeliveryPolicy } from "../src/server/messages/advertising-policy";
+import { applyAdvertisingDeliveryPolicy, LOGIVYA_MESSAGE_ATTRIBUTION_TEXT } from "../src/server/messages/advertising-policy";
 import { normalizeIyzicoDecimal, verifyIyzicoPaymentDetailResponse } from "../src/server/billing/iyzico-payment-verification";
 import { assertPlanSeatCompatibility, SubscriptionActivationError } from "../src/server/billing/subscription-activation";
 import {
@@ -33,15 +33,15 @@ assert.equal(CORE_PLAN_MATRIX.professional.advertisingEnabled, false);
 assert.deepEqual([...CORE_PLAN_CODES], ["trial", "starter", "professional"]);
 assert.deepEqual([...PURCHASABLE_PLAN_CODES], ["starter", "professional"]);
 
-const previousAttribution = process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT;
 delete process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT;
-assert.deepEqual(applyAdvertisingDeliveryPolicy("Mesaj", true), { content: "Mesaj", attributionApplied: false, attributionConfigured: false });
-process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT = "Logivya ile gönderildi";
-assert.equal(applyAdvertisingDeliveryPolicy("Mesaj", true).content, "Mesaj\n\nLogivya ile gönderildi");
-assert.equal(applyAdvertisingDeliveryPolicy("Mesaj\n\nLogivya ile gönderildi", true).content, "Mesaj\n\nLogivya ile gönderildi");
+assert.equal(LOGIVYA_MESSAGE_ATTRIBUTION_TEXT, "Bu mesaj logivya.com üzerinden gönderilmiştir.");
+assert.deepEqual(applyAdvertisingDeliveryPolicy("Mesaj", true), {
+  content: `Mesaj\n\n${LOGIVYA_MESSAGE_ATTRIBUTION_TEXT}`,
+  attributionApplied: true,
+  attributionConfigured: true,
+});
+assert.equal(applyAdvertisingDeliveryPolicy(`Mesaj\n\n${LOGIVYA_MESSAGE_ATTRIBUTION_TEXT}`, true).content, `Mesaj\n\n${LOGIVYA_MESSAGE_ATTRIBUTION_TEXT}`);
 assert.equal(applyAdvertisingDeliveryPolicy("Mesaj", false).content, "Mesaj");
-if (previousAttribution === undefined) delete process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT;
-else process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT = previousAttribution;
 
 assert.doesNotThrow(() => assertPlanSeatCompatibility({ usedSeats: 2, targetSeatLimit: 2, planSlug: "starter" }));
 assert.throws(
