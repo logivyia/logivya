@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { QUEUES, WHATSAPP_MESSAGE_JOB_OPTIONS } from "@/server/queues/contracts";
 import { BaileysWhatsAppProvider } from "@/worker/baileys-provider";
+import { classifyWorkerProcessError } from "@/worker/process-errors";
 import { parseRecurringRule } from "@/server/queues/recurring";
 import { deadLetterQueue, messageQueue, redisConnectionOptions, redisConnectionUrl, whatsappQueue } from "@/server/queues/client";
 import { reconcileDurableMessageQueues, scheduleFollowingRecurringRun } from "@/server/queues/recovery";
@@ -41,6 +42,7 @@ import { hasRestorableWhatsAppCredentials, restoreWhatsAppSessionFromDatabase } 
 const workerId = process.env.WORKER_ID || `${os.hostname()}-${process.pid}`;
 const workerStartedAt = new Date().toISOString();
 const workerCapacity = 8;
+const sessionRecoveryConcurrency = Math.min(4, Math.max(1, Math.trunc(Number(process.env.WHATSAPP_SESSION_RECOVERY_CONCURRENCY || 2) || 2)));
 let activeWorkerJobs = 0;
 const redisUrl = redisConnectionUrl();
 
@@ -85,23 +87,73 @@ const connection = redisConnectionOptions();
 const provider = new BaileysWhatsAppProvider();
 const workers: Worker[] = [];
 let shutdownStarted = false;
+let fatalShutdownRequested = false;
+const recoverableRejectionAlertAt = new Map<string, number>();
+const configuredRecoverableRejectionAlertIntervalMs = Number(process.env.WORKER_RECOVERABLE_REJECTION_ALERT_INTERVAL_MS);
+const recoverableRejectionAlertIntervalMs = Number.isFinite(configuredRecoverableRejectionAlertIntervalMs)
+  ? Math.min(86_400_000, Math.max(60_000, configuredRecoverableRejectionAlertIntervalMs))
+  : 300_000;
 
-async function reportFatalAndShutdown(type: string) {
+async function reportFatalAndShutdown(type: string, error?: unknown) {
+  const classification = classifyWorkerProcessError(error);
   await Promise.race([
-    raiseOperationalAlert({ type, severity: "CRITICAL", service: "logivya-worker", message: "Worker process encountered a fatal error.", metadata: { workerId } }),
+    raiseOperationalAlert({
+      type,
+      severity: "CRITICAL",
+      service: "logivya-worker",
+      message: "Worker process encountered a fatal error.",
+      metadata: { workerId, errorCode: classification.code, errorName: classification.name },
+    }),
     new Promise((resolve) => setTimeout(resolve, 1_000)),
   ]).catch((alertError) => logger.error("worker.fatal_alert.failed", alertError, { workerId, type }));
   await shutdown(type, 1);
 }
 
+function beginFatalShutdown(type: string, error: unknown) {
+  if (fatalShutdownRequested) return;
+  fatalShutdownRequested = true;
+  void reportFatalAndShutdown(type, error).catch((shutdownError) => {
+    logger.fatal("worker.fatal_shutdown.failed", shutdownError, { workerId, type });
+    process.exit(1);
+  });
+}
+
 process.on("uncaughtException", (error) => {
   logger.fatal("worker.process.uncaught_exception", error, { workerId, result: "FAILED" });
-  void reportFatalAndShutdown("WORKER_UNCAUGHT_EXCEPTION");
+  beginFatalShutdown("WORKER_UNCAUGHT_EXCEPTION", error);
 });
 
 process.on("unhandledRejection", (reason) => {
-  logger.fatal("worker.process.unhandled_rejection", reason instanceof Error ? reason : new Error(String(reason)), { workerId, result: "FAILED" });
-  void reportFatalAndShutdown("WORKER_UNHANDLED_REJECTION");
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  const classification = classifyWorkerProcessError(reason);
+  if (classification.recoverable) {
+    logger.error("worker.process.unhandled_rejection_isolated", error, {
+      workerId,
+      result: "DEGRADED",
+      errorCode: classification.code,
+      errorName: classification.name,
+    });
+    const now = Date.now();
+    const lastAlertAt = recoverableRejectionAlertAt.get(classification.code) ?? 0;
+    if (now - lastAlertAt >= recoverableRejectionAlertIntervalMs) {
+      recoverableRejectionAlertAt.set(classification.code, now);
+      void raiseOperationalAlert({
+        type: "WORKER_UNHANDLED_REJECTION_ISOLATED",
+        severity: "HIGH",
+        service: "logivya-worker",
+        message: "A recoverable background rejection was isolated without terminating the worker.",
+        metadata: { workerId, errorCode: classification.code, errorName: classification.name },
+      }).catch((alertError) => logger.error("worker.recoverable_rejection_alert.failed", alertError, { workerId, errorCode: classification.code }));
+    }
+    return;
+  }
+  logger.fatal("worker.process.unhandled_rejection", error, {
+    workerId,
+    result: "FAILED",
+    errorCode: classification.code,
+    errorName: classification.name,
+  });
+  beginFatalShutdown("WORKER_UNHANDLED_REJECTION", reason);
 });
 
 function isRecoverableWhatsAppSendError(error: unknown) {
@@ -368,7 +420,7 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
   if (!jobData.recipientId) throw new Error("MESSAGE_JOB_RECIPIENT_MISSING");
   const recipient = await prisma.messageRecipient.findUnique({
     where: { id: jobData.recipientId },
-    include: { campaign: true, group: true, contact: true, account: { select: { id: true, companyId: true, userId: true } } },
+    include: { campaign: true, group: true, contact: true, account: { select: { id: true, companyId: true, userId: true, provider: true } } },
   });
   const correlationId = jobData.correlationId ?? readCampaignCorrelationId(recipient?.campaign.contentJson) ?? createMessageCorrelationId();
   const baseLog = {
@@ -746,36 +798,67 @@ async function processDeleteForEveryoneJob(job: Job<DeleteForEveryoneJob>) {
   }
 }
 
+let sessionRecoveryRunning = false;
 async function recoverSessions() {
-  const recoverableAccounts = await prisma.whatsAppAccount.findMany({
-    where: {
-      archivedAt: null,
-      OR: [
-        { status: { in: ["PENDING_QR", "QR_READY", "CONNECTING", "CONNECTED", "DISCONNECTED", "RECONNECT_REQUIRED"] } },
-        { sessions: { some: { sessionDataEncrypted: { not: null } } } },
-      ],
-    },
-    select: { id: true, pairingCode: true, pairingCodeExpiresAt: true, status: true, updatedAt: true, lastError: true },
-  });
-  for (const account of recoverableAccounts) {
-    if (hasActivePhonePairing(account)) {
-      logger.warn("whatsapp.session.recovery_skipped_active_pairing", { workerId, accountId: account.id, status: account.status });
-      continue;
-    }
-    if (!(await hasRestorableWhatsAppCredentials(account.id))) {
-      logger.warn("whatsapp.session.recovery_skipped_no_restorable_credentials", {
-        workerId,
-        accountId: account.id,
-        status: account.status,
-      });
-      await prisma.whatsAppAccount.updateMany({
-        where: { id: account.id, archivedAt: null, status: { in: ["CONNECTED", "CONNECTING", "DISCONNECTED"] } },
-        data: { status: "DISCONNECTED", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
-      });
-      continue;
-    }
-    await restoreWhatsAppSessionFromDatabase(account.id).catch((error) => logger.error("whatsapp.session.restore_failed", error, { accountId: account.id }));
-    void provider.reconnect(account.id).catch((error) => logger.error("whatsapp.session.recovery_bootstrap_failed", error, { accountId: account.id }));
+  if (sessionRecoveryRunning) {
+    logger.warn("whatsapp.session.recovery_sweep_skipped_running", { workerId });
+    return;
+  }
+  sessionRecoveryRunning = true;
+  try {
+    const recoverableAccounts = await prisma.whatsAppAccount.findMany({
+      where: {
+        archivedAt: null,
+        OR: [
+          { status: { in: ["PENDING_QR", "QR_READY", "CONNECTING", "CONNECTED", "DISCONNECTED", "RECONNECT_REQUIRED"] } },
+          { sessions: { some: { sessionDataEncrypted: { not: null } } } },
+        ],
+      },
+      select: { id: true, pairingCode: true, pairingCodeExpiresAt: true, status: true, updatedAt: true, lastError: true },
+      orderBy: { updatedAt: "asc" },
+    });
+    let nextAccountIndex = 0;
+    const recoverNextAccount = async () => {
+      while (nextAccountIndex < recoverableAccounts.length) {
+        const account = recoverableAccounts[nextAccountIndex++];
+        if (!account) return;
+        try {
+          if (hasActivePhonePairing(account)) {
+            logger.warn("whatsapp.session.recovery_skipped_active_pairing", { workerId, accountId: account.id, status: account.status });
+            continue;
+          }
+          if (provider.hasLiveSocket(account.id)) {
+            logger.debug("whatsapp.session.recovery_skipped_live_socket", { workerId, accountId: account.id, status: account.status });
+            continue;
+          }
+          const restored = await restoreWhatsAppSessionFromDatabase(account.id).catch((error) => {
+            logger.error("whatsapp.session.restore_failed", error, { accountId: account.id });
+            return false;
+          });
+          if (!restored) {
+            logger.warn("whatsapp.session.recovery_skipped_no_restorable_credentials", {
+              workerId,
+              accountId: account.id,
+              status: account.status,
+            });
+            await prisma.whatsAppAccount.updateMany({
+              where: { id: account.id, archivedAt: null, status: { in: ["CONNECTED", "CONNECTING", "DISCONNECTED"] } },
+              data: { status: "DISCONNECTED", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
+            });
+            continue;
+          }
+          await provider.reconnect(account.id, { credentialsVerified: true, sessionRestored: true });
+        } catch (error) {
+          logger.error("whatsapp.session.recovery_bootstrap_failed", error, { accountId: account.id });
+        }
+      }
+    };
+    await Promise.all(Array.from(
+      { length: Math.min(sessionRecoveryConcurrency, recoverableAccounts.length) },
+      () => recoverNextAccount(),
+    ));
+  } finally {
+    sessionRecoveryRunning = false;
   }
 }
 void recoverSessions().catch((error) => logger.error("whatsapp.session.recovery_bootstrap_failed", error, { workerId }));

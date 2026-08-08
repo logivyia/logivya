@@ -28,6 +28,22 @@ assert(sessionManager.includes("WA_RESTORE_FAILED"), "Session restore must emit 
 assert(sessionManager.includes("WA_SESSION_SNAPSHOT_STALE_METADATA_CLEARED"), "Missing session snapshots must self-heal stale account metadata.");
 assert(sessionManager.includes("OR: [{ sessionSnapshotAt: { not: null } }, { sessionRestoredAt: { not: null } }]"), "Stale snapshot self-healing must not write on every restore probe.");
 assert(sessionManager.includes("credentials_not_registered"), "Unregistered pairing credentials must not be persisted as restorable session snapshots.");
+for (const marker of [
+  "WHATSAPP_SESSION_SNAPSHOT_MIN_INTERVAL_MS",
+  "WHATSAPP_SESSION_SNAPSHOT_CONCURRENCY",
+  "WA_SESSION_SNAPSHOT_SAVE_DEFERRED",
+  "WA_SESSION_SNAPSHOT_SAVE_COALESCED",
+  "snapshotRuntimeStates",
+  "withSnapshotConcurrency",
+  "gzip-base64",
+  "decodeStoredSnapshot",
+  "content_unchanged",
+  "readSessionSnapshotFiles",
+  "WA_SESSION_SNAPSHOT_FAILURE_ISOLATED",
+]) {
+  assert(sessionManager.includes(marker), `Session snapshot cost/crash guard is missing marker: ${marker}`);
+}
+assert(!sessionManager.includes('lastError: "WHATSAPP_SESSION_SNAPSHOT_FAILED"'), "Snapshot backup failures must not poison the user-visible WhatsApp connection state.");
 
 const pairingGuard = read("src/server/whatsapp/pairing-guard.ts");
 for (const marker of [
@@ -59,6 +75,9 @@ assert(provider.includes("status: \"CONNECTING\"") && provider.includes("lastErr
 assert(provider.includes("intentionallyStoppedSockets = new WeakSet"), "Intentional socket stops must be tracked per socket instance, not per account.");
 assert(provider.includes("whatsapp.reconnect.skipped_active_pairing"), "Reconnect must not interrupt an active phone pairing code.");
 assert(provider.includes("WHATSAPP_PAIRING_IN_PROGRESS"), "Message/reconnect recovery must treat active phone pairing as recoverable in-progress state.");
+assert(provider.includes("whatsapp.creds_update_handler_failed"), "Baileys creds.update errors must be contained inside the event handler.");
+assert(provider.includes("whatsapp.connection.event_handler_failed"), "Baileys connection.update recovery errors must not escape as unhandled rejections.");
+assert(provider.includes("hasLiveSocket"), "Periodic recovery must be able to preserve an already healthy socket.");
 assert(!provider.includes('if (currentMode === "PAIR_PHONE") settleInitialized();'), "Phone pairing must not request a code immediately on the connecting event.");
 for (const marker of [
   "WA_PAIRING_START",
@@ -146,6 +165,10 @@ assert(worker.includes("WHATSAPP_SESSION_RECOVERY_INTERVAL_MS"), "Worker must pe
 assert(worker.includes("restoreWhatsAppSessionFromDatabase(account.id)"), "Worker startup recovery must restore DB-backed WhatsApp sessions.");
 assert(worker.includes("hasRestorableWhatsAppCredentials(accountId)"), "Worker failures must distinguish restorable sessions from true auth loss.");
 assert(worker.includes("whatsapp.session.recovery_skipped_no_restorable_credentials"), "Worker must not silently convert read-side missing credentials into auth-required state.");
+assert(worker.includes("sessionRecoveryRunning"), "Worker must not overlap periodic session recovery sweeps.");
+assert(worker.includes("WHATSAPP_SESSION_RECOVERY_CONCURRENCY"), "Worker session recovery must use bounded concurrency.");
+assert(worker.includes("whatsapp.session.recovery_skipped_live_socket"), "Worker session recovery must not restart an already healthy socket.");
+assert(worker.includes("credentialsVerified: true, sessionRestored: true"), "Worker recovery must not re-read the same database snapshot during provider reconnect.");
 assert(worker.includes("whatsapp.worker.reconnect.skipped_active_pairing"), "Worker must skip stale reconnect jobs while phone pairing is active.");
 assert(worker.includes("whatsapp.worker.reconnect.skipped_stale_connected_job"), "Worker must skip reconnect jobs that were queued before a newer successful connection state.");
 assert(worker.includes("whatsapp.worker.pairing_retry_scheduled"), "Worker must not mark recoverable phone pairing socket closes as failed.");

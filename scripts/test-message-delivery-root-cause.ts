@@ -78,7 +78,7 @@ assertIncludes(provider, "whatsapp.qr.transient_close_retry_scheduled", "QR mode
 assertIncludes(provider, "whatsapp.qr.error_after_ready_ignored", "QR mode must preserve QR_READY after late handler errors");
 assertIncludes(provider, "whatsapp.pairing.stale_socket_close_ignored", "phone pairing must ignore stale socket closes after a newer code request");
 assertIncludes(provider, "whatsapp.pairing.same_code_refresh_scheduled", "phone pairing must refresh the same visible code after socket closes");
-assertIncludes(provider, "activeSocket.requestPairingCode(phoneNumber, pairingCode)", "phone pairing refresh must re-register the same visible code with Baileys");
+assertIncludes(provider, "activeSocket.requestPairingCode(normalizedPhoneNumber, pairingCode)", "phone pairing refresh must re-register the same visible code with Baileys");
 assertIncludes(provider, "preserveUnregisteredPairingAuth", "phone pairing retries must preserve unregistered auth instead of creating a new companion identity each time");
 assertIncludes(provider, "whatsapp.pairing.unregistered_auth_preserved", "phone pairing must log preserved unregistered auth for production diagnostics");
 assertIncludes(provider, "Browsers.ubuntu", "phone pairing must use Baileys' canonical WEB_BROWSER identity by default");
@@ -130,5 +130,9 @@ assertIncludes(mobileQrRoute, 'status: "CONNECTED"', "mobile QR connected-accoun
 assertIncludes(mobilePhoneCodeRoute, 'status: "CONNECTED"', "mobile phone-code connected-account reuse");
 assertIncludes(platformRoute, "isRecoverableWhatsAppStatus", "web platform group filtering");
 assertIncludes(mobileGroupsRoute, "isRecoverableWhatsAppStatus", "mobile group filtering");
+assertIncludes(worker, "classifyWorkerProcessError", "worker process rejection classification");
+assertIncludes(worker, "WORKER_UNHANDLED_REJECTION_ISOLATED", "recoverable worker rejection containment");
+assertIncludes(worker, "fatalShutdownRequested", "fatal worker shutdown deduplication");
+assertIncludes(worker, "recoverableRejectionAlertAt", "recoverable rejection alert throttling");
 
 console.info("message delivery root-cause regression checks passed");
