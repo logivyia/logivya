@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { QUEUES, WHATSAPP_MESSAGE_JOB_OPTIONS } from "@/server/queues/contracts";
 import { BaileysWhatsAppProvider } from "@/worker/baileys-provider";
+import { classifyWorkerProcessError } from "@/worker/process-errors";
 import { parseRecurringRule } from "@/server/queues/recurring";
 import { deadLetterQueue, messageQueue, redisConnectionOptions, whatsappQueue } from "@/server/queues/client";
 import { reconcileDurableMessageQueues, scheduleFollowingRecurringRun } from "@/server/queues/recovery";
@@ -23,8 +24,9 @@ import {
 } from "@/server/whatsapp/contacts";
 import { createNotification, NOTIFICATION_TYPES } from "@/server/notifications/service";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
-import { applyAdvertisingDeliveryPolicy } from "@/server/messages/advertising-policy";
+import { composeOutboundMessage } from "@/server/messages/outbound-composer";
 import { createMessageCorrelationId, readCampaignCorrelationId, withCampaignMetadata } from "@/server/messages/correlation";
+import { updateMessageCampaignDeliveryAggregate } from "@/server/messages/delivery-state";
 import { traceMessageStage } from "@/server/messages/delivery-tracing";
 import { isDeleteWindowOpen, parseStoredMessageKey, updateCampaignDeleteAggregate } from "@/server/messages/delete-for-everyone";
 import type { MessageRecipientJobPayload } from "@/server/messages/delivery-pipeline";
@@ -40,6 +42,7 @@ import { hasRestorableWhatsAppCredentials, restoreWhatsAppSessionFromDatabase } 
 const workerId = process.env.WORKER_ID || `${os.hostname()}-${process.pid}`;
 const workerStartedAt = new Date().toISOString();
 const workerCapacity = 8;
+const sessionRecoveryConcurrency = Math.min(4, Math.max(1, Math.trunc(Number(process.env.WHATSAPP_SESSION_RECOVERY_CONCURRENCY || 2) || 2)));
 let activeWorkerJobs = 0;
 if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required");
 
@@ -84,23 +87,73 @@ const connection = redisConnectionOptions();
 const provider = new BaileysWhatsAppProvider();
 const workers: Worker[] = [];
 let shutdownStarted = false;
+let fatalShutdownRequested = false;
+const recoverableRejectionAlertAt = new Map<string, number>();
+const configuredRecoverableRejectionAlertIntervalMs = Number(process.env.WORKER_RECOVERABLE_REJECTION_ALERT_INTERVAL_MS);
+const recoverableRejectionAlertIntervalMs = Number.isFinite(configuredRecoverableRejectionAlertIntervalMs)
+  ? Math.min(86_400_000, Math.max(60_000, configuredRecoverableRejectionAlertIntervalMs))
+  : 300_000;
 
-async function reportFatalAndShutdown(type: string) {
+async function reportFatalAndShutdown(type: string, error?: unknown) {
+  const classification = classifyWorkerProcessError(error);
   await Promise.race([
-    raiseOperationalAlert({ type, severity: "CRITICAL", service: "logivya-worker", message: "Worker process encountered a fatal error.", metadata: { workerId } }),
+    raiseOperationalAlert({
+      type,
+      severity: "CRITICAL",
+      service: "logivya-worker",
+      message: "Worker process encountered a fatal error.",
+      metadata: { workerId, errorCode: classification.code, errorName: classification.name },
+    }),
     new Promise((resolve) => setTimeout(resolve, 1_000)),
   ]).catch((alertError) => logger.error("worker.fatal_alert.failed", alertError, { workerId, type }));
   await shutdown(type, 1);
 }
 
+function beginFatalShutdown(type: string, error: unknown) {
+  if (fatalShutdownRequested) return;
+  fatalShutdownRequested = true;
+  void reportFatalAndShutdown(type, error).catch((shutdownError) => {
+    logger.fatal("worker.fatal_shutdown.failed", shutdownError, { workerId, type });
+    process.exit(1);
+  });
+}
+
 process.on("uncaughtException", (error) => {
   logger.fatal("worker.process.uncaught_exception", error, { workerId, result: "FAILED" });
-  void reportFatalAndShutdown("WORKER_UNCAUGHT_EXCEPTION");
+  beginFatalShutdown("WORKER_UNCAUGHT_EXCEPTION", error);
 });
 
 process.on("unhandledRejection", (reason) => {
-  logger.fatal("worker.process.unhandled_rejection", reason instanceof Error ? reason : new Error(String(reason)), { workerId, result: "FAILED" });
-  void reportFatalAndShutdown("WORKER_UNHANDLED_REJECTION");
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  const classification = classifyWorkerProcessError(reason);
+  if (classification.recoverable) {
+    logger.error("worker.process.unhandled_rejection_isolated", error, {
+      workerId,
+      result: "DEGRADED",
+      errorCode: classification.code,
+      errorName: classification.name,
+    });
+    const now = Date.now();
+    const lastAlertAt = recoverableRejectionAlertAt.get(classification.code) ?? 0;
+    if (now - lastAlertAt >= recoverableRejectionAlertIntervalMs) {
+      recoverableRejectionAlertAt.set(classification.code, now);
+      void raiseOperationalAlert({
+        type: "WORKER_UNHANDLED_REJECTION_ISOLATED",
+        severity: "HIGH",
+        service: "logivya-worker",
+        message: "A recoverable background rejection was isolated without terminating the worker.",
+        metadata: { workerId, errorCode: classification.code, errorName: classification.name },
+      }).catch((alertError) => logger.error("worker.recoverable_rejection_alert.failed", alertError, { workerId, errorCode: classification.code }));
+    }
+    return;
+  }
+  logger.fatal("worker.process.unhandled_rejection", error, {
+    workerId,
+    result: "FAILED",
+    errorCode: classification.code,
+    errorName: classification.name,
+  });
+  beginFatalShutdown("WORKER_UNHANDLED_REJECTION", reason);
 });
 
 function isRecoverableWhatsAppSendError(error: unknown) {
@@ -111,6 +164,11 @@ function isRecoverableWhatsAppSendError(error: unknown) {
 function isExplicitWhatsAppAuthFailure(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /WHATSAPP_LOGGED_OUT|LOGGED_OUT|AUTH_REQUIRED|WHATSAPP_CREDENTIALS_MISSING/i.test(message);
+}
+
+function isPermanentMessageDeliveryError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /MESSAGE_TARGET_MISSING|MESSAGE_JOB_COMPANY_MISMATCH|MESSAGE_JOB_CAMPAIGN_MISMATCH|MESSAGE_JOB_TENANT_MISMATCH|MESSAGE_JOB_OWNERSHIP_MISMATCH|WHATSAPP_CONTACT_OWNERSHIP_MISMATCH|WHATSAPP_GROUP_OWNERSHIP_MISMATCH|WHATSAPP_ACCOUNT_NOT_FOUND|WHATSAPP_LOGGED_OUT|WHATSAPP_CREDENTIALS_MISSING|GROUP_MESSAGING_NOT_AVAILABLE|CONTACT_MESSAGING_REQUIRES_PROFESSIONAL|SUBSCRIPTION_LOCKED|MESSAGE_ATTRIBUTION_LENGTH_EXCEEDED/i.test(message);
 }
 
 function errorMessage(error: unknown) {
@@ -362,7 +420,7 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
   if (!jobData.recipientId) throw new Error("MESSAGE_JOB_RECIPIENT_MISSING");
   const recipient = await prisma.messageRecipient.findUnique({
     where: { id: jobData.recipientId },
-    include: { campaign: true, group: true, contact: true, account: { select: { id: true, companyId: true, userId: true } } },
+    include: { campaign: true, group: true, contact: true, account: { select: { id: true, companyId: true, userId: true, provider: true } } },
   });
   const correlationId = jobData.correlationId ?? readCampaignCorrelationId(recipient?.campaign.contentJson) ?? createMessageCorrelationId();
   const baseLog = {
@@ -380,43 +438,6 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
     return;
   }
   const targetType = recipient.targetType;
-  if ((targetType === "GROUP" && !recipient.group) || (targetType === "CONTACT" && !recipient.contact)) {
-    logger.warn("message.job.skipped", { ...baseLog, reason: "MESSAGE_TARGET_MISSING", targetType });
-    return;
-  }
-  if (jobData.companyId && jobData.companyId !== recipient.campaign.companyId) {
-    logger.error("message.job.company_mismatch", new Error("MESSAGE_JOB_COMPANY_MISMATCH"), { ...baseLog, actualCompanyId: recipient.campaign.companyId });
-    throw new Error("MESSAGE_JOB_COMPANY_MISMATCH");
-  }
-  if (jobData.campaignId && jobData.campaignId !== recipient.campaignId) {
-    logger.error("message.job.campaign_mismatch", new Error("MESSAGE_JOB_CAMPAIGN_MISMATCH"), { ...baseLog, actualCampaignId: recipient.campaignId });
-    throw new Error("MESSAGE_JOB_CAMPAIGN_MISMATCH");
-  }
-  const targetCompanyId = targetType === "CONTACT" ? recipient.contact!.companyId : recipient.group!.companyId;
-  if (targetCompanyId !== recipient.campaign.companyId || recipient.account.companyId !== recipient.campaign.companyId) {
-    logger.error("message.job.tenant_mismatch", new Error("MESSAGE_JOB_TENANT_MISMATCH"), {
-      ...baseLog,
-      targetType,
-      targetCompanyId,
-      accountCompanyId: recipient.account.companyId,
-      campaignCompanyId: recipient.campaign.companyId,
-    });
-    throw new Error("MESSAGE_JOB_TENANT_MISMATCH");
-  }
-  const targetUserId = targetType === "CONTACT" ? recipient.contact!.userId : recipient.group!.userId;
-  const targetAccountId = targetType === "CONTACT" ? recipient.contact!.accountId : recipient.group!.accountId;
-  if (targetUserId !== recipient.campaign.createdById || recipient.account.userId !== recipient.campaign.createdById || targetAccountId !== recipient.accountId) {
-    logger.error("message.job.ownership_mismatch", new Error("MESSAGE_JOB_OWNERSHIP_MISMATCH"), {
-      ...baseLog,
-      targetType,
-      targetUserId,
-      accountUserId: recipient.account.userId,
-      campaignCreatedById: recipient.campaign.createdById,
-      targetAccountId,
-      recipientAccountId: recipient.accountId,
-    });
-    throw new Error("MESSAGE_JOB_OWNERSHIP_MISMATCH");
-  }
   if (recipient.status === "SENT" || ["CANCELED", "CANCELING", "DELETED"].includes(recipient.campaign.status)) {
     logger.info("message.job.skipped", { ...baseLog, recipientStatus: recipient.status, campaignStatus: recipient.campaign.status });
     return;
@@ -431,11 +452,91 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
   }
   await prisma.messageCampaign.updateMany({ where: { id: recipient.campaignId, status: "QUEUED" }, data: { status: "SENDING" } });
   try {
-    const currentSubscription = await subscriptionAccess.getCurrent(recipient.campaign.companyId);
-    if (!currentSubscription?.valid || !currentSubscription.entitlements.messageSend) throw new Error("SUBSCRIPTION_LOCKED");
-    if (targetType === "GROUP" && !currentSubscription.entitlements.groupMessaging) throw new Error("GROUP_MESSAGING_NOT_AVAILABLE");
-    if (targetType === "CONTACT" && !currentSubscription.entitlements.contactMessaging) throw new Error("CONTACT_MESSAGING_REQUIRES_PROFESSIONAL");
-    const deliveryPolicy = applyAdvertisingDeliveryPolicy(recipient.campaign.content, currentSubscription.entitlements.advertisingEnabled);
+    logger.info("message.job.started", { ...baseLog, targetType, attempt: job.attemptsMade + 1 });
+    if ((targetType === "GROUP" && !recipient.group) || (targetType === "CONTACT" && !recipient.contact)) {
+      logger.warn("message.target_resolution_failed", { ...baseLog, reason: "MESSAGE_TARGET_MISSING", targetType });
+      throw new Error("MESSAGE_TARGET_MISSING");
+    }
+    if (jobData.companyId && jobData.companyId !== recipient.campaign.companyId) {
+      logger.error("message.job.company_mismatch", new Error("MESSAGE_JOB_COMPANY_MISMATCH"), { ...baseLog, actualCompanyId: recipient.campaign.companyId });
+      throw new Error("MESSAGE_JOB_COMPANY_MISMATCH");
+    }
+    if (jobData.campaignId && jobData.campaignId !== recipient.campaignId) {
+      logger.error("message.job.campaign_mismatch", new Error("MESSAGE_JOB_CAMPAIGN_MISMATCH"), { ...baseLog, actualCampaignId: recipient.campaignId });
+      throw new Error("MESSAGE_JOB_CAMPAIGN_MISMATCH");
+    }
+    const targetCompanyId = targetType === "CONTACT" ? recipient.contact!.companyId : recipient.group!.companyId;
+    if (targetCompanyId !== recipient.campaign.companyId || recipient.account.companyId !== recipient.campaign.companyId) {
+      logger.error("message.job.tenant_mismatch", new Error("MESSAGE_JOB_TENANT_MISMATCH"), {
+        ...baseLog,
+        targetType,
+        targetCompanyId,
+        accountCompanyId: recipient.account.companyId,
+        campaignCompanyId: recipient.campaign.companyId,
+      });
+      throw new Error("MESSAGE_JOB_TENANT_MISMATCH");
+    }
+    const targetUserId = targetType === "CONTACT" ? recipient.contact!.userId : recipient.group!.userId;
+    const targetAccountId = targetType === "CONTACT" ? recipient.contact!.accountId : recipient.group!.accountId;
+    if (targetUserId !== recipient.campaign.createdById || recipient.account.userId !== recipient.campaign.createdById || targetAccountId !== recipient.accountId) {
+      logger.error("message.job.ownership_mismatch", new Error("MESSAGE_JOB_OWNERSHIP_MISMATCH"), {
+        ...baseLog,
+        targetType,
+        targetUserId,
+        accountUserId: recipient.account.userId,
+        campaignCreatedById: recipient.campaign.createdById,
+        targetAccountId,
+        recipientAccountId: recipient.accountId,
+      });
+      throw new Error("MESSAGE_JOB_OWNERSHIP_MISMATCH");
+    }
+    const deliveryPolicy = await composeOutboundMessage({
+      companyId: recipient.campaign.companyId,
+      userId: recipient.campaign.createdById,
+      whatsappAccountId: recipient.accountId,
+      originalText: recipient.campaign.content,
+      messageType: targetType,
+      recipientId: recipient.id,
+      transportAdapter: recipient.account.provider,
+      existingRendering: {
+        renderedContent: recipient.renderedContent ?? "",
+        attributionApplied: recipient.attributionApplied,
+        attributionLocale: recipient.attributionLocale,
+        attributionVersion: recipient.attributionVersion,
+        effectivePlanCode: recipient.effectivePlanCode,
+        renderedAt: recipient.renderedAt,
+      },
+    });
+    if (targetType === "GROUP" && !deliveryPolicy.entitlements.groupMessaging) throw new Error("GROUP_MESSAGING_NOT_AVAILABLE");
+    if (targetType === "CONTACT" && !deliveryPolicy.entitlements.contactMessaging) throw new Error("CONTACT_MESSAGING_REQUIRES_PROFESSIONAL");
+    logger.info("message.outbound_payload.prepared", {
+      ...baseLog,
+      targetType,
+      whatsappAccountId: recipient.accountId,
+      planCode: deliveryPolicy.effectivePlanCode,
+      brandingRequired: deliveryPolicy.attributionApplied,
+      brandingLocale: deliveryPolicy.attributionLocale,
+      brandingVersion: deliveryPolicy.attributionVersion,
+      finalBodyLength: deliveryPolicy.finalBodyLength,
+      finalPayloadHash: deliveryPolicy.finalPayloadHash,
+      transportAdapter: recipient.account.provider,
+      reusedStableRendering: deliveryPolicy.reusedStableRendering,
+    });
+    if (!deliveryPolicy.reusedStableRendering) {
+      await traceMessageStage("worker.recipient.persist_rendering", baseLog, async () => {
+        await prisma.messageRecipient.update({
+          where: { id: recipient.id },
+          data: {
+            renderedContent: deliveryPolicy.content,
+            attributionApplied: deliveryPolicy.attributionApplied,
+            attributionLocale: deliveryPolicy.attributionLocale,
+            attributionVersion: deliveryPolicy.attributionVersion,
+            effectivePlanCode: deliveryPolicy.effectivePlanCode,
+            renderedAt: deliveryPolicy.renderedAt,
+          },
+        });
+      });
+    }
     const sendOutcome = targetType === "CONTACT"
       ? await (async () => {
           const target = await prisma.contact.findFirst({
@@ -528,83 +629,71 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
     if (recoverable) {
       await prisma.messageRecipient.update({
         where: { id: recipient.id },
-        data: { status: "RETRYING", failedAt: null, errorMessage: finalAttempt ? "WHATSAPP_RESTORING_CONNECTION" : "WHATSAPP_RETRYING_CONNECTION" },
+        data: {
+          status: finalAttempt ? "FAILED" : "RETRYING",
+          failedAt: finalAttempt ? new Date() : null,
+          errorMessage: finalAttempt ? "WHATSAPP_DELIVERY_RETRIES_EXHAUSTED" : "WHATSAPP_RETRYING_CONNECTION",
+        },
       });
-      const activePairing = await isPhonePairingActive(recipient.accountId).catch(() => false);
-      if (activePairing) {
-        logger.warn("message.reconnect.skipped_active_pairing", { ...baseLog, accountId: recipient.accountId, finalAttempt });
-      } else {
-        await prisma.whatsAppAccount.updateMany({
-          where: { id: recipient.accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
-          data: { status: "CONNECTING", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
-        });
-        const reconnectQueue = whatsappQueue();
-        try {
-          await reconnectQueue.add("reconnect", { action: "reconnect", accountId: recipient.accountId }, { jobId: `send-reconnect-${recipient.accountId}`, removeOnComplete: 50, removeOnFail: 100 });
-        } catch (queueError) {
-          logger.error("message.reconnect.enqueue_failed", queueError, { ...baseLog, accountId: recipient.accountId });
-        } finally {
-          await reconnectQueue.close().catch(() => undefined);
+      if (!finalAttempt) {
+        const activePairing = await isPhonePairingActive(recipient.accountId).catch(() => false);
+        if (activePairing) {
+          logger.warn("message.reconnect.skipped_active_pairing", { ...baseLog, accountId: recipient.accountId, finalAttempt });
+        } else {
+          await prisma.whatsAppAccount.updateMany({
+            where: { id: recipient.accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
+            data: { status: "CONNECTING", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
+          });
+          const reconnectQueue = whatsappQueue();
+          try {
+            await reconnectQueue.add("reconnect", { action: "reconnect", accountId: recipient.accountId }, { jobId: `send-reconnect-${recipient.accountId}`, removeOnComplete: 50, removeOnFail: 100 });
+          } catch (queueError) {
+            logger.error("message.reconnect.enqueue_failed", queueError, { ...baseLog, accountId: recipient.accountId });
+          } finally {
+            await reconnectQueue.close().catch(() => undefined);
+          }
         }
       }
       if (finalAttempt) {
-        const retryQueue = messageQueue();
-        const delay = Math.min(120_000, Number(process.env.WHATSAPP_RECOVERABLE_RETRY_DELAY_MS || 20_000));
+        const errorCode = "WHATSAPP_DELIVERY_RETRIES_EXHAUSTED";
+        logger.error("MESSAGE_FAILED", error, { ...baseLog, accountId: recipient.accountId, reason: errorCode });
+        const queue = deadLetterQueue();
         try {
-          const retryPayload: MessageRecipientJobPayload = { ...jobData, companyId: recipient.campaign.companyId, campaignId: recipient.campaignId, recipientId: recipient.id, correlationId, source: "recoverable-retry", recoveryRetry: true };
-          await retryQueue.add(
-            "send-recipient",
-            retryPayload,
-            {
-              jobId: `recoverable-recipient-${recipient.id}-${Date.now()}`,
-              delay,
-              ...WHATSAPP_MESSAGE_JOB_OPTIONS,
-            },
+          await queue.add(
+            "message-send-failed",
+            { ...jobData, companyId: recipient.campaign.companyId, campaignId: recipient.campaignId, recipientId: recipient.id, correlationId, errorMessage: errorCode, permanentFailure: false },
+            { jobId: `dead-letter-${recipient.id}` },
           );
-        } catch (queueError) {
-          logger.error("message.recoverable_retry.enqueue_failed", queueError, { ...baseLog, accountId: recipient.accountId });
         } finally {
-          await retryQueue.close().catch(() => undefined);
+          await queue.close().catch(() => undefined);
         }
+      } else {
+        logger.warn("MESSAGE_RETRY", { ...baseLog, accountId: recipient.accountId, finalAttempt });
+        logger.warn("message.send.retrying_connection", { ...baseLog, accountId: recipient.accountId, finalAttempt });
       }
-      logger.warn("MESSAGE_RETRY", { ...baseLog, accountId: recipient.accountId, finalAttempt });
-      logger.warn("message.send.retrying_connection", { ...baseLog, accountId: recipient.accountId, finalAttempt });
-      if (finalAttempt) return;
       throw error;
     }
+    const permanentFailure = isPermanentMessageDeliveryError(error);
     await prisma.messageRecipient.update({
       where: { id: recipient.id },
-      data: { status: finalAttempt ? "FAILED" : "PENDING", failedAt: finalAttempt ? new Date() : null, errorMessage },
+      data: { status: finalAttempt || permanentFailure ? "FAILED" : "PENDING", failedAt: finalAttempt || permanentFailure ? new Date() : null, errorMessage },
     });
-    if (finalAttempt) {
+    if (finalAttempt || permanentFailure) {
       logger.error("MESSAGE_FAILED", error, { ...baseLog, accountId: recipient.accountId });
       const queue = deadLetterQueue();
       try {
-        await queue.add("message-send-failed", { ...jobData, companyId: recipient.campaign.companyId, campaignId: recipient.campaignId, recipientId: recipient.id, correlationId, errorMessage }, { jobId: `dead-letter-${recipient.id}` });
+        await queue.add("message-send-failed", { ...jobData, companyId: recipient.campaign.companyId, campaignId: recipient.campaignId, recipientId: recipient.id, correlationId, errorMessage, permanentFailure }, { jobId: `dead-letter-${recipient.id}` });
       } finally {
         await queue.close();
       }
     }
-    logger.error("message.send.failed", error, { ...baseLog, accountId: recipient.accountId, finalAttempt });
+    logger.error("message.send.failed", error, { ...baseLog, accountId: recipient.accountId, finalAttempt, permanentFailure });
+    if (permanentFailure) return;
     throw error;
   } finally {
-    const counts = await prisma.messageRecipient.groupBy({ by: ["status"], where: { campaignId: recipient.campaignId }, _count: { _all: true } });
-    const count = (status: string) => counts.find((item) => item.status === status)?._count._all ?? 0;
-    const pending = count("PENDING") + count("SENDING") + count("QUEUED") + count("PROCESSING") + count("RETRYING");
-    const sent = count("SENT"), failed = count("FAILED"), canceled = count("CANCELED");
-    const nextStatus = pending ? "SENDING" : failed ? sent ? "PARTIALLY_COMPLETED" : "FAILED" : "COMPLETED";
-    const updatedCampaign = await prisma.messageCampaign.update({
-      where: { id: recipient.campaignId },
-      data: {
-        sentCount: sent,
-        failedCount: failed,
-        canceledCount: canceled,
-        status: nextStatus,
-      },
-      select: { id: true, companyId: true, createdById: true, title: true, status: true, sentCount: true, failedCount: true, totalRecipients: true },
-    });
-    if (!pending && ["COMPLETED", "PARTIALLY_COMPLETED", "FAILED"].includes(nextStatus) && recipient.campaign.status !== nextStatus) {
-      void createCampaignFinalNotification(updatedCampaign).catch((error) => logger.error("notification.campaign_final.failed", error, { campaignId: updatedCampaign.id, correlationId }));
+    const aggregate = await updateMessageCampaignDeliveryAggregate(recipient.campaignId, { correlationId, workerId });
+    if (aggregate && !aggregate.pending && ["COMPLETED", "PARTIALLY_COMPLETED", "FAILED"].includes(aggregate.nextStatus) && aggregate.previousStatus !== aggregate.nextStatus) {
+      void createCampaignFinalNotification(aggregate.campaign).catch((error) => logger.error("notification.campaign_final.failed", error, { campaignId: aggregate.campaign.id, correlationId }));
     }
   }
 }, {
@@ -751,36 +840,67 @@ async function processDeleteForEveryoneJob(job: Job<DeleteForEveryoneJob>) {
   }
 }
 
+let sessionRecoveryRunning = false;
 async function recoverSessions() {
-  const recoverableAccounts = await prisma.whatsAppAccount.findMany({
-    where: {
-      archivedAt: null,
-      OR: [
-        { status: { in: ["PENDING_QR", "QR_READY", "CONNECTING", "CONNECTED", "DISCONNECTED", "RECONNECT_REQUIRED"] } },
-        { sessions: { some: { sessionDataEncrypted: { not: null } } } },
-      ],
-    },
-    select: { id: true, pairingCode: true, pairingCodeExpiresAt: true, status: true, updatedAt: true, lastError: true },
-  });
-  for (const account of recoverableAccounts) {
-    if (hasActivePhonePairing(account)) {
-      logger.warn("whatsapp.session.recovery_skipped_active_pairing", { workerId, accountId: account.id, status: account.status });
-      continue;
-    }
-    if (!(await hasRestorableWhatsAppCredentials(account.id))) {
-      logger.warn("whatsapp.session.recovery_skipped_no_restorable_credentials", {
-        workerId,
-        accountId: account.id,
-        status: account.status,
-      });
-      await prisma.whatsAppAccount.updateMany({
-        where: { id: account.id, archivedAt: null, status: { in: ["CONNECTED", "CONNECTING", "DISCONNECTED"] } },
-        data: { status: "DISCONNECTED", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
-      });
-      continue;
-    }
-    await restoreWhatsAppSessionFromDatabase(account.id).catch((error) => logger.error("whatsapp.session.restore_failed", error, { accountId: account.id }));
-    void provider.reconnect(account.id).catch((error) => logger.error("whatsapp.session.recovery_bootstrap_failed", error, { accountId: account.id }));
+  if (sessionRecoveryRunning) {
+    logger.warn("whatsapp.session.recovery_sweep_skipped_running", { workerId });
+    return;
+  }
+  sessionRecoveryRunning = true;
+  try {
+    const recoverableAccounts = await prisma.whatsAppAccount.findMany({
+      where: {
+        archivedAt: null,
+        OR: [
+          { status: { in: ["PENDING_QR", "QR_READY", "CONNECTING", "CONNECTED", "DISCONNECTED", "RECONNECT_REQUIRED"] } },
+          { sessions: { some: { sessionDataEncrypted: { not: null } } } },
+        ],
+      },
+      select: { id: true, pairingCode: true, pairingCodeExpiresAt: true, status: true, updatedAt: true, lastError: true },
+      orderBy: { updatedAt: "asc" },
+    });
+    let nextAccountIndex = 0;
+    const recoverNextAccount = async () => {
+      while (nextAccountIndex < recoverableAccounts.length) {
+        const account = recoverableAccounts[nextAccountIndex++];
+        if (!account) return;
+        try {
+          if (hasActivePhonePairing(account)) {
+            logger.warn("whatsapp.session.recovery_skipped_active_pairing", { workerId, accountId: account.id, status: account.status });
+            continue;
+          }
+          if (provider.hasLiveSocket(account.id)) {
+            logger.debug("whatsapp.session.recovery_skipped_live_socket", { workerId, accountId: account.id, status: account.status });
+            continue;
+          }
+          const restored = await restoreWhatsAppSessionFromDatabase(account.id).catch((error) => {
+            logger.error("whatsapp.session.restore_failed", error, { accountId: account.id });
+            return false;
+          });
+          if (!restored) {
+            logger.warn("whatsapp.session.recovery_skipped_no_restorable_credentials", {
+              workerId,
+              accountId: account.id,
+              status: account.status,
+            });
+            await prisma.whatsAppAccount.updateMany({
+              where: { id: account.id, archivedAt: null, status: { in: ["CONNECTED", "CONNECTING", "DISCONNECTED"] } },
+              data: { status: "DISCONNECTED", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
+            });
+            continue;
+          }
+          await provider.reconnect(account.id, { credentialsVerified: true, sessionRestored: true });
+        } catch (error) {
+          logger.error("whatsapp.session.recovery_bootstrap_failed", error, { accountId: account.id });
+        }
+      }
+    };
+    await Promise.all(Array.from(
+      { length: Math.min(sessionRecoveryConcurrency, recoverableAccounts.length) },
+      () => recoverNextAccount(),
+    ));
+  } finally {
+    sessionRecoveryRunning = false;
   }
 }
 void recoverSessions().catch((error) => logger.error("whatsapp.session.recovery_bootstrap_failed", error, { workerId }));

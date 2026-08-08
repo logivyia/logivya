@@ -38,6 +38,8 @@ const mobileQrRoute = read("src/app/api/mobile/whatsapp/accounts/qr/route.ts");
 const mobilePhoneCodeRoute = read("src/app/api/mobile/whatsapp/accounts/phone-code/route.ts");
 const platformRoute = read("src/app/api/platform/route.ts");
 const mobileGroupsRoute = read("src/app/api/mobile/groups/route.ts");
+const mobileResponse = read("src/server/mobile/response.ts");
+const mobileApiClient = read("apps/mobile/src/api/client.ts");
 
 assertIncludes(webCampaignRoute, "createMessageDeliveryCampaign", "web campaign route");
 assertIncludes(mobileSendRoute, "createMobileMessageCampaign", "mobile send route");
@@ -46,6 +48,8 @@ assertIncludes(mobileScheduleRoute, "createMobileMessageCampaign", "mobile sched
 assertIncludes(deliveryPipeline, 'traceMessageStage("auth.permission"', "delivery tracing");
 assertIncludes(deliveryPipeline, 'traceMessageStage("subscription.message_access"', "delivery tracing");
 assertIncludes(deliveryPipeline, 'traceMessageStage("queue.recipients.enqueue"', "delivery tracing");
+assertIncludes(deliveryPipeline, 'traceMessageStage("queue.delivery_readiness"', "delivery readiness tracing");
+assertIncludes(deliveryPipeline, "assertMessageDeliveryQueueReady", "delivery queue consumer guard");
 assertIncludes(deliveryPipeline, "message.queue.recipient.enqueued", "queue observability");
 assertIncludes(deliveryPipeline, "subscriptionAccess.canSendTargets", "shared subscription access");
 assertIncludes(deliveryPipeline, "resolveSendableWhatsAppGroups", "shared group resolver");
@@ -69,7 +73,7 @@ assertIncludes(provider, "whatsapp.qr.transient_close_retry_scheduled", "QR mode
 assertIncludes(provider, "whatsapp.qr.error_after_ready_ignored", "QR mode must preserve QR_READY after late handler errors");
 assertIncludes(provider, "whatsapp.pairing.stale_socket_close_ignored", "phone pairing must ignore stale socket closes after a newer code request");
 assertIncludes(provider, "whatsapp.pairing.same_code_refresh_scheduled", "phone pairing must refresh the same visible code after socket closes");
-assertIncludes(provider, "activeSocket.requestPairingCode(phoneNumber, pairingCode)", "phone pairing refresh must re-register the same visible code with Baileys");
+assertIncludes(provider, "activeSocket.requestPairingCode(normalizedPhoneNumber, pairingCode)", "phone pairing refresh must re-register the same visible code with Baileys");
 assertIncludes(provider, "preserveUnregisteredPairingAuth", "phone pairing retries must preserve unregistered auth instead of creating a new companion identity each time");
 assertIncludes(provider, "whatsapp.pairing.unregistered_auth_preserved", "phone pairing must log preserved unregistered auth for production diagnostics");
 assertIncludes(provider, "Browsers.ubuntu", "phone pairing must use Baileys' canonical WEB_BROWSER identity by default");
@@ -100,10 +104,16 @@ assertIncludes(whatsAppRequestGuards, "const redisClient = await readyClient()",
 
 assertIncludes(worker, 'traceMessageStage("worker.target.resolve"', "worker target tracing");
 assertIncludes(worker, 'traceMessageStage("worker.baileys.send"', "worker send tracing");
+assertIncludes(worker, "message.target_resolution_failed", "worker must fail missing targets after claiming recipients");
+assertIncludes(worker, "isPermanentMessageDeliveryError", "worker must not retry permanent target or ownership failures");
+assertIncludes(worker, "updateMessageCampaignDeliveryAggregate", "worker must aggregate delivery state after success and failure");
 assertIncludes(worker, "MESSAGE_JOB_TENANT_MISMATCH", "worker tenant protection");
 assertIncludes(worker, "MESSAGE_JOB_OWNERSHIP_MISMATCH", "worker user/account ownership protection");
 assertIncludes(worker, "message.recurring.group_resolution_failed", "recurring ownership revalidation");
-assertIncludes(worker, "WHATSAPP_RESTORING_CONNECTION", "worker recoverable retry");
+assertIncludes(worker, "WHATSAPP_DELIVERY_RETRIES_EXHAUSTED", "worker bounded retry exhaustion");
+assertNotMatches(worker, /recoverable-recipient-\$\{recipient\.id\}-\$\{Date\.now\(\)\}/, "worker unbounded retry fan-out");
+assertIncludes(provider, 'throw new Error("WHATSAPP_CREDENTIALS_MISSING")', "missing credentials must require fresh pairing");
+assertIncludes(provider, 'throw new Error("WHATSAPP_LOGGED_OUT")', "logged-out accounts must not enter reconnect retry loops");
 assertIncludes(worker, 'action === "pairing-refresh"', "worker must support live refresh of reused pairing codes");
 assertIncludes(pairingFlow, "refreshRequestedAt", "pairing flow must wait for worker refresh before returning reused codes");
 assertIncludes(pairingFlow, 'action: "pairing-refresh"', "pairing flow must enqueue refresh jobs for reused pairing codes");
@@ -115,5 +125,11 @@ assertIncludes(mobileQrRoute, 'status: "CONNECTED"', "mobile QR connected-accoun
 assertIncludes(mobilePhoneCodeRoute, 'status: "CONNECTED"', "mobile phone-code connected-account reuse");
 assertIncludes(platformRoute, "isRecoverableWhatsAppStatus", "web platform group filtering");
 assertIncludes(mobileGroupsRoute, "isRecoverableWhatsAppStatus", "mobile group filtering");
+assertIncludes(mobileResponse, "WHATSAPP_WORKER_UNAVAILABLE", "mobile worker-unavailable response");
+assertIncludes(mobileApiClient, "whatsappServiceUnavailableError", "mobile worker-unavailable user message");
+assertIncludes(worker, "classifyWorkerProcessError", "worker process rejection classification");
+assertIncludes(worker, "WORKER_UNHANDLED_REJECTION_ISOLATED", "recoverable worker rejection containment");
+assertIncludes(worker, "fatalShutdownRequested", "fatal worker shutdown deduplication");
+assertIncludes(worker, "recoverableRejectionAlertAt", "recoverable rejection alert throttling");
 
 console.info("message delivery root-cause regression checks passed");
