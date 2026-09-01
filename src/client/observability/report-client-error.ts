@@ -1,3 +1,5 @@
+import { isClientDiagnosticsAllowed } from "@/lib/client-observability-consent";
+
 type ClientErrorReport = {
   digest?: string;
   name?: string;
@@ -6,6 +8,7 @@ type ClientErrorReport = {
 
 export function reportClientError(report: ClientErrorReport) {
   if (typeof window === "undefined") return;
+  if (!isClientDiagnosticsAllowed()) return;
   const payload = {
     ...report,
     route: window.location.pathname,

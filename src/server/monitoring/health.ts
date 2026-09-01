@@ -294,18 +294,14 @@ async function checkWhatsAppHealth(workerState: HealthState): Promise<ServiceHea
         ? "DEGRADED"
         : totalAccounts > 0 && connectedAccounts === 0
           ? "UNAVAILABLE"
-          : accountsRequiringAttention > 0
-            ? "DEGRADED"
-        : totalDeliveries >= 10 && failureRate >= 20
+          : totalDeliveries >= 10 && failureRate >= 20
           ? "DEGRADED"
           : "HEALTHY";
     const whatsappErrorCode = workerState !== "HEALTHY"
       ? "WHATSAPP_WORKER_NOT_HEALTHY"
       : totalAccounts > 0 && connectedAccounts === 0
         ? "WHATSAPP_NO_CONNECTED_ACCOUNTS"
-        : accountsRequiringAttention > 0
-          ? "WHATSAPP_ACCOUNTS_REQUIRE_ATTENTION"
-          : totalDeliveries >= 10 && failureRate >= 20
+        : totalDeliveries >= 10 && failureRate >= 20
             ? "WHATSAPP_DELIVERY_FAILURE_RATE_HIGH"
             : null;
     return service({
@@ -322,6 +318,7 @@ async function checkWhatsAppHealth(workerState: HealthState): Promise<ServiceHea
         reconnectRequiredAccounts,
         failedAccounts,
         disconnectedAccounts,
+        accountsRequiringAttention,
         restoredLast24h: restored,
         sentLast24h: sent,
         failedLast24h: failed,

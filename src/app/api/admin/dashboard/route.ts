@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { adminSecurityEventPrivacyWhere } from "@/server/admin/message-privacy";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { prisma } from "@/server/db";
 
@@ -33,7 +34,13 @@ export async function GET(request: Request) {
       prisma.company.groupBy({ by: ["securityStatus"], _count: { _all: true } }),
       prisma.user.groupBy({ by: ["status"], _count: { _all: true } }),
       prisma.subscription.groupBy({ by: ["status"], _count: { _all: true } }),
-      prisma.subscription.count({ where: { status: { in: ["MANUAL_PENDING", "PAYMENT_PENDING"] } } }),
+      prisma.subscriptionRequest.count({
+        where: {
+          status: {
+            in: ["AWAITING_PAYMENT", "UNDER_REVIEW", "CLARIFICATION_REQUIRED"],
+          },
+        },
+      }),
       prisma.subscription.count({
         where: {
           status: "ACTIVE",
@@ -52,11 +59,16 @@ export async function GET(request: Request) {
       prisma.payment.groupBy({ by: ["status"], _count: { _all: true } }),
       prisma.whatsAppAccount.groupBy({ by: ["status"], where: { archivedAt: null }, _count: { _all: true } }),
       prisma.messageCampaign.groupBy({ by: ["status"], where: { deletedAt: null }, _count: { _all: true } }),
-      prisma.messageRecipient.count({ where: { status: "SENT" } }),
+      prisma.messageRecipient.count({ where: { status: { in: ["SENT", "DELIVERED"] } } }),
       prisma.supportTicket.groupBy({ by: ["status"], _count: { _all: true } }),
       prisma.supportTicket.count({ where: { priority: "URGENT", status: { notIn: ["RESOLVED", "CLOSED"] } } }),
       prisma.securityEvent.count({ where: { severity: "CRITICAL", resolvedAt: null } }),
-      prisma.securityEvent.findMany({ where: { severity: { in: ["HIGH", "CRITICAL"] } }, orderBy: { createdAt: "desc" }, take: 5 }),
+      prisma.securityEvent.findMany({
+        where: adminSecurityEventPrivacyWhere({ severity: { in: ["HIGH", "CRITICAL"] } }),
+        select: { id: true, severity: true, type: true, result: true, status: true, errorCode: true, source: true, createdAt: true, resolvedAt: true },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
       prisma.supportTicket.findMany({ orderBy: { lastMessageAt: "desc" }, take: 5 }),
       prisma.subscriptionEvent.findMany({ orderBy: { createdAt: "desc" }, take: 5 }),
       prisma.adminAccessLog.findMany({ orderBy: { createdAt: "desc" }, take: 5, select: { id: true, path: true, method: true, permission: true, createdAt: true } }),

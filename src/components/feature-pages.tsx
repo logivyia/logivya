@@ -8,6 +8,7 @@ import {
   CalendarClock,
   Check,
   CircleAlert,
+  ContactRound,
   FileText,
   Filter,
   LoaderCircle,
@@ -198,9 +199,18 @@ function usePlatform(poll = false) {
   const [data, setData] = useState<PlatformData | null>(null);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
-    const r = await fetch("/api/platform", { cache: "no-store" });
-    if (r.ok) setData(await r.json());
-    else setError("errors.generic");
+    try {
+      const r = await fetch("/api/platform", { cache: "no-store" });
+      if (r.status === 401) {
+        window.location.replace("/login");
+        return;
+      }
+      if (!r.ok) throw new Error("PLATFORM_BOOTSTRAP_FAILED");
+      setData(await r.json());
+      setError("");
+    } catch {
+      setError("errors.generic");
+    }
   }, []);
   useEffect(() => {
     void load();
@@ -223,8 +233,8 @@ async function action(url: string, body: unknown, t: ReturnType<typeof useI18n>[
 
 export function DashboardPage() {
   const { t } = useI18n();
-  const { data } = usePlatform(true);
-  if (!data) return <Loading />;
+  const { data, error, reload } = usePlatform(true);
+  if (!data) return error ? <PlatformLoadError onRetry={reload} /> : <Loading />;
   const active = data.accounts.filter((a) => !a.archivedAt),
     connected = active.filter((a) => a.status === "CONNECTED").length;
   const sent = data.campaigns.reduce((n, c) => n + c.sentCount, 0);
@@ -272,11 +282,13 @@ export function DashboardPage() {
 
 export function AccountsPage() {
   const { t, locale } = useI18n();
-  const { data, reload } = usePlatform(true);
+  const { data, reload, error: platformError } = usePlatform(true);
   const [connecting, setConnecting] = useState<Account | null>(null);
   const [error, setError] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [method, setMethod] = useState<"QR" | "CODE">("QR");
+  const [directoryRefresh, setDirectoryRefresh] = useState("");
+  const [directoryMessage, setDirectoryMessage] = useState("");
   async function add() {
     const label = window.prompt(t("accounts.labelPrompt"));
     if (!label) return;
@@ -307,6 +319,25 @@ export function AccountsPage() {
   async function connect(account: Account) {
     setConnecting(account);
     await run(account.id, "reconnect");
+  }
+  async function refreshDirectory(accountId: string, kind: "groups" | "contacts") {
+    const operation = `${accountId}:${kind}`;
+    setDirectoryRefresh(operation);
+    setDirectoryMessage("");
+    setError("");
+    try {
+      if (kind === "groups") {
+        await action(`/api/accounts/whatsapp/${encodeURIComponent(accountId)}/sync-groups`, {}, t);
+      } else {
+        await action("/api/whatsapp/contacts/sync-current", { accountId }, t);
+      }
+      setDirectoryMessage(t(kind === "groups" ? "accounts.groupsRefreshStarted" : "accounts.contactsRefreshStarted"));
+      await reload();
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : t("errors.generic"));
+    } finally {
+      setDirectoryRefresh("");
+    }
   }
   const connectingId = connecting?.id;
   useEffect(() => {
@@ -362,6 +393,11 @@ export function AccountsPage() {
           {error}
         </p>
       )}
+      {directoryMessage && (
+        <p role="status" className="mb-4 rounded-xl border border-success/30 bg-success-soft p-3 text-sm text-success-foreground">
+          {directoryMessage}
+        </p>
+      )}
       {connecting && (
         <Card className="mb-6 flex flex-col items-center p-8 text-center">
           <button className="ms-auto" onClick={() => setConnecting(null)}>
@@ -410,7 +446,7 @@ export function AccountsPage() {
         </Card>
       )}
       {!data ? (
-        <Loading />
+        platformError ? <PlatformLoadError onRetry={reload} /> : <Loading />
       ) : !accounts.length ? (
         <Empty text={t("accounts.empty")} />
       ) : (
@@ -449,6 +485,24 @@ export function AccountsPage() {
                   label={t("accounts.lastSync")}
                 />
               </div>
+              {a.status === "CONNECTED" ? <div className="mb-3 grid gap-2 sm:grid-cols-2">
+                <button
+                  className={ghost}
+                  disabled={Boolean(directoryRefresh)}
+                  onClick={() => void refreshDirectory(a.id, "groups")}
+                >
+                  <UsersRound className={cn("size-4", directoryRefresh === `${a.id}:groups` && "animate-pulse")} />
+                  {t("accounts.refreshGroups")}
+                </button>
+                <button
+                  className={ghost}
+                  disabled={Boolean(directoryRefresh)}
+                  onClick={() => void refreshDirectory(a.id, "contacts")}
+                >
+                  <ContactRound className={cn("size-4", directoryRefresh === `${a.id}:contacts` && "animate-pulse")} />
+                  {t("accounts.refreshContacts")}
+                </button>
+              </div> : null}
               <div className="grid grid-cols-3 gap-2">
                 <button
                   className={ghost}
@@ -457,6 +511,7 @@ export function AccountsPage() {
                   }
                 >
                   <RefreshCw className="size-4" />
+                  <span className="sr-only">{a.status === "CONNECTED" ? t("accounts.checkConnection") : t("accounts.reconnect")}</span>
                 </button>
                 <button
                   className={ghost}
@@ -492,7 +547,7 @@ function Mini({ value, label }: { value: string | number; label: string }) {
 
 export function GroupsPage() {
   const { t } = useI18n();
-  const { data, reload } = usePlatform(true);
+  const { data, reload, error: platformError } = usePlatform(true);
   const [selected, setSelected] = useState<string[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState("");
@@ -555,7 +610,7 @@ export function GroupsPage() {
       )}
       <Toolbar placeholder={t("groups.search")} />
       {!data ? (
-        <Loading />
+        platformError ? <PlatformLoadError onRetry={reload} /> : <Loading />
       ) : !data.groups.length ? (
         <Empty
           text={data.currentWhatsAppAccount ? t("groups.emptyAccount") : t("accounts.connectRequired")}
@@ -635,7 +690,7 @@ export function GroupsPage() {
 
 export function CategoriesPage() {
   const { t } = useI18n();
-  const { data, reload } = usePlatform();
+  const { data, reload, error: platformError } = usePlatform();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -699,7 +754,7 @@ export function CategoriesPage() {
         </Card>
       )}
       {!data ? (
-        <Loading />
+        platformError ? <PlatformLoadError onRetry={reload} /> : <Loading />
       ) : !data.categories.length ? (
         <Empty text={t("categories.empty")} />
       ) : (
@@ -727,7 +782,7 @@ export function CategoriesPage() {
 
 export function SendMessagePage() {
   const { t } = useI18n();
-  const { data } = usePlatform();
+  const { data, error: platformError, reload } = usePlatform();
   const [text, setText] = useState("");
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -788,6 +843,7 @@ export function SendMessagePage() {
   }
   return (
     <>
+      {platformError && !data ? <PlatformLoadError onRetry={reload} /> : null}
       <Header
         eyebrow={t("composer.eyebrow")}
         title={t("composer.title")}
@@ -940,7 +996,7 @@ export function SendMessagePage() {
 
 export function HistoryPage() {
   const { t } = useI18n();
-  const { data } = usePlatform(true);
+  const { data, error: platformError, reload } = usePlatform(true);
   const [showDeleted, setShowDeleted] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -991,7 +1047,7 @@ export function HistoryPage() {
       />
       <Toolbar placeholder={t("history.search")} />
       {!data || loading ? (
-        <Loading />
+        platformError && !data ? <PlatformLoadError onRetry={reload} /> : <Loading />
       ) : (
         <Card className="overflow-hidden">
           <CampaignTable
@@ -1156,6 +1212,22 @@ function Loading() {
   return (
     <div className="grid min-h-52 place-items-center">
       <LoaderCircle className="size-7 animate-spin text-primary" />
+    </div>
+  );
+}
+
+function PlatformLoadError({ onRetry }: { onRetry: () => Promise<void> }) {
+  const { t } = useI18n();
+  return (
+    <div className="grid min-h-52 place-items-center px-4 text-center">
+      <div>
+        <CircleAlert className="mx-auto mb-3 size-7 text-danger-foreground" />
+        <p className="text-sm text-muted">{t("errors.generic")}</p>
+        <button className={cn(ghost, "mt-4")} onClick={() => void onRetry()}>
+          <RefreshCw className="size-4" />
+          {t("errors.tryAgain")}
+        </button>
+      </div>
     </div>
   );
 }

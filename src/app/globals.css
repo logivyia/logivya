@@ -147,3 +147,12 @@ input:disabled, textarea:disabled, select:disabled, button:disabled {
 .panel { background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); box-shadow: var(--shadow-soft); backdrop-filter: blur(18px); }
 .soft-grid { background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 44px 44px; }
 .auth-surface { background: radial-gradient(circle at 10% 10%, #fff1e7, transparent 30rem), #f8fafc; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

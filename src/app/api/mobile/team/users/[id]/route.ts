@@ -1,13 +1,18 @@
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
-import { deleteCompanyUser, updateCompanyUser, updateCompanyUserSchema } from "@/server/team/company-users";
+import {
+  deleteCompanyUser,
+  rejectCompanyUserRoleMutation,
+  updateCompanyUser,
+  updateCompanyUserSchema,
+} from "@/server/team/company-users";
 
 function teamError(error: unknown) {
   if (error instanceof Error) {
     if (error.message === "FORBIDDEN") return mobileError("FORBIDDEN", "Kullanici yonetimi icin yetkiniz yok.", { status: 403 });
     if (error.message === "NOT_FOUND") return mobileError("NOT_FOUND", "Kullanici bulunamadi.", { status: 404 });
     if (error.message === "SEAT_LIMIT_REACHED") {
-      return mobileError("SEAT_LIMIT_REACHED", "Planınızdaki kullanılabilir ekip koltuğu dolu.", {
+      return mobileError("SEAT_LIMIT_REACHED", "Planınızdaki kullanılabilir hesap kapasitesi dolu.", {
         status: 409,
         details: { limit: (error as Error & { limit?: number }).limit },
       });
@@ -21,7 +26,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const { company, membership, user } = await requireMobileAuth(request);
-    const parsed = updateCompanyUserSchema.safeParse(await request.json());
+    const body: unknown = await request.json();
+    await rejectCompanyUserRoleMutation(request, {
+      companyId: company.id,
+      actorUserId: user.id,
+      actorRole: membership.role,
+    }, id, body);
+    const parsed = updateCompanyUserSchema.safeParse(body);
     if (!parsed.success) return mobileValidationError(parsed.error);
 
     await updateCompanyUser(request, {

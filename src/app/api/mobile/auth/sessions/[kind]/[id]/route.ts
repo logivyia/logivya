@@ -14,9 +14,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ k
   try {
     const context = await requireMobileAuth(request);
     const parsed = paramsSchema.safeParse(await params);
-    if (!parsed.success) return mobileError("VALIDATION_ERROR", "Gecersiz oturum.", { status: 400 });
+    if (!parsed.success) return mobileError("VALIDATION_ERROR", "Geçersiz oturum.", { status: 400 });
     const revoked = await revokeUserSecuritySession(context.user.id, parsed.data.kind, parsed.data.id);
-    if (!revoked) return mobileError("NOT_FOUND", "Oturum bulunamadi.", { status: 404 });
+    if (!revoked) return mobileError("NOT_FOUND", "Oturum bulunamadı.", { status: 404 });
     const currentRevoked = parsed.data.kind === "MOBILE" && parsed.data.id === context.sessionId;
     await writeAuditLog(request, {
       companyId: context.company.id,
@@ -28,6 +28,6 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ k
     });
     return mobileSuccess({ ok: true, currentRevoked });
   } catch (error) {
-    return mobileSafeError(error, "Oturum kapatilamadi.");
+    return mobileSafeError(error, "Oturum kapatılamadı.");
   }
 }

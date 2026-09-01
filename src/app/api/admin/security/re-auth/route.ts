@@ -10,7 +10,7 @@ const schema = z.object({ password: z.string().min(1).max(256) });
 export async function POST(request: Request) {
   const id = requestId(request);
   try {
-    const context = await requirePlatformAdmin("admin.security.read", request);
+    const context = await requirePlatformAdmin("admin.dashboard.read", request);
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "VALIDATION_ERROR", requestId: id }, { status: 400 });
     const valid = await verifyPassword(context.user.passwordHash, parsed.data.password, process.env.PASSWORD_PEPPER ?? "");
@@ -19,7 +19,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "INVALID_CREDENTIALS", requestId: id }, { status: 401 });
     }
     await prisma.$transaction([
-      prisma.platformAdmin.update({ where: { userId: context.user.id }, data: { lastElevatedAt: new Date() } }),
+      prisma.platformAdmin.upsert({
+        where: { userId: context.user.id },
+        create: {
+          userId: context.user.id,
+          role: context.platformAdmin.role,
+          permissions: context.platformAdmin.permissions,
+          isActive: true,
+          requiresMfa: context.platformAdmin.requiresMfa,
+          lastElevatedAt: new Date(),
+        },
+        update: { lastElevatedAt: new Date() },
+      }),
       prisma.adminSessionEvent.create({ data: { userId: context.user.id, type: "ADMIN_REAUTH_SUCCEEDED", requestId: id, ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(), userAgent: request.headers.get("user-agent") } }),
     ]);
     return NextResponse.json({ ok: true, requestId: id });

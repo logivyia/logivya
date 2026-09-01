@@ -14,8 +14,9 @@ export const ADMIN_PERMISSIONS = [
   "admin.payments.confirm",
   "admin.whatsapp.read",
   "admin.whatsapp.disconnect",
-  "admin.campaigns.read",
-  "admin.campaigns.delete",
+  "admin.whatsappIngestion.read",
+  "admin.whatsappIngestion.update",
+  "admin.campaignMetrics.read",
   "admin.support.read",
   "admin.support.update",
   "admin.security.read",
@@ -47,6 +48,8 @@ const LEGACY_PERMISSION_ALIASES: Record<string, AdminPermission> = {
   "privacy:manage": "admin.privacy.update",
   "operations:read": "admin.dashboard.read",
   "operations:manage": "admin.settings.update",
+  "admin.campaigns.read": "admin.campaignMetrics.read",
+  "admin.campaigns.delete": "admin.campaignMetrics.read",
 };
 
 const ROLE_PERMISSIONS: Partial<Record<PlatformAdminRole, readonly AdminPermission[]>> = {
@@ -78,7 +81,7 @@ export function isCriticalAdminPermission(permission: string) {
     "admin.subscriptions.reject",
     "admin.payments.confirm",
     "admin.whatsapp.disconnect",
-    "admin.campaigns.delete",
+    "admin.whatsappIngestion.update",
     "admin.settings.update",
     "admin.backups.execute",
     "admin.disasterRecovery.execute",

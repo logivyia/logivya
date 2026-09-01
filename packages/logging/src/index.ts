@@ -149,7 +149,7 @@ export type SerializedLogError = {
 };
 
 const SECRET_KEY = /(?:password|passcode|passwordhash|passwordconfirmation|token|authorization|cookie|csrf|secret|api[-_]?key|private[-_]?key|session|credential|pairing[-_]?code|totp|recovery[-_]?code|card[-_]?number|cvv|cvc|database[-_]?url|connection[-_]?string)/i;
-const PRIVATE_CONTENT_KEY = /(?:message[-_]?(?:body|content|key)|externalMessageId|support[-_]?content|ticket[-_]?content|description|attachment[-_]?content|raw[-_]?body|payload|contact[-_]?list|group[-_]?list|qr(?:code|data)?|jid|external(?:group|contact)id|device(?:id|fingerprint))/i;
+const PRIVATE_CONTENT_KEY = /(?:message[-_]?(?:body|content|key)|externalMessageId|support[-_]?content|ticket[-_]?content|description|attachment[-_]?content|raw[-_]?body|payload|contact[-_]?list|group[-_]?list|qr(?:code|data)?|jid|external(?:group|contact)id|device(?:id|fingerprint)|^(?:content|body|text|caption|preview|message|messageId|campaignId|recipientId|recipientPhone|recipientJid|contactId|contactName|groupId|groupName|groupJid|targetJid)$)/i;
 const EMAIL_KEY = /email(?:address)?$/i;
 const PHONE_KEY = /(?:phone|phoneNumber|mobileNumber)$/i;
 const IP_KEY = /(?:^|[-_])ip(?:Address)?$/i;
@@ -157,6 +157,8 @@ const USER_AGENT_KEY = /userAgent/i;
 const URL_KEY = /(?:^|[-_])(?:url|uri|link)$/i;
 const SECRET_VALUE = /TEST_(?:PASSWORD|ACCESS_TOKEN|TOTP|WHATSAPP_CREDS)_SECRET|Bearer\s+[^\s,;]+|(?:postgres(?:ql)?|redis):\/\/[^\s]+|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/gi;
 const EMAIL_VALUE = /\b([A-Z0-9._%+-]+)@([A-Z0-9.-]+\.[A-Z]{2,})\b/gi;
+const WHATSAPP_JID_VALUE = /\b\d{7,20}@(s\.whatsapp\.net|g\.us|lid)\b/gi;
+const PHONE_VALUE = /(?:^|[^A-Za-z0-9])((?:\+|00)?\d[\d\s().-]{6,}\d)(?=$|[^A-Za-z0-9])/g;
 const MAX_DEPTH = 8;
 const MAX_KEYS = 100;
 const MAX_ARRAY_ITEMS = 50;
@@ -212,7 +214,15 @@ export function summarizeUserAgent(value: string | null | undefined) {
 function sanitizeString(value: string) {
   return value
     .replace(SECRET_VALUE, "[REDACTED]")
+    .replace(WHATSAPP_JID_VALUE, "[REDACTED_JID]")
     .replace(EMAIL_VALUE, (_match, local: string, domain: string) => `${local.slice(0, 1).toLowerCase()}***@${domain.toLowerCase()}`)
+    .replace(PHONE_VALUE, (match, phone: string) => {
+      const digits = phone.replace(/\D/g, "");
+      const explicitlyInternational = phone.startsWith("+") || phone.startsWith("00");
+      return explicitlyInternational || digits.length >= 10
+        ? match.replace(phone, "[REDACTED_PHONE]")
+        : match;
+    })
     .slice(0, MAX_STRING_LENGTH);
 }
 
@@ -235,7 +245,7 @@ function sanitizeUnknown(value: unknown, key: string | undefined, depth: number,
   if (typeof value === "bigint") return value.toString();
   if (typeof value === "string") {
     if (key && EMAIL_KEY.test(key)) return maskEmail(value);
-    if (key && PHONE_KEY.test(key)) return maskPhone(value);
+    if (key && PHONE_KEY.test(key)) return "[REDACTED_PHONE]";
     if (key && IP_KEY.test(key)) return maskIpAddress(value);
     if (key && USER_AGENT_KEY.test(key)) return summarizeUserAgent(value);
     if (key && URL_KEY.test(key)) return sanitizeUrl(value);

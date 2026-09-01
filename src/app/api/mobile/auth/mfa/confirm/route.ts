@@ -19,11 +19,11 @@ export async function POST(request: Request) {
     if (!parsed.success) return mobileValidationError(parsed.error);
     await enforceOperationRateLimit({ scope: "mobile-mfa-enrollment-verify", subject: context.user.id, maxAttempts: 7, windowMs: 10 * 60_000, request });
     const verification = await verifyPendingMfaEnrollment({ userId: context.user.id, setupToken: parsed.data.setupToken, code: parsed.data.code });
-    if (!verification.ok) return mobileError(verification.reason, "Dogrulama kodu gecersiz.", { status: verification.reason === "TOO_MANY_TOTP_ATTEMPTS" ? 429 : 401 });
+    if (!verification.ok) return mobileError(verification.reason, "Doğrulama kodu geçersiz.", { status: verification.reason === "TOO_MANY_TOTP_ATTEMPTS" ? 429 : 401 });
     await prisma.mobileDeviceSession.update({ where: { id: context.sessionId }, data: { mfaVerifiedAt: new Date() } });
     await revokeUserSecuritySessions(context.user.id, { mobileSessionId: context.sessionId });
-    await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_ENABLED", message: "Iki adimli dogrulama mobil uygulamadan etkinlestirildi." });
-    await notifyMfaSecurityChange({ userId: context.user.id, companyId: context.company.id, type: "security.mfa_enabled", title: "Iki adimli dogrulama etkin", message: "Authenticator dogrulamasi hesabinizi korumak icin etkinlestirildi." });
+    await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_ENABLED", message: "İki adımlı doğrulama mobil uygulamadan etkinleştirildi." });
+    await notifyMfaSecurityChange({ userId: context.user.id, companyId: context.company.id, type: "security.mfa_enabled", title: "İki adımlı doğrulama etkin", message: "Authenticator doğrulaması hesabınızı korumak için etkinleştirildi." });
     return mobileSuccess({ ok: true, recoveryCodes: verification.recoveryCodes });
   } catch (error) {
     return mobileSafeError(error);

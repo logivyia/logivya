@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/server/auth/permissions";
 import { requireApiSession } from "@/server/auth/session";
@@ -46,11 +47,13 @@ export async function POST(request: Request) {
     }
 
     accountId = account.id;
-    const job = await enqueueWhatsAppJob("connect", { action: "connect", accountId }, { jobId: `qr-${accountId}-${Date.now()}` });
+    const qrRequestedAt = new Date();
+    const qrCorrelationId = randomUUID();
+    const job = await enqueueWhatsAppJob("connect", { action: "connect", accountId, correlationId: qrCorrelationId }, { jobId: `qr-${accountId}-${Date.now()}` });
     logger.info("whatsapp.connect.job.enqueued", { accountId, jobId: job.id, action: "connect", mode: "QR" });
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.qr.requested", entityType: "WhatsAppAccount", entityId: accountId });
     try {
-      const ready = await waitForAccountQr(accountId);
+      const ready = await waitForAccountQr(accountId, { updatedAfter: qrRequestedAt, correlationId: qrCorrelationId });
       return NextResponse.json({ ok: true, accountId, status: ready.status, qr: ready.qrCode, qrCode: ready.qrCode, expiresAt: ready.qrExpiresAt, qrExpiresAt: ready.qrExpiresAt }, { status: 201 });
     } catch (waitError) {
       if (!isWhatsAppWaitTimeout(waitError)) throw waitError;
@@ -60,10 +63,10 @@ export async function POST(request: Request) {
         pending: true,
         accountId,
         status: pending?.status || AccountStatus.PENDING_QR,
-        qr: pending?.qrCode || null,
-        qrCode: pending?.qrCode || null,
-        expiresAt: pending?.qrExpiresAt || null,
-        qrExpiresAt: pending?.qrExpiresAt || null,
+        qr: null,
+        qrCode: null,
+        expiresAt: null,
+        qrExpiresAt: null,
         message: "QR kod hazırlanıyor. Lütfen birkaç saniye bekleyin.",
       }, { status: 202 });
     }

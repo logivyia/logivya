@@ -1,23 +1,38 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Bell, Boxes, Building2, ChevronDown, CircleHelp, CreditCard, FileLock2, History, LayoutDashboard, LogOut, Menu, Moon, Search, Send, Settings, ShieldCheck, Smartphone, Sun, Trash2, UserCog, UsersRound, X } from "lucide-react";
+import { Bell, Boxes, ChevronDown, CircleHelp, ContactRound, CreditCard, House, LayoutDashboard, LogOut, Menu, Moon, PackageOpen, PanelsTopLeft, Search, Send, Settings, ShieldCheck, Smartphone, Sun, Trash2, UserCog, UserRound, UsersRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/i18n/provider";
 import { cn } from "@/lib/utils";
+import { notificationDeepLinkToWebHref } from "@/lib/notifications/deep-link";
 import { BrandLogo } from "@/components/brand-logo";
 import { LanguageSelector } from "@/components/language-selector";
+import { LowbedIcon } from "@/components/lowbed-icon";
 import { adminMenuLabel, statusLabel } from "@/i18n/status";
 
-const nav = [
-  ["/dashboard", "nav.dashboard", LayoutDashboard], ["/accounts", "nav.accounts", Smartphone],
-  ["/groups", "nav.groups", UsersRound], ["/categories", "nav.categories", Boxes],
-  ["/send-message", "nav.sendMessage", Send], ["/message-history", "nav.history", History],
-  ["/support", "nav.support", CircleHelp],
+const primaryNav = [
+  { href: "/dashboard", key: "nav.dashboard", icon: LayoutDashboard },
+  { href: "/accounts", key: "nav.accounts", icon: Smartphone },
+  { href: "/telegram", key: "nav.telegramManagement", icon: Send, feature: "telegram" },
+  { href: "/facebook", key: "nav.facebookManagement", icon: PanelsTopLeft, feature: "facebook" },
+  { href: "/marketplace?scope=HOME_MOVING", activePath: "/marketplace", activeScope: "HOME_MOVING", key: "nav.homeMoving", icon: House, feature: "freight" },
+  { href: "/marketplace?scope=PARTIAL_LOAD", activePath: "/marketplace", activeScope: "PARTIAL_LOAD", key: "nav.partialLoad", icon: PackageOpen, feature: "freight" },
+  { href: "/marketplace?scope=HEAVY_HAUL", activePath: "/marketplace", activeScope: "HEAVY_HAUL", key: "nav.heavyHaul", icon: LowbedIcon, feature: "freight" },
+  { href: "/groups", key: "nav.groups", icon: UsersRound },
+  { href: "/categories", key: "nav.categories", icon: Boxes },
+  { href: "/support", key: "nav.support", icon: CircleHelp },
+  { href: "/settings/subscriptions", key: "settings.billing", icon: CreditCard },
 ] as const;
-const settingsNav = [["/settings/company","settings.company",Building2],["/settings/users","settings.users",UserCog],["/settings/subscriptions","settings.billing",CreditCard],["/settings/security","settings.security",ShieldCheck],["/settings/notifications","settings.notifications",Bell],["/settings/privacy","settings.privacy",FileLock2],["/settings/delete-account","settings.deleteAccount",Trash2]] as const;
+const settingsNav = [
+  { href: "/settings/profile", key: "settings.profile", icon: UserRound, ownerOnly: false },
+  { href: "/settings/company", key: "settings.company", icon: ContactRound, ownerOnly: false },
+  { href: "/settings/users", key: "settings.users", icon: UserCog, ownerOnly: false },
+  { href: "/settings/security", key: "settings.security", icon: ShieldCheck, ownerOnly: false },
+  { href: "/settings/delete-account", key: "settings.deleteAccount", icon: Trash2, ownerOnly: false },
+] as const;
 
 type NoticeItem={id:string;title:string;message:string;isRead:boolean;createdAt:string;deepLink?:string|null};
 type ShellSubscription = {
@@ -65,8 +80,16 @@ function localizedSubscriptionBanner(
   return { text: statusLabel(t, "subscription", status), isPositive: false };
 }
 
-export function AppShell({ children, userName, subscription, isPlatformAdmin=false }: { children: React.ReactNode; userName: string; isPlatformAdmin?:boolean; subscription?: ShellSubscription }) {
+type AppShellFeatureAvailability = {
+  telegram: boolean;
+  facebook: boolean;
+  freight: boolean;
+};
+
+export function AppShell({ children, userName, subscription, isPlatformAdmin=false, memberRole, featureAvailability }: { children: React.ReactNode; userName: string; memberRole: string; isPlatformAdmin?:boolean; subscription?: ShellSubscription; featureAvailability?: AppShellFeatureAvailability }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const settingsRouteActive = settingsNav.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
   const { theme, setTheme } = useTheme();
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -74,28 +97,33 @@ export function AppShell({ children, userName, subscription, isPlatformAdmin=fal
   const [noticeItems,setNoticeItems]=useState<NoticeItem[]>([]);
   const [unread,setUnread]=useState(0);
   const [currentTime]=useState(()=>Date.now());
-  const [settingsOpen,setSettingsOpen]=useState(pathname.startsWith("/settings"));
+  const [settingsOpen,setSettingsOpen]=useState(false);
+  const enabledFeatures: AppShellFeatureAvailability = featureAvailability ?? { telegram: false, facebook: false, freight: false };
+  const currentScope = searchParams.get("scope");
+  const visibleNav = primaryNav.filter((item) => !("feature" in item) || enabledFeatures[item.feature]);
+  const settingsExpanded = settingsRouteActive || settingsOpen;
   useEffect(()=>{let active=true;const load=()=>void fetch("/api/notifications?limit=10").then(r=>r.json()).then(value=>{if(active){setNoticeItems(value.notifications||[]);setUnread(value.unread||0)}}).catch(()=>undefined);load();const timer=window.setInterval(load,30_000);return()=>{active=false;window.clearInterval(timer)}},[]);
   const subscriptionEndDate=latestSubscriptionEnd(subscription);
   const trialDays=remainingDays(subscriptionEndDate,currentTime);
   const periodDays=remainingDays(subscriptionEndDate,currentTime);
   const banner=localizedSubscriptionBanner(subscription,t,currentTime);
+  const visibleSettings = settingsNav.filter((item) => !item.ownerOnly || memberRole === "OWNER");
   if(pathname.startsWith("/admin"))return <>{children}</>;
 
   return <div className="min-h-screen lg:grid lg:grid-cols-[252px_1fr]">
     {open && <button className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setOpen(false)} aria-label={t("common.closeMenu")} />}
-    <aside className={cn("fixed inset-y-0 start-0 z-50 flex w-[252px] flex-col border-e border-white/6 bg-sidebar px-4 py-5 text-white transition-transform lg:sticky lg:translate-x-0", open ? "translate-x-0" : "-translate-x-full rtl:translate-x-full")}>
+    <aside className={cn("fixed inset-y-0 start-0 z-50 flex w-[252px] flex-col overflow-y-auto overscroll-contain border-e border-white/6 bg-sidebar px-4 py-5 text-white transition-transform lg:sticky lg:translate-x-0", open ? "translate-x-0" : "-translate-x-full rtl:translate-x-full")}>
       <div className="mb-8 flex items-center justify-between px-2"><Link href="/dashboard"><BrandLogo dark className="w-44" /></Link><button className="lg:hidden" onClick={() => setOpen(false)}><X className="size-5" /></button></div>
-      <nav className="space-y-1">{nav.map(([href, key, Icon]) => { const active = pathname.startsWith(href); const label=t(key); return <Link key={href} href={href} onClick={() => setOpen(false)} className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/72 hover:bg-white/8 hover:text-white", active && "bg-primary/16 text-primary")}><Icon className="size-[18px]" /><span>{label}</span>{active && <span className="ms-auto size-1.5 rounded-full bg-primary shadow-[0_0_10px_currentColor]" />}</Link>; })}{isPlatformAdmin&&<Link href="/admin" className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-orange-200 hover:bg-white/8 hover:text-white",pathname.startsWith("/admin")&&"bg-primary/16 text-primary")}><ShieldCheck className="size-[18px]"/>{adminMenuLabel(t, "superAdmin")}</Link>}<button onClick={()=>setSettingsOpen(value=>!value)} className={cn("flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/72 hover:bg-white/8 hover:text-white",pathname.startsWith("/settings")&&"bg-primary/16 text-primary")}><Settings className="size-[18px]"/><span>{t("nav.settings")}</span><ChevronDown className={cn("ms-auto size-4 transition-transform",settingsOpen&&"rotate-180")}/></button>{settingsOpen&&<div className="ms-4 space-y-1 border-s border-white/15 ps-3">{settingsNav.map(([href,key,Icon])=><Link key={href} href={href} onClick={()=>setOpen(false)} className={cn("flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/65 hover:bg-white/8 hover:text-white",pathname===href&&"bg-white/10 text-primary")}><Icon className="size-4"/>{t(key)}</Link>)}</div>}</nav>
+      <nav aria-label={t("nav.primary")} className="space-y-1">{visibleNav.map((item) => { const { href, key, icon: Icon } = item; const activePath = "activePath" in item ? item.activePath : href; const active = pathname.startsWith(activePath) && (!("activeScope" in item) || currentScope === item.activeScope); const label=t(key); return <Link key={href} href={href} onClick={() => setOpen(false)} aria-current={active?"page":undefined} className={cn("flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/72 outline-none hover:bg-white/8 hover:text-white focus-visible:ring-2 focus-visible:ring-primary", active && "bg-primary/16 text-primary")}><Icon aria-hidden className="size-[18px]" /><span>{label}</span>{active && <span aria-hidden className="ms-auto size-1.5 rounded-full bg-primary shadow-[0_0_10px_currentColor]" />}</Link>; })}{isPlatformAdmin&&<Link href="/admin" aria-current={pathname.startsWith("/admin")?"page":undefined} className={cn("flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-orange-200 outline-none hover:bg-white/8 hover:text-white focus-visible:ring-2 focus-visible:ring-primary",pathname.startsWith("/admin")&&"bg-primary/16 text-primary")}><ShieldCheck aria-hidden className="size-[18px]"/>{adminMenuLabel(t, "superAdmin")}</Link>}<button type="button" aria-controls="settings-navigation" aria-expanded={settingsExpanded} aria-current={settingsRouteActive?"page":undefined} onClick={()=>setSettingsOpen(value=>!value)} className={cn("flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/72 outline-none hover:bg-white/8 hover:text-white focus-visible:ring-2 focus-visible:ring-primary",settingsRouteActive&&"bg-primary/16 text-primary")}><Settings aria-hidden className="size-[18px]"/><span>{t("nav.settings")}</span><ChevronDown aria-hidden className={cn("ms-auto size-4 transition-transform motion-reduce:transition-none",settingsExpanded&&"rotate-180")}/></button>{settingsExpanded&&<div id="settings-navigation" className="ms-4 space-y-1 border-s border-white/15 ps-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1">{visibleSettings.map(({href,key,icon:Icon})=><Link key={href} href={href} onClick={()=>setOpen(false)} aria-current={pathname===href?"page":undefined} className={cn("flex min-h-10 items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/65 outline-none hover:bg-white/8 hover:text-white focus-visible:ring-2 focus-visible:ring-primary",pathname===href&&"bg-white/10 text-primary")}><Icon aria-hidden className="size-4"/>{t(key)}</Link>)}</div>}</nav>
       <div className="mt-auto rounded-2xl border border-white/12 bg-white/[.06] p-4"><div className="mb-3 flex items-center justify-between"><span className="rounded-full bg-primary/18 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary">{subscription?.planName||t("trial.professional")}</span><span className="text-xs text-white/68">{subscription?.status==="TRIALING"?t("trial.days",{count:trialDays}):subscription?.status==="ACTIVE"?t("trial.days",{count:periodDays}):subscription?.status?statusLabel(t,"subscription",subscription.status):""}</span></div><p className="text-xs leading-5 text-white/70">{t("trial.description")}</p><Link href="/settings/subscriptions" className="mt-3 block w-full rounded-lg bg-primary px-3 py-2 text-center text-xs font-semibold text-primary-foreground hover:brightness-95">{t("trial.upgrade")}</Link></div>
     </aside>
     <div className="min-w-0"><header className="sticky top-0 z-30 flex h-18 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur-xl md:px-8"><button className="rounded-lg border p-2 lg:hidden" onClick={() => setOpen(true)}><Menu className="size-5" /></button><div className="ms-auto flex items-center gap-2">
       <label className="hidden items-center gap-2 rounded-xl border bg-card px-3 py-2 md:flex"><Search className="size-4 text-muted" /><input className="w-32 bg-transparent text-xs outline-none" placeholder={t("header.search")} /><kbd className="text-[10px] text-muted">{t("header.shortcut")}</kbd></label>
       <LanguageSelector />
       <button className="rounded-xl border bg-card p-2" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={t("common.toggleTheme")}>{theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}</button>
-      <div className="relative"><button className="relative rounded-xl border bg-card p-2" onClick={() => setNotifications(!notifications)}><Bell className="size-4" />{unread>0&&<span className="absolute end-1 top-1 grid size-4 place-items-center rounded-full bg-primary text-[8px] font-bold text-white">{Math.min(unread,9)}</span>}</button>{notifications && <div className="panel absolute end-0 top-12 max-h-96 w-80 overflow-auto rounded-2xl p-3"><div className="flex items-center justify-between p-2"><b className="text-sm">{t("notifications.title")}</b><button onClick={async()=>{await fetch("/api/notifications",{method:"POST"});setUnread(0);setNoticeItems(items=>items.map(item=>({...item,isRead:true})))}} className="text-xs text-primary">{t("notifications.markAll")}</button></div>{noticeItems.length?noticeItems.map(item=><Notice key={item.id} title={item.title} text={item.message} unread={!item.isRead}/>):<p className="p-4 text-xs text-muted">{t("notifications.empty")}</p>}<Link href="/notifications" onClick={()=>setNotifications(false)} className="mt-2 block border-t p-3 text-center text-xs font-semibold text-primary">{t("notifications.viewAll")}</Link></div>}</div>
+      <div className="relative"><button className="relative rounded-xl border bg-card p-2" onClick={() => setNotifications(!notifications)}><Bell className="size-4" />{unread>0&&<span className="absolute end-1 top-1 grid size-4 place-items-center rounded-full bg-primary text-[8px] font-bold text-white">{Math.min(unread,9)}</span>}</button>{notifications && <div className="panel absolute end-0 top-12 max-h-96 w-80 overflow-auto rounded-2xl p-3"><div className="flex items-center justify-between p-2"><b className="text-sm">{t("notifications.title")}</b><button onClick={async()=>{await fetch("/api/notifications",{method:"POST"});setUnread(0);setNoticeItems(items=>items.map(item=>({...item,isRead:true})))}} className="text-xs text-primary">{t("notifications.markAll")}</button></div>{noticeItems.length?noticeItems.map(item=><Notice key={item.id} title={item.title} text={item.message} unread={!item.isRead} href={notificationDeepLinkToWebHref(item.deepLink)} onOpen={async()=>{if(!item.isRead){await fetch(`/api/notifications/${encodeURIComponent(item.id)}`,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({action:"read"})});setNoticeItems(items=>items.map(value=>value.id===item.id?{...value,isRead:true}:value));setUnread(value=>Math.max(0,value-1));}setNotifications(false)}}/>):<p className="p-4 text-xs text-muted">{t("notifications.empty")}</p>}<Link href="/notifications" onClick={()=>setNotifications(false)} className="mt-2 block border-t p-3 text-center text-xs font-semibold text-primary">{t("notifications.viewAll")}</Link></div>}</div>
       <button title={t("auth.logout")} onClick={async()=>{localStorage.removeItem("logivya.selectedGroupIds");await fetch("/api/auth/logout",{method:"POST"});location.href="/login";}} className="ms-1 inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white"><span>{userName.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase()}</span><LogOut className="size-3.5"/></button>
     </div></header><div className={cn("border-b px-4 py-2 text-center text-xs font-medium md:px-8",banner.isPositive?"bg-success-soft text-success-foreground":"bg-danger-soft text-danger-foreground")}>{banner.text}</div><main className="mx-auto max-w-[1600px] p-4 md:p-8">{children}</main></div>
   </div>;
 }
-function Notice({title,text,unread}:{title:string;text:string;unread:boolean}){return <div className="flex gap-3 rounded-xl p-2 hover:bg-primary-soft"><span className={cn("mt-1 size-2 shrink-0 rounded-full",unread?"bg-primary":"bg-muted/30")}/><div><p className="text-xs font-medium">{title}</p><p className="mt-1 text-[11px] leading-4 text-muted">{text}</p></div></div>}
+function Notice({title,text,unread,href,onOpen}:{title:string;text:string;unread:boolean;href:string|null;onOpen:()=>void|Promise<void>}){const content=<><span className={cn("mt-1 size-2 shrink-0 rounded-full",unread?"bg-primary":"bg-muted/30")}/><span><span className="block text-xs font-medium">{title}</span><span className="mt-1 block text-[11px] leading-4 text-muted">{text}</span></span></>;return href?<Link href={href} onClick={()=>void onOpen()} className="flex gap-3 rounded-xl p-2 outline-none hover:bg-primary-soft focus-visible:ring-2 focus-visible:ring-primary">{content}</Link>:<div className="flex gap-3 rounded-xl p-2">{content}</div>}

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { AccountStatus } from "@prisma/client";
 import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { resetAccountForConnection } from "@/lib/whatsapp/account-status-machine";
@@ -36,8 +37,10 @@ export async function POST(request: Request) {
       ? await resetAccountForConnection(account.id, AccountStatus.PENDING_QR)
       : await prisma.whatsAppAccount.create({ data: { companyId: company.id, userId: user.id, provider: process.env.WHATSAPP_PROVIDER || "baileys", status: AccountStatus.PENDING_QR } });
     accountId = account.id;
-    await enqueueWhatsAppJob("connect", { action: "connect", accountId }, { jobId: `mobile-qr-${accountId}-${Date.now()}` });
-    const ready = await waitForAccountQr(accountId);
+    const qrRequestedAt = new Date();
+    const qrCorrelationId = randomUUID();
+    await enqueueWhatsAppJob("connect", { action: "connect", accountId, correlationId: qrCorrelationId }, { jobId: `mobile-qr-${accountId}-${Date.now()}` });
+    const ready = await waitForAccountQr(accountId, { updatedAfter: qrRequestedAt, correlationId: qrCorrelationId });
     const refreshed = await prisma.whatsAppAccount.findUniqueOrThrow({ where: { id: accountId }, include: { _count: { select: { groups: true, contacts: true } } } });
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "mobile.whatsapp.qr.requested", entityType: "WhatsAppAccount", entityId: accountId });
     return mobileSuccess({ account: serializeMobileAccount({ ...refreshed, qrCode: ready.qrCode, qrExpiresAt: ready.qrExpiresAt }) }, { status: 201 });
@@ -47,7 +50,7 @@ export async function POST(request: Request) {
         where: { id: accountId },
         include: { _count: { select: { groups: true, contacts: true } } },
       });
-      return mobileSuccess({ account: serializeMobileAccount(pending) }, { status: 202 });
+      return mobileSuccess({ account: serializeMobileAccount({ ...pending, qrCode: null, qrExpiresAt: null }) }, { status: 202 });
     }
     if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId, status: { in: ["PENDING_QR", "QR_READY", "CONNECTING"] } }, data: { lastError: "MOBILE_QR_FAILED" } });
     return mobileSafeError(error, "QR kod oluşturulamadı.");

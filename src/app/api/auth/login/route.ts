@@ -4,7 +4,6 @@ import { z } from "zod";
 
 import { loginSchema } from "@/features/auth/schemas";
 import {
-  findActiveMfaCredential,
   issueMfaChallenge,
   MFA_CHALLENGE_COOKIE,
   MFA_CHALLENGE_TTL_MS,
@@ -12,7 +11,14 @@ import {
   recordMfaSecurityEvent,
   requestIp,
   validateTrustedDevice,
+  sendEmailOtpForChallenge,
 } from "@/server/auth/mfa-challenge";
+import {
+  authCorrelationId,
+  authNoStoreHeaders,
+  publicAuthErrorBody,
+  publicAuthFailure,
+} from "@/server/auth/public-errors";
 import { createSession } from "@/server/auth/session";
 import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
 import { prisma } from "@/server/db";
@@ -24,13 +30,19 @@ import { tryRecordSecurityEvent } from "@/server/security/events";
 import { writeAuditLog } from "@/server/security/audit";
 import { logger } from "@/server/observability/logger";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
+import { assertWebMutationOrigin } from "@/server/security/request-origin";
+import { resolveMfaLoginDecision } from "@/server/security/mfa-policy";
+import {
+  assertTemporaryPasswordTenantAccess,
+  issueTemporaryPasswordChangeChallenge,
+} from "@/server/auth/temporary-password";
 
 const schema = loginSchema.extend({
   deviceFingerprint: z.string().trim().min(8).max(160).optional(),
   deviceName: z.string().trim().max(120).optional(),
 });
 
-export async function POST(request: Request) {
+async function handleLogin(request: Request, correlationId: string) {
   const ipAddress = requestIp(request);
   const userAgent = request.headers.get("user-agent");
   const parsed = schema.safeParse(await request.json());
@@ -90,18 +102,59 @@ export async function POST(request: Request) {
       errorCode: "INVALID_CREDENTIALS",
       metadata: { identifierType: identifier.includes("@") ? "email" : "phone", identifierHash: keyedIdentifierHash(identifier), knownUser: Boolean(user) },
     });
-    return NextResponse.json({ error: "auth.invalidCredentials" }, { status: 401 });
+    const failure = publicAuthFailure("INVALID_CREDENTIALS");
+    return NextResponse.json(
+      publicAuthErrorBody(failure.code, correlationId),
+      { status: failure.status },
+    );
   }
 
   const membership = await resolvePreferredLoginMembership(user.id);
   if (!membership) return NextResponse.json({ error: "auth.workspaceUnavailable" }, { status: 403 });
 
-  const activeCredential = await findActiveMfaCredential(user.id);
-  const trustedToken = (await cookies()).get(MFA_TRUSTED_DEVICE_COOKIE)?.value;
-  const trustedDevice = activeCredential ? await validateTrustedDevice(user.id, trustedToken, parsed.data.deviceFingerprint) : null;
+  if (user.mustChangePassword) {
+    await assertTemporaryPasswordTenantAccess(user.id, membership.companyId);
+    const challenge = await issueTemporaryPasswordChangeChallenge({
+      userId: user.id,
+      companyId: membership.companyId,
+      channel: "WEB",
+      deviceId: parsed.data.deviceFingerprint,
+      platform: "WEB",
+    });
+    await writeAuditLog(request, {
+      companyId: membership.companyId,
+      userId: user.id,
+      actorType: "USER",
+      actorEmail: user.email,
+      action: "USER_FIRST_LOGIN",
+      result: "SUCCESS",
+      entityType: "User",
+      entityId: user.id,
+      after: { passwordChangeRequired: true, channel: "WEB" },
+    });
+    return NextResponse.json({
+      ok: false,
+      passwordChangeRequired: true,
+      challengeToken: challenge.token,
+      expiresAt: challenge.expiresAt.toISOString(),
+    }, { status: 202, headers: { "Cache-Control": "no-store, private", Pragma: "no-cache" } });
+  }
 
-  if ((activeCredential || user.mfaRequired) && !trustedDevice) {
-    const purpose = activeCredential ? "LOGIN" as const : "SETUP" as const;
+  const mfa = await resolveMfaLoginDecision({
+    userId: user.id,
+    companyPolicy: membership.company.mfaPolicy,
+    role: membership.role,
+    legacyRequired: user.mfaRequired,
+    preferredMethod: user.preferredMfaMethod,
+  });
+  const trustedToken = (await cookies()).get(MFA_TRUSTED_DEVICE_COOKIE)?.value;
+  const trustedDevice = mfa.enabledMethods.length ? await validateTrustedDevice(user.id, trustedToken, parsed.data.deviceFingerprint) : null;
+
+  if (mfa.mfaRequired && !trustedDevice) {
+    const purpose = mfa.setupRequired ? "SETUP" as const : "LOGIN" as const;
+    const selectedMethod = purpose === "SETUP"
+      ? (mfa.requiredEnrollmentMethods.length === 1 ? mfa.requiredEnrollmentMethods[0] : null)
+      : mfa.selectedMethod;
     const challenge = await issueMfaChallenge({
       userId: user.id,
       companyId: membership.companyId,
@@ -110,8 +163,14 @@ export async function POST(request: Request) {
       request,
       deviceId: parsed.data.deviceFingerprint,
       platform: "WEB",
+      selectedMethod,
     });
-    const enrollment = purpose === "SETUP" ? await createAndStoreMfaEnrollment(user.id, user.email, { replacePending: true }) : null;
+    const enrollment = purpose === "SETUP" && selectedMethod === "TOTP"
+      ? await createAndStoreMfaEnrollment(user.id, user.email, { replacePending: true })
+      : null;
+    const email = purpose === "LOGIN" && selectedMethod === "EMAIL_OTP"
+      ? await sendEmailOtpForChallenge({ token: challenge.token, channel: "WEB", force: true })
+      : null;
     const cookieStore = await cookies();
     cookieStore.set(MFA_CHALLENGE_COOKIE, challenge.token, {
       httpOnly: true,
@@ -125,13 +184,19 @@ export async function POST(request: Request) {
       userId: user.id,
       companyId: membership.companyId,
       type: purpose === "SETUP" ? "MFA_SETUP_REQUIRED" : "MFA_CHALLENGE_ISSUED",
-      message: purpose === "SETUP" ? "Iki adimli dogrulama kurulumu istendi." : "Iki adimli dogrulama kodu istendi.",
+      message: purpose === "SETUP" ? "İki adımlı doğrulama kurulumu istendi." : "İki adımlı doğrulama kodu istendi.",
     });
     return NextResponse.json(
       {
         ok: false,
         mfaRequired: true,
         mfaSetupRequired: purpose === "SETUP",
+        availableMethods: purpose === "SETUP" ? mfa.requiredEnrollmentMethods : mfa.enabledMethods,
+        selectedMethod,
+        preferredMethod: mfa.selectedMethod,
+        recoveryAvailable: mfa.enabledMethods.includes("TOTP"),
+        emailMasked: email?.emailMasked,
+        organizationPolicy: mfa.policy,
         expiresAt: challenge.expiresAt.toISOString(),
         ...(enrollment ?? {}),
       },
@@ -140,7 +205,7 @@ export async function POST(request: Request) {
   }
 
   await createSession(user.id, membership.companyId, request, {
-    mfaVerified: Boolean(activeCredential),
+    mfaVerified: mfa.enabledMethods.length > 0,
     deviceName: parsed.data.deviceName,
     deviceFingerprint: parsed.data.deviceFingerprint,
   });
@@ -167,7 +232,7 @@ export async function POST(request: Request) {
       action: "AUTH_LOGIN_SUCCEEDED",
       entityType: "UserSession",
       result: "SUCCESS",
-      after: { platform: "web", mfaVerified: Boolean(activeCredential) },
+      after: { platform: "web", mfaVerified: mfa.enabledMethods.length > 0 },
     }).catch((error) => logger.error("audit.auth_login_succeeded.write_failed", error, { companyId: membership.companyId, userId: user.id })),
   ]);
 
@@ -182,4 +247,32 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true, isAdmin: isPlatformAdmin, isPlatformAdmin });
+}
+
+export async function POST(request: Request) {
+  const correlationId = authCorrelationId(request);
+  // Login CSRF matters before a session exists too. Reject before DB/password work.
+  try { assertWebMutationOrigin(request); }
+  catch {
+    return NextResponse.json({ error: "CSRF_REJECTED" }, { status: 403, headers: authNoStoreHeaders(correlationId) });
+  }
+  try {
+    const response = await handleLogin(request, correlationId);
+    for (const [name, value] of Object.entries(authNoStoreHeaders(correlationId))) {
+      response.headers.set(name, value);
+    }
+    return response;
+  } catch (error) {
+    logger.error("auth.web_login_failed_unexpectedly", error, { correlationId });
+    const failure = publicAuthFailure(
+      error instanceof Error ? error.message : "AUTH_INTERNAL_ERROR",
+    );
+    return NextResponse.json(
+      publicAuthErrorBody(failure.code, correlationId),
+      {
+        status: failure.status,
+        headers: authNoStoreHeaders(correlationId),
+      },
+    );
+  }
 }

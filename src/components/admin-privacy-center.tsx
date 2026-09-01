@@ -24,17 +24,43 @@ type PrivacyRequest = {
   user?: { name?: string | null; email: string } | null;
   company?: { name: string } | null;
 };
+type DeletionJob = {
+  publicId: string;
+  scope: string;
+  status: string;
+  cancelUntil: string;
+  scheduledFor: string;
+  completedAt?: string | null;
+  lastError?: string | null;
+  result?: RecordValue | null;
+  user: { name?: string | null; email: string };
+  company: { name: string };
+  request?: { publicId: string; status: string; legalHold: boolean } | null;
+};
 
 const requestStatuses = ["RECEIVED", "VERIFYING", "IDENTITY_VERIFICATION_REQUIRED", "IN_REVIEW", "WAITING_FOR_USER", "PROCESSING", "APPROVED", "PARTIALLY_APPROVED", "COMPLETED", "REJECTED", "CANCELED", "CLOSED"];
+const deletionConfirmation = "I CONFIRM DATA DELETION IS COMPLETE";
+const deletionCopy = {
+  tr: {
+    title: "Hesap silme operasyonu", help: "Otomatik silme kapalıdır. İşi işleme alın; gerçek silme veya anonimleştirme tamamlandıktan sonra kanıt referansıyla kapatın.",
+    jobId: "İş No", scope: "Kapsam", cancellation: "İptal süresi", operation: "Operasyon", start: "İşleme al", block: "Engelle", complete: "Tamamlandı olarak doğrula", resend: "Bildirimi tekrar gönder",
+    evidence: "Silme/anonimleştirme kanıt referansı", confirmation: "Tamamlama doğrulama metni", completionWarning: "Bu işlem veriyi otomatik silmez. Yalnızca gerçek silme veya anonimleştirme tamamlandıktan sonra doğrulayın.", select: "Bir silme işi seçin.",
+  },
+  en: {
+    title: "Account deletion operations", help: "Automatic deletion is disabled. Start the job, then close it with an evidence reference only after deletion or anonymization is actually complete.",
+    jobId: "Job ID", scope: "Scope", cancellation: "Cancellation until", operation: "Operation", start: "Start processing", block: "Block", complete: "Verify completion", resend: "Resend notice",
+    evidence: "Deletion/anonymization evidence reference", confirmation: "Completion confirmation text", completionWarning: "This action does not delete data automatically. Verify it only after deletion or anonymization is actually complete.", select: "Select a deletion job.",
+  },
+} as const;
 
 const copy = {
   tr: {
     eyebrow: "Gizlilik yönetişimi", title: "Gizlilik Merkezi", description: "Veri sahibi talepleri, saklama, dışa aktarma, silme, ihlal ve DPIA süreçlerinin denetlenebilir görünümü.",
-    legal: "Bu merkezdeki hukuki süreler, aktarım mekanizmaları ve taslak metinler için hukuk incelemesi gereklidir.", legalRequired: "HUKUK İNCELEMESİ GEREKLİ", refresh: "Yenile", requests: "Veri talepleri", requestId: "Talep No", exports: "Dışa aktarmalar", deletions: "Silme işleri", holds: "Aktif hukuki saklama", breaches: "Açık ihlaller", dpias: "İnceleme bekleyen DPIA", requester: "Talep sahibi", company: "Şirket", type: "Tür", status: "Durum", deadline: "Son tarih", actions: "İşlem", open: "Aç", noRecords: "Kayıt bulunamadı.", governance: "İşleyenler ve uluslararası aktarımlar", provider: "Sağlayıcı", purpose: "Amaç", review: "İnceleme", destination: "Hedef", mechanism: "Mekanizma", retention: "Saklama politikası", dryRun: "Saklama dry-run çalıştır", reason: "İşlem gerekçesi", reauth: "Yöneticiyi yeniden doğrula", password: "Yönetici parolası", updateRequest: "Talebi güncelle", response: "Kullanıcıya yanıt", summary: "Sonuç özeti", internal: "Yalnızca iç not", save: "Kaydet", incidents: "İhlaller, DPIA ve hukuki saklamalar", loading: "Gizlilik verileri yükleniyor...", failed: "Gizlilik Merkezi yüklenemedi.", success: "İşlem tamamlandı.", select: "Bir talep seçin.", retentionVersion: "Saklama sürümü", recentRuns: "Son saklama çalıştırmaları", legalDocuments: "Yasal belge sürümleri", version: "Sürüm", locale: "Dil", source: "Kaynak", active: "Aktif",
+    legal: "Bu merkezdeki hukuki süreler, aktarım mekanizmaları ve taslak metinler için hukuk incelemesi gereklidir.", legalRequired: "HUKUK İNCELEMESİ GEREKLİ", refresh: "Yenile", requests: "Veri talepleri", requestId: "Talep No", exports: "Dışa aktarmalar", deletions: "Silme işleri", holds: "Aktif hukuki saklama", breaches: "Açık ihlaller", dpias: "İnceleme bekleyen DPIA", requester: "Talep sahibi", company: "Çalışma alanı", type: "Tür", status: "Durum", deadline: "Son tarih", actions: "İşlem", open: "Aç", noRecords: "Kayıt bulunamadı.", governance: "İşleyenler ve uluslararası aktarımlar", provider: "Sağlayıcı", purpose: "Amaç", review: "İnceleme", destination: "Hedef", mechanism: "Mekanizma", retention: "Saklama politikası", dryRun: "Saklama dry-run çalıştır", reason: "İşlem gerekçesi", reauth: "Yöneticiyi yeniden doğrula", password: "Yönetici parolası", updateRequest: "Talebi güncelle", response: "Kullanıcıya yanıt", summary: "Sonuç özeti", internal: "Yalnızca iç not", save: "Kaydet", incidents: "İhlaller, DPIA ve hukuki saklamalar", loading: "Gizlilik verileri yükleniyor...", failed: "Gizlilik Merkezi yüklenemedi.", success: "İşlem tamamlandı.", select: "Bir talep seçin.", retentionVersion: "Saklama sürümü", recentRuns: "Son saklama çalıştırmaları", legalDocuments: "Yasal belge sürümleri", version: "Sürüm", locale: "Dil", source: "Kaynak", active: "Aktif",
   },
   en: {
     eyebrow: "Privacy governance", title: "Privacy Center", description: "Auditable oversight for data-subject requests, retention, export, deletion, breach, and DPIA workflows.",
-    legal: "Legal review is required for statutory timelines, transfer mechanisms, and draft legal text shown in this center.", legalRequired: "LEGAL REVIEW REQUIRED", refresh: "Refresh", requests: "Data requests", requestId: "Request ID", exports: "Exports", deletions: "Deletion jobs", holds: "Active legal holds", breaches: "Open breaches", dpias: "DPIAs requiring review", requester: "Requester", company: "Company", type: "Type", status: "Status", deadline: "Deadline", actions: "Action", open: "Open", noRecords: "No records found.", governance: "Processors and international transfers", provider: "Provider", purpose: "Purpose", review: "Review", destination: "Destination", mechanism: "Mechanism", retention: "Retention policy", dryRun: "Run retention dry-run", reason: "Action reason", reauth: "Reauthenticate administrator", password: "Administrator password", updateRequest: "Update request", response: "Response to user", summary: "Outcome summary", internal: "Internal note only", save: "Save", incidents: "Breaches, DPIAs, and legal holds", loading: "Loading privacy data...", failed: "Privacy Center could not be loaded.", success: "Action completed.", select: "Select a request.", retentionVersion: "Retention version", recentRuns: "Recent retention runs", legalDocuments: "Legal document versions", version: "Version", locale: "Locale", source: "Source", active: "Active",
+    legal: "Legal review is required for statutory timelines, transfer mechanisms, and draft legal text shown in this center.", legalRequired: "LEGAL REVIEW REQUIRED", refresh: "Refresh", requests: "Data requests", requestId: "Request ID", exports: "Exports", deletions: "Deletion jobs", holds: "Active legal holds", breaches: "Open breaches", dpias: "DPIAs requiring review", requester: "Requester", company: "Workspace", type: "Type", status: "Status", deadline: "Deadline", actions: "Action", open: "Open", noRecords: "No records found.", governance: "Processors and international transfers", provider: "Provider", purpose: "Purpose", review: "Review", destination: "Destination", mechanism: "Mechanism", retention: "Retention policy", dryRun: "Run retention dry-run", reason: "Action reason", reauth: "Reauthenticate administrator", password: "Administrator password", updateRequest: "Update request", response: "Response to user", summary: "Outcome summary", internal: "Internal note only", save: "Save", incidents: "Breaches, DPIAs, and legal holds", loading: "Loading privacy data...", failed: "Privacy Center could not be loaded.", success: "Action completed.", select: "Select a request.", retentionVersion: "Retention version", recentRuns: "Recent retention runs", legalDocuments: "Legal document versions", version: "Version", locale: "Locale", source: "Source", active: "Active",
   },
 } as const;
 
@@ -51,8 +77,10 @@ function total(groups?: Array<{ _count: { _all: number } }>) {
 
 export function AdminPrivacyCenter({ locale }: { locale: string }) {
   const text = locale === "tr" ? copy.tr : copy.en;
+  const deletionText = locale === "tr" ? deletionCopy.tr : deletionCopy.en;
   const [overview, setOverview] = useState<Overview | null>(null);
   const [requests, setRequests] = useState<PrivacyRequest[]>([]);
+  const [deletionJobs, setDeletionJobs] = useState<DeletionJob[]>([]);
   const [processors, setProcessors] = useState<RecordValue[]>([]);
   const [transfers, setTransfers] = useState<RecordValue[]>([]);
   const [retention, setRetention] = useState<{ catalog: RecordValue[]; runs: RecordValue[]; enforcementEnabled: boolean } | null>(null);
@@ -61,6 +89,11 @@ export function AdminPrivacyCenter({ locale }: { locale: string }) {
   const [holds, setHolds] = useState<RecordValue[]>([]);
   const [legalDocuments, setLegalDocuments] = useState<RecordValue[]>([]);
   const [selected, setSelected] = useState<PrivacyRequest | null>(null);
+  const [selectedDeletion, setSelectedDeletion] = useState<DeletionJob | null>(null);
+  const [deletionAction, setDeletionAction] = useState<"START_PROCESSING" | "BLOCK" | "COMPLETE" | "RESEND_NOTICE">("START_PROCESSING");
+  const [deletionReason, setDeletionReason] = useState("");
+  const [evidenceReference, setEvidenceReference] = useState("");
+  const [completionConfirmation, setCompletionConfirmation] = useState("");
   const [status, setStatus] = useState("IN_REVIEW");
   const [reason, setReason] = useState("");
   const [response, setResponse] = useState("");
@@ -76,9 +109,10 @@ export function AdminPrivacyCenter({ locale }: { locale: string }) {
     setLoading(true);
     setError(null);
     try {
-      const [overviewData, requestData, processorData, transferData, retentionData, breachData, dpiaData, holdData, legalDocumentData] = await Promise.all([
+      const [overviewData, requestData, deletionData, processorData, transferData, retentionData, breachData, dpiaData, holdData, legalDocumentData] = await Promise.all([
         api<Overview>("/api/admin/privacy/overview"),
         api<{ requests: PrivacyRequest[] }>("/api/admin/privacy/requests"),
+        api<{ jobs: DeletionJob[] }>("/api/admin/privacy/deletions"),
         api<{ processors: RecordValue[] }>("/api/admin/privacy/processors"),
         api<{ transfers: RecordValue[] }>("/api/admin/privacy/transfers"),
         api<{ catalog: RecordValue[]; runs: RecordValue[]; enforcementEnabled: boolean }>("/api/admin/privacy/retention"),
@@ -87,7 +121,7 @@ export function AdminPrivacyCenter({ locale }: { locale: string }) {
         api<{ holds: RecordValue[] }>("/api/admin/privacy/legal-holds"),
         api<{ documents: RecordValue[] }>("/api/admin/privacy/legal-documents"),
       ]);
-      setOverview(overviewData); setRequests(requestData.requests); setProcessors(processorData.processors); setTransfers(transferData.transfers); setRetention(retentionData); setBreaches(breachData.breaches); setDpias(dpiaData.dpias); setHolds(holdData.holds); setLegalDocuments(legalDocumentData.documents);
+      setOverview(overviewData); setRequests(requestData.requests); setDeletionJobs(deletionData.jobs); setProcessors(processorData.processors); setTransfers(transferData.transfers); setRetention(retentionData); setBreaches(breachData.breaches); setDpias(dpiaData.dpias); setHolds(holdData.holds); setLegalDocuments(legalDocumentData.documents);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : text.failed);
     } finally {
@@ -127,6 +161,25 @@ export function AdminPrivacyCenter({ locale }: { locale: string }) {
     finally { setWorking(false); }
   }
 
+  async function operateDeletion() {
+    if (!selectedDeletion) return setError(deletionText.select);
+    if (deletionAction === "COMPLETE" && completionConfirmation !== deletionConfirmation) return setError("PRIVACY_DELETION_CONFIRMATION_REQUIRED");
+    if (deletionAction === "COMPLETE" && evidenceReference.trim().length < 8) return setError("PRIVACY_DELETION_EVIDENCE_REQUIRED");
+    setWorking(true); setNotice(null); setError(null);
+    try {
+      await api(`/api/admin/privacy/deletions/${encodeURIComponent(selectedDeletion.publicId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          action: deletionAction,
+          reason: deletionReason,
+          ...(deletionAction === "COMPLETE" ? { evidenceReference, confirmation: completionConfirmation } : {}),
+        }),
+      });
+      setNotice(text.success); setDeletionReason(""); setEvidenceReference(""); setCompletionConfirmation(""); setSelectedDeletion(null); await load();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : text.failed); }
+    finally { setWorking(false); }
+  }
+
   return <div className="space-y-6">
     <header className="flex flex-col gap-4 border-b pb-6 md:flex-row md:items-end md:justify-between">
       <div><p className="text-xs font-semibold uppercase text-orange-600">{text.eyebrow}</p><h1 className="mt-2 text-3xl font-semibold">{text.title}</h1><p className="mt-2 max-w-3xl text-sm text-slate-500">{text.description}</p></div>
@@ -138,6 +191,8 @@ export function AdminPrivacyCenter({ locale }: { locale: string }) {
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">{metrics.map(([label, value]) => <div key={String(label)} className="border bg-white p-4"><p className="text-xs text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold">{value}</p></div>)}</section>
     <section className="space-y-3"><div className="flex items-center gap-2"><FileLock2 className="size-5 text-orange-500" /><h2 className="text-xl font-semibold">{text.requests}</h2></div><div className="overflow-x-auto border bg-white"><table className="w-full text-left text-sm"><thead className="border-b bg-slate-50 text-xs text-slate-500"><tr><th className="p-3">{text.requestId}</th><th className="p-3">{text.requester}</th><th className="p-3">{text.company}</th><th className="p-3">{text.type}</th><th className="p-3">{text.status}</th><th className="p-3">{text.deadline}</th><th className="p-3">{text.actions}</th></tr></thead><tbody>{requests.map((item) => <tr key={item.publicId} className="border-b last:border-0"><td className="p-3 font-mono text-xs">{item.publicId}</td><td className="p-3">{item.user?.email ?? "-"}</td><td className="p-3">{item.company?.name ?? "-"}</td><td className="p-3">{item.type}</td><td className="p-3">{item.status}{item.legalHold ? " / HOLD" : ""}</td><td className="p-3">{formatDate(item.deadlineAt, locale)}</td><td className="p-3"><button type="button" onClick={() => { setSelected(item); setStatus(item.status); }} className="font-semibold text-orange-600">{text.open}</button></td></tr>)}</tbody></table>{!requests.length ? <p className="p-8 text-center text-sm text-slate-500">{text.noRecords}</p> : null}</div></section>
     {selected ? <section className="grid gap-4 border bg-white p-5 lg:grid-cols-2"><div className="space-y-3"><h2 className="font-semibold">{text.updateRequest}: {selected.publicId}</h2><select value={status} onChange={(event) => setStatus(event.target.value)} className="min-h-11 w-full rounded-md border px-3">{requestStatuses.map((item) => <option key={item}>{item}</option>)}</select><textarea value={response} onChange={(event) => setResponse(event.target.value)} placeholder={text.response} className="min-h-24 w-full rounded-md border p-3" /><textarea value={summary} onChange={(event) => setSummary(event.target.value)} placeholder={text.summary} className="min-h-20 w-full rounded-md border p-3" /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={internal} onChange={(event) => setInternal(event.target.checked)} />{text.internal}</label></div><ActionControls text={text} password={password} reason={reason} working={working} onPassword={setPassword} onReason={setReason} onReauth={reauthenticate} onAction={updateRequest} actionLabel={text.save} /></section> : null}
+    <section className="space-y-3"><div className="flex flex-col gap-1"><div className="flex items-center gap-2"><FileLock2 className="size-5 text-orange-500" /><h2 className="text-xl font-semibold">{deletionText.title}</h2></div><p className="text-sm text-slate-500">{deletionText.help}</p></div><div className="overflow-x-auto border bg-white"><table className="w-full text-left text-sm"><thead className="border-b bg-slate-50 text-xs text-slate-500"><tr><th className="p-3">{deletionText.jobId}</th><th className="p-3">{text.requester}</th><th className="p-3">{text.company}</th><th className="p-3">{deletionText.scope}</th><th className="p-3">{text.status}</th><th className="p-3">{deletionText.cancellation}</th><th className="p-3">{text.actions}</th></tr></thead><tbody>{deletionJobs.map((item) => <tr key={item.publicId} className="border-b last:border-0"><td className="p-3 font-mono text-xs">{item.publicId}</td><td className="p-3">{item.user.email}</td><td className="p-3">{item.company.name}</td><td className="p-3">{item.scope}</td><td className="p-3">{item.status}{item.request?.legalHold ? " / HOLD" : ""}</td><td className="p-3">{formatDate(item.cancelUntil, locale)}</td><td className="p-3"><button type="button" onClick={() => { setSelectedDeletion(item); setDeletionAction(item.status === "COMPLETED" ? "RESEND_NOTICE" : item.status === "PROCESSING" ? "COMPLETE" : "START_PROCESSING"); }} className="font-semibold text-orange-600">{text.open}</button></td></tr>)}</tbody></table>{!deletionJobs.length ? <p className="p-8 text-center text-sm text-slate-500">{text.noRecords}</p> : null}</div></section>
+    {selectedDeletion ? <section className="grid gap-4 border bg-white p-5 lg:grid-cols-2"><div className="space-y-3"><h2 className="font-semibold">{deletionText.operation}: {selectedDeletion.publicId}</h2><select value={deletionAction} onChange={(event) => setDeletionAction(event.target.value as typeof deletionAction)} className="min-h-11 w-full rounded-md border px-3"><option value="START_PROCESSING">{deletionText.start}</option><option value="BLOCK">{deletionText.block}</option><option value="COMPLETE">{deletionText.complete}</option><option value="RESEND_NOTICE">{deletionText.resend}</option></select>{deletionAction === "COMPLETE" ? <><p className="border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{deletionText.completionWarning}</p><input value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} placeholder={deletionText.evidence} className="min-h-11 w-full rounded-md border px-3" /><input value={completionConfirmation} onChange={(event) => setCompletionConfirmation(event.target.value)} placeholder={deletionText.confirmation} className="min-h-11 w-full rounded-md border px-3 font-mono text-xs" /><p className="text-xs text-slate-500">{deletionConfirmation}</p></> : null}</div><ActionControls text={text} password={password} reason={deletionReason} working={working} onPassword={setPassword} onReason={setDeletionReason} onReauth={reauthenticate} onAction={operateDeletion} actionLabel={deletionAction === "START_PROCESSING" ? deletionText.start : deletionAction === "BLOCK" ? deletionText.block : deletionAction === "COMPLETE" ? deletionText.complete : deletionText.resend} /></section> : null}
     <section className="space-y-3"><div className="flex items-center gap-2"><ShieldCheck className="size-5 text-orange-500" /><h2 className="text-xl font-semibold">{text.governance}</h2></div><div className="grid gap-4 xl:grid-cols-2"><SimpleTable headers={[text.provider, text.purpose, text.review]} rows={processors.map((item) => [item.provider, item.purpose, item.review])} /><SimpleTable headers={[text.provider, text.destination, text.mechanism]} rows={transfers.map((item) => [item.provider, item.destination, item.mechanism])} /></div></section>
     <section className="grid gap-4 xl:grid-cols-[1fr_420px]"><div className="space-y-3"><div className="flex items-center gap-2"><Database className="size-5 text-orange-500" /><h2 className="text-xl font-semibold">{text.retention}</h2></div><p className="text-sm text-slate-500">{text.retentionVersion}: {overview?.retentionPolicyVersion ?? "-"}</p><SimpleTable headers={["Category", "Days", "Action"]} rows={(retention?.catalog ?? []).map((item) => [item.category, item.days ?? "-", item.action])} /><h3 className="font-semibold">{text.recentRuns}</h3><SimpleTable headers={["Status", "Dry run", "Started"]} rows={(retention?.runs ?? []).map((item) => [item.status, String(item.dryRun), formatDate(item.startedAt, locale)])} /></div><ActionControls text={text} password={password} reason={reason} working={working} onPassword={setPassword} onReason={setReason} onReauth={reauthenticate} onAction={runRetentionDryRun} actionLabel={text.dryRun} /></section>
     <section className="space-y-3"><h2 className="text-xl font-semibold">{text.incidents}</h2><div className="grid gap-4 xl:grid-cols-3"><SimpleTable headers={["Breach", text.status, "Risk"]} rows={breaches.map((item) => [item.publicId, item.status, item.riskLevel])} /><SimpleTable headers={["DPIA", "Risk", text.review]} rows={dpias.map((item) => [item.publicId, item.residualRisk, item.legalReviewStatus])} /><SimpleTable headers={["Hold", text.status, text.reason]} rows={holds.map((item) => [item.publicId, item.status, item.reason])} /></div></section>

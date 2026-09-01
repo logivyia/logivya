@@ -25,26 +25,49 @@ export async function raiseOperationalAlert(input: OperationalAlertInput) {
   const type = canonicalAuditAction(input.type);
   const dedupeKey = operationalAlertDedupeKey({ environment, service: input.service, type, windowMinutes: input.windowMinutes });
   const safe = sanitizeLogMetadata({ message: input.message, metadata: input.metadata });
-  const alert = await prisma.operationalAlert.upsert({
-    where: { dedupeKey },
-    create: {
-      dedupeKey,
-      type,
-      severity: input.severity,
-      service: input.service,
-      environment,
-      message: String(safe.message ?? "Operational alert").slice(0, 500),
-      correlationId: input.correlationId,
-      metadata: (safe.metadata ?? {}) as Prisma.InputJsonValue,
-      retainedUntil: retentionDeadline("alert"),
-    },
-    update: {
-      occurrenceCount: { increment: 1 },
-      lastSeenAt: new Date(),
-      severity: input.severity,
-      correlationId: input.correlationId,
-      metadata: (safe.metadata ?? {}) as Prisma.InputJsonValue,
-    },
+  const now = new Date();
+  const alert = await prisma.$transaction(async (tx) => {
+    await tx.operationalAlert.updateMany({
+      where: {
+        environment,
+        service: input.service,
+        type,
+        dedupeKey: { not: dedupeKey },
+        status: { in: ["OPEN", "ACKNOWLEDGED"] },
+      },
+      data: { status: "RESOLVED", resolvedAt: now },
+    });
+    const current = await tx.operationalAlert.findUnique({ where: { dedupeKey } });
+    const reopen = current && ["RESOLVED", "DISMISSED"].includes(current.status);
+    return tx.operationalAlert.upsert({
+      where: { dedupeKey },
+      create: {
+        dedupeKey,
+        type,
+        severity: input.severity,
+        service: input.service,
+        environment,
+        message: String(safe.message ?? "Operational alert").slice(0, 500),
+        correlationId: input.correlationId,
+        metadata: (safe.metadata ?? {}) as Prisma.InputJsonValue,
+        retainedUntil: retentionDeadline("alert"),
+      },
+      update: {
+        occurrenceCount: { increment: 1 },
+        lastSeenAt: now,
+        severity: input.severity,
+        correlationId: input.correlationId,
+        metadata: (safe.metadata ?? {}) as Prisma.InputJsonValue,
+        ...(reopen
+          ? {
+              status: "OPEN",
+              resolvedAt: null,
+              acknowledgedAt: null,
+              acknowledgedByUserId: null,
+            }
+          : {}),
+      },
+    });
   });
   await ensureIncidentForAlert(alert).catch(() => undefined);
   return alert;

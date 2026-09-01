@@ -20,10 +20,10 @@ export async function POST(request: Request) {
     const passwordValid = await verifyPassword(context.user.passwordHash, body.password, process.env.PASSWORD_PEPPER ?? "");
     if (!passwordValid) return NextResponse.json({ error: "PASSWORD_CONFIRMATION_REQUIRED" }, { status: 401 });
 
-    const activeCredential = await findActiveMfaCredential(context.user.id);
+    const activeCredential = await findActiveMfaCredential(context.user.id, "TOTP");
     if (activeCredential) {
       if (!body.currentCode) return NextResponse.json({ error: "RECENT_AUTHENTICATION_REQUIRED" }, { status: 428 });
-      const verification = await verifyAndConsumeMfaCode({ userId: context.user.id, code: body.currentCode, allowRecoveryCode: false });
+      const verification = await verifyAndConsumeMfaCode({ userId: context.user.id, code: body.currentCode, method: "TOTP", allowRecoveryCode: false });
       if (!verification.ok) return NextResponse.json({ error: verification.reason }, { status: 401 });
     }
     const enrollment = await createAndStoreMfaEnrollment(context.user.id, context.user.email);
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       userId: context.user.id,
       companyId: context.company.id,
       type: "MFA_ENROLLMENT_STARTED",
-      message: "Iki adimli dogrulama kurulumu baslatildi.",
+      message: "İki adımlı doğrulama kurulumu başlatıldı.",
     });
     return NextResponse.json(enrollment, { headers: { "Cache-Control": "no-store, private", Pragma: "no-cache" } });
   } catch (error) {

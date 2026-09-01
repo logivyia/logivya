@@ -19,12 +19,12 @@ export async function POST(request: Request) {
     if (!parsed.success) return mobileValidationError(parsed.error);
     await enforceOperationRateLimit({ scope: "mobile-mfa-recovery-codes-regenerate", subject: context.user.id, maxAttempts: 5, windowMs: 30 * 60_000, request });
     const passwordValid = await verifyPassword(context.user.passwordHash, parsed.data.password, process.env.PASSWORD_PEPPER ?? "");
-    if (!passwordValid) return mobileError("PASSWORD_CONFIRMATION_REQUIRED", "Parolanizi dogrulayin.", { status: 401 });
+    if (!passwordValid) return mobileError("PASSWORD_CONFIRMATION_REQUIRED", "Parolanızı doğrulayın.", { status: 401 });
     const verification = await verifyAndConsumeMfaCode({ userId: context.user.id, code: parsed.data.code, allowRecoveryCode: false });
-    if (!verification.ok) return mobileError(verification.reason, "Dogrulama kodu gecersiz.", { status: 401 });
+    if (!verification.ok) return mobileError(verification.reason, "Doğrulama kodu geçersiz.", { status: 401 });
     const recoveryCodes = await replaceRecoveryCodes(context.user.id);
-    await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_RECOVERY_CODES_REGENERATED", message: "MFA kurtarma kodlari mobil uygulamadan yenilendi.", severity: "MEDIUM" });
-    await notifyMfaSecurityChange({ userId: context.user.id, companyId: context.company.id, type: "security.mfa_recovery_codes_regenerated", title: "Kurtarma kodlari yenilendi", message: "Onceki kurtarma kodlari artik kullanilamaz." });
+    await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_RECOVERY_CODES_REGENERATED", message: "MFA kurtarma kodları mobil uygulamadan yenilendi.", severity: "MEDIUM" });
+    await notifyMfaSecurityChange({ userId: context.user.id, companyId: context.company.id, type: "security.mfa_recovery_codes_regenerated", title: "Kurtarma kodları yenilendi", message: "Önceki kurtarma kodları artık kullanılamaz." });
     return mobileSuccess({ recoveryCodes });
   } catch (error) {
     return mobileSafeError(error);

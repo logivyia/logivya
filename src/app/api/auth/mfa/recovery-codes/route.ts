@@ -19,8 +19,8 @@ export async function POST(request: Request) {
     const verification = await verifyAndConsumeMfaCode({ userId: context.user.id, code: body.code, allowRecoveryCode: false });
     if (!verification.ok) return NextResponse.json({ error: verification.reason }, { status: 401 });
     const recoveryCodes = await replaceRecoveryCodes(context.user.id);
-    await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_RECOVERY_CODES_REGENERATED", message: "MFA kurtarma kodlari yenilendi.", severity: "MEDIUM" });
-    await notifyMfaSecurityChange({ userId: context.user.id, companyId: context.company.id, type: "security.mfa_recovery_codes_regenerated", title: "Kurtarma kodlari yenilendi", message: "Onceki kurtarma kodlari artik kullanilamaz." });
+    await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_RECOVERY_CODES_REGENERATED", message: "MFA kurtarma kodları yenilendi.", severity: "MEDIUM" });
+    await notifyMfaSecurityChange({ userId: context.user.id, companyId: context.company.id, type: "security.mfa_recovery_codes_regenerated", title: "Kurtarma kodları yenilendi", message: "Önceki kurtarma kodları artık kullanılamaz." });
     return NextResponse.json({ recoveryCodes }, { headers: { "Cache-Control": "no-store, private", Pragma: "no-cache" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "MFA_ERROR" }, { status: 400 });

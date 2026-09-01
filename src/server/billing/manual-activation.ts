@@ -11,6 +11,7 @@ export type ManualActivationInput = {
   adminUserId: string;
   note: string;
   idempotencyKey: string;
+  requestId?: string;
   customAmount?: number;
 };
 
@@ -25,6 +26,7 @@ export function activateSubscriptionManually(input: ManualActivationInput) {
     actorUserId: input.adminUserId,
     reason: input.note,
     correlationId: input.idempotencyKey,
+    manualRequestId: input.requestId,
     payment: {
       mode: "CREATE",
       provider: "MANUAL",

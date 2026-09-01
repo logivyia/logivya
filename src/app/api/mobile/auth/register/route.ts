@@ -1,13 +1,13 @@
 import { randomBytes } from "node:crypto";
-import { z } from "zod";
 
-import { authPasswordErrorCode, PASSWORD_CONFIRMATION_MISMATCH, passwordSchema } from "@/features/auth/schemas";
-import { getRequestLocale, getServerTranslator } from "@/i18n/server";
+import { authPasswordErrorCode } from "@/features/auth/schemas";
+import { getRequestLocale } from "@/i18n/server";
 import { hasPermission, PERMISSIONS } from "@/server/auth/permissions";
 import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
 import { createPendingTrialEntitlement } from "@/server/billing/trial-service";
 import { prisma } from "@/server/db";
 import { createMobileSession, parseMobilePlatform } from "@/server/mobile/auth";
+import { mobileRegistrationSchema } from "@/server/mobile/registration-schema";
 import { issueEmailVerification } from "@/server/auth/email-verification";
 import { clientIp, enforceMobileRateLimit } from "@/server/mobile/rate-limit";
 import { readMobileJson } from "@/server/mobile/request-json";
@@ -23,25 +23,6 @@ import {
   findPendingInvitation,
   findPendingInvitationByCode,
 } from "@/server/team/company-invitations";
-
-const schema = z.object({
-  name: z.string().min(2).max(100),
-  email: z.string().email(),
-  phone: z.string().min(7).max(30),
-  password: passwordSchema,
-  passwordConfirmation: z.custom<string>((value) => typeof value === "string", { message: "PASSWORD_INVALID_TYPE" }),
-  termsAccepted: z.literal(true),
-  privacyAccepted: z.literal(true),
-  kvkkAccepted: z.literal(true),
-  referralCode: z.string().max(40).optional(),
-  invitationToken: z.string().min(32).max(200).optional(),
-  invitationCode: z.string().trim().min(16).max(32).optional(),
-  deviceId: z.string().min(3).max(160),
-  platform: z.string().optional(),
-  appVersion: z.string().max(40).optional(),
-})
-  .refine((input) => !(input.invitationToken && input.invitationCode), { path: ["invitationCode"], message: "validation.invalid" })
-  .refine((input) => input.password === input.passwordConfirmation, { path: ["passwordConfirmation"], message: PASSWORD_CONFIRMATION_MISMATCH });
 
 const invitationMessages: Record<string, string> = {
   INVITATION_INVALID: "auth.invitationInvalid",
@@ -59,11 +40,10 @@ export async function POST(request: Request) {
   const route = "/api/mobile/auth/register";
   try {
     const requestedLocale = await getRequestLocale(request.headers.get("x-logivya-locale"));
-    const { t } = await getServerTranslator(requestedLocale);
     const body = await readMobileJson(request);
     if (!body.ok) return body.response;
 
-    const parsed = schema.safeParse(body.data);
+    const parsed = mobileRegistrationSchema.safeParse(body.data);
     if (!parsed.success) {
       const code = authPasswordErrorCode(parsed.error);
       if (code) {
@@ -91,9 +71,17 @@ export async function POST(request: Request) {
       request,
     });
     const email = input.email.trim().toLowerCase();
-    const phone = input.phone.replace(/\D/g, "");
-    const duplicate = await prisma.user.findFirst({ where: { OR: [{ email }, { phone }] } });
-    if (duplicate) return mobileError("ACCOUNT_EXISTS", "Bu e-posta veya telefonla kayıtlı hesap var.", { status: 409 });
+    const phone = input.phone?.replace(/\D/g, "") || null;
+    const duplicate = await prisma.user.findFirst({
+      where: { OR: phone ? [{ email }, { phone }] : [{ email }] },
+    });
+    if (duplicate) {
+      return mobileError(
+        "ACCOUNT_EXISTS",
+        phone ? "Bu e-posta veya telefonla kayıtlı hesap var." : "Bu e-posta ile kayıtlı hesap var.",
+        { status: 409 },
+      );
+    }
 
     const hasInvitation = Boolean(input.invitationToken || input.invitationCode);
     const invitation = input.invitationToken
@@ -134,18 +122,22 @@ export async function POST(request: Request) {
         membership = accepted.membership;
       } else {
         company = await tx.company.create({
-          data: { name: t("registration.defaultCompanyName", { name: user.name }), ownerId: user.id, email: user.email, phone: user.phone },
+          data: { name: user.name.trim(), ownerId: user.id, email: user.email, phone: user.phone },
         });
-        membership = await tx.companyUser.create({ data: { companyId: company.id, userId: user.id, role: "OWNER" } });
+        membership = await tx.companyUser.create({
+          data: {
+            companyId: company.id,
+            userId: user.id,
+            role: "OWNER",
+            lifecycleState: "INDEPENDENT_OWNER",
+          },
+        });
         await createPendingTrialEntitlement(tx, {
           companyId: company.id,
           userId: user.id,
           registrationPhone: phone,
           ipAddress,
           deviceFingerprint: input.deviceId,
-        });
-        await tx.companyBillingProfile.create({
-          data: { companyId: company.id, billingType: "COMPANY", companyName: company.name, country: "TR", city: "-", addressLine1: "-", billingEmail: user.email },
         });
         await tx.onboardingChecklist.create({ data: { companyId: company.id } });
       }

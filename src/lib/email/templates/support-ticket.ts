@@ -88,7 +88,7 @@ export function supportCreatedEmail(variables: SupportEmailVariables): SupportEm
     ["Subject", ticketSubject],
     ["User", value(variables, "userName")],
     ["Email", value(variables, "userEmail")],
-    ["Company", value(variables, "companyName")],
+    ["Account", value(variables, "companyName")],
     ["Category", value(variables, "ticketCategory")],
     ["Priority", value(variables, "ticketPriority")],
     ["Created", value(variables, "createdAt")],
@@ -135,7 +135,7 @@ export function supportReplyEmail(variables: SupportEmailVariables): SupportEmai
     ...(isUserReply ? [
       ["User", value(variables, "userName")],
       ["Email", value(variables, "userEmail")],
-      ["Company", value(variables, "companyName")],
+      ["Account", value(variables, "companyName")],
     ] as Array<[string, string]> : []),
     ["Updated", value(variables, "createdAt")],
   ];

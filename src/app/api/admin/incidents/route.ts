@@ -11,6 +11,7 @@ export async function GET(request: Request) {
     const status = url.searchParams.get("status")?.trim().toUpperCase();
     const incidents = await prisma.incidentLog.findMany({
       where: status ? { status } : undefined,
+      select: { id: true, severity: true, title: true, status: true, startedAt: true, resolvedAt: true },
       orderBy: { startedAt: "desc" },
       take: 100,
     });

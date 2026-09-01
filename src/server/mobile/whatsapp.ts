@@ -22,6 +22,8 @@ export function serializeMobileAccount(account: {
   id: string;
   label: string | null;
   phoneNumber: string | null;
+  countryIso?: string | null;
+  messageLocale?: string | null;
   displayName: string | null;
   status: AccountStatus;
   lastConnectedAt: Date | null;
@@ -61,6 +63,8 @@ export function serializeMobileAccount(account: {
     id: account.id,
     label: account.label,
     phoneNumber: account.phoneNumber,
+    countryIso: account.countryIso ?? null,
+    messageLocale: account.messageLocale ?? null,
     displayName: account.displayName,
     status: displayStatus,
     rawStatus: account.status,

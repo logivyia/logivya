@@ -15,7 +15,51 @@ export async function POST(request: Request) {
   });
   for (const item of expired) {
     await prisma.$transaction(async (tx) => {
+      const sharedMembers = await tx.companyUser.findMany({
+        where: {
+          companyId: item.companyId,
+          role: { not: "OWNER" },
+          status: "ACTIVE",
+          lifecycleState: "ACTIVE_SHARED_MEMBER",
+        },
+        select: { id: true, userId: true },
+      });
       await tx.subscription.update({ where: { id: item.id }, data: { status: "EXPIRED", expiredAt: now } });
+      if (sharedMembers.length) {
+        await tx.companyUser.updateMany({
+          where: { id: { in: sharedMembers.map((member) => member.id) } },
+          data: {
+            lifecycleState: "SHARED_SUBSCRIPTION_EXPIRED",
+            sharedAccessExpiredAt: now,
+          },
+        });
+        await tx.auditLog.createMany({
+          data: sharedMembers.map((member) => ({
+            companyId: item.companyId,
+            userId: member.userId,
+            actorType: "SYSTEM",
+            action: "SHARED_SUBSCRIPTION_EXPIRED",
+            entityType: "CompanyUser",
+            entityId: member.id,
+            beforeState: { lifecycleState: "ACTIVE_SHARED_MEMBER" },
+            afterState: {
+              lifecycleState: "SHARED_SUBSCRIPTION_EXPIRED",
+              expiredAt: now.toISOString(),
+            },
+          })),
+        });
+        await tx.notification.createMany({
+          data: sharedMembers.map((member) => ({
+            companyId: item.companyId,
+            userId: member.userId,
+            type: "SHARED_SUBSCRIPTION_EXPIRED",
+            category: "BILLING" as const,
+            title: "Shared subscription ended",
+            message: "You can select a personal plan from Subscription.",
+            deepLink: "/settings/subscriptions",
+          })),
+        });
+      }
       await tx.subscriptionEvent.create({
         data: {
           companyId: item.companyId,

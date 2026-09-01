@@ -25,6 +25,7 @@ export type CompanyEntitlements = {
   platformDelete: boolean;
   adFreeMessaging: boolean;
   advertisingEnabled: boolean;
+  messageBrandingRequired: boolean;
   advancedSupport: boolean;
   teamSeats: number;
   whatsappConnections: number;
@@ -51,6 +52,9 @@ export function deriveCompanyEntitlements(plan: Plan | null | undefined, active:
   const contactMessaging = Boolean(active && (rule?.contactMessaging ?? plan?.contactMessagingEnabled));
   const deleteForEveryone = Boolean(active && (rule?.deleteForEveryone ?? plan?.deleteForEveryoneEnabled !== false));
   const advertisingEnabled = Boolean(active && (rule?.advertisingEnabled ?? plan?.advertisingEnabled));
+  const messageBrandingRequired = Boolean(active && (
+    rule?.messageBrandingRequired ?? plan?.advertisingEnabled
+  ));
 
   return {
     accountAccess: true,
@@ -69,6 +73,7 @@ export function deriveCompanyEntitlements(plan: Plan | null | undefined, active:
     platformDelete: true,
     adFreeMessaging: Boolean(active && plan && !advertisingEnabled),
     advertisingEnabled,
+    messageBrandingRequired,
     advancedSupport: Boolean(active && (rule?.advancedSupport ?? true)),
     teamSeats: active ? Math.max(1, rule?.totalUserSeats ?? plan?.maxTeamUsers ?? 1) : 0,
     whatsappConnections: active ? Math.max(1, rule?.whatsappConnections ?? plan?.maxWhatsappAccounts ?? 1) : 0,
@@ -81,8 +86,9 @@ export async function resolveCompanyEntitlementSummary(
   actor?: { userId?: string; role?: string },
 ) {
   const current = await resolveCompanyEntitlements(companyId, prisma as unknown as SubscriptionReader, now);
-  const [activeSeatCount, invitedMembershipCount, pendingInvitationCount, whatsappConnectionsUsed, trialEntitlement] = await Promise.all([
+  const [activeSeatCount, suspendedSeatCount, invitedMembershipCount, pendingInvitationCount, whatsappConnectionsUsed, trialEntitlement] = await Promise.all([
     prisma.companyUser.count({ where: { companyId, status: "ACTIVE" } }),
+    prisma.companyUser.count({ where: { companyId, status: "SUSPENDED" } }),
     prisma.companyUser.count({ where: { companyId, status: "INVITED" } }),
     prisma.companyInvitation.count({ where: { companyId, status: "PENDING", reservedSeat: true, expiresAt: { gt: now } } }),
     prisma.whatsAppAccount.count({ where: { companyId, archivedAt: null } }),
@@ -93,7 +99,7 @@ export async function resolveCompanyEntitlementSummary(
     }),
   ]);
   const totalSeatLimit = current?.entitlements.teamSeats ?? 0;
-  const usedSeatCount = activeSeatCount + invitedMembershipCount + pendingInvitationCount;
+  const usedSeatCount = activeSeatCount + suspendedSeatCount + invitedMembershipCount + pendingInvitationCount;
   const availableSeats = Math.max(0, totalSeatLimit - usedSeatCount);
   const entitlements = current?.entitlements ?? deriveCompanyEntitlements(null, false);
   const pendingIdentityVerification = !current?.valid && trialEntitlement?.status === "PENDING_IDENTITY";
@@ -109,6 +115,7 @@ export async function resolveCompanyEntitlementSummary(
     isActive: current?.valid ?? false,
     totalSeatLimit,
     activeSeatCount,
+    suspendedSeatCount,
     pendingInvitationCount: pendingInvitationCount + invitedMembershipCount,
     availableSeats,
     seatLimit: totalSeatLimit,
@@ -126,6 +133,7 @@ export async function resolveCompanyEntitlementSummary(
     canCreateRecurringMessages: entitlements.recurringMessages,
     canDeleteForEveryone: entitlements.deleteForEveryone,
     isAdvertisingEnabled: entitlements.advertisingEnabled,
+    isMessageBrandingRequired: entitlements.messageBrandingRequired,
     canAccessAdvancedSupport: entitlements.advancedSupport,
     canManageBilling: actor?.role === "OWNER",
     canManageTeam: actor?.role === "OWNER",

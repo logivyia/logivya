@@ -124,18 +124,25 @@ export async function requirePlatformAdmin(permission = "admin.dashboard.read", 
     throw error;
   }
 
+  const isOwner = isAuthorizedLogivyaPlatformAdmin({ email: context.user.email });
   const storedRecord = await readPlatformAdminAccessRecord(context.user.id);
-  const record = isAuthorizedLogivyaPlatformAdmin({ email: context.user.email })
-    ? (storedRecord ?? createOwnerPlatformAdminRecord(context.user.id, context.sessionCreatedAt))
+  const record = isOwner
+    ? createOwnerPlatformAdminRecord(
+        context.user.id,
+        storedRecord?.lastElevatedAt ?? context.sessionCreatedAt,
+      )
     : storedRecord;
 
-  if (!isAuthorizedLogivyaPlatformAdmin({ email: context.user.email }) || !record || !hasAdminPermission(record.role, record.permissions, permission)) {
+  if (!isOwner || !record || !hasAdminPermission(record.role, record.permissions, permission)) {
     await writeAdminAccessDeniedEvent(context, permission, request);
     if (!request) redirect("/dashboard");
     throw new Error("FORBIDDEN");
   }
-  if (context.sessionCreatedAt < new Date(Date.now() - ADMIN_SESSION_MAX_MS)) {
-    if (!request) redirect("/login?next=/admin");
+  if (
+    request
+    && isCriticalAdminPermission(permission)
+    && context.sessionCreatedAt < new Date(Date.now() - ADMIN_SESSION_MAX_MS)
+  ) {
     throw new Error("UNAUTHORIZED");
   }
 

@@ -3,6 +3,7 @@ import { requireApiSession } from "@/server/auth/session";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { verifyPassword } from "@/server/security/passwords";
 import { PrivacyError } from "@/server/privacy/errors";
+import { assertWebMutationOrigin } from "@/server/security/request-origin";
 
 function hasBearerToken(request: Request) {
   return /^Bearer\s+/i.test(request.headers.get("authorization") || "");
@@ -17,11 +18,11 @@ export async function requirePrivacyAuth(request: Request) {
   return { ...context, authSource: "web" as const, platform: "WEB" as const };
 }
 
-export function assertPrivacyMutationCsrf(request: Request) {
-  if (hasBearerToken(request) || !["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) return;
-  const origin = request.headers.get("origin");
-  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
-  if (!origin || !host || new URL(origin).host !== host) throw new PrivacyError("CSRF_REJECTED", 403);
+export function assertPrivacyMutationCsrf(request: Request, authSource: "web" | "mobile") {
+  // Only a successfully authenticated mobile context may opt out of web CSRF.
+  if (authSource === "mobile") return;
+  try { assertWebMutationOrigin(request); }
+  catch { throw new PrivacyError("CSRF_REJECTED", 403); }
 }
 
 export async function requirePrivacyPassword(user: { passwordHash: string }, password: string | undefined) {

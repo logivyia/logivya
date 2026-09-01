@@ -4,7 +4,10 @@ import { prisma } from "@/server/db";
 
 export async function GET() {
   try {
-    const { company } = await requireApiSession();
+    const { company, membership } = await requireApiSession();
+    if (membership.role !== "OWNER") {
+      return NextResponse.json({ invoices: [] });
+    }
     const invoices = await prisma.invoice.findMany({
       where: { companyId: company.id },
       orderBy: { createdAt: "desc" },

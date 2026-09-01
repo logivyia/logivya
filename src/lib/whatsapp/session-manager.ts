@@ -3,8 +3,8 @@
  * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
  * Session files may only be manipulated through this module.
  */
-import { createHash } from "node:crypto";
-import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { access, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { gunzip, gzip } from "node:zlib";
@@ -38,8 +38,12 @@ const SNAPSHOT_DEBOUNCE_MS = boundedIntegerEnvironmentValue("WHATSAPP_SESSION_SN
 const SNAPSHOT_MIN_INTERVAL_MS = boundedIntegerEnvironmentValue("WHATSAPP_SESSION_SNAPSHOT_MIN_INTERVAL_MS", 3_600_000, 60_000, 86_400_000);
 const SNAPSHOT_FAILURE_RETRY_MS = boundedIntegerEnvironmentValue("WHATSAPP_SESSION_SNAPSHOT_FAILURE_RETRY_MS", 300_000, 30_000, 3_600_000);
 const SNAPSHOT_MAX_CONCURRENCY = boundedIntegerEnvironmentValue("WHATSAPP_SESSION_SNAPSHOT_CONCURRENCY", 2, 1, 4);
-const SNAPSHOT_MAX_FILE_COUNT = boundedIntegerEnvironmentValue("WHATSAPP_SESSION_SNAPSHOT_MAX_FILE_COUNT", 5_000, 100, 25_000);
-const SNAPSHOT_MAX_UNCOMPRESSED_BYTES = boundedIntegerEnvironmentValue("WHATSAPP_SESSION_SNAPSHOT_MAX_UNCOMPRESSED_BYTES", 32 * 1024 * 1024, 1024 * 1024, 128 * 1024 * 1024);
+// Baileys keeps one small JSON file per session/sender key. Busy accounts can
+// legitimately accumulate tens of thousands of files while the actual payload
+// remains compact. Bound both dimensions, but keep the file-count guard high
+// enough that a healthy, active account is not excluded from disaster recovery.
+const SNAPSHOT_MAX_FILE_COUNT = boundedIntegerEnvironmentValue("WHATSAPP_SESSION_SNAPSHOT_MAX_FILE_COUNT", 50_000, 100, 100_000);
+const SNAPSHOT_MAX_UNCOMPRESSED_BYTES = boundedIntegerEnvironmentValue("WHATSAPP_SESSION_SNAPSHOT_MAX_UNCOMPRESSED_BYTES", 64 * 1024 * 1024, 1024 * 1024, 256 * 1024 * 1024);
 
 export function getWhatsAppSessionRoot() {
   return sessionRoot;
@@ -59,12 +63,25 @@ export async function ensureWhatsAppSessionRoot() {
 }
 
 export async function hasWhatsAppCredentials(accountId: string) {
+  return hasRegisteredCredentialsInDirectory(whatsappSessionDirectory(accountId));
+}
+
+async function hasRegisteredCredentialsInDirectory(directory: string) {
   try {
-    const value = JSON.parse(await readFile(path.join(whatsappSessionDirectory(accountId), "creds.json"), "utf8")) as { registered?: unknown };
+    const value = JSON.parse(await readFile(path.join(directory, "creds.json"), "utf8")) as { registered?: unknown };
     return value.registered === true;
   } catch {
     return false;
   }
+}
+
+function isSessionKeyMaterial(relativePath: string) {
+  const filename = path.posix.basename(relativePath.replaceAll("\\", "/"));
+  return /^(?:app-state-sync-key-|pre-key-|sender-key-|session-)/.test(filename);
+}
+
+async function hasLocalSessionKeyMaterial(directory: string) {
+  return (await listSessionFiles(directory)).some(isSessionKeyMaterial);
 }
 
 function sessionKeyring(): EncryptionKeyring {
@@ -131,7 +148,7 @@ function mergeSnapshotReasons(current: string | undefined, next: string) {
 }
 
 function isHighFrequencySnapshotReason(reason: string) {
-  return /^(creds\.update|connection\.open|group\.sync|message\.(sent|deleted)|contact\.lid_mapping\.)/.test(reason);
+  return /^(creds\.update|group\.sync|message\.(sent|deleted)|contact\.lid_mapping\.)/.test(reason);
 }
 
 async function listSessionFiles(directory: string, current = directory): Promise<string[]> {
@@ -215,6 +232,10 @@ function snapshotHasRegisteredCredentials(snapshot: SessionSnapshot) {
   }
 }
 
+function snapshotHasSessionKeyMaterial(snapshot: SessionSnapshot) {
+  return snapshot.files.some((file) => isSessionKeyMaterial(file.relativePath));
+}
+
 async function clearStaleSessionSnapshotMetadata(accountId: string, reason: string) {
   await prisma.whatsAppAccount.updateMany({
     where: {
@@ -268,7 +289,6 @@ async function performWhatsAppSessionBackup(accountId: string, reason: string) {
       await prisma.whatsAppSession.upsert({
         where: { accountId },
         update: {
-          sessionDataEncrypted: null,
           status: AccountStatus.PENDING_PAIRING,
           qrCode: null,
           expiresAt: null,
@@ -283,9 +303,21 @@ async function performWhatsAppSessionBackup(accountId: string, reason: string) {
           snapshotReason: reason,
         },
       });
-      await clearStaleSessionSnapshotMetadata(accountId, "snapshot_not_registered");
       logger.warn("WA_SESSION_SNAPSHOT_SAVE_SKIPPED", { accountId, reason, cause: "credentials_not_registered", fileCount: files.length, durationMs: Date.now() - startedAt });
       return false;
+    }
+    if (!snapshotHasSessionKeyMaterial(snapshot)) {
+      logger.warn("WA_SESSION_SNAPSHOT_SAVE_SKIPPED", {
+        accountId,
+        reason,
+        cause: "session_key_material_missing",
+        fileCount: files.length,
+        durationMs: Date.now() - startedAt,
+      });
+      return false;
+    }
+    if (reason.includes("connection.open")) {
+      logger.info("WA_SESSION_SNAPSHOT_REQUIRED_IMMEDIATE", { accountId, reason });
     }
     const encoded = await encodeStoredSnapshot(snapshot);
     if (state.lastDigest === encoded.digest) {
@@ -422,7 +454,9 @@ export async function backupWhatsAppSessionToDatabase(accountId: string, reason 
 export async function restoreWhatsAppSessionFromDatabase(accountId: string) {
   const startedAt = Date.now();
   logger.info("WA_RESTORE_START", { accountId, source: "database_snapshot" });
-  if (await hasWhatsAppCredentials(accountId)) {
+  const directory = whatsappSessionDirectory(accountId);
+  const localCredentialsRegistered = await hasRegisteredCredentialsInDirectory(directory);
+  if (localCredentialsRegistered && await hasLocalSessionKeyMaterial(directory)) {
     logger.info("WA_RESTORE_SUCCESS", { accountId, source: "local_filesystem", durationMs: Date.now() - startedAt });
     return true;
   }
@@ -431,29 +465,75 @@ export async function restoreWhatsAppSessionFromDatabase(accountId: string) {
     orderBy: { updatedAt: "desc" },
   });
   if (!session?.sessionDataEncrypted) {
+    if (localCredentialsRegistered) {
+      logger.warn("WA_RESTORE_FAILED", {
+        accountId,
+        reason: "local_credentials_without_key_material_and_snapshot_missing",
+        durationMs: Date.now() - startedAt,
+      });
+      return false;
+    }
     logger.warn("WA_RESTORE_FAILED", { accountId, reason: "snapshot_missing", durationMs: Date.now() - startedAt });
     await clearStaleSessionSnapshotMetadata(accountId, "restore_snapshot_missing");
     return false;
   }
 
   const snapshot = await decodeStoredSnapshot(decryptSensitiveField(parseEncryptedField(session.sessionDataEncrypted), sessionKeyring()));
-  if (!snapshotHasRegisteredCredentials(snapshot)) {
-    logger.warn("WA_RESTORE_FAILED", { accountId, reason: "snapshot_not_registered", durationMs: Date.now() - startedAt });
-    await clearStaleSessionSnapshotMetadata(accountId, "restore_snapshot_not_registered");
+  if (!snapshotHasRegisteredCredentials(snapshot) || !snapshotHasSessionKeyMaterial(snapshot)) {
+    logger.warn("WA_RESTORE_FAILED", {
+      accountId,
+      reason: snapshotHasRegisteredCredentials(snapshot) ? "snapshot_key_material_missing" : "snapshot_not_registered",
+      durationMs: Date.now() - startedAt,
+    });
+    await clearStaleSessionSnapshotMetadata(
+      accountId,
+      snapshotHasRegisteredCredentials(snapshot) ? "restore_snapshot_key_material_missing" : "restore_snapshot_not_registered",
+    );
     return false;
   }
 
-  const directory = whatsappSessionDirectory(accountId);
-  await mkdir(directory, { recursive: true });
-  for (const file of snapshot.files) {
-    const relativePath = assertSafeRelativeSessionPath(file.relativePath);
-    const destination = path.resolve(directory, relativePath);
-    const relativeToRoot = path.relative(directory, destination);
-    if (!relativeToRoot || relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) throw new Error("INVALID_SESSION_RESTORE_PATH");
-    await mkdir(path.dirname(destination), { recursive: true });
-    await writeFile(destination, Buffer.from(file.data, "base64"));
+  await ensureWhatsAppSessionRoot();
+  const restoreId = `${process.pid}-${randomUUID()}`;
+  const temporaryDirectory = `${directory}.restore-${restoreId}`;
+  const previousDirectory = `${directory}.previous-${restoreId}`;
+  let previousMoved = false;
+  let restoredDirectoryInstalled = false;
+  try {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+    await rm(previousDirectory, { recursive: true, force: true });
+    await mkdir(temporaryDirectory, { recursive: true });
+    for (const file of snapshot.files) {
+      const relativePath = assertSafeRelativeSessionPath(file.relativePath);
+      const destination = path.resolve(temporaryDirectory, relativePath);
+      const relativeToRoot = path.relative(temporaryDirectory, destination);
+      if (!relativeToRoot || relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) throw new Error("INVALID_SESSION_RESTORE_PATH");
+      await mkdir(path.dirname(destination), { recursive: true });
+      await writeFile(destination, Buffer.from(file.data, "base64"));
+    }
+    if (!await hasRegisteredCredentialsInDirectory(temporaryDirectory) || !await hasLocalSessionKeyMaterial(temporaryDirectory)) {
+      throw new Error("INVALID_RESTORED_WHATSAPP_SESSION");
+    }
+    const targetExists = await access(directory).then(() => true).catch(() => false);
+    if (targetExists) {
+      await rename(directory, previousDirectory);
+      previousMoved = true;
+    }
+    await rename(temporaryDirectory, directory);
+    restoredDirectoryInstalled = true;
+    if (!await hasRegisteredCredentialsInDirectory(directory) || !await hasLocalSessionKeyMaterial(directory)) {
+      throw new Error("INVALID_INSTALLED_WHATSAPP_SESSION");
+    }
+    if (previousMoved) await rm(previousDirectory, { recursive: true, force: true });
+  } catch (error) {
+    if (restoredDirectoryInstalled) await rm(directory, { recursive: true, force: true }).catch(() => undefined);
+    if (previousMoved) await rename(previousDirectory, directory).catch((rollbackError) => {
+      logger.error("WA_RESTORE_ROLLBACK_FAILED", rollbackError, { accountId });
+    });
+    throw error;
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
   }
-  const restored = await hasWhatsAppCredentials(accountId);
+  const restored = await hasWhatsAppCredentials(accountId) && await hasLocalSessionKeyMaterial(directory);
   if (restored) {
     await prisma.whatsAppSession.updateMany({ where: { accountId }, data: { restoreCount: { increment: 1 } } });
     await prisma.whatsAppAccount.updateMany({
@@ -469,7 +549,8 @@ export async function restoreWhatsAppSessionFromDatabase(accountId: string) {
 }
 
 export async function hasRestorableWhatsAppCredentials(accountId: string) {
-  if (await hasWhatsAppCredentials(accountId)) return true;
+  const directory = whatsappSessionDirectory(accountId);
+  if (await hasWhatsAppCredentials(accountId) && await hasLocalSessionKeyMaterial(directory)) return true;
   const sessions = await prisma.whatsAppSession.findMany({
     where: { accountId, sessionDataEncrypted: { not: null } },
     select: { sessionDataEncrypted: true },
@@ -481,7 +562,12 @@ export async function hasRestorableWhatsAppCredentials(accountId: string) {
     if (!session.sessionDataEncrypted) continue;
     try {
       const snapshot = await decodeStoredSnapshot(decryptSensitiveField(parseEncryptedField(session.sessionDataEncrypted), sessionKeyring()));
-      if (snapshot.version === 1 && Array.isArray(snapshot.files) && snapshotHasRegisteredCredentials(snapshot)) return true;
+      if (
+        snapshot.version === 1
+        && Array.isArray(snapshot.files)
+        && snapshotHasRegisteredCredentials(snapshot)
+        && snapshotHasSessionKeyMaterial(snapshot)
+      ) return true;
     } catch (error) {
       logger.warn("session.snapshot.restorable_check_failed", { accountId, reason: error instanceof Error ? error.message : String(error) });
     }

@@ -5,6 +5,8 @@ import { Download, ExternalLink, FileCheck2, LoaderCircle, LockKeyhole, Send, Sh
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/i18n/provider";
 import { openBrowserPrivacyPreferences } from "@/lib/privacy-preferences";
+import { PasswordInput } from "@/components/password-input";
+import { saveClientObservabilityConsent } from "@/lib/client-observability-consent";
 
 type Purpose = { code: string; label: string; description: string; required: boolean; currentStatus: string };
 type PrivacyRequest = { publicId: string; type: string; status: string; requestedAt: string; deadlineAt?: string | null };
@@ -34,7 +36,13 @@ export function PrivacySettingsPage() {
   const load = useCallback(async () => {
     const response = await fetch("/api/privacy/overview", { cache: "no-store" });
     if (!response.ok) throw new Error("PRIVACY_OVERVIEW_FAILED");
-    setOverview(await response.json());
+    const payload = await response.json() as Overview;
+    setOverview(payload);
+    const statuses = new Map(payload.purposes.map((purpose) => [purpose.code, purpose.currentStatus]));
+    saveClientObservabilityConsent({
+      analytics: statuses.get("PRODUCT_ANALYTICS") === "GRANTED",
+      diagnostics: statuses.get("CRASH_DIAGNOSTICS") === "GRANTED",
+    });
   }, []);
 
   useEffect(() => {
@@ -52,7 +60,16 @@ export function PrivacySettingsPage() {
     const response = await fetch(`/api/privacy/consents/${purpose.code}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled, locale }) });
     setBusy("");
     if (!response.ok) return setMessage(t("privacy.preferenceFailed"));
-    setOverview((current) => current ? { ...current, purposes: current.purposes.map((item) => item.code === purpose.code ? { ...item, currentStatus: enabled ? "GRANTED" : "WITHDRAWN" } : item) } : current);
+    setOverview((current) => {
+      if (!current) return current;
+      const purposes = current.purposes.map((item) => item.code === purpose.code ? { ...item, currentStatus: enabled ? "GRANTED" : "WITHDRAWN" } : item);
+      const statuses = new Map(purposes.map((item) => [item.code, item.currentStatus]));
+      saveClientObservabilityConsent({
+        analytics: statuses.get("PRODUCT_ANALYTICS") === "GRANTED",
+        diagnostics: statuses.get("CRASH_DIAGNOSTICS") === "GRANTED",
+      });
+      return { ...current, purposes };
+    });
     setMessage(t("privacy.preferenceSaved"));
   }
 
@@ -131,7 +148,7 @@ export function PrivacySettingsPage() {
     <div className="grid gap-5 lg:grid-cols-2">
       <section className={panel}>
         <div className="flex items-start gap-3"><Download className="mt-0.5 size-5 text-primary"/><div><h2 className="font-semibold">{t("privacy.exportTitle")}</h2><p className="mt-1 text-sm text-muted">{t("privacy.exportDescription")}</p></div></div>
-        <input className={`${input} mt-4`} type="password" autoComplete="current-password" value={exportPassword} onChange={(event) => setExportPassword(event.target.value)} placeholder={t("privacy.passwordPlaceholder")} />
+        <PasswordInput className={`${input} mt-4`} autoComplete="current-password" value={exportPassword} onChange={(event) => setExportPassword(event.target.value)} placeholder={t("privacy.passwordPlaceholder")} />
         <button className={`${primaryButton} mt-3`} disabled={!exportPassword || busy === "export"} onClick={() => void requestExport()}>{busy === "export" ? <LoaderCircle className="size-4 animate-spin"/> : <LockKeyhole className="size-4"/>}{t("privacy.requestExport")}</button>
         <div className="mt-4 space-y-2">{overview?.exports.map((job) => <div key={job.publicId} className="flex items-center justify-between gap-3 border-t pt-3 text-xs"><span><b>{job.publicId}</b><span className="ms-2 text-muted">{job.status}</span></span>{job.status === "READY" ? <button className="text-primary" disabled={busy === job.publicId} onClick={() => void downloadExport(job)}>{t("privacy.download")}</button> : null}</div>)}</div>
       </section>
@@ -140,7 +157,7 @@ export function PrivacySettingsPage() {
         <div className="flex items-start gap-3"><Send className="mt-0.5 size-5 text-primary"/><div><h2 className="font-semibold">{t("privacy.rightsTitle")}</h2><p className="mt-1 text-sm text-muted">{t("privacy.rightsDescription")}</p></div></div>
         <select className={`${input} mt-4`} value={requestType} onChange={(event) => setRequestType(event.target.value)}><option value="ACCESS">{t("privacy.requestAccess")}</option><option value="RECTIFICATION">{t("privacy.requestRectification")}</option><option value="RESTRICTION">{t("privacy.requestRestriction")}</option><option value="OBJECTION">{t("privacy.requestObjection")}</option><option value="PORTABILITY">{t("privacy.requestPortability")}</option><option value="OTHER">{t("privacy.requestOther")}</option></select>
         <textarea className={`${input} mt-3 min-h-28 resize-y`} value={requestDescription} onChange={(event) => setRequestDescription(event.target.value)} placeholder={t("privacy.requestDescriptionPlaceholder")}/>
-        <input className={`${input} mt-3`} type="password" autoComplete="current-password" value={requestPassword} onChange={(event) => setRequestPassword(event.target.value)} placeholder={t("privacy.passwordPlaceholder")} />
+        <PasswordInput className={`${input} mt-3`} autoComplete="current-password" value={requestPassword} onChange={(event) => setRequestPassword(event.target.value)} placeholder={t("privacy.passwordPlaceholder")} />
         <button className={`${primaryButton} mt-3`} disabled={requestDescription.trim().length < 10 || !requestPassword || busy === "request"} onClick={() => void submitRightsRequest()}>{busy === "request" ? <LoaderCircle className="size-4 animate-spin"/> : <Send className="size-4"/>}{t("privacy.submitRequest")}</button>
       </section>
     </div>

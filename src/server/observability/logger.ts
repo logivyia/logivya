@@ -42,6 +42,63 @@ const baseContext: LogContext = {
 };
 
 let testSink: LogSink | undefined;
+const MESSAGE_OPERATION_EVENT = /(?:message|campaign|recipient|delivery|contact[_ .-]?sync|group[_ .-]?sync|delete[_ .-]?for[_ .-]?everyone)/i;
+const MESSAGE_OPERATION_LOG_KEYS = [
+  "requestId",
+  "correlationId",
+  "traceId",
+  "spanId",
+  "jobId",
+  "jobName",
+  "queue",
+  "queueName",
+  "workerId",
+  "appVersion",
+  "releaseVersion",
+  "platform",
+  "route",
+  "method",
+  "statusCode",
+  "durationMs",
+  "result",
+  "errorCode",
+  "retryable",
+  "attempt",
+  "finalAttempt",
+] as const;
+
+function isMessageOperation(eventName: string, context: LogContext) {
+  const operationalMarker = [context.queueName, context.queue, context.jobName, context.route]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
+  return MESSAGE_OPERATION_EVENT.test(eventName) || MESSAGE_OPERATION_EVENT.test(operationalMarker);
+}
+
+function deidentifyMessageOperation(eventName: string, context: LogContext): LogContext {
+  if (!isMessageOperation(eventName, context)) return context;
+  const operational = Object.fromEntries(
+    MESSAGE_OPERATION_LOG_KEYS
+      .filter((key) => context[key] !== undefined)
+      .map((key) => [key, context[key]]),
+  ) as LogContext;
+  if (context.userId) operational.userId = "[REDACTED_RELATION]";
+  if (context.companyId) operational.companyId = "[REDACTED_RELATION]";
+  if (context.whatsappAccountId) operational.whatsappAccountId = "[REDACTED_RELATION]";
+  if (context.campaignId) operational.campaignId = "[REDACTED_RELATION]";
+  return operational;
+}
+
+function serializeMessageOperationError(error: unknown) {
+  const serialized = serializeLogError(error, { includeStack: false });
+  return {
+    name: serialized.name,
+    message: "Message operation failed",
+    category: serialized.category,
+    ...(serialized.code === undefined ? {} : { code: serialized.code }),
+    ...(serialized.statusCode === undefined ? {} : { statusCode: serialized.statusCode }),
+    ...(serialized.retryable === undefined ? {} : { retryable: serialized.retryable }),
+  };
+}
 
 function defaultSink(event: StructuredLogEvent, formatted: string) {
   const output = process.env.NODE_ENV === "production" ? JSON.stringify(event) : formatted;
@@ -58,14 +115,20 @@ function formatLocal(event: StructuredLogEvent) {
 function emit(level: LogLevel, eventName: string, context: LogContext, error?: unknown) {
   if (LEVEL_WEIGHT[level] < LEVEL_WEIGHT[minimumLevel]) return;
   try {
-    const safeContext = redactSensitive(context) as LogContext;
+    const safeContext = redactSensitive(deidentifyMessageOperation(eventName, context)) as LogContext;
     const event = redactSensitive({
       ...baseContext,
       ...safeContext,
       timestamp: new Date().toISOString(),
       level,
       eventName: normalizeEventName(eventName),
-      ...(error === undefined ? {} : { error: serializeLogError(error, { includeStack: process.env.LOG_INCLUDE_STACKS !== "false" }) }),
+      ...(error === undefined
+        ? {}
+        : {
+            error: isMessageOperation(eventName, context)
+              ? serializeMessageOperationError(error)
+              : serializeLogError(error, { includeStack: process.env.LOG_INCLUDE_STACKS !== "false" }),
+          }),
     }) as StructuredLogEvent;
     (testSink ?? defaultSink)(event, formatLocal(event));
   } catch {

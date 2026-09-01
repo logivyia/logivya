@@ -177,7 +177,7 @@ export const platformFeatureRegistry = [
   },
   {
     id: "company_settings",
-    title: "Company settings",
+    title: "Profile information",
     status: "implemented",
     businessLogicOwner: "backend",
     platforms: { desktopWeb: "implemented", mobileWeb: "implemented", android: "implemented", ios: "planned" },

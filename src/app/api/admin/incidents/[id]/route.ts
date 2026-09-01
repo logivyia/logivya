@@ -32,7 +32,16 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       before: { status: incident.status },
       after: { status: updated.status, note: parsed.data.note },
     });
-    return NextResponse.json({ incident: updated });
+    return NextResponse.json({
+      incident: {
+        id: updated.id,
+        severity: updated.severity,
+        title: updated.title,
+        status: updated.status,
+        startedAt: updated.startedAt,
+        resolvedAt: updated.resolvedAt,
+      },
+    });
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN";
     if (code === "FORBIDDEN" || code === "UNAUTHORIZED") return NextResponse.json({ error: code }, { status: code === "UNAUTHORIZED" ? 401 : 403 });

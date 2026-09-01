@@ -5,7 +5,7 @@ export function whatsappLastErrorCode(error: unknown) {
   if (message.includes("max requests limit exceeded")) return "REDIS_MAX_REQUESTS_EXCEEDED";
   if (message.includes(WORKER_UNREACHABLE_MESSAGE)) return WORKER_UNREACHABLE_MESSAGE;
   if (message.includes("WHATSAPP_WORKER_URL_REQUIRED")) return "WHATSAPP_WORKER_URL_REQUIRED";
-  if (message === "INVALID_WHATSAPP_PHONE") return "INVALID_WHATSAPP_PHONE";
+  if (["INVALID_WHATSAPP_PHONE", "UNSUPPORTED_PHONE_COUNTRY", "DUPLICATE_PHONE_COUNTRY_CODE", "PHONE_COUNTRY_MISMATCH"].includes(message)) return message;
   if (message === "WHATSAPP_RATE_LIMITED") return "WHATSAPP_RATE_LIMITED";
   if (message === "WHATSAPP_RATE_LIMIT_UNAVAILABLE") return "WHATSAPP_RATE_LIMIT_UNAVAILABLE";
   if (message === "accounts.planLimit") return "accounts.planLimit";
@@ -28,8 +28,14 @@ export function whatsappUserMessage(error: unknown, operation: "qr" | "pairing" 
   if (message === "WHATSAPP_TRANSIENT_DISCONNECT" || message === "WHATSAPP_CONNECTION_FAILED" || message === "WHATSAPP_QR_FAILED" || message === "MOBILE_QR_FAILED") {
     return "WhatsApp baglantisi gecici olarak kesildi. Lutfen yeniden baglanmayi deneyin.";
   }
-  if (message === "INVALID_WHATSAPP_PHONE") {
-    return "Gecerli bir telefon numarasi girin. Turkiye icin 0552... veya +90552... kullanabilirsiniz.";
+  if (["INVALID_WHATSAPP_PHONE", "PHONE_COUNTRY_MISMATCH"].includes(message)) {
+    return "accounts.phoneInvalid";
+  }
+  if (message === "UNSUPPORTED_PHONE_COUNTRY") {
+    return "accounts.countryUnsupported";
+  }
+  if (message === "DUPLICATE_PHONE_COUNTRY_CODE") {
+    return "accounts.countryCodeDuplicate";
   }
   if (message === "WHATSAPP_RATE_LIMITED") {
     return "Kisa surede cok fazla deneme yapildi. Lutfen birkac dakika sonra tekrar deneyin.";

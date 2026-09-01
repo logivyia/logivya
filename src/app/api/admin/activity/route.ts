@@ -1,7 +1,7 @@
-import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { maskEmail } from "@logivya/logging";
 
+import { adminAuditPrivacyWhere } from "@/server/admin/message-privacy";
+import { serializeAdminAuditRecord } from "@/server/admin/message-privacy-contract";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     const dateFrom = validDate(params.get("dateFrom"));
     const dateTo = validDate(params.get("dateTo"), true);
 
-    const where: Prisma.AuditLogWhereInput = {
+    const where = adminAuditPrivacyWhere({
       ...(companyId ? { companyId } : {}),
       ...(userId ? { userId } : {}),
       ...(action ? { action } : {}),
@@ -46,12 +46,10 @@ export async function GET(request: Request) {
         OR: [
           { action: { contains: search, mode: "insensitive" } },
           { entityType: { contains: search, mode: "insensitive" } },
-          { entityId: { contains: search, mode: "insensitive" } },
-          { correlationId: { contains: search, mode: "insensitive" } },
           { company: { name: { contains: search, mode: "insensitive" } } },
         ],
       } : {}),
-    };
+    });
 
     const [rows, total] = await Promise.all([
       prisma.auditLog.findMany({
@@ -62,22 +60,12 @@ export async function GET(request: Request) {
           actorEmailMasked: true,
           action: true,
           result: true,
-          reason: true,
           entityType: true,
           entityId: true,
-          requestId: true,
-          correlationId: true,
           clientPlatform: true,
           appVersion: true,
-          releaseVersion: true,
-          beforeState: true,
-          afterState: true,
-          metadata: true,
-          ipAddressMasked: true,
-          userAgentSummary: true,
           createdAt: true,
           company: { select: { id: true, name: true } },
-          user: { select: { id: true, name: true, email: true } },
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         skip: (page - 1) * limit,
@@ -98,10 +86,9 @@ export async function GET(request: Request) {
     }).catch((error) => logger.error("audit.admin_audit_access.write_failed", error, { userId: context.user.id }));
 
     return NextResponse.json({
-      logs: rows.map((row) => ({
-        ...row,
-        user: row.user ? { id: row.user.id, name: row.user.name, emailMasked: maskEmail(row.user.email) } : null,
-      })),
+      logs: rows
+        .map(serializeAdminAuditRecord)
+        .filter((row): row is NonNullable<typeof row> => row !== null),
       pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) },
     });
   } catch (error) {

@@ -8,7 +8,7 @@ export default async function Page() {
   await requirePlatformAdmin("operations:read");
   const { locale, t } = await getServerTranslator();
   const rows = await prisma.whatsAppAccount.findMany({
-    include: { company: { select: { name: true } }, _count: { select: { groups: true, recipients: true } } },
+    include: { company: { select: { name: true } } },
     orderBy: { createdAt: "desc" },
     take: 100,
   });
@@ -26,13 +26,11 @@ export default async function Page() {
       }}
     >
       <AdminTable
-        headers={[t("common.account"), t("common.company"), t("common.status"), t("common.groups"), t("adminWhatsApp.deliveries"), t("accounts.lastSync")]}
+        headers={[t("common.account"), t("common.company"), t("common.status"), t("accounts.lastSync")]}
         rows={rows.map((x) => [
           x.label,
           x.company.name,
           t(`accountStatus.${x.status}`),
-          x._count.groups,
-          x._count.recipients,
           x.lastSyncedAt ? formatDateTime(x.lastSyncedAt, locale) : "-",
         ])}
       />

@@ -18,6 +18,7 @@ const nav = [
   ["/admin/invoices", "invoices", FileText],
   ["/admin/payments", "payments", CircleDollarSign],
   ["/admin/whatsapp-accounts", "whatsappAccounts", Zap],
+  ["/admin/whatsapp-live-listing-sources", "whatsappLiveSources", Zap],
   ["/admin/campaigns", "campaigns", Activity],
   ["/admin/support", "support", Ticket],
   ["/admin/security", "security", ShieldAlert],
@@ -123,7 +124,7 @@ export function AdminShell({ children, role, permissions }: { children: React.Re
       </nav>
     </aside>
     <section>
-      <header className="sticky top-0 z-30 border-b bg-white/90 p-4 backdrop-blur"><div className="relative mx-auto max-w-5xl"><label className="flex items-center gap-2 rounded-xl border bg-white px-4"><Search className="size-4 text-slate-400" /><input value={q} onChange={(event) => void search(event.target.value)} placeholder={t("admin.searchPlaceholder")} className="w-full py-3 text-sm outline-none" /></label>{results && <div className="absolute inset-x-0 top-14 rounded-2xl border bg-white p-4 shadow-2xl"><SearchGroup title={adminMenuLabel(t, "companies")} rows={results.companies} /><SearchGroup title={adminMenuLabel(t, "users")} rows={results.users} /><SearchGroup title={adminMenuLabel(t, "campaigns")} rows={results.campaigns} /><SearchGroup title={adminMenuLabel(t, "support")} rows={results.tickets} /></div>}</div></header>
+      <header className="sticky top-0 z-30 border-b bg-white/90 p-4 backdrop-blur"><div className="relative mx-auto max-w-5xl"><label className="flex items-center gap-2 rounded-xl border bg-white px-4"><Search className="size-4 text-slate-400" /><input value={q} onChange={(event) => void search(event.target.value)} placeholder={t("admin.searchPlaceholder")} className="w-full py-3 text-sm outline-none" /></label>{results && <div className="absolute inset-x-0 top-14 rounded-2xl border bg-white p-4 shadow-2xl"><SearchGroup title={adminMenuLabel(t, "companies")} rows={results.companies} /><SearchGroup title={adminMenuLabel(t, "users")} rows={results.users} /><SearchGroup title={adminMenuLabel(t, "support")} rows={results.tickets} /></div>}</div></header>
       <main className="mx-auto max-w-[1600px] p-5 md:p-8">{children}</main>
     </section>
   </div>;

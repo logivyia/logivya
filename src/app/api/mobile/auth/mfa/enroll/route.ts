@@ -23,16 +23,16 @@ export async function POST(request: Request) {
     await enforceOperationRateLimit({ scope: "mobile-mfa-enroll", subject: context.user.id, maxAttempts: 3, windowMs: 15 * 60_000, request });
 
     const passwordValid = await verifyPassword(context.user.passwordHash, parsed.data.password, process.env.PASSWORD_PEPPER ?? "");
-    if (!passwordValid) return mobileError("PASSWORD_CONFIRMATION_REQUIRED", "Parolanizi dogrulayin.", { status: 401 });
-    const activeCredential = await findActiveMfaCredential(context.user.id);
+    if (!passwordValid) return mobileError("PASSWORD_CONFIRMATION_REQUIRED", "Parolanızı doğrulayın.", { status: 401 });
+    const activeCredential = await findActiveMfaCredential(context.user.id, "TOTP");
     if (activeCredential) {
-      if (!parsed.data.currentCode) return mobileError("RECENT_AUTHENTICATION_REQUIRED", "Mevcut dogrulama kodunuzu girin.", { status: 428 });
-      const verification = await verifyAndConsumeMfaCode({ userId: context.user.id, code: parsed.data.currentCode, allowRecoveryCode: false });
-      if (!verification.ok) return mobileError(verification.reason, "Dogrulama kodu gecersiz.", { status: 401 });
+      if (!parsed.data.currentCode) return mobileError("RECENT_AUTHENTICATION_REQUIRED", "Mevcut doğrulama kodunuzu girin.", { status: 428 });
+      const verification = await verifyAndConsumeMfaCode({ userId: context.user.id, code: parsed.data.currentCode, method: "TOTP", allowRecoveryCode: false });
+      if (!verification.ok) return mobileError(verification.reason, "Doğrulama kodu geçersiz.", { status: 401 });
     }
 
     const enrollment = await createAndStoreMfaEnrollment(context.user.id, context.user.email);
-    await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_ENROLLMENT_STARTED", message: "Mobil MFA kurulumu baslatildi." });
+    await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_ENROLLMENT_STARTED", message: "Mobil iki adımlı doğrulama kurulumu başlatıldı." });
     return mobileSuccess(enrollment);
   } catch (error) {
     if (error instanceof Error && error.message === "TWO_FACTOR_SETUP_IN_PROGRESS") {

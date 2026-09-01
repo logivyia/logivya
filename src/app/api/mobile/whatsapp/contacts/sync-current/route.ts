@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   try {
     const { company, user } = await requireMobileAuth(request);
     if (!(await subscriptionAccess.canUseContactMessaging(company.id))) {
-      return mobileError("CONTACT_MESSAGING_REQUIRES_PROFESSIONAL", "Kişilere mesaj gönderimi Profesyonel paketinde kullanılabilir.", { status: 403 });
+      return mobileError("CONTACT_MESSAGING_REQUIRES_PROFESSIONAL", "Kişilere mesaj göndermek için aktif bir abonelik gerekir.", { status: 403 });
     }
     const body = await request.json().catch(() => ({})) as { accountId?: string };
     await enforceOperationRateLimit({

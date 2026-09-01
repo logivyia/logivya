@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { adminSecurityEventPrivacyWhere } from "@/server/admin/message-privacy";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
@@ -17,7 +18,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "INVALID_SECURITY_EVENT_UPDATE" }, { status: 400 });
     const { id } = await params;
-    const before = await prisma.securityEvent.findUnique({ where: { id }, select: { id: true, companyId: true, status: true, investigationNote: true, resolvedAt: true } });
+    const before = await prisma.securityEvent.findFirst({
+      where: adminSecurityEventPrivacyWhere({ id }),
+      select: { id: true, companyId: true, status: true, investigationNote: true, resolvedAt: true },
+    });
     if (!before) return NextResponse.json({ error: "SECURITY_EVENT_NOT_FOUND" }, { status: 404 });
     const now = new Date();
     const event = await prisma.securityEvent.update({
@@ -28,6 +32,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         acknowledgedAt: before.status === "OPEN" ? now : undefined,
         acknowledgedByUserId: context.user.id,
         resolvedAt: parsed.data.status === "RESOLVED" || parsed.data.status === "DISMISSED" ? now : null,
+      },
+      select: {
+        id: true,
+        severity: true,
+        type: true,
+        result: true,
+        status: true,
+        errorCode: true,
+        source: true,
+        clientPlatform: true,
+        appVersion: true,
+        ipAddressMasked: true,
+        userAgentSummary: true,
+        acknowledgedAt: true,
+        investigationNote: true,
+        createdAt: true,
+        resolvedAt: true,
       },
     });
     await writeAuditLog(request, {

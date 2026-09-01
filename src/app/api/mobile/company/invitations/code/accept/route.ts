@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createMobileSession, requireMobileAuth } from "@/server/mobile/auth";
 import { prisma } from "@/server/db";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
+import { isMobileWorkspaceEnrollmentAllowed } from "@/server/mobile/registration-policy";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 import { acceptCompanyInvitation, companyInvitationErrorStatus } from "@/server/team/company-invitations";
 
@@ -15,13 +16,16 @@ const invitationMessages: Record<string, string> = {
   INVITATION_ALREADY_USED: "Bu davet daha önce kullanılmış.",
   INVITATION_REVOKED: "Bu davet iptal edilmiş.",
   INVITATION_DECLINED: "Bu davet daha önce reddedilmiş.",
-  SEAT_LIMIT_REACHED: "Şirkette kullanılabilir ekip koltuğu kalmamış.",
+  SEAT_LIMIT_REACHED: "Çalışma alanında kullanılabilir hesap kapasitesi kalmamış.",
   RATE_LIMITED: "Çok fazla deneme yaptınız. Lütfen daha sonra tekrar deneyin.",
 };
 
 export async function POST(request: Request) {
   try {
     const context = await requireMobileAuth(request);
+    if (!isMobileWorkspaceEnrollmentAllowed(context.platform)) {
+      return mobileError("WORKSPACE_ENROLLMENT_UNAVAILABLE_ON_IOS", "iOS uygulamasında davetle çalışma alanına katılma kullanılamaz.", { status: 403 });
+    }
     const parsed = schema.safeParse(await request.json().catch(() => ({})));
     if (!parsed.success) return mobileValidationError(parsed.error);
 

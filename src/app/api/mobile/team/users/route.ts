@@ -1,54 +1,69 @@
 import { requireMobileAuth } from "@/server/mobile/auth";
-import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
+import { mobileError, mobileSafeError, mobileSuccess } from "@/server/mobile/response";
+import { listCompanyUsers, serializeCompanyMember } from "@/server/team/company-users";
 import {
-  listCompanyUsers,
-  serializeCompanyMember,
-} from "@/server/team/company-users";
+  createDirectCompanyUser,
+  createDirectCompanyUserSchema,
+  directCompanyUserErrorStatus,
+  directCompanyUserPublicErrorCode,
+  directCompanyUserValidationCode,
+} from "@/server/team/direct-company-users";
 import {
-  createCompanyInvitation,
-  createCompanyInvitationSchema,
-  getCompanySeatUsage,
-  listCompanyInvitations,
-  serializeCompanyInvitation,
-} from "@/server/team/company-invitations";
-
-function canManageUsers(role: string) {
-  return role === "OWNER";
-}
+  assertTenantCapability,
+  resolveMembershipAccess,
+  serializeMembershipAccess,
+} from "@/server/team/membership-lifecycle";
 
 function teamError(error: unknown) {
-  if (error instanceof Error) {
-    if (error.message === "FORBIDDEN") return mobileError("FORBIDDEN", "Kullanici yonetimi icin yetkiniz yok.", { status: 403 });
-    if (error.message === "SEAT_LIMIT_REACHED") {
-      return mobileError("SEAT_LIMIT_REACHED", "Planınızdaki kullanılabilir ekip koltuğu dolu.", {
-        status: 409,
-        details: { limit: (error as Error & { limit?: number }).limit },
-      });
-    }
-    if (error.message === "RATE_LIMITED") {
-      return mobileError("RATE_LIMITED", "Çok fazla davet isteği gönderdiniz. Lütfen daha sonra tekrar deneyin.", { status: 429 });
-    }
-    if (error.message === "users.alreadyMember") {
-      return mobileError("ALREADY_MEMBER", "Bu kullanıcı zaten şirket ekibinde.", { status: 409 });
-    }
+  const code = directCompanyUserPublicErrorCode(error);
+  if (code === "USER_OPERATION_FAILED") {
+    return mobileSafeError(error, "User operation could not be completed.");
   }
-  return mobileSafeError(error, "Kullanici islemi tamamlanamadi.");
+  return mobileError(code, "User operation could not be completed.", {
+    status: directCompanyUserErrorStatus(code),
+    details: { limit: (error as Error & { limit?: number } | null)?.limit },
+  });
 }
 
 export async function GET(request: Request) {
   try {
-    const { company, membership } = await requireMobileAuth(request);
-    if (!canManageUsers(membership.role)) return mobileError("FORBIDDEN", "Kullanici listesini gorme yetkiniz yok.", { status: 403 });
-
-    const [users, invitations, seatUsage] = await Promise.all([
+    const { company, membership, user } = await requireMobileAuth(request);
+    const [users, access] = await Promise.all([
       listCompanyUsers(company.id),
-      listCompanyInvitations(company.id),
-      getCompanySeatUsage(company.id),
+      resolveMembershipAccess(company.id, user.id),
     ]);
+    assertTenantCapability(access, "tenant.members.read", "USER_MANAGEMENT_FORBIDDEN");
+    const visibleUsers = membership.role === "OWNER"
+      ? users
+      : users.filter((member) => member.userId === user.id || member.role === "OWNER");
+    const accountLimit = access.plan?.accountLimit ?? 0;
+    const occupiedAccounts = users.length;
+    const seatUsage = {
+      used: occupiedAccounts,
+      limit: accountLimit,
+      available: Math.max(0, accountLimit - occupiedAccounts),
+      activeMembers: users.filter((member) => member.status === "ACTIVE").length,
+      suspendedMembers: users.filter((member) => member.status === "SUSPENDED").length,
+      legacyInvitedMembers: users.filter((member) => member.status === "INVITED").length,
+      pendingInvitations: users.filter(
+        (member) => member.lifecycleState === "PENDING_ACTIVATION",
+      ).length,
+      planSlug: access.plan?.code ?? "",
+      planName: access.plan?.name ?? "-",
+    };
     return mobileSuccess({
-      users: users.map(serializeCompanyMember),
-      invitations: invitations.map(serializeCompanyInvitation),
+      users: visibleUsers.map((member) => serializeCompanyMember(member, user.id)),
       seatUsage,
+      occupiedAccounts: seatUsage.used,
+      accountLimit: seatUsage.limit,
+      availableAccounts: seatUsage.available,
+      requesterPermissions: {
+        canCreateUsers: access.capabilities["tenant.members.create"],
+        canSuspendUsers: false,
+        canRemoveUsers: access.capabilities["tenant.members.manage_pending"],
+        canResetTemporaryPasswords: access.capabilities["tenant.members.manage_pending"],
+      },
+      membershipAccess: serializeMembershipAccess(access),
     });
   } catch (error) {
     return teamError(error);
@@ -58,18 +73,28 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { company, membership, user } = await requireMobileAuth(request);
-    const parsed = createCompanyInvitationSchema.safeParse(await request.json());
-    if (!parsed.success) return mobileValidationError(parsed.error);
+    const access = await resolveMembershipAccess(company.id, user.id);
+    assertTenantCapability(access, "tenant.members.create", "USER_MANAGEMENT_FORBIDDEN");
+    const parsed = createDirectCompanyUserSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      const code = directCompanyUserValidationCode(parsed.error);
+      return mobileError(code, "User fields are invalid.", { status: 400 });
+    }
 
-    const result = await createCompanyInvitation(request, {
+    const result = await createDirectCompanyUser(request, {
       companyId: company.id,
       actorUserId: user.id,
       actorRole: membership.role,
     }, parsed.data);
 
     return mobileSuccess({
-      invitation: serializeCompanyInvitation(result.invitation),
-      emailSent: result.emailSent,
+      user: {
+        id: result.user.id,
+        name: result.user.name,
+        email: result.user.email,
+        mustChangePassword: result.user.mustChangePassword,
+      },
+      capacity: result.capacity,
     }, { status: 201 });
   } catch (error) {
     return teamError(error);

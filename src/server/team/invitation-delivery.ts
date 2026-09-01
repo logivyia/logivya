@@ -45,7 +45,21 @@ export async function processInvitationDelivery(outboxId: string) {
 
   const row = await prisma.invitationDeliveryOutbox.findUnique({
     where: { id: outboxId },
-    include: { invitation: { select: { id: true, companyId: true, invitedByUserId: true, email: true, name: true, status: true, expiresAt: true } } },
+    include: {
+      invitation: {
+        select: {
+          id: true,
+          companyId: true,
+          invitedByUserId: true,
+          email: true,
+          name: true,
+          status: true,
+          expiresAt: true,
+          company: { select: { name: true } },
+          invitedBy: { select: { name: true, email: true } },
+        },
+      },
+    },
   });
   if (!row?.tokenEncrypted || row.invitation.status !== "PENDING" || row.invitation.expiresAt <= now) {
     await prisma.invitationDeliveryOutbox.update({ where: { id: outboxId }, data: { status: "FAILED", lastError: "INVITATION_NOT_DELIVERABLE", tokenEncrypted: null } });
@@ -55,9 +69,20 @@ export async function processInvitationDelivery(outboxId: string) {
   try {
     const token = decryptPrivateValue(row.tokenEncrypted);
     const acceptUrl = `${row.appBaseUrl}/register?invitation=${encodeURIComponent(token)}`;
+    const expiresAt = new Intl.DateTimeFormat(row.locale || "tr", {
+      dateStyle: "long",
+      timeStyle: "short",
+      timeZone: "Europe/Istanbul",
+    }).format(row.invitation.expiresAt);
     const [title, message] = await Promise.all([
       translateForLocale(row.locale, "email.teamInvitation.subject"),
-      translateForLocale(row.locale, "email.teamInvitation.linkMessage", { name: row.invitation.name, url: acceptUrl }),
+      translateForLocale(row.locale, "email.teamInvitation.linkMessage", {
+        name: row.invitation.name,
+        inviter: row.invitation.invitedBy.name || row.invitation.invitedBy.email,
+        workspace: row.invitation.company.name,
+        expiresAt,
+        url: acceptUrl,
+      }),
     ]);
     const delivery = await sendTemplateEmailSafely({
       companyId: row.invitation.companyId,
@@ -75,6 +100,13 @@ export async function processInvitationDelivery(outboxId: string) {
       }),
       prisma.companyInvitation.update({ where: { id: row.invitation.id }, data: { sentAt: new Date() } }),
     ]);
+    logger.info("company.invitation.delivery_succeeded", {
+      outboxId,
+      invitationId: row.invitation.id,
+      companyId: row.invitation.companyId,
+      userId: row.invitation.invitedByUserId,
+      attempts: row.attempts,
+    });
     return { sent: true as const, acceptUrl };
   } catch (error) {
     const attempts = row.attempts;
@@ -88,7 +120,13 @@ export async function processInvitationDelivery(outboxId: string) {
         availableAt: terminal ? new Date("9999-12-31T23:59:59.999Z") : new Date(Date.now() + delay),
       },
     });
-    logger.error("company.invitation.delivery_failed", error, { outboxId, invitationId: row.invitation.id, attempts });
+    logger.error("company.invitation.delivery_failed", error, {
+      outboxId,
+      invitationId: row.invitation.id,
+      companyId: row.invitation.companyId,
+      userId: row.invitation.invitedByUserId,
+      attempts,
+    });
     return { sent: false as const, errorCode: deliveryError(error) };
   }
 }

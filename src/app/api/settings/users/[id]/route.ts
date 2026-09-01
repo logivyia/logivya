@@ -1,13 +1,24 @@
 import { NextResponse } from "next/server";
 
 import { requireApiSession } from "@/server/auth/session";
-import { deleteCompanyUser, updateCompanyUser, updateCompanyUserSchema } from "@/server/team/company-users";
+import {
+  deleteCompanyUser,
+  rejectCompanyUserRoleMutation,
+  updateCompanyUser,
+  updateCompanyUserSchema,
+} from "@/server/team/company-users";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const { company, membership, user } = await requireApiSession();
-    const parsed = updateCompanyUserSchema.safeParse(await request.json());
+    const body: unknown = await request.json();
+    await rejectCompanyUserRoleMutation(request, {
+      companyId: company.id,
+      actorUserId: user.id,
+      actorRole: membership.role,
+    }, id, body);
+    const parsed = updateCompanyUserSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: "validation.invalid" }, { status: 400 });
 
     await updateCompanyUser(request, {

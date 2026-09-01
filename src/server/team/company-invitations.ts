@@ -8,17 +8,23 @@ import { getRequestLocale } from "@/i18n/server";
 import { hashOpaqueToken } from "@/server/security/authentication";
 import { writeAuditLog } from "@/server/security/audit";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
+import { logger } from "@/server/observability/logger";
+import { requestLogContext } from "@/server/observability/request-id";
 import { calculateCompanySeatUsage, canActivateMembershipSeat, canReserveInvitationSeat } from "@/server/team/seat-policy";
 import { processInvitationDelivery, queueInvitationDelivery } from "@/server/team/invitation-delivery";
 
-const INVITATION_LIFETIME_MS = 72 * 60 * 60 * 1000;
+const DEFAULT_INVITATION_LIFETIME_HOURS = 72;
 const INVITATION_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const INVITATION_CODE_LENGTH = 16;
 
+function legacyInvitationCreationEnabled() {
+  return false;
+}
+
 export const createCompanyInvitationSchema = z.object({
   name: z.string().trim().min(2).max(100),
-  email: z.string().trim().email(),
-  role: z.enum(["ADMIN", "OPERATOR", "VIEWER"]).optional(),
+  email: z.string().trim().max(254).email(),
+  role: z.literal("OPERATOR").optional(),
 }).strict();
 
 export type CreateCompanyInvitationInput = z.infer<typeof createCompanyInvitationSchema>;
@@ -32,8 +38,23 @@ type InvitationTransaction = Prisma.TransactionClient;
 type InvitationCredential = { token?: string; code?: string };
 type InvitationError = Error & { companyId?: string; invitationId?: string; limit?: number; used?: number };
 
-function assertOwner(role: string) {
-  if (role !== "OWNER") throw new Error("FORBIDDEN");
+async function assertInvitationManager(request: Request, context: CompanyInvitationContext, operation: string) {
+  if (context.actorRole === "OWNER") return;
+  const details = {
+    ...requestLogContext(request),
+    companyId: context.companyId,
+    userId: context.actorUserId,
+    operation,
+  };
+  logger.warn("company.invitation.permission_rejected", details);
+  await writeAuditLog(request, {
+    companyId: context.companyId,
+    userId: context.actorUserId,
+    action: "company.invitation.permission_rejected",
+    entityType: "CompanyInvitation",
+    after: { operation },
+  });
+  throw new Error("INVITATION_PERMISSION_DENIED");
 }
 
 function normalizedEmail(email: string) {
@@ -79,6 +100,11 @@ function configuredPositiveInteger(name: string, fallback: number) {
   return Number.isSafeInteger(value) && value > 0 ? value : fallback;
 }
 
+function invitationExpiresAt(now: Date) {
+  const hours = configuredPositiveInteger("COMPANY_INVITATION_LIFETIME_HOURS", DEFAULT_INVITATION_LIFETIME_HOURS);
+  return new Date(now.getTime() + hours * 60 * 60_000);
+}
+
 async function assertSeatRotationAllowed(tx: InvitationTransaction, companyId: string, now: Date) {
   const override = await tx.auditLog.findFirst({
     where: { companyId, action: "company.seat_rotation_override", createdAt: { gte: new Date(now.getTime() - 31 * 24 * 60 * 60_000) } },
@@ -116,13 +142,39 @@ function invitationStateError(status: string, expiresAt: Date, now: Date) {
 
 export function companyInvitationErrorStatus(code: string) {
   if (code === "UNAUTHORIZED") return 401;
-  if (code === "FORBIDDEN" || code === "INVITATION_EMAIL_MISMATCH") return 403;
-  if (code === "INVITATION_INVALID") return 404;
+  if (["FORBIDDEN", "INVITATION_PERMISSION_DENIED", "INVITATION_EMAIL_MISMATCH", "subscription.inactive"].includes(code)) return 403;
+  if (["INVITATION_INVALID", "NOT_FOUND", "COMPANY_NOT_FOUND"].includes(code)) return 404;
   if (code === "INVITATION_EXPIRED") return 410;
+  if (code === "INVITATION_FLOW_DISABLED") return 410;
   if (code === "SEAT_ROTATION_LIMIT_REACHED") return 429;
-  if (["INVITATION_ALREADY_USED", "INVITATION_ALREADY_PENDING", "INVITATION_REVOKED", "INVITATION_DECLINED", "SEAT_LIMIT_REACHED", "users.alreadyMember"].includes(code)) return 409;
+  if (["INVITATION_ALREADY_USED", "INVITATION_ALREADY_PENDING", "INVITATION_REVOKED", "INVITATION_DECLINED", "SELF_INVITATION", "SEAT_LIMIT_REACHED", "ALREADY_MEMBER", "users.alreadyMember"].includes(code)) return 409;
   if (code === "RATE_LIMITED") return 429;
+  if (code === "INVITATION_DELIVERY_CONFIGURATION_ERROR") return 503;
+  if (code === "INVITATION_REQUEST_FAILED") return 500;
   return 400;
+}
+
+const publicInvitationErrors = new Set([
+  "UNAUTHORIZED", "FORBIDDEN", "INVITATION_PERMISSION_DENIED", "subscription.inactive", "INVITATION_INVALID", "NOT_FOUND", "COMPANY_NOT_FOUND",
+  "INVITATION_EXPIRED", "INVITATION_ALREADY_USED", "INVITATION_ALREADY_PENDING", "INVITATION_REVOKED",
+  "INVITATION_DECLINED", "INVITATION_EMAIL_MISMATCH", "SELF_INVITATION", "SEAT_LIMIT_REACHED",
+  "SEAT_ROTATION_LIMIT_REACHED", "RATE_LIMITED", "ALREADY_MEMBER", "users.alreadyMember",
+  "INVITATION_FLOW_DISABLED",
+]);
+
+export function companyInvitationPublicErrorCode(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (message === "PRIVATE_FIELD_ENCRYPTION_NOT_CONFIGURED") return "INVITATION_DELIVERY_CONFIGURATION_ERROR";
+  if ((error as { code?: string } | null)?.code === "P2002") return "INVITATION_ALREADY_PENDING";
+  if (publicInvitationErrors.has(message)) return message === "users.alreadyMember" ? "ALREADY_MEMBER" : message;
+  return "INVITATION_REQUEST_FAILED";
+}
+
+export function companyInvitationValidationCode(error: z.ZodError<CreateCompanyInvitationInput>) {
+  const field = error.issues[0]?.path[0];
+  if (field === "name") return "INVITATION_NAME_REQUIRED";
+  if (field === "email") return "INVALID_EMAIL";
+  return "VALIDATION_ERROR";
 }
 
 async function lockCompany(tx: InvitationTransaction, companyId: string) {
@@ -137,12 +189,27 @@ async function expirePendingInvitations(tx: InvitationTransaction, companyId: st
   });
 }
 
+async function revokePendingInvitations(tx: InvitationTransaction, companyId: string, now = new Date()) {
+  await tx.invitationDeliveryOutbox.updateMany({
+    where: {
+      status: { in: ["PENDING", "PROCESSING"] },
+      invitation: { companyId, status: "PENDING" },
+    },
+    data: { status: "FAILED", lastError: "INVITATION_FLOW_DISABLED" },
+  });
+  await tx.companyInvitation.updateMany({
+    where: { companyId, status: "PENDING" },
+    data: { status: "REVOKED", reservedSeat: false, revokedAt: now },
+  });
+}
+
 async function seatUsageInTransaction(tx: InvitationTransaction, companyId: string, now = new Date()) {
   await expirePendingInvitations(tx, companyId, now);
   const current = await resolveCompanyEntitlements(companyId, tx, now);
   if (!current?.valid) throw new Error("subscription.inactive");
-  const [activeMembers, legacyInvitedMembers, pendingInvitations, whatsappConnectionsUsed] = await Promise.all([
+  const [activeMembers, suspendedMembers, legacyInvitedMembers, pendingInvitations, whatsappConnectionsUsed] = await Promise.all([
     tx.companyUser.count({ where: { companyId, status: "ACTIVE" } }),
+    tx.companyUser.count({ where: { companyId, status: "SUSPENDED" } }),
     tx.companyUser.count({ where: { companyId, status: "INVITED" } }),
     tx.companyInvitation.count({ where: { companyId, status: "PENDING", reservedSeat: true, expiresAt: { gt: now } } }),
     tx.whatsAppAccount.count({ where: { companyId, archivedAt: null } }),
@@ -151,6 +218,7 @@ async function seatUsageInTransaction(tx: InvitationTransaction, companyId: stri
     ...calculateCompanySeatUsage({
       limit: current.entitlements.teamSeats,
       activeMembers,
+      suspendedMembers,
       legacyInvitedMembers,
       pendingInvitations,
     }),
@@ -165,19 +233,20 @@ async function seatUsageInTransaction(tx: InvitationTransaction, companyId: stri
 export async function getCompanySeatUsage(companyId: string) {
   return prisma.$transaction(async (tx) => {
     await lockCompany(tx, companyId);
+    await revokePendingInvitations(tx, companyId);
     return seatUsageInTransaction(tx, companyId);
   });
 }
 
 export async function listCompanyInvitations(companyId: string) {
-  await prisma.companyInvitation.updateMany({
-    where: { companyId, status: "PENDING", expiresAt: { lte: new Date() } },
-    data: { status: "EXPIRED", reservedSeat: false },
-  });
-  return prisma.companyInvitation.findMany({
-    where: { companyId },
-    orderBy: { createdAt: "desc" },
-    take: 200,
+  return prisma.$transaction(async (tx) => {
+    await lockCompany(tx, companyId);
+    await revokePendingInvitations(tx, companyId);
+    return tx.companyInvitation.findMany({
+      where: { companyId },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
   });
 }
 
@@ -209,12 +278,13 @@ export async function createCompanyInvitation(
   context: CompanyInvitationContext,
   input: CreateCompanyInvitationInput,
 ) {
-  assertOwner(context.actorRole);
+  await assertInvitationManager(request, context, "create");
+  if (!legacyInvitationCreationEnabled()) throw new Error("INVITATION_FLOW_DISABLED");
   const email = normalizedEmail(input.email);
   const token = randomBytes(32).toString("base64url");
   const tokenHash = invitationHash(token);
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + INVITATION_LIFETIME_MS);
+  const expiresAt = invitationExpiresAt(now);
   const appBaseUrl = invitationBaseUrl(request);
   const locale = await getRequestLocale(request.headers.get("x-logivya-locale"));
 
@@ -232,11 +302,15 @@ export async function createCompanyInvitation(
       await lockCompany(tx, context.companyId);
       await expirePendingInvitations(tx, context.companyId, now);
 
-      const existingMember = await tx.companyUser.findFirst({
-        where: { companyId: context.companyId, user: { email }, status: "ACTIVE" },
-        select: { id: true },
-      });
-      if (existingMember) throw new Error("users.alreadyMember");
+      const [actor, existingMember] = await Promise.all([
+        tx.user.findUnique({ where: { id: context.actorUserId }, select: { email: true } }),
+        tx.companyUser.findFirst({
+          where: { companyId: context.companyId, user: { email }, status: { in: ["ACTIVE", "INVITED", "SUSPENDED"] } },
+          select: { id: true },
+        }),
+      ]);
+      if (normalizedEmail(actor?.email ?? "") === email) throw new Error("SELF_INVITATION");
+      if (existingMember) throw new Error("ALREADY_MEMBER");
       await assertSeatRotationAllowed(tx, context.companyId, now);
 
       const existingPending = await tx.companyInvitation.findFirst({
@@ -273,10 +347,21 @@ export async function createCompanyInvitation(
         locale,
         eventKey: `company-invitation:${invitation.id}:initial:${tokenHash.slice(0, 16)}`,
       });
-      return { invitation, outbox };
+      return {
+        invitation,
+        outbox,
+        capacity: { used: usage.used + 1, limit: usage.limit, remaining: Math.max(0, usage.available - 1) },
+      };
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "SEAT_LIMIT_REACHED") {
+    const code = companyInvitationPublicErrorCode(error);
+    logger.error("company.invitation.create_failed", error, {
+      ...requestLogContext(request),
+      companyId: context.companyId,
+      userId: context.actorUserId,
+      errorCode: code,
+    });
+    if (code === "SEAT_LIMIT_REACHED") {
       await writeAuditLog(request, {
         companyId: context.companyId,
         userId: context.actorUserId,
@@ -299,7 +384,7 @@ export async function createCompanyInvitation(
     after: { email, userType: "STANDARD_USER", expiresAt: result.invitation.expiresAt, emailSent: delivery.sent },
   });
 
-  return { invitation: result.invitation, emailSent: delivery.sent };
+  return { invitation: result.invitation, emailSent: delivery.sent, capacity: result.capacity };
 }
 
 export async function resendCompanyInvitation(
@@ -307,7 +392,8 @@ export async function resendCompanyInvitation(
   context: CompanyInvitationContext,
   invitationId: string,
 ) {
-  assertOwner(context.actorRole);
+  if (!legacyInvitationCreationEnabled()) throw new Error("INVITATION_FLOW_DISABLED");
+  await assertInvitationManager(request, context, "resend");
   await enforceOperationRateLimit({
     scope: "company-invitation-resend",
     subject: `${context.companyId}:${context.actorUserId}`,
@@ -318,7 +404,7 @@ export async function resendCompanyInvitation(
   const token = randomBytes(32).toString("base64url");
   const tokenHash = invitationHash(token);
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + INVITATION_LIFETIME_MS);
+  const expiresAt = invitationExpiresAt(now);
   const appBaseUrl = invitationBaseUrl(request);
   const locale = await getRequestLocale(request.headers.get("x-logivya-locale"));
 
@@ -371,7 +457,7 @@ export async function resendCompanyInvitation(
 }
 
 export async function revokeCompanyInvitation(request: Request, context: CompanyInvitationContext, invitationId: string) {
-  assertOwner(context.actorRole);
+  await assertInvitationManager(request, context, "revoke");
   const result = await prisma.$transaction(async (tx) => {
     await lockCompany(tx, context.companyId);
     return tx.companyInvitation.updateMany({
@@ -437,7 +523,7 @@ export async function acceptCompanyInvitationInTransaction(
     where: { companyId_userId: { companyId: invitation.companyId, userId: input.userId } },
   });
   const usage = await seatUsageInTransaction(tx, invitation.companyId, now);
-  const occupiedMembershipSeats = usage.activeMembers + usage.legacyInvitedMembers;
+  const occupiedMembershipSeats = usage.activeMembers + usage.suspendedMembers + usage.legacyInvitedMembers;
   if (!canActivateMembershipSeat(usage, existing?.status)) {
     const error = invitationError("SEAT_LIMIT_REACHED", invitation);
     error.limit = usage.limit;
@@ -447,8 +533,26 @@ export async function acceptCompanyInvitationInTransaction(
 
   const membership = await tx.companyUser.upsert({
     where: { companyId_userId: { companyId: invitation.companyId, userId: input.userId } },
-    create: { companyId: invitation.companyId, userId: input.userId, role: "OPERATOR", status: "ACTIVE", joinedAt: now, seatActivatedAt: now },
-    update: { role: "OPERATOR", status: "ACTIVE", seatActivatedAt: now, suspendedAt: null, removedAt: null },
+    create: {
+      companyId: invitation.companyId,
+      userId: input.userId,
+      role: "OPERATOR",
+      status: "ACTIVE",
+      lifecycleState: "ACTIVE_SHARED_MEMBER",
+      joinedAt: now,
+      seatActivatedAt: now,
+      activationCompletedAt: now,
+    },
+    update: {
+      role: "OPERATOR",
+      status: "ACTIVE",
+      lifecycleState: "ACTIVE_SHARED_MEMBER",
+      seatActivatedAt: now,
+      activationCompletedAt: now,
+      sharedAccessExpiredAt: null,
+      suspendedAt: null,
+      removedAt: null,
+    },
   });
   const acceptedInvitation = await tx.companyInvitation.update({
     where: { id: invitation.id },

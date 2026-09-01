@@ -10,8 +10,8 @@ const schema = z.object({ enabled: z.boolean(), locale: z.string().trim().min(2)
 
 export async function PATCH(request: Request, context: { params: Promise<{ purpose: string }> }) {
   try {
-    assertPrivacyMutationCsrf(request);
     const auth = await requirePrivacyAuth(request);
+    assertPrivacyMutationCsrf(request, auth.authSource);
     const { purpose: purposeCode } = await context.params;
     const purpose = findPrivacyPurpose(purposeCode);
     if (!purpose) throw new PrivacyError("PRIVACY_PURPOSE_NOT_FOUND", 404);

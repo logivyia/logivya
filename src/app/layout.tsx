@@ -5,15 +5,16 @@ import { getServerLocale, loadServerDictionary } from "@/i18n/server";
 import "./globals.css";
 import { CookieConsent } from "@/components/cookie-consent";
 import { WebObservability } from "@/components/web-observability";
+import { PRODUCT_CONTENT } from "@/config/product-content";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.logivya.com"),
   title: {
-    default: "Logivya",
+    default: "Logivya | Canlı Lojistik Pazarı ve Akıllı Eşleştirme Platformu",
     template: "%s | Logivya",
   },
   applicationName: "Logivya",
-  description: "Multi-tenant WhatsApp communication and campaign operations.",
+  description: PRODUCT_CONTENT.tr.description,
   manifest: "/manifest.webmanifest?v=3",
   icons: {
     icon: [
@@ -30,17 +31,18 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
   },
   openGraph: {
-    title: "Logivya",
-    description: "Multi-tenant WhatsApp communication and campaign operations.",
+    title: PRODUCT_CONTENT.tr.headline,
+    description: PRODUCT_CONTENT.tr.description,
     siteName: "Logivya",
+    locale: "tr_TR",
     type: "website",
-    images: [{ url: "/logivya/og-image-v2.png", width: 1200, height: 630, alt: "Logivya" }],
+    images: [{ url: "/logivya/og-image-v3.png", width: 1200, height: 630, alt: "Logivya" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Logivya",
-    description: "Multi-tenant WhatsApp communication and campaign operations.",
-    images: ["/logivya/og-image-v2.png"],
+    title: PRODUCT_CONTENT.tr.headline,
+    description: PRODUCT_CONTENT.tr.description,
+    images: ["/logivya/og-image-v3.png"],
   },
 };
 

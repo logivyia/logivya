@@ -12,11 +12,20 @@ import {
   registerMfaChallengeFailure,
   requestIp,
   trustDevice,
+  verifyEmailOtpForChallenge,
 } from "@/server/auth/mfa-challenge";
 import { isAuthorizedLogivyaPlatformAdmin } from "@/server/auth/platform-owner";
+import {
+  authCorrelationId,
+  authNoStoreHeaders,
+  publicAuthErrorBody,
+  publicAuthFailure,
+} from "@/server/auth/public-errors";
 import { createSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
+import { logger } from "@/server/observability/logger";
 import { verifyAndConsumeMfaCode, verifyPendingMfaEnrollment } from "@/server/security/mfa";
+import { confirmEmailMfaEnrollment } from "@/server/security/mfa-email";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 
 const schema = z.object({
@@ -28,12 +37,21 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
+  const correlationId = authCorrelationId(request);
+  const errorResponse = (code: unknown, extra?: Record<string, unknown>) => {
+    const failure = publicAuthFailure(code);
+    return NextResponse.json(
+      publicAuthErrorBody(code, correlationId, extra),
+      { status: failure.status, headers: authNoStoreHeaders(correlationId) },
+    );
+  };
+
   try {
     const parsed = schema.safeParse(await request.json());
-    if (!parsed.success) return NextResponse.json({ error: "MFA_CODE_INVALID" }, { status: 400 });
+    if (!parsed.success) return errorResponse("MFA_CODE_INVALID");
     const cookieStore = await cookies();
     const challengeToken = cookieStore.get(MFA_CHALLENGE_COOKIE)?.value;
-    if (!challengeToken) return NextResponse.json({ error: "MFA_CHALLENGE_INVALID" }, { status: 401 });
+    if (!challengeToken) return errorResponse("MFA_CHALLENGE_INVALID");
 
     await enforceOperationRateLimit({
       scope: "web-mfa-verify",
@@ -50,11 +68,17 @@ export async function POST(request: Request) {
       throw new Error("MFA_CHALLENGE_INVALID");
     }
 
-    const verification = challenge.purpose === "SETUP"
-      ? parsed.data.setupToken
-        ? await verifyPendingMfaEnrollment({ userId: challenge.userId, setupToken: parsed.data.setupToken, code: parsed.data.code })
-        : { ok: false as const, reason: "TWO_FACTOR_SETUP_NOT_FOUND" as const }
-      : await verifyAndConsumeMfaCode({ userId: challenge.userId, code: parsed.data.code });
+    const verification = !challenge.selectedMethod
+      ? { ok: false as const, reason: "MFA_METHOD_NOT_SELECTED" as const }
+      : challenge.purpose === "SETUP"
+        ? challenge.selectedMethod === "EMAIL_OTP"
+          ? await confirmEmailMfaEnrollment({ userId: challenge.userId, setupToken: challengeToken, code: parsed.data.code, channel: "WEB", registerFailure: false })
+          : parsed.data.setupToken
+            ? await verifyPendingMfaEnrollment({ userId: challenge.userId, setupToken: parsed.data.setupToken, code: parsed.data.code })
+            : { ok: false as const, reason: "TWO_FACTOR_SETUP_NOT_FOUND" as const }
+        : challenge.selectedMethod === "EMAIL_OTP"
+          ? await verifyEmailOtpForChallenge(challenge.id, parsed.data.code)
+          : await verifyAndConsumeMfaCode({ userId: challenge.userId, code: parsed.data.code, method: "TOTP" });
     if (!verification.ok) {
       const failure = await registerMfaChallengeFailure(challenge.id);
       await prisma.loginAttempt.create({
@@ -72,18 +96,27 @@ export async function POST(request: Request) {
         userId: challenge.userId,
         companyId: challenge.companyId,
         type: "MFA_VERIFICATION_FAILED",
-        message: "Iki adimli dogrulama basarisiz oldu.",
+        message: "İki adımlı doğrulama başarısız oldu.",
         severity: failure.locked ? "HIGH" : "MEDIUM",
         metadata: { attempts: failure.attempts, reason: verification.reason },
       });
-      return NextResponse.json(
-        { error: failure.locked ? "MFA_CHALLENGE_LOCKED" : verification.reason, attemptsRemaining: Math.max(0, 5 - failure.attempts) },
-        { status: failure.locked ? 429 : 401 },
+      return errorResponse(
+        failure.locked ? "MFA_CHALLENGE_LOCKED" : verification.reason,
+        { attemptsRemaining: Math.max(0, 5 - failure.attempts) },
       );
     }
 
-    await consumeMfaChallenge(challenge.id);
-    await createSession(challenge.userId, challenge.companyId, request, { mfaVerified: true });
+    if (!("challengeConsumed" in verification && verification.challengeConsumed)) await consumeMfaChallenge(challenge.id);
+    try {
+      await createSession(challenge.userId, challenge.companyId, request, { mfaVerified: true });
+    } catch (error) {
+      logger.error("auth.web_mfa_session_create_failed", error, {
+        correlationId,
+        userId: challenge.userId,
+        companyId: challenge.companyId,
+      });
+      throw new Error("AUTH_SESSION_CREATE_FAILED");
+    }
     await prisma.loginAttempt.create({
       data: { userId: challenge.userId, email: challenge.user.email, ipAddress: requestIp(request), userAgent: request.headers.get("user-agent"), success: true },
     });
@@ -117,7 +150,7 @@ export async function POST(request: Request) {
       userId: challenge.userId,
       companyId: challenge.companyId,
       type: verification.method === "RECOVERY" ? "MFA_RECOVERY_CODE_USED" : "MFA_LOGIN_SUCCEEDED",
-      message: verification.method === "RECOVERY" ? "Kurtarma kodu ile giris yapildi." : "Iki adimli dogrulama basarili oldu.",
+      message: verification.method === "RECOVERY" ? "Kurtarma kodu ile giriş yapıldı." : "İki adımlı doğrulama başarılı oldu.",
       severity: verification.method === "RECOVERY" ? "MEDIUM" : "INFO",
     });
     if (challenge.purpose === "SETUP") {
@@ -125,8 +158,8 @@ export async function POST(request: Request) {
         userId: challenge.userId,
         companyId: challenge.companyId,
         type: "security.mfa_enabled",
-        title: "Iki adimli dogrulama etkin",
-        message: "Authenticator dogrulamasi hesabinizi korumak icin etkinlestirildi.",
+        title: "İki adımlı doğrulama etkin",
+        message: "Authenticator doğrulaması hesabınızı korumak için etkinleştirildi.",
       });
     }
     return NextResponse.json(
@@ -136,11 +169,14 @@ export async function POST(request: Request) {
         isPlatformAdmin,
         ...(challenge.purpose === "SETUP" && "recoveryCodes" in verification ? { recoveryCodes: verification.recoveryCodes } : {}),
       },
-      { headers: { "Cache-Control": "no-store, private", Pragma: "no-cache" } },
+      { headers: authNoStoreHeaders(correlationId) },
     );
   } catch (error) {
     const code = error instanceof Error ? error.message : "MFA_ERROR";
-    const status = code === "RATE_LIMITED" || code === "MFA_CHALLENGE_LOCKED" ? 429 : 401;
-    return NextResponse.json({ error: code }, { status });
+    const failure = publicAuthFailure(code);
+    if (failure.code === "AUTH_INTERNAL_ERROR") {
+      logger.error("auth.web_mfa_verify_failed", error, { correlationId });
+    }
+    return errorResponse(code);
   }
 }

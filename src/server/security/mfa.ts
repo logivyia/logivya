@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 
 import { prisma } from "@/server/db";
 import { hashOpaqueToken } from "@/server/security/authentication";
+import { synchronizeMfaPreference } from "@/server/security/mfa-policy";
 import {
   decryptSensitiveField,
   encryptSensitiveField,
@@ -71,8 +72,8 @@ function createRecoveryCodeSet() {
   return { recoveryCodes, recoveryCodesHashed: recoveryCodes.map(hashRecoveryCode) };
 }
 
-function matchingTotpCounter(secretEncrypted: string, code: string, now = Date.now(), afterTimeStep?: number | null) {
-  if (!/^\d{6}$/u.test(code)) return null;
+function matchingTotpCounter(secretEncrypted: string | null, code: string, now = Date.now(), afterTimeStep?: number | null) {
+  if (!secretEncrypted || !/^\d{6}$/u.test(code)) return null;
   const secret = decryptSensitiveField(parseEncryptedField(secretEncrypted), encryptionKeyring());
   const result = verifySync({
     secret,
@@ -125,31 +126,33 @@ export async function createAndStoreMfaEnrollment(
     await tx.mfaCredential.updateMany({
       where: {
         userId,
+        type: "TOTP",
         verifiedAt: null,
         revokedAt: null,
         OR: [{ setupExpiresAt: { lte: now } }, { setupExpiresAt: null }, { setupTokenHash: null }],
       },
-      data: { revokedAt: now, setupKey: null, setupTokenHash: null },
+      data: { status: "DISABLED", revokedAt: now, disabledAt: now, setupKey: null, setupTokenHash: null },
     });
     const pending = await tx.mfaCredential.findFirst({
-      where: { userId, verifiedAt: null, revokedAt: null, setupExpiresAt: { gt: now }, setupTokenHash: { not: null } },
+      where: { userId, type: "TOTP", verifiedAt: null, revokedAt: null, setupExpiresAt: { gt: now }, setupTokenHash: { not: null } },
       select: { id: true },
     });
     if (pending && !options.replacePending) throw new Error("TWO_FACTOR_SETUP_IN_PROGRESS");
     if (pending) {
       await tx.mfaCredential.update({
         where: { id: pending.id },
-        data: { revokedAt: now, setupKey: null, setupTokenHash: null },
+        data: { status: "DISABLED", revokedAt: now, disabledAt: now, setupKey: null, setupTokenHash: null },
       });
     }
     await tx.mfaCredential.updateMany({
-      where: { userId, verifiedAt: null, revokedAt: null },
-      data: { revokedAt: now, setupKey: null, setupTokenHash: null },
+      where: { userId, type: "TOTP", verifiedAt: null, revokedAt: null },
+      data: { status: "DISABLED", revokedAt: now, disabledAt: now, setupKey: null, setupTokenHash: null },
     });
     return tx.mfaCredential.create({
       data: {
         userId,
         type: "TOTP",
+        status: "PENDING",
         secretEncrypted: enrollment.secretEncrypted,
         recoveryCodesHashed: [],
         setupTokenHash,
@@ -170,7 +173,7 @@ export async function createAndStoreMfaEnrollment(
 
 export async function pendingMfaEnrollmentStatus(userId: string) {
   const pending = await prisma.mfaCredential.findFirst({
-    where: { userId, verifiedAt: null, revokedAt: null, setupTokenHash: { not: null }, setupExpiresAt: { gt: new Date() } },
+    where: { userId, type: "TOTP", verifiedAt: null, revokedAt: null, setupTokenHash: { not: null }, setupExpiresAt: { gt: new Date() } },
     orderBy: { createdAt: "desc" },
     select: { setupExpiresAt: true },
   });
@@ -182,11 +185,12 @@ export async function cancelPendingMfaEnrollment(userId: string, setupToken?: st
   const canceled = await prisma.mfaCredential.updateMany({
     where: {
       userId,
+      type: "TOTP",
       verifiedAt: null,
       revokedAt: null,
       ...(setupToken ? { setupTokenHash: hashOpaqueToken(setupToken) } : {}),
     },
-    data: { revokedAt: now, setupKey: null, setupTokenHash: null },
+    data: { status: "DISABLED", revokedAt: now, disabledAt: now, setupKey: null, setupTokenHash: null },
   });
   return canceled.count > 0;
 }
@@ -196,13 +200,13 @@ export async function verifyPendingMfaEnrollment(input: { userId: string; setupT
   const credential = await prisma.mfaCredential.findUnique({
     where: { setupTokenHash: hashOpaqueToken(input.setupToken) },
   });
-  if (!credential || credential.userId !== input.userId || credential.verifiedAt || credential.revokedAt) {
+  if (!credential || credential.type !== "TOTP" || credential.userId !== input.userId || credential.verifiedAt || credential.revokedAt) {
     return { ok: false as const, reason: "TWO_FACTOR_SETUP_NOT_FOUND" as const };
   }
   if (!credential.setupExpiresAt || credential.setupExpiresAt <= now) {
     await prisma.mfaCredential.updateMany({
       where: { id: credential.id, verifiedAt: null, revokedAt: null },
-      data: { revokedAt: now, setupKey: null, setupTokenHash: null },
+      data: { status: "DISABLED", revokedAt: now, disabledAt: now, setupKey: null, setupTokenHash: null },
     });
     return { ok: false as const, reason: "TWO_FACTOR_SETUP_EXPIRED" as const };
   }
@@ -240,6 +244,9 @@ export async function verifyPendingMfaEnrollment(input: { userId: string; setupT
       },
       data: {
         verifiedAt: now,
+        status: "ENABLED",
+        enabledAt: now,
+        disabledAt: null,
         lastUsedCounter: counter,
         setupTokenHash: null,
         setupKey: null,
@@ -251,16 +258,13 @@ export async function verifyPendingMfaEnrollment(input: { userId: string; setupT
     });
     if (activated.count !== 1) throw new Error("TWO_FACTOR_SETUP_NOT_FOUND");
     await tx.mfaCredential.updateMany({
-      where: { userId: input.userId, id: { not: credential.id }, revokedAt: null },
-      data: { revokedAt: now, setupKey: null, setupTokenHash: null },
+      where: { userId: input.userId, type: "TOTP", id: { not: credential.id }, status: "ENABLED", revokedAt: null },
+      data: { status: "DISABLED", disabledAt: now, revokedAt: now, isPreferred: false, setupKey: null, setupTokenHash: null },
     });
     await tx.twoFactorRecoveryCode.createMany({
       data: recovery.recoveryCodesHashed.map((codeHash) => ({ userId: input.userId, credentialId: credential.id, codeHash })),
     });
-    await tx.user.update({
-      where: { id: input.userId },
-      data: { mfaRequired: true, mfaRequiredAt: now },
-    });
+    await synchronizeMfaPreference(tx, input.userId);
   });
   return {
     ok: true as const,
@@ -272,7 +276,7 @@ export async function verifyPendingMfaEnrollment(input: { userId: string; setupT
 
 export async function replaceRecoveryCodes(userId: string) {
   const credential = await prisma.mfaCredential.findFirst({
-    where: { userId, verifiedAt: { not: null }, revokedAt: null },
+    where: { userId, type: "TOTP", status: "ENABLED", verifiedAt: { not: null }, revokedAt: null },
     orderBy: { verifiedAt: "desc" },
   });
   if (!credential) throw new Error("MFA_NOT_ENROLLED");
@@ -290,7 +294,7 @@ export async function replaceRecoveryCodes(userId: string) {
   return set.recoveryCodes;
 }
 
-export function verifyTotp(secretEncrypted: string, code: string) {
+export function verifyTotp(secretEncrypted: string | null, code: string) {
   return matchingTotpCounter(secretEncrypted, code.trim()) !== null;
 }
 
@@ -298,10 +302,13 @@ export async function verifyAndConsumeMfaCode(input: {
   userId: string;
   code: string;
   allowRecoveryCode?: boolean;
+  method?: "TOTP";
 }) {
   const credential = await prisma.mfaCredential.findFirst({
     where: {
       userId: input.userId,
+      type: input.method ?? "TOTP",
+      status: "ENABLED",
       revokedAt: null,
       verifiedAt: { not: null },
     },
@@ -319,13 +326,15 @@ export async function verifyAndConsumeMfaCode(input: {
         revokedAt: null,
         OR: [{ lastUsedCounter: null }, { lastUsedCounter: { lt: counter } }],
       },
-      data: { lastUsedCounter: counter, verifiedAt: credential.verifiedAt ?? new Date() },
+      data: { lastUsedCounter: counter, lastUsedAt: new Date(), verifiedAt: credential.verifiedAt ?? new Date() },
     });
     if (updated.count === 1) return { ok: true as const, method: "TOTP" as const, credentialId: credential.id };
     return { ok: false as const, reason: "MFA_CODE_REUSED" as const };
   }
 
-  if (input.allowRecoveryCode === false) return { ok: false as const, reason: "INVALID_TOTP_CODE" as const };
+  if (input.allowRecoveryCode === false || /^\d{6}$/u.test(code)) {
+    return { ok: false as const, reason: "INVALID_TOTP_CODE" as const };
+  }
 
   const normalized = normalizedRecoveryCode(code);
   if (normalized.length < 16) return { ok: false as const, reason: "MFA_INVALID" as const };

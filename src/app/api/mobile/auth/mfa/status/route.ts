@@ -1,31 +1,36 @@
-import { prisma } from "@/server/db";
 import { requireMobileAuth } from "@/server/mobile/auth";
-import { mobileError, mobileSafeError, mobileSuccess } from "@/server/mobile/response";
+import {
+  mobileError,
+  mobileSafeError,
+  mobileSuccess,
+} from "@/server/mobile/response";
 import { pendingMfaEnrollmentStatus } from "@/server/security/mfa";
+import { listMfaMethodState } from "@/server/security/mfa-policy";
 
 export async function GET(request: Request) {
   try {
     const context = await requireMobileAuth(request);
-    const [credential, trustedDevices, recentEvents, setup] = await Promise.all([
-      prisma.mfaCredential.findFirst({
-        where: { userId: context.user.id, verifiedAt: { not: null }, revokedAt: null },
-        orderBy: { verifiedAt: "desc" },
-        include: { recoveryCodes: { where: { usedAt: null }, select: { id: true } } },
-      }),
-      prisma.trustedDevice.findMany({
-        where: { userId: context.user.id, revokedAt: null, expiresAt: { gt: new Date() } },
-        orderBy: { lastUsedAt: "desc" },
-        select: { id: true, deviceName: true, ipAddress: true, trustedAt: true, lastUsedAt: true, expiresAt: true },
-      }),
-      prisma.securityEvent.findMany({
-        where: { userId: context.user.id }, orderBy: { createdAt: "desc" }, take: 20,
-        select: { id: true, type: true, severity: true, message: true, ipAddress: true, createdAt: true },
+    const [methodState, setup] = await Promise.all([
+      listMfaMethodState({
+        userId: context.user.id,
+        companyPolicy: context.company.mfaPolicy,
+        role: context.membership.role,
+        preferredMethod: context.user.preferredMfaMethod,
       }),
       pendingMfaEnrollmentStatus(context.user.id),
     ]);
-    return mobileSuccess({ enabled: Boolean(credential), required: context.user.mfaRequired, enabledAt: credential?.verifiedAt, recoveryCodesRemaining: credential?.recoveryCodes.length ?? 0, trustedDevices, recentEvents, ...setup });
+    const enabled = methodState.methods.filter((method) => method.enabled);
+    return mobileSuccess({
+      enabled: enabled.length > 0,
+      enabledAt: enabled[0]?.enabledAt,
+      verifiedEmail: context.user.email,
+      methods: methodState.methods,
+      preferredMethod: methodState.preferredMethod,
+      ...setup,
+    });
   } catch (error) {
-    if (error instanceof Error && error.message === "UNAUTHORIZED") return mobileError("UNAUTHORIZED", "Oturum gecersiz.", { status: 401 });
+    if (error instanceof Error && error.message === "UNAUTHORIZED")
+      return mobileError("UNAUTHORIZED", "Oturum geçersiz.", { status: 401 });
     return mobileSafeError(error);
   }
 }

@@ -1,11 +1,12 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CreditCard, LoaderCircle, Save, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { AlertTriangle, Check, CreditCard, LoaderCircle, ShieldCheck } from "lucide-react";
 
 import { useI18n } from "@/i18n/provider";
 import { formatCurrency, formatDateTime } from "@/i18n/format";
 import { statusLabel } from "@/i18n/status";
+import { PasswordInput } from "@/components/password-input";
 
 const panel = "rounded-2xl border bg-card p-6 shadow-[var(--shadow-soft)]";
 const input = "w-full rounded-xl border bg-input px-3 py-3 text-sm text-input-foreground outline-none focus:border-primary";
@@ -28,132 +29,6 @@ function roleLabel(role: string, t: ReturnType<typeof useI18n>["t"]) {
 
 function memberStatusLabel(status: string, t: ReturnType<typeof useI18n>["t"]) {
   return t(`users.${status === "INVITED" ? "invitedStatus" : status.toLowerCase()}`);
-}
-
-export function CompanySettingsPage() {
-  const { t } = useI18n();
-  const [data, setData] = useState<Record<string, unknown> | null>(null);
-  const [status, setStatus] = useState("");
-
-  useEffect(() => {
-    void fetch("/api/settings/company").then((response) => response.json()).then(setData);
-  }, []);
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const body = {
-      companyName: form.get("companyName"),
-      phone: form.get("phone"),
-      email: form.get("email"),
-      website: form.get("website"),
-      billing: {
-        billingType: form.get("billingType"),
-        companyName: form.get("companyName"),
-        legalName: form.get("legalName"),
-        tradeName: form.get("tradeName"),
-        fullName: form.get("fullName"),
-        taxOffice: form.get("taxOffice"),
-        taxNumber: form.get("taxNumber"),
-        nationalIdNumber: form.get("nationalIdNumber"),
-        country: form.get("country"),
-        city: form.get("city"),
-        district: form.get("district"),
-        addressLine1: form.get("addressLine1"),
-        addressLine2: form.get("addressLine2"),
-        postalCode: form.get("postalCode"),
-        billingEmail: form.get("billingEmail"),
-        billingPhone: form.get("billingPhone"),
-        invoiceType: form.get("invoiceType"),
-        eInvoiceEligible: false,
-        eArchiveEligible: false,
-      },
-    };
-    const response = await fetch("/api/settings/company", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    setStatus(response.ok ? t("company.billingSaved") : (await response.json()).error || t("company.saveFailed"));
-  }
-
-  if (!data) return <LoaderCircle className="size-6 animate-spin text-primary" />;
-
-  const company = data.company as Record<string, string | null>;
-  const billing = (data.billing || {}) as Record<string, string | null>;
-  const identityFields: Array<[string, string, string]> = [
-    ["companyName", t("company.companyName"), company.name ?? ""],
-    ["phone", t("company.phone"), company.phone ?? ""],
-    ["email", t("company.email"), company.email ?? ""],
-    ["website", t("company.website"), ""],
-  ];
-  const fields = [
-    ["legalName", t("billing.legalName")],
-    ["tradeName", t("billing.tradeName")],
-    ["fullName", t("company.fullName")],
-    ["taxOffice", t("billing.taxOffice")],
-    ["taxNumber", t("billing.taxNumber")],
-    ["nationalIdNumber", t("company.nationalId")],
-    ["country", t("billing.country")],
-    ["city", t("billing.city")],
-    ["district", t("billing.district")],
-    ["postalCode", t("billing.postalCode")],
-    ["billingEmail", t("billing.billingEmail")],
-    ["billingPhone", t("billing.billingPhone")],
-    ["addressLine1", t("company.fullBillingAddress")],
-  ];
-
-  return (
-    <>
-      <Title title={t("settings.company")} description={t("company.description")} />
-      <form onSubmit={submit} className="space-y-6">
-        <section className={panel}>
-          <h3 className="font-semibold">{t("company.identity")}</h3>
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            {identityFields.map(([name, label, value]) => (
-              <label key={name}>
-                <span className="mb-2 block text-xs font-medium">{label}</span>
-                <input required={name === "companyName" || name === "email"} className={input} name={name} defaultValue={value} />
-              </label>
-            ))}
-          </div>
-        </section>
-
-        <section className={panel}>
-          <h3 className="font-semibold">{t("company.billingInformation")}</h3>
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <label>
-              <span className="mb-2 block text-xs font-medium">{t("company.billingType")}</span>
-              <select className={input} name="billingType" defaultValue={billing.billingType || "COMPANY"}>
-                <option value="COMPANY">{t("company.companyType")}</option>
-                <option value="INDIVIDUAL">{t("company.individualType")}</option>
-              </select>
-            </label>
-            <label>
-              <span className="mb-2 block text-xs font-medium">{t("billing.invoiceType")}</span>
-              <select className={input} name="invoiceType" defaultValue={billing.invoiceType || "STANDARD_INVOICE"}>
-                <option value="STANDARD_INVOICE">{t("company.standardInvoice")}</option>
-                <option value="E_INVOICE">{t("company.eInvoice")}</option>
-                <option value="E_ARCHIVE">{t("company.eArchive")}</option>
-              </select>
-            </label>
-            {fields.map(([name, label]) => (
-              <label key={name} className={name === "addressLine1" ? "md:col-span-2" : ""}>
-                <span className="mb-2 block text-xs font-medium">{label}</span>
-                <input className={input} name={name} defaultValue={billing[name] || ""} />
-              </label>
-            ))}
-          </div>
-        </section>
-
-        <button className={button}>
-          <Save className="size-4" />
-          {t("company.save")}
-        </button>
-        {status ? <p className="text-sm text-muted">{status}</p> : null}
-      </form>
-    </>
-  );
 }
 
 export function UsersSettingsPage() {
@@ -204,9 +79,10 @@ export function UsersSettingsPage() {
 
 export function SubscriptionsSettingsPage() {
   const { locale, t } = useI18n();
+  const [billingInterval, setBillingInterval] = useState<"MONTHLY" | "YEARLY">("MONTHLY");
   const [data, setData] = useState<{
-    subscription?: { status: string; cancelAtPeriodEnd: boolean; plan: { name: string } };
-    plans: Array<{ id: string; name: string; slug: string; monthlyPrice: string; yearlyPrice: string; trialDays: number }>;
+    subscription?: { status: string; cancelAtPeriodEnd: boolean; plan: { name: string; slug: "trial" | "starter" | "professional" } };
+    plans: Array<{ id: string; slug: "trial" | "starter" | "professional"; currency: string; monthlyPrice: number; yearlyPrice: number; yearlyMonthlyEquivalent: number; trialDays: number; limits: { accounts: number; whatsappConnections: number }; featureCodes: string[]; marketingFeatures: { tr: string[]; en: string[] } }>;
   }>();
 
   const load = useCallback(() => fetch("/api/settings/subscriptions").then((response) => response.json()).then(setData), []);
@@ -230,7 +106,9 @@ export function SubscriptionsSettingsPage() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-xs text-muted">{t("settings.currentPlan")}</p>
-              <h3 className="mt-1 text-2xl font-semibold">{data.subscription?.plan.name || "-"}</h3>
+              <h3 className="mt-1 text-2xl font-semibold">
+                {data.subscription?.plan.slug ? t(`home.plan.${data.subscription.plan.slug}.name`) : "-"}
+              </h3>
               <p className="mt-2 text-sm text-muted">{data.subscription ? statusLabel(t, "subscription", data.subscription.status) : "-"}</p>
             </div>
             <button className={button} onClick={() => void mutate(data.subscription?.cancelAtPeriodEnd ? "reactivate" : "cancel")}>
@@ -240,17 +118,33 @@ export function SubscriptionsSettingsPage() {
         )}
       </section>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-4">
-        {data?.plans.map((plan) => (
+      <div className="mx-auto mt-6 grid w-full max-w-xs grid-cols-2 rounded-lg border bg-card p-1" role="group" aria-label={t("home.billing.interval")}>
+        {(["MONTHLY", "YEARLY"] as const).map((interval) => (
+          <button key={interval} type="button" aria-pressed={billingInterval === interval} onClick={() => setBillingInterval(interval)} className={`min-h-11 rounded-md px-4 text-sm font-semibold ${billingInterval === interval ? "bg-primary text-white" : "text-muted"}`}>
+            {t(`billing.period.${interval.toLowerCase()}`)}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+        {data?.plans.map((plan) => {
+          const priceMinor = plan.slug === "trial" ? 0 : billingInterval === "YEARLY" ? plan.yearlyPrice : plan.monthlyPrice;
+          return (
           <article key={plan.id} className={panel}>
             <CreditCard className="size-5 text-primary" />
-            <h3 className="mt-5 font-semibold">{plan.name}</h3>
+            <h3 className="mt-5 font-semibold">{t(`home.plan.${plan.slug}.name`)}</h3>
+            {plan.slug !== "trial" ? <p className="mt-2 text-sm font-semibold text-primary">{plan.limits.accounts} {locale === "tr" ? "kullanıcı" : "users"}</p> : null}
             <p className="mt-3 text-2xl font-bold">
-              {formatCurrency(Number(plan.monthlyPrice), "TRY", locale)} / {t("settings.month")}
+              {formatCurrency(priceMinor / 100, plan.currency, locale)}
             </p>
-            <p className="mt-1 text-xs text-muted">{Number(plan.yearlyPrice) > 0 ? `${formatCurrency(Number(plan.yearlyPrice), "TRY", locale)} / ${t("settings.year")}` : plan.slug === "trial" ? t("settings.trialDays", { days: plan.trialDays }) : t("settings.custom")}</p>
+            <p className="mt-1 text-xs text-muted">{plan.slug === "trial" ? t("home.plan.trial.period") : t(billingInterval === "YEARLY" ? "home.price.perYear" : "home.price.perMonth")}</p>
+            {plan.slug !== "trial" && billingInterval === "YEARLY" ? <p className="mt-2 text-xs font-semibold text-primary">{t("home.price.monthlyEquivalent", { price: formatCurrency(plan.yearlyMonthlyEquivalent / 100, plan.currency, locale) })}</p> : null}
+            <ul className="mt-5 space-y-3 text-sm text-muted">
+              {(locale === "tr" ? plan.marketingFeatures.tr : plan.marketingFeatures.en).map((feature) => <li key={feature} className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-primary" /><span>{feature}</span></li>)}
+            </ul>
           </article>
-        ))}
+          );
+        })}
       </div>
     </>
   );
@@ -261,6 +155,7 @@ export function DeleteAccountSettingsPage() {
   const [value, setValue] = useState("");
   const [password, setPassword] = useState("");
   const [scope, setScope] = useState<"USER" | "COMPANY">("USER");
+  const [isTenantOwner, setIsTenantOwner] = useState(true);
   const [status, setStatus] = useState("");
   const [jobs, setJobs] = useState<Array<{ publicId: string; scope: string; status: string; cancelUntil: string }>>([]);
 
@@ -271,6 +166,7 @@ export function DeleteAccountSettingsPage() {
     if (!response.ok) return;
     const payload = await response.json();
     setJobs(payload.jobs ?? []);
+    setIsTenantOwner(Boolean(payload.isTenantOwner));
   }, []);
 
   useEffect(() => {
@@ -282,7 +178,7 @@ export function DeleteAccountSettingsPage() {
     const response = await fetch("/api/privacy/account-deletion", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ scope, confirmation: scope === "COMPANY" ? "DELETE MY LOGIVYA COMPANY" : "DELETE MY LOGIVYA ACCOUNT", password }),
+      body: JSON.stringify({ scope, confirmation: scope === "COMPANY" ? "DELETE MY LOGIVYA WORKSPACE" : "DELETE MY LOGIVYA ACCOUNT", password }),
     });
     if (response.ok) {
       setStatus(t("accountDeletion.queued"));
@@ -304,10 +200,16 @@ export function DeleteAccountSettingsPage() {
       <section className={`${panel} border-danger/45 bg-danger-soft text-danger-foreground`}>
         <AlertTriangle className="size-7 text-danger" />
         <h3 className="mt-4 font-semibold text-foreground">{t("accountDeletion.disableCompany")}</h3>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{t("accountDeletion.warning", { phrase })}</p>
-        <select className={`${input} mt-5 max-w-md`} value={scope} onChange={(event) => { setScope(event.target.value as "USER" | "COMPANY"); setValue(""); }}><option value="USER">{t("accountDeletion.userScope")}</option><option value="COMPANY">{t("accountDeletion.companyScope")}</option></select>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+          {isTenantOwner
+            ? t("accountDeletion.warning", { phrase })
+            : t("membership.sharedDeleteScope")}
+        </p>
+        {isTenantOwner ? (
+          <select className={`${input} mt-5 max-w-md`} value={scope} onChange={(event) => { setScope(event.target.value as "USER" | "COMPANY"); setValue(""); }}><option value="USER">{t("accountDeletion.userScope")}</option><option value="COMPANY">{t("accountDeletion.companyScope")}</option></select>
+        ) : null}
         <input className={`${input} mt-5 max-w-md`} value={value} onChange={(event) => setValue(event.target.value)} />
-        <input className={`${input} mt-3 max-w-md`} type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={t("privacy.passwordPlaceholder")} />
+        <PasswordInput wrapperClassName="mt-3 max-w-md" className={input} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={t("privacy.passwordPlaceholder")} />
         <button disabled={value !== phrase || !password} onClick={() => void close()} className="mt-4 flex items-center gap-2 rounded-xl bg-danger px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
           <ShieldCheck className="size-4" />
           {t("accountDeletion.disableAction")}

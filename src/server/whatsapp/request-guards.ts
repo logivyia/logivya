@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import IORedis from "ioredis";
+import { assertWebMutationOrigin } from "@/server/security/request-origin";
 
 let redis: IORedis | undefined;
 function client() {
@@ -37,9 +38,7 @@ async function readyClient() {
 }
 
 export function assertSameOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-  if (!origin) return;
-  if (new URL(origin).host !== new URL(request.url).host) throw new Error("CSRF_REJECTED");
+  assertWebMutationOrigin(request);
 }
 
 export async function enforceWhatsAppRateLimit(scope: string, subject: string, max = 5, windowSeconds = 600) {
@@ -55,5 +54,6 @@ export function whatsappRequestErrorStatus(error: unknown, fallback = 503) {
   if (error.message === "UNAUTHORIZED") return 401;
   if (error.message === "CSRF_REJECTED") return 403;
   if (error.message === "WHATSAPP_RATE_LIMITED") return 429;
+  if (["INVALID_WHATSAPP_PHONE", "UNSUPPORTED_PHONE_COUNTRY", "DUPLICATE_PHONE_COUNTRY_CODE", "PHONE_COUNTRY_MISMATCH"].includes(error.message)) return 400;
   return fallback;
 }

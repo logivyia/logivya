@@ -21,8 +21,8 @@ export async function loadServerDictionary(locale: Locale): Promise<Dictionary> 
   const cached = dictionaryCache.get(locale);
   if (cached) return cached;
   const [englishSource, localeSource] = await Promise.all([
-    readFile(path.join(process.cwd(), "locales", `${fallbackLocale}.json`), "utf8"),
-    readFile(path.join(process.cwd(), "locales", `${locale}.json`), "utf8"),
+    readFile(path.join(process.cwd(), "packages", "locales", `${fallbackLocale}.json`), "utf8"),
+    readFile(path.join(process.cwd(), "packages", "locales", `${locale}.json`), "utf8"),
   ]);
   const dictionary = { ...JSON.parse(englishSource), ...JSON.parse(localeSource) } as Dictionary;
   dictionaryCache.set(locale, dictionary);

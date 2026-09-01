@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   try {
     const { company, user } = await requireApiSession();
     if (!(await subscriptionAccess.canUseContactMessaging(company.id))) {
-      return NextResponse.json({ error: "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL", message: "Kişilere mesaj gönderimi Profesyonel paketinde kullanılabilir." }, { status: 403 });
+      return NextResponse.json({ error: "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL", message: "Kişilere mesaj göndermek için aktif bir abonelik gerekir." }, { status: 403 });
     }
     const url = new URL(request.url);
     const requestedSort = url.searchParams.get("sort");

@@ -7,6 +7,10 @@ RUN apt-get update -y && apt-get install -y openssl
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 COPY scripts/patch-baileys-contact-jid.mjs ./scripts/patch-baileys-contact-jid.mjs
+COPY scripts/patch-baileys-disable-offline-batch.mjs ./scripts/patch-baileys-disable-offline-batch.mjs
+COPY scripts/patch-baileys-live-event-buffer.mjs ./scripts/patch-baileys-live-event-buffer.mjs
+COPY scripts/patch-baileys-pending-ingestion.mjs ./scripts/patch-baileys-pending-ingestion.mjs
+COPY scripts/patch-baileys-ingestion-ack.mjs ./scripts/patch-baileys-ingestion-ack.mjs
 
 RUN npm ci
 

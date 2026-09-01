@@ -1,11 +1,13 @@
 import { sendEmail } from "@/lib/email/send-email";
 import { passwordResetCodeTemplate } from "@/lib/email/templates/password-reset-code";
+import { mfaEmailOtpTemplate } from "@/lib/email/templates/mfa-email-otp";
 import { supportCreatedEmail, supportReplyEmail } from "@/lib/email/templates/support-ticket";
 
 export type EmailTemplate =
   | "welcome"
   | "email_verification"
   | "password_reset"
+  | "mfa_email_otp"
   | "trial_started"
   | "trial_ending"
   | "trial_expired"
@@ -24,6 +26,7 @@ export type TemplateEmailInput = { to: string; template: EmailTemplate; variable
 
 const REQUIRED_TEMPLATE_VARIABLES: Partial<Record<EmailTemplate, string[]>> = {
   password_reset: ["code"],
+  mfa_email_otp: ["code"],
   support_created: ["ticketNumber", "ticketSubject", "userEmail", "companyName", "ticketCategory", "ticketPriority", "createdAt", "message", "openUrl"],
   support_replied: ["eventKind", "ticketNumber", "ticketSubject", "ticketStatus", "createdAt", "message", "openUrl"],
   notification_generic: ["title", "message"],
@@ -65,6 +68,10 @@ class TransactionalEmailProvider implements EmailProvider {
     if (!validation.valid) throw new Error("EMAIL_TEMPLATE_VARIABLES_MISSING");
     if (input.template === "password_reset") {
       return this.sendEmail({ to: input.to, ...await passwordResetCodeTemplate(input.variables.code, input.variables.locale) });
+    }
+
+    if (input.template === "mfa_email_otp") {
+      return this.sendEmail({ to: input.to, ...mfaEmailOtpTemplate(input.variables.code, input.variables.locale) });
     }
 
     if (input.template === "support_created") {

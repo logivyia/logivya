@@ -1,6 +1,10 @@
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { mobileError, mobileSafeError, mobileSuccess } from "@/server/mobile/response";
-import { revokeCompanyInvitation } from "@/server/team/company-invitations";
+import {
+  companyInvitationErrorStatus,
+  companyInvitationPublicErrorCode,
+  revokeCompanyInvitation,
+} from "@/server/team/company-invitations";
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -13,12 +17,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     }, id);
     return mobileSuccess({ success: true });
   } catch (error) {
-    if (error instanceof Error && error.message === "FORBIDDEN") {
-      return mobileError("FORBIDDEN", "Davet iptal etme yetkiniz yok.", { status: 403 });
-    }
-    if (error instanceof Error && error.message === "NOT_FOUND") {
-      return mobileError("NOT_FOUND", "Bekleyen davet bulunamadi.", { status: 404 });
-    }
-    return mobileSafeError(error);
+    const code = companyInvitationPublicErrorCode(error);
+    if (code === "INVITATION_REQUEST_FAILED") return mobileSafeError(error);
+    return mobileError(code, "Invitation could not be revoked.", { status: companyInvitationErrorStatus(code) });
   }
 }

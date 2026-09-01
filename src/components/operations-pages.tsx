@@ -2,6 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any */
 import { Fragment, type FormEvent, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
@@ -155,6 +156,23 @@ export function OnboardingPage() {
   return (
     <>
       <Header title={t("onboarding.title")} description={t("onboarding.description")} />
+      <div className="mb-5 grid gap-3 md:grid-cols-3">
+        <Link href="/accounts" className={`${panel} group transition hover:border-primary`}>
+          <MessageSquare className="size-6 text-primary" />
+          <h2 className="mt-4 font-semibold">{t("onboarding.guideConnectTitle")}</h2>
+          <p className="mt-2 text-sm leading-6 text-muted">{t("onboarding.guideConnectDescription")}</p>
+        </Link>
+        <Link href="/categories" className={`${panel} group transition hover:border-primary`}>
+          <Users className="size-6 text-primary" />
+          <h2 className="mt-4 font-semibold">{t("onboarding.guideOrganizeTitle")}</h2>
+          <p className="mt-2 text-sm leading-6 text-muted">{t("onboarding.guideOrganizeDescription")}</p>
+        </Link>
+        <Link href="/settings/security" className={`${panel} group transition hover:border-primary`}>
+          <ShieldAlert className="size-6 text-primary" />
+          <h2 className="mt-4 font-semibold">{t("onboarding.guideControlTitle")}</h2>
+          <p className="mt-2 text-sm leading-6 text-muted">{t("onboarding.guideControlDescription")}</p>
+        </Link>
+      </div>
       <div className={`${panel} mb-5`}><div className="flex justify-between text-sm"><b>{t("onboarding.progress")}</b><span>{progress}%</span></div><div className="mt-3 h-2 rounded-full bg-primary-soft"><div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} /></div></div>
       <div className="grid gap-3">{items.map(([labelKey, done, href]) => <a key={labelKey} href={href} className={`${panel} flex items-center gap-4 hover:border-primary`}><CheckCircle2 className={done ? "text-green-600" : "text-muted"} /><span className="font-medium">{t(labelKey)}</span><span className="ms-auto text-xs text-muted">{done ? t("common.completed") : t("common.continue")}</span></a>)}</div>
     </>

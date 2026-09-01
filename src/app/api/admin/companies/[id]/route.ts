@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { adminAuditPrivacyWhere } from "@/server/admin/message-privacy";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { prisma } from "@/server/db";
 
@@ -27,17 +28,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             lastDisconnectedAt: true,
             lastSyncedAt: true,
             archivedAt: true,
-            lastError: true,
             createdAt: true,
             updatedAt: true,
           },
         },
-        campaigns: { orderBy: { createdAt: "desc" }, take: 20 },
         payments: { orderBy: { createdAt: "desc" }, take: 20 },
         invoices: { orderBy: { createdAt: "desc" }, take: 20 },
         supportTickets: { orderBy: { lastMessageAt: "desc" }, take: 20 },
         internalNotes: { orderBy: { createdAt: "desc" }, take: 20 },
         auditLogs: {
+          where: adminAuditPrivacyWhere(),
           orderBy: { createdAt: "desc" },
           take: 30,
           select: { id: true, userId: true, action: true, entityType: true, entityId: true, createdAt: true },

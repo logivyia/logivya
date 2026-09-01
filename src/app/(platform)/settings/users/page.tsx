@@ -1,2 +1,9 @@
 import { UsersManagementPage } from "@/components/users-management-page";
-export default function Page(){return <UsersManagementPage/>}
+import { requireSession } from "@/server/auth/session";
+import { resolveMembershipAccess } from "@/server/team/membership-lifecycle";
+
+export default async function Page() {
+  const { company, user } = await requireSession();
+  await resolveMembershipAccess(company.id, user.id);
+  return <UsersManagementPage />;
+}

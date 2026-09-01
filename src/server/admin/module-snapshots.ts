@@ -2,6 +2,14 @@ import type { Prisma } from "@prisma/client";
 import { maskEmail } from "@logivya/logging";
 
 import { locales } from "@/i18n/config";
+import {
+  adminAuditPrivacyWhere,
+  getAdminCampaignPrivacySnapshot,
+} from "@/server/admin/message-privacy";
+import {
+  adminPrivacyReference,
+  serializeAdminAuditRecord,
+} from "@/server/admin/message-privacy-contract";
 import { CORE_PLAN_CODES, CORE_PLAN_MATRIX } from "@/server/billing/plan-matrix";
 import { prisma } from "@/server/db";
 
@@ -230,7 +238,6 @@ async function whatsappAccountsSnapshot(query: SnapshotQuery) {
         updatedAt: true,
         company: { select: { id: true, name: true } },
         user: { select: { email: true, name: true } },
-        _count: { select: { groups: true, contacts: true, recipients: true } },
       },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       skip: offset(query),
@@ -254,9 +261,6 @@ async function whatsappAccountsSnapshot(query: SnapshotQuery) {
       owner: account.user?.email ?? null,
       healthScore: account.healthScore,
       reconnectAttempts: account.reconnectRetryCount,
-      groups: account._count.groups,
-      contacts: account._count.contacts,
-      deliveries: account._count.recipients,
       lastConnectedAt: iso(account.lastConnectedAt),
       lastSyncedAt: iso(account.lastSyncedAt),
       lastGroupSyncAt: iso(account.lastGroupSyncAt),
@@ -270,67 +274,26 @@ async function whatsappAccountsSnapshot(query: SnapshotQuery) {
 }
 
 async function campaignsSnapshot(query: SnapshotQuery) {
-  const where: Prisma.MessageCampaignWhereInput = {
-    deletedAt: null,
-    ...(query.companyId ? { companyId: query.companyId } : {}),
-    ...(query.status ? { status: query.status as never } : {}),
-    ...(query.search ? {
-      OR: [
-        { title: { contains: query.search, mode: "insensitive" } },
-        { company: { name: { contains: query.search, mode: "insensitive" } } },
-        { createdBy: { email: { contains: query.search, mode: "insensitive" } } },
-      ],
-    } : {}),
-    ...dateWhere("createdAt", query),
-  };
-  const [campaigns, total, statusCounts] = await Promise.all([
-    prisma.messageCampaign.findMany({
-      where,
-      select: {
-        id: true,
-        title: true,
-        type: true,
-        scheduleType: true,
-        status: true,
-        scheduledAt: true,
-        totalRecipients: true,
-        sentCount: true,
-        failedCount: true,
-        canceledCount: true,
-        deleteForEveryoneStatus: true,
-        createdAt: true,
-        updatedAt: true,
-        company: { select: { id: true, name: true } },
-        createdBy: { select: { email: true } },
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      skip: offset(query),
-      take: query.limit,
-    }),
-    prisma.messageCampaign.count({ where }),
-    prisma.messageCampaign.groupBy({ by: ["status"], where, _count: { _all: true } }),
-  ]);
-  const metrics: Record<string, SnapshotValue> = { total };
-  for (const row of statusCounts) metrics[`status_${row.status}`] = row._count._all;
-  return snapshot("campaigns", query, total, metrics, campaigns.map((campaign) => ({
-    id: campaign.id,
-    title: campaign.title,
-    subtitle: `${campaign.company.name} · ${campaign.createdBy.email}`,
-    status: campaign.status,
-    createdAt: campaign.createdAt.toISOString(),
-    updatedAt: campaign.updatedAt.toISOString(),
+  const result = await getAdminCampaignPrivacySnapshot({
+    page: query.page,
+    limit: query.limit,
+    status: query.status,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+  });
+  return snapshot("campaigns", query, result.pagination.total, result.metrics, result.operations.map((operation) => ({
+    id: operation.operationReference,
+    title: operation.operationReference,
+    status: operation.status,
+    createdAt: operation.dateBucket,
     fields: {
-      companyId: campaign.company.id,
-      type: campaign.type,
-      scheduleType: campaign.scheduleType,
-      scheduledAt: iso(campaign.scheduledAt),
-      targets: campaign.totalRecipients,
-      sent: campaign.sentCount,
-      failed: campaign.failedCount,
-      canceled: campaign.canceledCount,
-      deleteForEveryoneStatus: campaign.deleteForEveryoneStatus,
+      total: operation.total,
+      succeeded: operation.succeeded,
+      failed: operation.failed,
+      canceled: operation.canceled,
+      errorCategory: operation.errorCategory ?? null,
     },
-  })), ["status", "companyId", "dateFrom", "dateTo"]);
+  })), ["status", "dateFrom", "dateTo"], true, "Message content and customer relationships are unavailable to platform administrators.");
 }
 
 async function complianceSnapshot(query: SnapshotQuery) {
@@ -361,7 +324,7 @@ async function complianceSnapshot(query: SnapshotQuery) {
 }
 
 async function auditSnapshot(query: SnapshotQuery) {
-  const where: Prisma.AuditLogWhereInput = {
+  const where = adminAuditPrivacyWhere({
     ...(query.companyId ? { companyId: query.companyId } : {}),
     ...(query.status ? { result: query.status } : {}),
     ...(query.search ? {
@@ -373,7 +336,7 @@ async function auditSnapshot(query: SnapshotQuery) {
       ],
     } : {}),
     ...dateWhere("createdAt", query),
-  };
+  });
   const [logs, total, adminAccess, sensitiveAccess] = await Promise.all([
     prisma.auditLog.findMany({
       where,
@@ -383,14 +346,10 @@ async function auditSnapshot(query: SnapshotQuery) {
         actorType: true,
         actorEmailMasked: true,
         result: true,
-        reason: true,
         entityType: true,
         entityId: true,
-        correlationId: true,
         clientPlatform: true,
         appVersion: true,
-        beforeState: true,
-        afterState: true,
         createdAt: true,
         company: { select: { id: true, name: true } },
         user: { select: { email: true, name: true } },
@@ -403,47 +362,38 @@ async function auditSnapshot(query: SnapshotQuery) {
     prisma.adminAccessLog.count(),
     prisma.adminAccessLog.count({ where: { sensitive: true } }),
   ]);
-  return snapshot("audit", query, total, { auditEvents: total, adminAccess, sensitiveAccess }, logs.map((log) => ({
+  const safeLogs = logs
+    .map((log) => serializeAdminAuditRecord({
+      ...log,
+      actorEmailMasked: log.actorEmailMasked ?? maskEmail(log.user?.email) ?? null,
+    }))
+    .filter((log): log is NonNullable<typeof log> => log !== null);
+  return snapshot("audit", query, total, { auditEvents: total, adminAccess, sensitiveAccess }, safeLogs.map((log) => ({
     id: log.id,
     title: log.action,
-    subtitle: `${log.entityType}${log.entityId ? ` · ${log.entityId}` : ""}`,
-    createdAt: log.createdAt.toISOString(),
+    subtitle: log.targetType,
+    createdAt: log.createdAt,
     status: log.result,
     fields: {
-      actor: log.actorEmailMasked ?? maskEmail(log.user?.email) ?? log.actorType,
+      actor: log.actor,
       actorType: log.actorType,
-      companyId: log.company.id,
       company: log.company.name,
-      targetType: log.entityType,
-      targetId: log.entityId ?? null,
-      reason: log.reason,
-      correlationId: log.correlationId,
-      clientPlatform: log.clientPlatform,
-      appVersion: log.appVersion,
-      beforeState: log.beforeState ? JSON.stringify(log.beforeState) : null,
-      afterState: log.afterState ? JSON.stringify(log.afterState) : null,
+      targetType: log.targetType,
+      clientPlatform: log.clientPlatform ?? null,
+      appVersion: log.appVersion ?? null,
     },
-  })), ["status", "companyId", "dateFrom", "dateTo"], true, "Audit records cannot be edited or deleted.");
+  })), ["status", "companyId", "dateFrom", "dateTo"], true, "Message operations and raw audit payloads are unavailable to platform administrators.");
 }
 
 async function notificationsSnapshot(query: SnapshotQuery) {
   const where: Prisma.NotificationWhereInput = {
-    ...(query.companyId ? { companyId: query.companyId } : {}),
     ...(query.status === "READ" ? { isRead: true } : query.status === "UNREAD" ? { isRead: false } : {}),
-    ...(query.search ? {
-      OR: [
-        { title: { contains: query.search, mode: "insensitive" } },
-        { message: { contains: query.search, mode: "insensitive" } },
-        { type: { contains: query.search, mode: "insensitive" } },
-        { user: { email: { contains: query.search, mode: "insensitive" } } },
-      ],
-    } : {}),
     ...dateWhere("createdAt", query),
   };
   const [rows, total, unread] = await Promise.all([
     prisma.notification.findMany({
       where,
-      select: { id: true, type: true, title: true, message: true, isRead: true, createdAt: true, company: { select: { id: true, name: true } }, user: { select: { email: true } } },
+      select: { id: true, type: true, isRead: true, createdAt: true },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: offset(query),
       take: query.limit,
@@ -452,13 +402,12 @@ async function notificationsSnapshot(query: SnapshotQuery) {
     prisma.notification.count({ where: { ...where, isRead: false } }),
   ]);
   return snapshot("notifications", query, total, { total, unread }, rows.map((row) => ({
-    id: row.id,
-    title: row.title,
-    subtitle: row.message,
+    id: adminPrivacyReference("notification", row.id),
+    title: row.type,
     status: row.isRead ? "READ" : "UNREAD",
-    createdAt: row.createdAt.toISOString(),
-    fields: { type: row.type, companyId: row.company.id, company: row.company.name, user: row.user.email },
-  })), ["status", "companyId", "dateFrom", "dateTo"], true, "Global notification mutations are not available in the current backend.");
+    createdAt: row.createdAt.toISOString().slice(0, 10),
+    fields: { type: row.type },
+  })), ["status", "dateFrom", "dateTo"], true, "Notification content and customer relationships are unavailable to platform administrators.");
 }
 
 async function dataRequestsSnapshot(query: SnapshotQuery) {
@@ -766,7 +715,7 @@ function snapshot(
     items,
     pagination: { page: query.page, limit: query.limit, total, pages, nextPage: query.page < pages ? query.page + 1 : null },
     capabilities: {
-      search: ["billing", "whatsapp-accounts", "campaigns", "compliance", "audit", "notifications", "data-requests", "releases", "feature-flags", "announcements", "api-usage", "webhooks"].includes(module),
+      search: ["billing", "whatsapp-accounts", "compliance", "audit", "data-requests", "releases", "feature-flags", "announcements", "api-usage", "webhooks"].includes(module),
       filters,
       actions: [],
       readOnly,

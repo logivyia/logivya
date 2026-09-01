@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { authPasswordErrorCode, registerSchema } from "@/features/auth/schemas";
-import { getRequestLocale, getServerTranslator } from "@/i18n/server";
+import { getRequestLocale } from "@/i18n/server";
 import { createSession } from "@/server/auth/session";
 import { issueEmailVerification } from "@/server/auth/email-verification";
 import { createPendingTrialEntitlement } from "@/server/billing/trial-service";
@@ -38,7 +38,6 @@ export async function POST(request: Request) {
   const route = "/api/auth/register";
   try {
     const requestedLocale = await getRequestLocale(request.headers.get("x-logivya-locale"));
-    const { t } = await getServerTranslator(requestedLocale);
     const parsed = registerSchema.safeParse(await request.json());
     if (!parsed.success) {
       const code = authPasswordErrorCode(parsed.error) ?? "VALIDATION_ERROR";
@@ -56,7 +55,7 @@ export async function POST(request: Request) {
     const fullName = input.name.trim();
     const normalizedEmail = input.email.trim().toLowerCase();
     const normalizedPhone = input.phone.replace(/\D/g, "");
-    const defaultCompanyName = fullName ? t("registration.defaultCompanyName", { name: fullName }) : t("registration.newCompany");
+    const defaultWorkspaceName = fullName;
     const ipAddress = clientIp(request);
     const userAgent = request.headers.get("user-agent");
 
@@ -120,26 +119,22 @@ export async function POST(request: Request) {
         company = await tx.company.findUniqueOrThrow({ where: { id: accepted.companyId } });
       } else {
         company = await tx.company.create({
-          data: { name: defaultCompanyName, ownerId: user.id, email: user.email, phone: user.phone },
+          data: { name: defaultWorkspaceName, ownerId: user.id, email: user.email, phone: user.phone },
         });
-        await tx.companyUser.create({ data: { companyId: company.id, userId: user.id, role: "OWNER" } });
+        await tx.companyUser.create({
+          data: {
+            companyId: company.id,
+            userId: user.id,
+            role: "OWNER",
+            lifecycleState: "INDEPENDENT_OWNER",
+          },
+        });
         await createPendingTrialEntitlement(tx, {
           companyId: company.id,
           userId: user.id,
           registrationPhone: normalizedPhone,
           ipAddress,
           deviceFingerprint: deviceId,
-        });
-        await tx.companyBillingProfile.create({
-          data: {
-            companyId: company.id,
-            billingType: "COMPANY",
-            companyName: company.name,
-            country: "TR",
-            city: "-",
-            addressLine1: "-",
-            billingEmail: user.email,
-          },
         });
         await tx.onboardingChecklist.create({ data: { companyId: company.id } });
       }

@@ -1,12 +1,13 @@
 type Translator = (key: string, variables?: Record<string, string | number>) => string;
 
 type ApiErrorPayload = {
-  error?: unknown;
+  error?: unknown | { code?: unknown; message?: unknown };
   code?: unknown;
   message?: unknown;
 };
 
 const errorKeyByCode: Record<string, string> = {
+  AUTH_INVALID_CREDENTIALS: "api.error.invalidCredentials",
   UNAUTHORIZED: "api.error.sessionExpired",
   FORBIDDEN: "api.error.forbidden",
   NOT_FOUND: "api.error.notFound",
@@ -16,6 +17,24 @@ const errorKeyByCode: Record<string, string> = {
   SUBSCRIPTION_LOCKED: "api.error.subscriptionLocked",
   CONTACT_MESSAGING_REQUIRES_PROFESSIONAL: "api.error.contactMessagingProfessional",
   SEAT_LIMIT_REACHED: "api.error.seatLimitReached",
+  USER_ALREADY_IN_TENANT: "api.error.userAlreadyInTenant",
+  EMAIL_NOT_AVAILABLE: "api.error.emailNotAvailable",
+  FIRST_NAME_REQUIRED: "api.error.firstNameRequired",
+  LAST_NAME_REQUIRED: "api.error.lastNameRequired",
+  INVALID_TEMPORARY_PASSWORD: "auth.temporaryPasswordInvalid",
+  PASSWORD_REUSE_NOT_ALLOWED: "auth.passwordReuseNotAllowed",
+  PASSWORD_CHANGE_CHALLENGE_EXPIRED: "auth.passwordChangeExpired",
+  PASSWORD_CHANGE_CHALLENGE_INVALID: "auth.passwordChangeInvalid",
+  PASSWORD_CHANGE_FAILED: "auth.passwordChangeFailed",
+  INVITATION_FLOW_DISABLED: "api.error.invitationFlowDisabled",
+  ALREADY_MEMBER: "api.error.alreadyMember",
+  INVITATION_ALREADY_PENDING: "api.error.invitationAlreadyPending",
+  SELF_INVITATION: "api.error.selfInvitation",
+  INVALID_EMAIL: "api.error.invalidEmail",
+  INVITATION_NAME_REQUIRED: "api.error.invitationNameRequired",
+  INVITATION_PERMISSION_DENIED: "api.error.invitationPermissionDenied",
+  INVITATION_DELIVERY_CONFIGURATION_ERROR: "api.error.invitationDeliveryConfiguration",
+  INVITATION_REQUEST_FAILED: "api.error.invitationRequestFailed",
   WHATSAPP_ACCOUNT_REQUIRED: "api.error.whatsappAccountRequired",
   WHATSAPP_ACCOUNT_NOT_OWNED: "api.error.whatsappAccountRequired",
   CATEGORY_NOT_FOUND: "api.error.categoryNotFound",
@@ -40,10 +59,28 @@ const errorKeyByCode: Record<string, string> = {
   PASSWORD_CONFIRMATION_MISMATCH: "auth.passwordConfirmationMismatch",
   PASSWORD_INVALID_TYPE: "auth.passwordInvalidType",
   PASSWORD_CONFIRMATION_REQUIRED: "auth.passwordRequired",
-  INVALID_TOTP_CODE: "api.error.validation",
-  MFA_CODE_INVALID: "api.error.validation",
-  MFA_INVALID: "api.error.validation",
-  MFA_CODE_REUSED: "api.error.validation",
+  INVALID_TOTP_CODE: "api.error.authMfaCodeInvalid",
+  MFA_CODE_INVALID: "api.error.authMfaCodeInvalid",
+  MFA_INVALID: "api.error.authMfaCodeInvalid",
+  MFA_CODE_REUSED: "api.error.authMfaCodeReused",
+  MFA_EMAIL_OTP_INVALID: "api.error.authMfaCodeInvalid",
+  MFA_EMAIL_OTP_EXPIRED: "api.error.authMfaChallengeExpired",
+  MFA_METHOD_NOT_ENABLED: "security.disabled",
+  MFA_METHOD_REQUIRED_BY_POLICY: "security.policyActionRequired",
+  RECENT_AUTHENTICATION_REQUIRED: "api.error.validation",
+  MFA_DEVICE_MISMATCH: "api.error.sessionExpired",
+  AUTH_MFA_CODE_INVALID: "api.error.authMfaCodeInvalid",
+  AUTH_MFA_CODE_REUSED: "api.error.authMfaCodeReused",
+  AUTH_MFA_CHALLENGE_EXPIRED: "api.error.authMfaChallengeExpired",
+  AUTH_MFA_RATE_LIMITED: "api.error.authMfaRateLimited",
+  AUTH_SESSION_CREATE_FAILED: "api.error.authSessionCreateFailed",
+  AUTH_METHOD_UNAVAILABLE: "api.error.authMethodUnavailable",
+  AUTH_INTERNAL_ERROR: "api.error.authInternal",
+  SOCIAL_ACCOUNT_NOT_FOUND: "api.error.socialAccountNotFound",
+  SOCIAL_PASSWORD_REQUIRED: "api.error.socialPasswordRequired",
+  SOCIAL_LOGIN_NOT_CONFIGURED: "api.error.socialLoginNotConfigured",
+  SOCIAL_TOKEN_INVALID: "api.error.socialTokenInvalid",
+  SOCIAL_EMAIL_UNVERIFIED: "api.error.socialTokenInvalid",
   MFA_CHALLENGE_INVALID: "api.error.sessionExpired",
   MFA_CHALLENGE_EXPIRED: "api.error.sessionExpired",
   MFA_CHALLENGE_LOCKED: "api.error.rateLimited",
@@ -54,6 +91,19 @@ const errorKeyByCode: Record<string, string> = {
   REGISTRATION_FAILED: "api.error.registrationFailed",
   EMAIL_ALREADY_REGISTERED: "api.error.accountExists",
   ACCOUNT_EXISTS: "api.error.accountExists",
+  MESSAGE_ATTRIBUTION_LENGTH_EXCEEDED: "api.error.messageAttributionTooLong",
+  INVALID_WHATSAPP_PHONE: "accounts.phoneInvalid",
+  PHONE_COUNTRY_MISMATCH: "accounts.phoneInvalid",
+  UNSUPPORTED_PHONE_COUNTRY: "accounts.countryUnsupported",
+  DUPLICATE_PHONE_COUNTRY_CODE: "accounts.countryCodeDuplicate",
+  MEMBER_SELF_MANAGED_AFTER_ACTIVATION: "membership.usersReadOnly",
+  PENDING_MEMBER_MANAGEMENT_ONLY: "membership.usersReadOnly",
+  MEMBER_ALREADY_ACTIVATED: "membership.usersReadOnly",
+  USER_MANAGEMENT_FORBIDDEN: "api.error.forbidden",
+  ACTIVE_SHARED_MEMBERSHIP_EXISTS: "membership.sharedSubscriptionReadOnly",
+  INDEPENDENT_CONVERSION_NOT_ALLOWED: "api.error.forbidden",
+  SHARED_SUBSCRIPTION_READ_ONLY: "membership.sharedSubscriptionReadOnly",
+  TENANT_DELETE_FORBIDDEN: "membership.sharedDeleteScope",
 };
 
 function translationKey(value: unknown) {
@@ -64,6 +114,13 @@ function translationKey(value: unknown) {
 }
 
 export function apiErrorMessage(t: Translator, payload: ApiErrorPayload | null | undefined, fallbackKey = "errors.generic") {
-  const key = translationKey(payload?.error) ?? translationKey(payload?.code) ?? translationKey(payload?.message);
+  const nestedError = payload?.error && typeof payload.error === "object"
+    ? payload.error as { code?: unknown; message?: unknown }
+    : null;
+  const key = translationKey(nestedError?.code)
+    ?? translationKey(nestedError?.message)
+    ?? translationKey(payload?.error)
+    ?? translationKey(payload?.code)
+    ?? translationKey(payload?.message);
   return t(key ?? fallbackKey);
 }

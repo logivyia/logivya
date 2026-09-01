@@ -25,8 +25,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    assertPrivacyMutationCsrf(request);
     const auth = await requirePrivacyAuth(request);
+    assertPrivacyMutationCsrf(request, auth.authSource);
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) throw new PrivacyError("VALIDATION_INVALID", 400);
     await requirePrivacyPassword(auth.user, parsed.data.password);

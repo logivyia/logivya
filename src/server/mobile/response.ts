@@ -10,6 +10,7 @@ export type MobileErrorCode =
   | "VALIDATION_ERROR"
   | "RATE_LIMITED"
   | "SUBSCRIPTION_LOCKED"
+  | "WHATSAPP_WORKER_UNAVAILABLE"
   | "CONFIGURATION_ERROR"
   | "INTERNAL_ERROR";
 
@@ -20,6 +21,7 @@ const errorKeyByCode: Record<string, string> = {
   VALIDATION_ERROR: "api.error.validation",
   RATE_LIMITED: "api.error.rateLimited",
   SUBSCRIPTION_LOCKED: "api.error.subscriptionLocked",
+  WHATSAPP_WORKER_UNAVAILABLE: "api.error.generic",
   CONFIGURATION_ERROR: "api.error.configuration",
   INTERNAL_ERROR: "api.error.generic",
   ACCOUNT_EXISTS: "api.error.accountExists",
@@ -56,8 +58,34 @@ const errorKeyByCode: Record<string, string> = {
   PASSWORD_TOO_SHORT: "auth.passwordTooShort",
   PASSWORD_CONFIRMATION_MISMATCH: "auth.passwordConfirmationMismatch",
   PASSWORD_INVALID_TYPE: "auth.passwordInvalidType",
+  PASSWORD_CONFIRMATION_REQUIRED: "auth.passwordRequired",
+  INVALID_TOTP_CODE: "api.error.authMfaCodeInvalid",
+  MFA_INVALID: "api.error.authMfaCodeInvalid",
+  MFA_CODE_REUSED: "api.error.authMfaCodeReused",
+  MFA_EMAIL_OTP_INVALID: "api.error.authMfaCodeInvalid",
+  MFA_EMAIL_OTP_EXPIRED: "api.error.authMfaChallengeExpired",
+  MFA_CHALLENGE_INVALID: "api.error.authMfaChallengeExpired",
+  MFA_CHALLENGE_LOCKED: "api.error.authMfaRateLimited",
+  TOO_MANY_TOTP_ATTEMPTS: "api.error.authMfaRateLimited",
+  MFA_METHOD_NOT_ENABLED: "security.disabled",
+  MFA_METHOD_REQUIRED_BY_POLICY: "security.policyActionRequired",
+  RECENT_AUTHENTICATION_REQUIRED: "api.error.validation",
+  MFA_DEVICE_MISMATCH: "api.error.sessionExpired",
   REGISTRATION_FAILED: "api.error.registrationFailed",
   EMAIL_ALREADY_REGISTERED: "api.error.accountExists",
+  MESSAGE_ATTRIBUTION_LENGTH_EXCEEDED: "api.error.messageAttributionTooLong",
+  INVALID_WHATSAPP_PHONE: "accounts.phoneInvalid",
+  PHONE_COUNTRY_MISMATCH: "accounts.phoneInvalid",
+  UNSUPPORTED_PHONE_COUNTRY: "accounts.countryUnsupported",
+  DUPLICATE_PHONE_COUNTRY_CODE: "accounts.countryCodeDuplicate",
+  MEMBER_SELF_MANAGED_AFTER_ACTIVATION: "membership.usersReadOnly",
+  PENDING_MEMBER_MANAGEMENT_ONLY: "membership.usersReadOnly",
+  MEMBER_ALREADY_ACTIVATED: "membership.usersReadOnly",
+  USER_MANAGEMENT_FORBIDDEN: "api.error.forbidden",
+  ACTIVE_SHARED_MEMBERSHIP_EXISTS: "membership.sharedSubscriptionReadOnly",
+  INDEPENDENT_CONVERSION_NOT_ALLOWED: "api.error.forbidden",
+  SHARED_SUBSCRIPTION_READ_ONLY: "membership.sharedSubscriptionReadOnly",
+  TENANT_DELETE_FORBIDDEN: "membership.sharedDeleteScope",
 };
 
 const legacyMessageKeys: Record<string, string> = {
@@ -82,13 +110,14 @@ const legacyMessageKeys: Record<string, string> = {
   "Hesap arşivlenemedi.": "api.error.archiveFailed",
   "Aboneliğiniz aktif değil. WhatsApp hesabı bağlamak için aboneliğinizi yenileyin.": "api.error.subscriptionConnectLocked",
   "Kişilere mesaj gönderimi Profesyonel paketinde kullanılabilir.": "api.error.contactMessagingProfessional",
+  "Kişilere mesaj göndermek için aktif bir abonelik gerekir.": "api.error.contactMessagingProfessional",
   "Çok fazla kişi eşitleme isteği gönderdiniz. Lütfen daha sonra tekrar deneyin.": "api.error.contactSyncRateLimited",
   "Kategori bulunamadı.": "api.error.categoryNotFound",
   "Kategori oluşturulamadı.": "api.error.categoryCreateFailed",
   "Kategori güncellenemedi.": "api.error.categoryUpdateFailed",
   "Kategori kişileri yüklenemedi.": "api.error.categoryContactsLoadFailed",
-  "Planınızdaki kullanılabilir ekip koltuğu dolu.": "api.error.seatLimitReached",
-  "Bu kullanıcı zaten şirket ekibinde.": "api.error.alreadyMember",
+  "Planınızdaki kullanılabilir hesap kapasitesi dolu.": "api.error.seatLimitReached",
+  "Bu kullanıcı zaten çalışma alanına eklenmiş.": "api.error.alreadyMember",
   "Çok fazla davet isteği gönderdiniz. Lütfen daha sonra tekrar deneyin.": "api.error.invitationRateLimited",
   "Destek talebi bulunamadı.": "api.error.supportTicketNotFound",
   "Talep kapalı olduğu için yanıt yazılamaz.": "support.closedNoReply",
@@ -110,7 +139,7 @@ const legacyMessageKeys: Record<string, string> = {
   "Şifre sıfırlama tamamlanamadı.": "api.error.passwordResetFailed",
   "Çıkış yapılamadı.": "api.error.logoutFailed",
   "Plan bulunamadı.": "api.error.planNotFound",
-  "Yükseltme için şirket ve fatura bilgilerinizi tamamlayın.": "api.error.billingProfileIncomplete",
+  "Yükseltme için ödeme bilgilerinizi tamamlayın.": "api.error.billingProfileIncomplete",
   "Paket yükseltme talebi oluşturulamadı.": "api.error.upgradeRequestFailed",
   "Geri bildirim gönderilemedi.": "api.error.feedbackFailed",
   "İşlem şu anda tamamlanamadı.": "api.error.generic",
@@ -186,6 +215,40 @@ export async function mobileSafeError(error: unknown, fallback = "api.error.gene
     if (error.message.startsWith("Missing permission")) return mobileError("FORBIDDEN", "api.error.forbidden", { status: 403 });
     if (error.message === "RATE_LIMITED") return mobileError("RATE_LIMITED", "api.error.rateLimited", { status: 429 });
     if (error.message === "SUBSCRIPTION_LOCKED") return mobileError("SUBSCRIPTION_LOCKED", "api.error.subscriptionLocked", { status: 403 });
+    if (error.message === "WHATSAPP_ACCOUNT_REQUIRED") {
+      return mobileError("WHATSAPP_ACCOUNT_REQUIRED", "api.error.whatsappAccountRequired", { status: 409 });
+    }
+    if (error.message === "MESSAGE_ATTRIBUTION_LENGTH_EXCEEDED") {
+      return mobileError("MESSAGE_ATTRIBUTION_LENGTH_EXCEEDED", "api.error.messageAttributionTooLong", { status: 400 });
+    }
+    const mfaStatusByCode: Record<string, number> = {
+      PASSWORD_CONFIRMATION_REQUIRED: 401,
+      INVALID_TOTP_CODE: 401,
+      MFA_INVALID: 401,
+      MFA_CODE_REUSED: 401,
+      MFA_EMAIL_OTP_INVALID: 401,
+      MFA_EMAIL_OTP_EXPIRED: 401,
+      MFA_CHALLENGE_INVALID: 401,
+      MFA_DEVICE_MISMATCH: 401,
+      MFA_CHALLENGE_LOCKED: 429,
+      TOO_MANY_TOTP_ATTEMPTS: 429,
+      MFA_METHOD_NOT_ENABLED: 409,
+      MFA_METHOD_REQUIRED_BY_POLICY: 409,
+      RECENT_AUTHENTICATION_REQUIRED: 400,
+    };
+    const mfaStatus = mfaStatusByCode[error.message];
+    if (mfaStatus) {
+      return mobileError(error.message, error.message, { status: mfaStatus });
+    }
+    if (
+      error.message.includes("WhatsApp worker is not reachable")
+      || error.message.includes("WHATSAPP_WORKER_URL_REQUIRED")
+    ) {
+      return mobileError("WHATSAPP_WORKER_UNAVAILABLE", fallback, {
+        status: 503,
+        details: { retryable: true },
+      });
+    }
   }
   return mobileError("INTERNAL_ERROR", fallback, { status: 500 });
 }

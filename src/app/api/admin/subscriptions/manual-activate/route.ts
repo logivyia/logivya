@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { PURCHASABLE_PLAN_CODES } from "@/server/billing/plan-matrix";
 import { activateSubscriptionManually } from "@/server/billing/manual-activation";
-import { SubscriptionActivationError } from "@/server/billing/subscription-activation";
+import { activateCompanySubscription, SubscriptionActivationError } from "@/server/billing/subscription-activation";
 import { requestId, safeAdminError } from "@/server/security/admin-request";
 
 const schema = z.object({
@@ -13,8 +13,9 @@ const schema = z.object({
   startsAt: z.coerce.date(),
   endsAt: z.coerce.date(),
   currency: z.literal("TRY").default("TRY"),
-  paymentMethod: z.enum(["MANUAL_BANK_TRANSFER", "MANUAL", "FREE_PROMO", "OTHER"]),
+  paymentMethod: z.enum(["MANUAL_BANK_TRANSFER", "MANUAL", "FREE_PROMO", "OTHER"]).default("MANUAL"),
   note: z.string().trim().min(5).max(500),
+  createPayment: z.boolean().default(true),
 });
 
 export async function POST(request: Request) {
@@ -28,7 +29,19 @@ export async function POST(request: Request) {
     }
     const idempotencyKey = request.headers.get("idempotency-key")
       || `${parsed.data.companyId}:${parsed.data.planSlug}:${parsed.data.startsAt.toISOString()}:${parsed.data.endsAt.toISOString()}`;
-    const result = await activateSubscriptionManually({ ...parsed.data, adminUserId: user.id, idempotencyKey });
+    const result = parsed.data.createPayment
+      ? await activateSubscriptionManually({ ...parsed.data, adminUserId: user.id, idempotencyKey })
+      : await activateCompanySubscription({
+        companyId: parsed.data.companyId,
+        planSlug: parsed.data.planSlug,
+        billingPeriod: parsed.data.billingPeriod,
+        startsAt: parsed.data.startsAt,
+        endsAt: parsed.data.endsAt,
+        source: "MANUAL_ADMIN",
+        actorUserId: user.id,
+        reason: parsed.data.note,
+        correlationId: idempotencyKey,
+      });
     return NextResponse.json({ ...result, requestId: id }, { status: 201 });
   } catch (error) {
     if (error instanceof SubscriptionActivationError) {

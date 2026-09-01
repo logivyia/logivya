@@ -363,6 +363,7 @@ function androidChannelForType(type: string) {
   if (type.startsWith("security.") || type.startsWith("auth.")) return "security";
   if (type.startsWith("whatsapp.")) return "whatsapp";
   if (type.startsWith("message.") || type.startsWith("campaign.")) return "messages";
+  if (type.startsWith("marketplace.")) return "marketplace";
   if (type.startsWith("support.")) return "support";
   if (type.startsWith("subscription.") || type.startsWith("billing.") || type.startsWith("payment.")) return "billing";
   if (type.startsWith("account.") || type.startsWith("invitation.")) return "account";

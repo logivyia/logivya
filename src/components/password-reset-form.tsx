@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, LoaderCircle, ShieldCheck } from "lucide-react";
 import { MIN_PASSWORD_LENGTH, validatePasswordPolicy } from "@logivya/validation/password-policy";
+import { PasswordInput } from "@/components/password-input";
 import { BrandLogo } from "@/components/brand-logo";
 import { LanguageSelector } from "@/components/language-selector";
 import { useI18n } from "@/i18n/provider";
@@ -110,8 +111,8 @@ export function PasswordResetForm({ mode }: { mode: Mode }) {
             {resendCooldown > 0 ? t("auth.resendCodeCountdown", { seconds: resendCooldown }) : t("auth.resendCode")}
           </button>}
           {verified && <>
-            <label><span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.newPassword")}</span><input required type="password" minLength={MIN_PASSWORD_LENGTH} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className={inputClass} /></label>
-            <label><span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.passwordConfirmation")}</span><input required type="password" value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} autoComplete="new-password" className={inputClass} /></label>
+            <label><span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.newPassword")}</span><PasswordInput required minLength={MIN_PASSWORD_LENGTH} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className={inputClass} /></label>
+            <label><span className="mb-2 block text-xs font-medium text-slate-700">{t("auth.passwordConfirmation")}</span><PasswordInput required value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} autoComplete="new-password" className={inputClass} /></label>
             <p className="text-xs leading-5 text-slate-500">{t("auth.passwordPolicy")}</p>
           </>}
         </>}

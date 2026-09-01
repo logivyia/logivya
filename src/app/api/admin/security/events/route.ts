@@ -1,7 +1,7 @@
-import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { maskEmail } from "@logivya/logging";
 
+import { adminSecurityEventPrivacyWhere } from "@/server/admin/message-privacy";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     const dateTo = date(params.get("dateTo"), true);
     const since24Hours = new Date(Date.now() - 24 * 60 * 60_000);
 
-    const where: Prisma.SecurityEventWhereInput = {
+    const where = adminSecurityEventPrivacyWhere({
       ...(companyId ? { companyId } : {}),
       ...(userId ? { userId } : {}),
       ...(severity && severities.has(severity) ? { severity: severity as never } : {}),
@@ -50,11 +50,10 @@ export async function GET(request: Request) {
           { type: { contains: search, mode: "insensitive" } },
           { source: { contains: search, mode: "insensitive" } },
           { errorCode: { contains: search, mode: "insensitive" } },
-          { correlationId: { contains: search, mode: "insensitive" } },
           { company: { name: { contains: search, mode: "insensitive" } } },
         ],
       } : {}),
-    };
+    });
 
     const [events, total, open, critical, failedLogins, blockedAttempts, mfaEnabledUsers, suspiciousDevices, suspiciousIps, tenantViolations, recentAdminActions] = await Promise.all([
       prisma.securityEvent.findMany({
@@ -63,16 +62,12 @@ export async function GET(request: Request) {
           id: true,
           severity: true,
           type: true,
-          message: true,
           result: true,
           status: true,
           errorCode: true,
           source: true,
-          requestId: true,
-          correlationId: true,
           clientPlatform: true,
           appVersion: true,
-          metadata: true,
           ipAddressMasked: true,
           userAgentSummary: true,
           acknowledgedAt: true,

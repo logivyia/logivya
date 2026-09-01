@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       prisma.subscription.count({ where: { status: "ACTIVE" } }),
       prisma.subscription.count({ where: { status: "EXPIRED" } }),
       prisma.messageCampaign.count({ where: { createdAt: { gte: today } } }),
-      prisma.messageRecipient.count({ where: { status: "SENT", sentAt: { gte: today } } }),
+      prisma.messageRecipient.count({ where: { status: { in: ["SENT", "DELIVERED"] }, sentAt: { gte: today } } }),
       prisma.messageRecipient.count({ where: { status: "FAILED", failedAt: { gte: today } } }),
       prisma.messageRecipient.count({ where: { createdAt: { gte: today } } }),
       prisma.loginAttempt.count({ where: { success: false, createdAt: { gte: today } } }),

@@ -1,6 +1,7 @@
 import { requirePermission } from "@/server/auth/permissions";
 import { prisma } from "@/server/db";
 import { attachDeleteState } from "@/server/messages/delete-for-everyone";
+import { readMessageAttachmentReference, readMessageAttachmentReferences } from "@/server/media/message-attachments";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { mobileSafeError, mobileSuccess } from "@/server/mobile/response";
 
@@ -22,6 +23,7 @@ export async function GET(request: Request) {
         id: true,
         title: true,
         content: true,
+        contentJson: true,
         status: true,
         scheduleType: true,
         scheduledAt: true,
@@ -32,6 +34,12 @@ export async function GET(request: Request) {
         type: true,
         createdAt: true,
         updatedAt: true,
+        recipients: {
+          where: { renderedContent: { not: null } },
+          select: { renderedContent: true },
+          orderBy: { renderedAt: "asc" },
+          take: 1,
+        },
       },
       orderBy: { createdAt: "desc" },
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -50,8 +58,11 @@ export async function GET(request: Request) {
     const statusCount = (campaignId: string, statuses: string[]) => targetCounts
       .filter((item) => item.campaignId === campaignId && statuses.includes(item.status))
       .reduce((total, item) => total + item._count._all, 0);
-    const campaigns = await attachDeleteState(visibleRows.map((campaign) => ({
+    const campaigns = await attachDeleteState(visibleRows.map(({ recipients, contentJson, ...campaign }) => ({
       ...campaign,
+      content: recipients[0]?.renderedContent ?? campaign.content,
+      attachment: readMessageAttachmentReference(contentJson),
+      attachments: readMessageAttachmentReferences(contentJson),
       groupCount: targetCount(campaign.id, "GROUP"),
       contactCount: targetCount(campaign.id, "CONTACT"),
       pendingCount: statusCount(campaign.id, ["PENDING", "QUEUED", "PROCESSING", "SENDING"]),

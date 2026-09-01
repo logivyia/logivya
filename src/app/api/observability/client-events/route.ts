@@ -10,10 +10,31 @@ import { tryRecordSecurityEvent } from "@/server/security/events";
 const schema = z.object({
   digest: z.string().trim().min(1).max(160).regex(/^[A-Za-z0-9._:-]+$/).optional(),
   name: z.string().trim().min(1).max(80).regex(/^[A-Za-z][A-Za-z0-9._-]*$/).optional(),
-  source: z.enum(["segment-boundary", "global-boundary", "window-error", "unhandled-rejection"]),
+  source: z.enum([
+    "segment-boundary",
+    "global-boundary",
+    "window-error",
+    "unhandled-rejection",
+    "mobile-root-boundary",
+  ]),
   route: z.string().trim().min(1).max(300).regex(/^\/(?!\/)[^?#]*$/),
-  platform: z.enum(["web", "mobile-web"]),
+  platform: z.enum(["web", "mobile-web", "android", "ios"]),
   appVersion: z.string().trim().min(1).max(80),
+  buildNumber: z.string().trim().min(1).max(24).regex(/^[A-Za-z0-9._-]+$/).optional(),
+  recoveryId: z
+    .string()
+    .trim()
+    .min(16)
+    .max(100)
+    .regex(/^mobile-recovery-[A-Za-z0-9-]+$/)
+    .optional(),
+  failureStage: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .regex(/^[A-Za-z0-9._-]+$/)
+    .optional(),
 }).strict();
 
 export async function POST(request: Request) {
@@ -37,7 +58,12 @@ export async function POST(request: Request) {
   }
 
   const context = { ...requestLogContext(request), ...parsed.data };
-  logger.warn("web.client.error_reported", context);
+  logger.warn(
+    parsed.data.platform === "android" || parsed.data.platform === "ios"
+      ? "mobile.client.recovery_reported"
+      : "web.client.error_reported",
+    context,
+  );
   await tryRecordSecurityEvent({
     request,
     severity: "LOW",
@@ -51,7 +77,18 @@ export async function POST(request: Request) {
       errorName: parsed.data.name,
       platform: parsed.data.platform,
       appVersion: parsed.data.appVersion,
+      buildNumber: parsed.data.buildNumber,
+      recoveryId: parsed.data.recoveryId,
+      failureStage: parsed.data.failureStage,
     },
   });
-  return NextResponse.json({ accepted: true }, { status: 202 });
+  return NextResponse.json(
+    {
+      accepted: true,
+      correlationId: context.correlationId,
+      requestId: context.requestId,
+      recoveryId: parsed.data.recoveryId ?? context.recoveryId ?? null,
+    },
+    { status: 202 },
+  );
 }

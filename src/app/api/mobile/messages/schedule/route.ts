@@ -4,12 +4,15 @@ import { isMessageDeliveryError } from "@/server/messages/delivery-pipeline";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { createMobileMessageCampaign } from "@/server/mobile/messages";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
+import { MAX_MESSAGE_ATTACHMENTS } from "@/server/security/uploads";
 
 const scheduledAtSchema = z.union([z.string(), z.date()]).nullable().optional();
 
 const schema = z.object({
   title: z.string().min(1).max(120).default("Zamanlı mobil mesaj"),
-  content: z.string().min(1).max(4096),
+  content: z.string().max(4096).default(""),
+  mediaFileId: z.string().cuid().optional(),
+  mediaFileIds: z.array(z.string().cuid()).max(MAX_MESSAGE_ATTACHMENTS).default([]),
   groupIds: z.array(z.string()).default([]),
   categoryIds: z.array(z.string()).default([]),
   contactIds: z.array(z.string()).default([]),
@@ -17,7 +20,10 @@ const schema = z.object({
   scheduledAt: scheduledAtSchema,
   scheduledTimeZone: z.string().max(80).optional(),
   timeZone: z.string().max(80).optional(),
-}).refine((input) => input.groupIds.length || input.categoryIds.length || input.contactIds.length || input.targets.length, { path: ["groupIds"], message: "validation.required" });
+}).superRefine((input, ctx) => {
+  if (!input.content.trim() && !input.mediaFileId && !input.mediaFileIds.length) ctx.addIssue({ code: "custom", path: ["content"], message: "validation.required" });
+  if (!input.groupIds.length && !input.categoryIds.length && !input.contactIds.length && !input.targets.length) ctx.addIssue({ code: "custom", path: ["groupIds"], message: "validation.required" });
+});
 
 export async function POST(request: Request) {
   try {

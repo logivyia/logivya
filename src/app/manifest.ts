@@ -1,10 +1,11 @@
 import type { MetadataRoute } from "next";
+import { PRODUCT_CONTENT } from "@/config/product-content";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Logivya",
     short_name: "Logivya",
-    description: "Multi-tenant WhatsApp communication and campaign operations.",
+    description: PRODUCT_CONTENT.tr.store.shortDescription,
     start_url: "/",
     display: "standalone",
     background_color: "#0B1020",

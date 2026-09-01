@@ -6,8 +6,8 @@ import { logger } from "@/server/observability/logger";
 import { resolveCurrentWhatsAppAccount } from "@/server/whatsapp/account-scope";
 import { resolveWhatsAppContactDisplayName } from "@/server/whatsapp/contact-normalization";
 
-export const CONTACT_CATEGORY_PROFESSIONAL_MESSAGE =
-  "Kişileri kategorilere ekleme ve kişilere mesaj gönderimi Profesyonel paketinde kullanılabilir.";
+export const CONTACT_CATEGORY_SUBSCRIPTION_MESSAGE =
+  "Kişileri kategorilere eklemek ve kişilere mesaj göndermek için aktif bir abonelik gerekir.";
 
 export class CategoryTargetError extends Error {
   constructor(
@@ -55,7 +55,7 @@ async function assertContactEntitlement(companyId: string) {
   throw new CategoryTargetError(
     "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL",
     403,
-    CONTACT_CATEGORY_PROFESSIONAL_MESSAGE,
+    CONTACT_CATEGORY_SUBSCRIPTION_MESSAGE,
   );
 }
 
@@ -320,6 +320,7 @@ export async function listCategoryContactAssignments(
     accountId: account.id,
     isActive: true,
     isWhatsAppUser: true,
+    NOT: { displayNameSource: "PHONE_FALLBACK" },
     account: { id: account.id, companyId: scope.companyId, userId: scope.userId, archivedAt: null },
     AND: [
       ...(search ? [{
