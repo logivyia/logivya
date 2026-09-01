@@ -13,6 +13,12 @@ import { prisma } from "@/server/db";
 import { logger } from "@/server/observability/logger";
 import { captureApprovedWhatsAppMessage, markWhatsAppSourceMessageDeleted, type CapturedAttachment } from "@/server/whatsapp-ingestion/capture";
 import { recommendLogisticsWhatsAppGroup } from "@/server/whatsapp-ingestion/group-recommendation";
+import {
+  groupIngestionPolicyNeedsUpdate,
+  resolveAutoGroupIngestionMinimumConfidence,
+  resolveSyncedGroupIngestionPolicy,
+  shouldAutoEnableAllSyncedGroups,
+} from "@/server/whatsapp-ingestion/group-sync-policy";
 import { resolveApprovedPendingReception } from "@/server/whatsapp-ingestion/pending-delivery-policy";
 import { updateMessageCampaignDeliveryAggregate } from "@/server/messages/delivery-state";
 import { enqueueWhatsAppJob } from "@/server/queues/producer";
@@ -2426,7 +2432,17 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
     const existingGroups = fetchedGroupIds.length
       ? await prisma.whatsAppGroup.findMany({
           where: { accountId, externalGroupId: { in: fetchedGroupIds } },
-          select: { externalGroupId: true, name: true },
+          select: {
+            externalGroupId: true,
+            name: true,
+            ingestionEnabled: true,
+            ingestionApprovedAt: true,
+            ingestionApprovedById: true,
+            autoPublicationEnabled: true,
+            manualReviewRequired: true,
+            minimumConfidence: true,
+            ingestionPausedAt: true,
+          },
         })
       : [];
     const existingNameByExternalId = new Map(
@@ -2464,6 +2480,12 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       }
     }
     const syncedAt = new Date();
+    const autoGroupIngestionEnabled = shouldAutoEnableAllSyncedGroups(accountId);
+    const autoGroupIngestionMinimumConfidence = resolveAutoGroupIngestionMinimumConfidence();
+    const existingGroupByExternalId = new Map(
+      existingGroups.map((group) => [group.externalGroupId, group]),
+    );
+    let autoGroupIngestionUpdatedCount = 0;
     const groupJids = groups.map((group) => group.externalId);
     const ownershipRepaired = await prisma.whatsAppGroup.updateMany({
       where: {
@@ -2480,6 +2502,16 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       const groupBatch = groups.slice(index, index + GROUP_SYNC_WRITE_CONCURRENCY);
       await Promise.all(groupBatch.map((group) => {
         const recommendation = recommendLogisticsWhatsAppGroup(group.name, group.description);
+        const existingGroup = existingGroupByExternalId.get(group.externalId);
+        const ingestionPolicy = resolveSyncedGroupIngestionPolicy({
+          accountId,
+          ownerUserId,
+          syncedAt,
+          existing: existingGroup,
+        });
+        if (groupIngestionPolicyNeedsUpdate(existingGroup, ingestionPolicy)) {
+          autoGroupIngestionUpdatedCount += 1;
+        }
         return prisma.whatsAppGroup.upsert({
           where: { accountId_externalGroupId: { accountId, externalGroupId: group.externalId } },
           update: {
@@ -2494,6 +2526,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           logisticsRecommendationConfidence: recommendation.confidence,
           isArchived: false,
           lastSyncedAt: syncedAt,
+          ...ingestionPolicy,
         },
         create: {
           userId: ownerUserId,
@@ -2507,6 +2540,7 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
           logisticsGroupRecommended: recommendation.recommended,
           logisticsRecommendationConfidence: recommendation.confidence,
           lastSyncedAt: syncedAt,
+          ...ingestionPolicy,
         },
         });
       }));
@@ -2539,11 +2573,19 @@ export class BaileysWhatsAppProvider implements WhatsAppProvider {
       groupsInvalidMetadataCount: invalidMetadataCount,
       groupsOwnershipRepairedCount: typeof ownershipRepaired === "object" && ownershipRepaired && "count" in ownershipRepaired ? ownershipRepaired.count : 0,
       groupsDeactivatedCount: typeof deactivated === "object" && deactivated && "count" in deactivated ? deactivated.count : 0,
+      autoGroupIngestionEnabled,
+      autoGroupIngestionUpdatedCount,
+      autoGroupIngestionMinimumConfidence: autoGroupIngestionEnabled ? autoGroupIngestionMinimumConfidence : undefined,
       duration: Date.now() - startedAt,
       source: "baileys-provider",
     });
     logger.info("WA_GROUP_SYNC_SUCCESS", { accountId, count: groups.length, durationMs: Date.now() - startedAt });
-    await auditAccount(accountId, "whatsapp.groups.synced", { count: groups.length }, syncCorrelationId);
+    await auditAccount(accountId, "whatsapp.groups.synced", {
+      count: groups.length,
+      autoGroupIngestionEnabled,
+      autoGroupIngestionUpdatedCount,
+      autoGroupIngestionMinimumConfidence: autoGroupIngestionEnabled ? autoGroupIngestionMinimumConfidence : undefined,
+    }, syncCorrelationId);
     return groups.map(({ nameSource: _nameSource, ...group }) => group);
   }
 
