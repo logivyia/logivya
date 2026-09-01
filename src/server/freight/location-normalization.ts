@@ -1,4 +1,6 @@
-import "server-only";
+// Pure normalization helpers are shared with the standalone WhatsApp worker.
+// Do not import Next.js' `server-only` sentinel here: it throws in a valid
+// non-Next server runtime and would stop live group ingestion from starting.
 
 export type LogisticsLocationType = "COUNTRY" | "CITY" | "DISTRICT" | "BORDER_GATE" | "CUSTOMS";
 
