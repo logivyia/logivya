@@ -1,4 +1,8 @@
-import "server-only";
+// This server module is imported by the standalone WhatsApp worker as well as
+// Next.js route handlers. The `server-only` sentinel intentionally throws when
+// it is executed outside Next's bundler, so importing it here prevents the
+// production worker from booting. Keep this module free of client exports and
+// enforce the boundary at its callers instead.
 
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma, type WhatsAppInboundAttachmentKind } from "@prisma/client";
