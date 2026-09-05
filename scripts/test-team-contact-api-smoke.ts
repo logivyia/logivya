@@ -62,12 +62,13 @@ async function main() {
   assert(starterSeats?.limit === 2 && starterSeats.used === 1, "Starter owner must see two total seats and one active owner after member removal.");
 
   const starterContacts = await request(baseUrl, starterCookie, "/api/whatsapp/contacts");
-  assert(starterContacts.response.status === 403 && starterContacts.body?.error === "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL", "Starter contact list endpoint must return CONTACT_MESSAGING_REQUIRES_PROFESSIONAL with HTTP 403.");
+  assert(starterContacts.response.status === 200, `Starter contact list endpoint returned ${starterContacts.response.status}.`);
   const starterManualContactSend = await request(baseUrl, starterCookie, "/api/campaigns", {
     method: "POST",
     body: JSON.stringify({ title: "Forbidden contact", content: "Test", groupIds: [], categoryIds: [], contactIds: ["forged-contact-id"], scheduleType: "SEND_NOW" }),
   });
-  assert(starterManualContactSend.response.status === 403 && starterManualContactSend.body?.code === "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL", "Starter manual contact campaign must be rejected before target lookup with HTTP 403.");
+  assert(!starterManualContactSend.response.ok, "A forged Starter contact target must still be rejected by validation or ownership checks.");
+  assert(starterManualContactSend.body?.code !== "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL", "Starter contact messaging must not be rejected by a Professional-only entitlement.");
 
   const professionalCookie = await sessionCookie(professional.owner.id, professional.id);
   const professionalContacts = await request(baseUrl, professionalCookie, "/api/whatsapp/contacts?limit=10");
@@ -91,7 +92,7 @@ async function main() {
   const memberCampaigns = memberHistory.body?.campaigns as Array<{ createdById?: string }> | undefined;
   assert(Array.isArray(memberCampaigns) && memberCampaigns.every((campaign) => campaign.createdById === member.userId), "Invited member history must not expose the owner's campaigns.");
 
-  console.log("Local production API smoke passed: seat visibility, Starter 403, Professional contact isolation and user-scoped history.");
+  console.log("Local production API smoke passed: account visibility, Starter contact access, contact isolation and user-scoped history.");
 }
 
 main().finally(() => prisma.$disconnect());

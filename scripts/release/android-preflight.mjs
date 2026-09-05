@@ -84,12 +84,33 @@ check(
 check("Build date metadata", Number.isFinite(Date.parse(buildDate)), buildDate || "missing");
 check("API contract metadata", /^\d{4}-\d{2}-\d{2}$/.test(apiContractVersion), apiContractVersion || "missing");
 check("Production API uses HTTPS", !isLocalOrInsecureUrl(productionBaseUrl), productionBaseUrl || "missing");
-check("Fallback APIs use HTTPS", fallbackUrls.length > 0 && fallbackUrls.every((url) => !isLocalOrInsecureUrl(url)), fallbackUrls.join(", ") || "missing");
+check(
+  "Fallback APIs are absent or use HTTPS",
+  fallbackUrls.every((url) => !isLocalOrInsecureUrl(url)),
+  fallbackUrls.join(", ") || "none (single Hetzner production endpoint)",
+);
 check("Developer network inspector disabled", /EX_DEV_CLIENT_NETWORK_INSPECTOR=false/.test(gradleProperties), "apps/mobile/android/gradle.properties");
+check(
+  "Android edge-to-edge enabled",
+  /^edgeToEdgeEnabled=true$/m.test(gradleProperties) && /^expo\.edgeToEdgeEnabled=true$/m.test(gradleProperties),
+  "apps/mobile/android/gradle.properties",
+);
+check("Adaptive orientation enabled", app.orientation === "default", String(app.orientation || "missing"));
+check(
+  "Android manifest has no fixed orientation",
+  !/android:screenOrientation=/.test(manifest),
+  "AndroidManifest.xml",
+);
+check(
+  "Android theme has no legacy status bar color override",
+  !/android:statusBarColor/.test(read(path.join(root, "apps/mobile/android/app/src/main/res/values/styles.xml"))),
+  "styles.xml",
+);
 check("Cleartext traffic disabled", /android:usesCleartextTraffic="false"/.test(manifest), "AndroidManifest.xml");
 check("Android backup disabled", /android:allowBackup="false"/.test(manifest), "AndroidManifest.xml");
 
 const removedPermissions = [
+  "android.permission.CAMERA",
   "android.permission.READ_EXTERNAL_STORAGE",
   "android.permission.READ_MEDIA_IMAGES",
   "android.permission.WRITE_EXTERNAL_STORAGE",

@@ -55,11 +55,12 @@ export function getMobileContactPhoneLabel(contact: Pick<MobileWhatsAppContact, 
   return `+${digits}`;
 }
 
-export function getMobileContacts(params: { page?: number; limit?: number; search?: string } = {}) {
+export function getMobileContacts(params: { page?: number; limit?: number; search?: string; accountId?: string } = {}) {
   const query = new URLSearchParams();
   query.set("page", String(params.page ?? 1));
   query.set("limit", String(params.limit ?? 100));
   if (params.search?.trim()) query.set("search", params.search.trim());
+  if (params.accountId) query.set("accountId", params.accountId);
   return apiClient.request<MobileContactsResponse>(`/api/mobile/whatsapp/contacts?${query.toString()}`);
 }
 

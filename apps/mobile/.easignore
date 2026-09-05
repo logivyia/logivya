@@ -1,17 +1,33 @@
 node_modules/
 
+# Monorepo web build output is not part of the native application. Excluding
+# both active and retained Next.js build directories prevents stale server
+# bundles from entering the EAS upload archive.
+.next/
+.next-*/
+**/.next/
+**/.next-*/
+../../.next/
+../../.next-*/
+
 android/.gradle/
 android/.cxx/
 android/.kotlin/
 android/app/.cxx/
+android/app/.cxx-stale-*/
+android/app/.cxx-longpath-backup-*/
 android/build/
 android/app/build/
 android/app/release/
+android/build.stale.*/
+android/build.stale.*/**
 android/.gradle/**
 android/.cxx/**
 android/.kotlin/**
 android/build/**
 android/app/.cxx/**
+android/app/.cxx-stale-*/**
+android/app/.cxx-longpath-backup-*/**
 android/app/build/**
 android/app/release/**
 **/.gradle/**
@@ -20,9 +36,14 @@ android/app/release/**
 
 .expo/
 .expo-shared/
+.eas-inspect-*/
+.eas-credentials/
+credentials.json
 dist/
 build/
 coverage/
+.codex-build-backup-*/
+.codex-build-backup-*/**
 
 *.log
 npm-debug.log*

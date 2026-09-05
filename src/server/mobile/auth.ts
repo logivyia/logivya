@@ -1,8 +1,9 @@
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { MobilePlatform, type Company, type CompanyUser, type User } from "@prisma/client";
+import { MobilePlatform, type Company, type CompanyUser, type Prisma, type User } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { hashOpaqueToken } from "@/server/security/authentication";
 import { decryptSensitiveField, encryptSensitiveField, parseEncryptedField, serializeEncryptedField, type EncryptionKeyring } from "@/server/security/encryption";
+import { evaluateMfaLoginDecision, isMfaMethodType, resolveMfaLoginDecision } from "@/server/security/mfa-policy";
 
 const ACCESS_TOKEN_SECONDS = 15 * 60;
 const REFRESH_TOKEN_DAYS = 30;
@@ -139,6 +140,30 @@ export function createRefreshToken() {
   return { token, tokenHash: hashOpaqueToken(token), expiresAt: new Date(Date.now() + REFRESH_TOKEN_DAYS * 86_400_000) };
 }
 
+async function mobileSessionSatisfiesMfaPolicy(tx: Prisma.TransactionClient, input: {
+  userId: string;
+  companyId: string;
+  role: string;
+  legacyRequired: boolean;
+  preferredMethod?: string | null;
+  mfaVerifiedAt?: Date | null;
+}) {
+  const company = await tx.company.findUnique({ where: { id: input.companyId }, select: { mfaPolicy: true } });
+  if (!company) return false;
+  const credentials = await tx.mfaCredential.findMany({
+    where: { userId: input.userId, status: "ENABLED", verifiedAt: { not: null }, revokedAt: null },
+    select: { type: true },
+  });
+  const decision = evaluateMfaLoginDecision({
+    enabledMethods: credentials.map((credential) => credential.type).filter(isMfaMethodType),
+    companyPolicy: company.mfaPolicy,
+    role: input.role,
+    legacyRequired: input.legacyRequired,
+    preferredMethod: input.preferredMethod,
+  });
+  return !decision.mfaRequired || (Boolean(input.mfaVerifiedAt) && decision.policySatisfied);
+}
+
 export async function createMobileSession(input: {
   userId: string;
   companyId: string;
@@ -149,23 +174,40 @@ export async function createMobileSession(input: {
   userAgent?: string | null;
   mfaVerified?: boolean;
 }) {
+  mobileJwtSecret();
   const refresh = createRefreshToken();
-  await prisma.mobileDeviceSession.updateMany({
-    where: { userId: input.userId, companyId: input.companyId, deviceId: input.deviceId, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
-  const session = await prisma.mobileDeviceSession.create({
-    data: {
-      userId: input.userId,
-      companyId: input.companyId,
-      deviceId: input.deviceId,
-      platform: input.platform,
-      appVersion: input.appVersion,
-      userAgent: input.userAgent,
-      refreshTokenHash: refresh.tokenHash,
-      expiresAt: refresh.expiresAt,
-      mfaVerifiedAt: input.mfaVerified ? new Date() : null,
-    },
+  const session = await prisma.$transaction(async (tx) => {
+    const [user, membership] = await Promise.all([
+      tx.user.findUnique({ where: { id: input.userId }, select: { status: true, mustChangePassword: true } }),
+      tx.companyUser.findUnique({
+        where: { companyId_userId: { companyId: input.companyId, userId: input.userId } },
+        select: { status: true, role: true },
+      }),
+    ]);
+    if (
+      !user
+      || user.status !== "ACTIVE"
+      || user.mustChangePassword
+      || membership?.status !== "ACTIVE"
+      || membership.role !== input.role
+    ) throw new Error("FORBIDDEN");
+    await tx.mobileDeviceSession.updateMany({
+      where: { userId: input.userId, companyId: input.companyId, deviceId: input.deviceId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return tx.mobileDeviceSession.create({
+      data: {
+        userId: input.userId,
+        companyId: input.companyId,
+        deviceId: input.deviceId,
+        platform: input.platform,
+        appVersion: input.appVersion,
+        userAgent: input.userAgent,
+        refreshTokenHash: refresh.tokenHash,
+        expiresAt: refresh.expiresAt,
+        mfaVerifiedAt: input.mfaVerified ? new Date() : null,
+      },
+    });
   });
   const access = createAccessToken({ userId: input.userId, companyId: input.companyId, sessionId: session.id, role: input.role });
   return {
@@ -198,6 +240,14 @@ export async function rotateRefreshToken(refreshToken: string, request: Request)
       const membership = await tx.companyUser.findUnique({
         where: { companyId_userId: { companyId: replay.session.companyId, userId: replay.session.userId } },
       });
+      const mfaSatisfied = membership?.status === "ACTIVE" && await mobileSessionSatisfiesMfaPolicy(tx, {
+        userId: replay.session.userId,
+        companyId: replay.session.companyId,
+        role: membership.role,
+        legacyRequired: replay.session.user.mfaRequired,
+        preferredMethod: replay.session.user.preferredMfaMethod,
+        mfaVerifiedAt: replay.session.mfaVerifiedAt,
+      });
       let recoveredRefreshToken: string | null = null;
       if (
         replay.replacementTokenEncrypted
@@ -206,8 +256,9 @@ export async function rotateRefreshToken(refreshToken: string, request: Request)
         && !replay.session.revokedAt
         && replay.session.expiresAt > now
         && replay.session.user.status === "ACTIVE"
+        && !replay.session.user.mustChangePassword
         && membership?.status === "ACTIVE"
-        && (!replay.session.user.mfaRequired || Boolean(replay.session.mfaVerifiedAt))
+        && mfaSatisfied
       ) {
         try {
           const candidate = decryptRefreshRecoveryToken(replay.replacementTokenEncrypted);
@@ -262,10 +313,18 @@ export async function rotateRefreshToken(refreshToken: string, request: Request)
     const membership = await tx.companyUser.findUnique({
       where: { companyId_userId: { companyId: existing.companyId, userId: existing.userId } },
     });
-    if (!membership || membership.status !== "ACTIVE" || existing.user.status !== "ACTIVE") {
+    if (!membership || membership.status !== "ACTIVE" || existing.user.status !== "ACTIVE" || existing.user.mustChangePassword) {
       return { kind: "rejected" as const, companyId: existing.companyId, userId: existing.userId, sessionId: existing.id };
     }
-    if (existing.user.mfaRequired && !existing.mfaVerifiedAt) {
+    const mfaSatisfied = await mobileSessionSatisfiesMfaPolicy(tx, {
+      userId: existing.userId,
+      companyId: existing.companyId,
+      role: membership.role,
+      legacyRequired: existing.user.mfaRequired,
+      preferredMethod: existing.user.preferredMfaMethod,
+      mfaVerifiedAt: existing.mfaVerifiedAt,
+    });
+    if (!mfaSatisfied) {
       return { kind: "rejected" as const, companyId: existing.companyId, userId: existing.userId, sessionId: existing.id };
     }
     await tx.mobileRefreshTokenHistory.deleteMany({ where: { sessionId: existing.id, expiresAt: { lte: now } } });
@@ -366,12 +425,24 @@ export async function requireMobileAuth(request: Request): Promise<MobileAuthCon
     include: { user: true, company: true },
   });
   if (!session || session.revokedAt || session.expiresAt <= new Date()) throw new Error("UNAUTHORIZED");
-  if (session.userId !== payload.sub || session.companyId !== payload.companyId || session.user.status !== "ACTIVE") throw new Error("UNAUTHORIZED");
-  if (session.user.mfaRequired && !session.mfaVerifiedAt) throw new Error("UNAUTHORIZED");
+  if (
+    session.userId !== payload.sub
+    || session.companyId !== payload.companyId
+    || session.user.status !== "ACTIVE"
+    || session.user.mustChangePassword
+  ) throw new Error("UNAUTHORIZED");
   const membership = await prisma.companyUser.findUnique({
     where: { companyId_userId: { companyId: session.companyId, userId: session.userId } },
   });
   if (!membership || membership.status !== "ACTIVE") throw new Error("UNAUTHORIZED");
+  const mfa = await resolveMfaLoginDecision({
+    userId: session.userId,
+    companyPolicy: session.company.mfaPolicy,
+    role: membership.role,
+    legacyRequired: session.user.mfaRequired,
+    preferredMethod: session.user.preferredMfaMethod,
+  });
+  if (mfa.mfaRequired && (!session.mfaVerifiedAt || !mfa.policySatisfied)) throw new Error("UNAUTHORIZED");
   await prisma.mobileDeviceSession.update({ where: { id: session.id }, data: { lastUsedAt: new Date(), userAgent: request.headers.get("user-agent") } });
   return { user: session.user, company: session.company, membership, sessionId: session.id, sessionCreatedAt: session.createdAt, deviceId: session.deviceId, platform: session.platform };
 }

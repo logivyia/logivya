@@ -19,7 +19,9 @@ export function serializePlanLimits(plan?: Plan | null) {
   if (!plan) return null;
   const entitlements = deriveCompanyEntitlements(plan, true);
   return {
-    maxWhatsappAccounts: plan.maxWhatsappAccounts,
+    accountLimit: entitlements.teamSeats,
+    whatsappConnectionLimit: entitlements.whatsappConnections,
+    maxWhatsappAccounts: entitlements.whatsappConnections,
     maxTeamUsers: entitlements.teamSeats,
     maxGroups: plan.maxGroups,
     maxMessagesPerDay: plan.maxMessagesPerDay,

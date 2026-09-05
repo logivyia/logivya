@@ -6,8 +6,11 @@ buildscript {
     mavenCentral()
   }
   dependencies {
-        classpath 'com.google.gms:google-services:4.4.1'
-    classpath('com.android.tools.build:gradle')
+    classpath 'com.google.gms:google-services:4.4.1'
+    classpath 'com.google.firebase:perf-plugin:2.0.2'
+    // AGP 8.13 supplies optimized resource shrinking while retaining the
+    // Gradle APIs used by Expo SDK 54 / React Native 0.81.
+    classpath('com.android.tools.build:gradle:8.13.2')
     classpath('com.facebook.react:react-native-gradle-plugin')
     classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
   }
@@ -38,6 +41,23 @@ def disableNativeTaskTracking = { task ->
 }
 
 subprojects { subproject ->
+  // Compose 1.6.8's embedded lint crashes on this Kotlin 2.1 / AGP 8.11
+  // toolchain. Align the runtime family in every module, including expo-iap,
+  // so both its own lint and the app resolve the compatible detectors.
+  // Constraints upgrade existing dependencies only; they neither add Compose
+  // to modules that do not use it nor force future newer versions backwards.
+  configurations.matching { it.name == "implementation" }.configureEach { configuration ->
+    // Google fixed ProGuard/R8 build errors and possible runtime crashes in
+    // 21.5.1 (2026-02-18). Upgrade the existing dependency, never add or force it.
+    subproject.dependencies.constraints.add(configuration.name, "com.google.android.gms:play-services-auth:21.5.1") {
+      because("Google's 21.5.1 ProGuard/R8 compatibility fix is required for optimized releases")
+    }
+    ["runtime", "runtime-android", "runtime-saveable", "runtime-saveable-android"].each { artifact ->
+      subproject.dependencies.constraints.add(configuration.name, "androidx.compose.runtime:${artifact}:1.9.5") {
+        because("Compose runtime/lint compatibility with Kotlin 2.1 and AGP 8.11; keep all lint checks enabled")
+      }
+    }
+  }
   tasks.configureEach { task ->
     disableNativeTaskTracking(task)
   }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireApiSession } from "@/server/auth/session";
-import { companyInvitationErrorStatus, resendCompanyInvitation, serializeCompanyInvitation } from "@/server/team/company-invitations";
+import { companyInvitationErrorStatus, companyInvitationPublicErrorCode, resendCompanyInvitation, serializeCompanyInvitation } from "@/server/team/company-invitations";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -17,7 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       emailSent: result.emailSent,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "errors.generic";
-    return NextResponse.json({ error: message }, { status: message === "NOT_FOUND" ? 404 : companyInvitationErrorStatus(message) });
+    const code = companyInvitationPublicErrorCode(error);
+    return NextResponse.json({ error: code }, { status: companyInvitationErrorStatus(code) });
   }
 }

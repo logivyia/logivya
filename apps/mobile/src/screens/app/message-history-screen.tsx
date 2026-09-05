@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { useRoute, type RouteProp } from "@react-navigation/native";
 
 import {
   deleteMobileMessageForEveryone,
@@ -13,19 +14,29 @@ import { Screen } from "@/components/screen";
 import { EmptyState } from "@/components/state/empty-state";
 import { ErrorState } from "@/components/state/error-state";
 import { LoadingState } from "@/components/state/loading-state";
-import { Badge, PageHeader, StatCard } from "@/components/ui";
+import { Badge, Chip, PageHeader, StatCard } from "@/components/ui";
+import { useTelegramAccessEnabled } from "@/features/telegram/telegramAccessStore";
 import { formatDateTime } from "@/i18n/format";
 import { useTranslation } from "@/i18n/use-translation";
 import { useTheme } from "@/theme/theme-provider";
+import { TelegramScreen } from "@/screens/app/telegram-screen";
+import type { AppTabParamList } from "@/types/navigation";
 
 export function MessageHistoryScreen() {
   const theme = useTheme();
   const { locale, t } = useTranslation();
+  const route = useRoute<RouteProp<AppTabParamList, "MessageHistory">>();
+  const telegramEnabled = useTelegramAccessEnabled();
+  const [historyPlatform, setHistoryPlatform] = useState<"WHATSAPP" | "TELEGRAM">(route.params?.initialPlatform ?? "WHATSAPP");
   const [campaigns, setCampaigns] = useState<MobileMessageCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [workingId, setWorkingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setHistoryPlatform(route.params?.initialPlatform ?? "WHATSAPP");
+  }, [route.params?.initialPlatform]);
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "initial") setLoading(true);
@@ -86,6 +97,10 @@ export function MessageHistoryScreen() {
     ]);
   }
 
+  if (telegramEnabled && historyPlatform === "TELEGRAM") {
+    return <TelegramScreen initialTab="history" lockedTab onSwitchToWhatsApp={() => setHistoryPlatform("WHATSAPP")} />;
+  }
+
   if (loading && campaigns.length === 0) {
     return (
       <Screen>
@@ -119,6 +134,7 @@ export function MessageHistoryScreen() {
               title={t("messageHistoryTitle")}
               description={t("messageHistorySubtitle")}
             />
+            {telegramEnabled ? <View style={styles.platformRow}><Chip label="WhatsApp" active onPress={() => setHistoryPlatform("WHATSAPP")} /><Chip label={t("telegramAccounts")} active={false} onPress={() => setHistoryPlatform("TELEGRAM")} /></View> : null}
             <View style={styles.grid}>
               <StatCard icon="send-outline" label={t("sent")} value={sentCount} tone="success" />
               <StatCard icon="calendar-outline" label={t("scheduled")} value={scheduledCount} tone="warning" />
@@ -181,6 +197,11 @@ function CampaignCard({
           {campaign.content}
         </Text>
       ) : null}
+      {(campaign.attachments?.length || campaign.attachment) ? (
+        <Text style={[styles.preview, { color: theme.primary }]} numberOfLines={1}>
+          📎 {campaign.attachments?.length ? t("selectedAttachmentCount", { count: campaign.attachments.length }) : campaign.attachment?.fileName}
+        </Text>
+      ) : null}
       <View style={styles.metricsRow}>
         <Text style={[styles.metric, { color: theme.text }]}>{t("targetsMetric", { count: campaign.totalRecipients })}</Text>
         <Text style={[styles.metric, { color: theme.success }]}>{t("sentMetric", { count: campaign.sentCount ?? 0 })}</Text>
@@ -190,6 +211,7 @@ function CampaignCard({
         <Text style={[styles.metric, { color: theme.muted }]}>{t("pendingMetric", { count: campaign.pendingCount ?? 0 })}</Text>
         <Text style={[styles.metric, { color: theme.primary }]}>{t("retryingMetric", { count: campaign.retryingCount ?? 0 })}</Text>
       </View>
+      {campaign.sendSafetyCode ? <Text style={[styles.preview, { color: theme.danger }]}>{t(campaign.sendSafetyCode === "WHATSAPP_SEND_PAUSED" ? "whatsappSendPaused" : "whatsappSendSafetyUnavailable")}</Text> : null}
       {deleteState ? (
         <Text style={[styles.deleteSummary, { color: theme.muted }]}>
           {deleteForEveryoneSummary(deleteState, t)}
@@ -285,6 +307,7 @@ const styles = StyleSheet.create({
   screen: { paddingHorizontal: 18, paddingVertical: 16 },
   list: { gap: 14, paddingBottom: 32 },
   header: { gap: 14 },
+  platformRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   card: { borderRadius: 24, borderWidth: 1, gap: 12, padding: 18 },
   rowBetween: { alignItems: "flex-start", flexDirection: "row", gap: 12, justifyContent: "space-between" },

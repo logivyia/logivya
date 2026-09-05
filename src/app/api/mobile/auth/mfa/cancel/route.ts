@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     if (!parsed.success) return mobileValidationError(parsed.error);
     await enforceOperationRateLimit({ scope: "mobile-mfa-enrollment-cancel", subject: context.user.id, maxAttempts: 5, windowMs: 15 * 60_000, request });
     await cancelPendingMfaEnrollment(context.user.id, parsed.data.setupToken);
-    await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_ENROLLMENT_CANCELLED", message: "Mobil iki adimli dogrulama kurulumu iptal edildi." });
+    await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_ENROLLMENT_CANCELLED", message: "Mobil iki adımlı doğrulama kurulumu iptal edildi." });
     return mobileSuccess({ ok: true });
   } catch (error) {
     return mobileSafeError(error);

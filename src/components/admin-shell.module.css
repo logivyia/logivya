@@ -1,0 +1,48 @@
+.shell {
+  --background: #f7f8fb;
+  --foreground: #172033;
+  --card: #ffffff;
+  --card-foreground: #172033;
+  --card-strong: #ffffff;
+  --input: #ffffff;
+  --input-foreground: #172033;
+  --popover: #ffffff;
+  --popover-foreground: #172033;
+  --muted: #64748b;
+  --muted-foreground: #64748b;
+  --border: #e2e8f0;
+  --primary: #ea580c;
+  --primary-foreground: #ffffff;
+  --ring: #fed7aa;
+  --shadow-soft: 0 4px 24px rgb(15 23 42 / 4%);
+  color-scheme: light;
+  isolation: isolate;
+}
+.sidebar {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 50;
+  width: min(88vw, 320px);
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition: transform 200ms ease, visibility 200ms ease;
+}
+:global([dir="rtl"]) .sidebar { transform: translateX(100%); }
+.sidebar[data-open="true"] { transform: translateX(0); visibility: visible; }
+@media (min-width: 1024px) {
+  .sidebar, :global([dir="rtl"]) .sidebar {
+    position: sticky;
+    top: 0;
+    width: 280px;
+    transform: none;
+    visibility: visible;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}

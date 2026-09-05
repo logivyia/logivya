@@ -8,8 +8,8 @@ import {
   normalizeLocale,
   type Locale,
 } from "@/i18n/config";
-import englishDictionary from "../../locales/en.json";
-import turkishDictionary from "../../locales/tr.json";
+import englishDictionary from "../../packages/locales/en.json";
+import turkishDictionary from "../../packages/locales/tr.json";
 import { localeOverrides } from "@/i18n/overrides";
 
 type Dictionary = Record<string, string>;

@@ -3,10 +3,10 @@ import path from "node:path";
 import ts from "typescript";
 
 const root = process.cwd();
-const targetLocales = ["tr", "en", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"];
+const targetLocales = ["tr", "en", "ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"];
 const visibleAttributes = new Set(["alt", "aria-label", "description", "label", "placeholder", "title"]);
-const ignoredText = /^(?:[-+×•·/|]|(?:←\s*)?Logivya(?: Mobile)?|WhatsApp|Android|iOS|API|URL|QR|ISO-8601|https?:\/\/\.\.\.|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}|[\w./-]+\.(?:md|json|ts|tsx))$/i;
-const protectedTerms = /\b(?:Logivya|WhatsApp|PayTR|Iyzico|Stripe|Android|iOS|API|QR|ISO-8601|URL|KVKK|SaaS|JWT|Redis|Prisma|Vercel|Cloudflare|Render|Expo|Google Play)\b/gi;
+const ignoredText = /^(?:[-+×•·/|]|(?:←\s*)?Logivya(?: Mobile)?|LOGIVYA ·|MB|WhatsApp|Android|iOS|API|URL|QR|IBAN|ISO-8601|https?:\/\/\.\.\.|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}|[\w./-]+\.(?:md|json|ts|tsx))$/i;
+const protectedTerms = /\b(?:Logivya|WhatsApp|Telegram|PayTR|Iyzico|Stripe|Android|iOS|API|QR|IBAN|ISO-8601|URL|KVKK|SaaS|JWT|Redis|Prisma|Vercel|Cloudflare|Render|Expo|Google Play)\b/gi;
 const turkishResidue = /[ĞğİıŞş]|\b(?:kullanıcı|şirket|ayarlar|kaydet|başarısız|başarılı|ödeme|abonelik|deneme|destek|hesaplar|gruplar|kategoriler|gönder|bağlantı|yeniden|silindi|iptal edildi|bulunamadı|yüklenemedi|geçersiz)\b/i;
 
 function walk(directory) {
@@ -101,21 +101,22 @@ function hasQuestionMarkCorruption(source, value) {
 }
 
 const nativeIdenticalValues = {
-  ro: new Set(["Administrator", "Operator", "Popular", "Urgent", "Plan", "Manual", "Individual", "Marketing", "Total", "Export", "Feedback", "Manager", "Normal", "Interval: 1"]),
+  ro: new Set(["Administrator", "Operator", "Popular", "Urgent", "Plan", "Manual", "Individual", "Marketing", "Total", "Export", "Feedback", "Manager", "Normal", "Document", "Interval: 1"]),
   ru: new Set(),
-  az: new Set(["Status", "Operator", "Plan", "Normal"]),
+  az: new Set(["Status", "Operator", "Plan", "Normal", "Video"]),
   tk: new Set(["Status", "Operator"]),
-  de: new Set(["Support", "Status", "Administrator", "Operator", "System", "Start", "Ticket", "Name", "Marketing", "Information", "Version", "Export", "Compliance", "Feedback", "Manager", "Tickets", "Orange", "Normal", "Team"]),
+  de: new Set(["Support", "Status", "Administrator", "Operator", "System", "Start", "Ticket", "Name", "Marketing", "Information", "Version", "Export", "Compliance", "Feedback", "Manager", "Tickets", "Orange", "Normal", "Team", "Video"]),
   bg: new Set(),
   el: new Set(),
-  sr: new Set(["Status", "Administrator", "Plan", "Marketing", "Interval: 1"]),
+  sr: new Set(["Status", "Administrator", "Plan", "Marketing", "Video", "Interval: 1"]),
 };
 
 function allowedIdentical(value, locale) {
   const stripped = String(value).replace(protectedTerms, "").replace(/[\d\s\p{P}\p{S}]/gu, "");
   const normalized = String(value).trim();
   return !stripped
-    || /^(?:Ctrl K|5x{2} x{3} x{2} x{2}|\d+\s*(?:TL|TRY|₺)|Starter|Webhook|Webhooks|Professional|Enterprise|Logivya Mobile)$/i.test(normalized)
+    || /^(?:\{[^{}]+\}[\s\p{P}]*)+$/u.test(normalized)
+    || /^(?:Ctrl K|5x{2} x{3} x{2} x{2}|\d+\s*(?:TL|TRY|₺)|Starter|Webhook|Webhooks|Professional|Enterprise|Logivya (?:Mobile|Plus|Pro))$/i.test(normalized)
     || nativeIdenticalValues[locale]?.has(normalized);
 }
 
@@ -132,7 +133,8 @@ function catalogQuality(locale, english, dictionary) {
     if (hasQuestionMarkCorruption(englishValue, value)) questionMarkCorruption.push(key);
     if (/(?:Ã¼|Ã§|Ã¶|Ã¢|Ä±|ÄŸ|Äƒ|ÅŸ|Åž|â€™|â€“|Â|\uFFFD)/.test(String(value ?? ""))) encodingErrors.push(key);
     if (!["en", "tr"].includes(locale) && value === englishValue && !allowedIdentical(value, locale)) identicalEnglish.push(key);
-    if (["en", "ro", "ru", "de", "bg", "el", "sr"].includes(locale) && turkishResidue.test(String(value ?? ""))) turkishLeftovers.push(key);
+    const containsRequiredTurkishLegalIdentity = ["legal.privacy.controllerBody", "legal.kvkk.controllerBody"].includes(key);
+    if (["en", "ro", "ru", "de", "bg", "el", "sr"].includes(locale) && !containsRequiredTurkishLegalIdentity && turkishResidue.test(String(value ?? ""))) turkishLeftovers.push(key);
     if (locale === "sr" && /[\u0400-\u04ff]/.test(String(value ?? ""))) serbianCyrillic.push(key);
   }
   return { placeholderMismatch, encodingErrors, questionMarkCorruption, identicalEnglish, turkishLeftovers, serbianCyrillic };
@@ -183,7 +185,7 @@ function auditCatalogDirectory(english, directory, inlineCatalogs = {}) {
 }
 
 function dictionaryAudit() {
-  const localeDirectory = path.join(root, "locales");
+  const localeDirectory = path.join(root, "packages", "locales");
   const englishPath = path.join(localeDirectory, "en.json");
   if (!fs.existsSync(englishPath)) return [];
   const english = JSON.parse(fs.readFileSync(englishPath, "utf8"));
@@ -197,7 +199,7 @@ function mobileDictionaryAudit() {
 
 const matchArgument = process.argv.find((argument) => argument.startsWith("--match="));
 const match = matchArgument?.slice("--match=".length).toLowerCase();
-const webEnglish = JSON.parse(fs.readFileSync(path.join(root, "locales", "en.json"), "utf8"));
+const webEnglish = JSON.parse(fs.readFileSync(path.join(root, "packages", "locales", "en.json"), "utf8"));
 const mobileBase = extractMobileBase();
 const sourceFiles = [path.join(root, "src"), path.join(root, "apps", "mobile", "src")]
   .flatMap(walk)

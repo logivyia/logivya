@@ -3,11 +3,11 @@ import path from "node:path";
 import ts from "typescript";
 
 const root = process.cwd();
-const supportedTargetLocales = ["ro", "ru", "az", "tk", "de", "bg", "el", "sr"];
+const supportedTargetLocales = ["ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"];
 const requestedTargetLocales = process.env.L10N_TARGET_LOCALES?.split(",").map((locale) => locale.trim()).filter(Boolean);
 const targetLocales = requestedTargetLocales?.length ? requestedTargetLocales : supportedTargetLocales;
 if (targetLocales.some((locale) => !supportedTargetLocales.includes(locale))) throw new Error("L10N_TARGET_LOCALES contains an unsupported locale");
-const googleLocale = { ro: "ro", ru: "ru", az: "az", tk: "tk", de: "de", bg: "bg", el: "el", sr: "sr" };
+const googleLocale = { ar: "ar", ro: "ro", ru: "ru", az: "az", tk: "tk", de: "de", bg: "bg", el: "el", sr: "sr" };
 const batchSize = 4;
 const concurrency = 3;
 const cachePath = path.join(root, ".cache", "localization-catalogs.json");
@@ -16,7 +16,17 @@ let bingSession = null;
 let bingRequestCounter = 0;
 
 const curatedTerms = {
+  ar: {
+    Dashboard: "لوحة التحكم", Accounts: "الحسابات", Groups: "المجموعات", Categories: "الفئات",
+    "Send Message": "إرسال رسالة", "Message History": "سجل الرسائل", Support: "الدعم", Settings: "الإعدادات",
+    Subscriptions: "الاشتراكات", Contacts: "جهات الاتصال", Users: "المستخدمون", Companies: "الشركات",
+    Connected: "متصل", "Not connected": "غير متصل", Active: "نشط", Pending: "قيد الانتظار",
+    Save: "حفظ", Delete: "حذف", Edit: "تعديل", Cancel: "إلغاء", Search: "بحث", "Try again": "إعادة المحاولة",
+  },
   ro: {
+    "Monthly equivalent {price}": "Echivalent lunar {price}",
+    "{count} Accounts": "{count} conturi",
+    "{count}-day free trial": "{count} zile de probă gratuită",
     Dashboard: "Panou de control", Accounts: "Conturi", Groups: "Grupuri", Categories: "Categorii",
     "Send Message": "Trimite mesaj", "Message History": "Istoric mesaje", Support: "Asistență", Settings: "Setări",
     Subscriptions: "Abonamente", Contacts: "Contacte", Users: "Utilizatori", Companies: "Companii",
@@ -26,6 +36,9 @@ const curatedTerms = {
     Delete: "Șterge", Edit: "Editează", Cancel: "Anulează", Search: "Caută", "Try again": "Încearcă din nou",
   },
   ru: {
+    "Monthly equivalent {price}": "Эквивалент в месяц: {price}",
+    "{count} Accounts": "{count} аккаунтов",
+    "{count}-day free trial": "{count} дней бесплатного пробного периода",
     Dashboard: "Панель управления", Accounts: "Аккаунты", Groups: "Группы", Categories: "Категории",
     "Send Message": "Отправить сообщение", "Message History": "История сообщений", Support: "Поддержка", Settings: "Настройки",
     Subscriptions: "Подписки", Contacts: "Контакты", Users: "Пользователи", Companies: "Компании",
@@ -35,6 +48,10 @@ const curatedTerms = {
     Delete: "Удалить", Edit: "Изменить", Cancel: "Отмена", Search: "Поиск", "Try again": "Повторить",
   },
   az: {
+    "Authenticator app": "Doğrulayıcı tətbiqi",
+    "Monthly equivalent {price}": "Aylıq ekvivalent {price}",
+    "{count} Accounts": "{count} hesab",
+    "{count}-day free trial": "{count} günlük pulsuz sınaq",
     Dashboard: "İdarəetmə paneli", Accounts: "Hesablar", Groups: "Qruplar", Categories: "Kateqoriyalar",
     "Send Message": "Mesaj göndər", "Message History": "Mesaj tarixçəsi", Support: "Dəstək", Settings: "Parametrlər",
     Subscriptions: "Abunəliklər", Contacts: "Kontaktlar", Users: "İstifadəçilər", Companies: "Şirkətlər",
@@ -44,6 +61,9 @@ const curatedTerms = {
     Delete: "Sil", Edit: "Redaktə et", Cancel: "Ləğv et", Search: "Axtar", "Try again": "Yenidən cəhd et",
   },
   tk: {
+    "Monthly equivalent {price}": "Aýlyk ekwiwalent {price}",
+    "{count} Accounts": "{count} hasap",
+    "{count}-day free trial": "{count} günlük mugt synag",
     Dashboard: "Dolandyryş paneli", Accounts: "Hasaplar", Groups: "Toparlar", Categories: "Kategoriýalar",
     "Send Message": "Habar iber", "Message History": "Habar taryhy", Support: "Goldaw", Settings: "Sazlamalar",
     Subscriptions: "Abunalyklar", Contacts: "Aragatnaşyklar", Users: "Ulanyjylar", Companies: "Kompaniýalar",
@@ -53,6 +73,9 @@ const curatedTerms = {
     Delete: "Poz", Edit: "Üýtget", Cancel: "Ýatyr", Search: "Gözle", "Try again": "Gaýtadan synanyş",
   },
   de: {
+    "Monthly equivalent {price}": "Monatlicher Gegenwert {price}",
+    "{count} Accounts": "{count} Konten",
+    "{count}-day free trial": "{count} Tage kostenlos testen",
     Dashboard: "Übersicht", Accounts: "Konten", Groups: "Gruppen", Categories: "Kategorien",
     "Send Message": "Nachricht senden", "Message History": "Nachrichtenverlauf", Support: "Support", Settings: "Einstellungen",
     Subscriptions: "Abonnements", Contacts: "Kontakte", Users: "Benutzer", Companies: "Unternehmen",
@@ -62,6 +85,9 @@ const curatedTerms = {
     Delete: "Löschen", Edit: "Bearbeiten", Cancel: "Abbrechen", Search: "Suchen", "Try again": "Erneut versuchen",
   },
   bg: {
+    "Monthly equivalent {price}": "Месечен еквивалент {price}",
+    "{count} Accounts": "{count} акаунта",
+    "{count}-day free trial": "{count} дни безплатен пробен период",
     Dashboard: "Табло за управление", Accounts: "Акаунти", Groups: "Групи", Categories: "Категории",
     "Send Message": "Изпращане на съобщение", "Message History": "История на съобщенията", Support: "Поддръжка", Settings: "Настройки",
     Subscriptions: "Абонаменти", Contacts: "Контакти", Users: "Потребители", Companies: "Компании",
@@ -71,6 +97,10 @@ const curatedTerms = {
     Delete: "Изтриване", Edit: "Редактиране", Cancel: "Отказ", Search: "Търсене", "Try again": "Опитайте отново",
   },
   el: {
+    Disable: "Απενεργοποίηση",
+    "Monthly equivalent {price}": "Μηνιαίο ισοδύναμο {price}",
+    "{count} Accounts": "{count} λογαριασμοί",
+    "{count}-day free trial": "{count} ημέρες δωρεάν δοκιμή",
     Dashboard: "Πίνακας ελέγχου", Accounts: "Λογαριασμοί", Groups: "Ομάδες", Categories: "Κατηγορίες",
     "Send Message": "Αποστολή μηνύματος", "Message History": "Ιστορικό μηνυμάτων", Support: "Υποστήριξη", Settings: "Ρυθμίσεις",
     Subscriptions: "Συνδρομές", Contacts: "Επαφές", Users: "Χρήστες", Companies: "Εταιρείες",
@@ -80,6 +110,19 @@ const curatedTerms = {
     Delete: "Διαγραφή", Edit: "Επεξεργασία", Cancel: "Ακύρωση", Search: "Αναζήτηση", "Try again": "Δοκιμάστε ξανά",
   },
   sr: {
+    "A verification code was sent to {email}.": "Verifikacioni kod je poslat na {email}.",
+    "Marketplace listing report: {title}": "Prijava oglasa na tržištu: {title}",
+    "Load, vehicle, and driver listings published by {name} will be hidden for your account on this device. Continue?": "Oglasi za teret, vozila i vozače koje je objavio/la {name} biće sakriveni za vaš nalog na ovom uređaju. Nastaviti?",
+    "{groups} groups · {messages} messages · {matches} results": "{groups} grupa · {messages} poruka · {matches} rezultata",
+    "Found in {count} sources": "Pronađeno u {count} izvora",
+    "You can select up to {{max}} files per send.": "Možete izabrati najviše {{max}} datoteka po slanju.",
+    "{{count}} files selected": "Izabrano datoteka: {{count}}",
+    "A load matching your {requestTitle} request was found.": "Pronađen je teret koji odgovara zahtevu {requestTitle}.",
+    "A vehicle matching your {requestTitle} request was found.": "Pronađeno je vozilo koje odgovara zahtevu {requestTitle}.",
+    "A driver listing matching your {requestTitle} request was found.": "Pronađen je oglas za vozača koji odgovara zahtevu {requestTitle}.",
+    "Monthly equivalent {price}": "Mesečni ekvivalent {price}",
+    "{count} Accounts": "{count} naloga",
+    "{count}-day free trial": "{count} dana besplatnog probnog perioda",
     Dashboard: "Kontrolna tabla", Accounts: "Nalozi", Groups: "Grupe", Categories: "Kategorije",
     "Send Message": "Pošalji poruku", "Message History": "Istorija poruka", Support: "Podrška", Settings: "Podešavanja",
     Subscriptions: "Pretplate", Contacts: "Kontakti", Users: "Korisnici", Companies: "Kompanije",
@@ -187,25 +230,38 @@ const curatedTerms = {
 };
 
 const curatedMobileOverrides = {
+  ar: {},
   ro: {
+    planFeatureTrialDays: "{count} zile de probă gratuită",
     notificationChannelAndroid: "Notificare Android",
     notificationChannelIos: "Notificare iOS",
     notificationChannelWeb: "Notificare web",
     roleSuperAdmin: "Superadministrator",
     feedbackTitle: "Feedback Logivya",
     district: "Județ",
+    driverEmploymentCONTRACT: "Pe bază de contract",
+    ok: "Confirmă",
+    freightTrailerVan: "Furgon",
   },
   ru: {
+    planFeatureTrialDays: "{count} дней бесплатного пробного периода",
     notificationChannelAndroid: "Уведомление Android",
     notificationChannelIos: "Уведомление iOS",
     notificationChannelWeb: "Веб-уведомление",
   },
   az: {
+    planFeatureTrialDays: "{count} günlük pulsuz sınaq",
     notificationChannelAndroid: "Android bildirişi",
     notificationChannelIos: "iOS bildirişi",
     roleSuperAdmin: "Super inzibatçı",
+    availableFrom: "Başlanğıc tarixi",
+    logisticsMarketplace: "Logivya Logistika Bazarı",
+    driverMarketplace: "Sürücü Bazarı",
+    driverEmploymentPART_TIME: "Natamam iş vaxtı",
+    ok: "Oldu",
   },
   tk: {
+    planFeatureTrialDays: "{count} günlük mugt synag",
     retry: "Gaýtadan synan",
     ticketBilling: "Hasaplaşyk",
     notificationChannelInApp: "Programmada",
@@ -219,21 +275,79 @@ const curatedMobileOverrides = {
     emailSent: "Iberildi",
     roleAdmin: "Dolandyryjy",
     roleSuperAdmin: "Baş dolandyryjy",
+    matchScore: "{count}% laýyklyk",
+    description: "Düşündiriş",
+    driverLocationRequired: "Dogry ýerleşişi giriziň.",
+    driverLicenseRequired: "Iň bolmanda bir sürüjilik şahadatnamasynyň synpyny saýlaň.",
+    driverExperienceInvalid: "Tejribe 0 bilen 60 ýylyň arasynda bolmaly.",
+    publishDriverListing: "Sürüji bildirişini çap et",
+    driverPublishedTitle: "Sürüji bildirişi çap edildi",
+    driverPublishedDescription: "Bildirişiňiz indi Sürüji bazarynda işjeň.",
+    driverCreateFailed: "Sürüji bildirişini döredip bolmady.",
+    driverSearchFailed: "Sürüji bildirişlerini ýükläp bolmady.",
+    driverDetailFailed: "Sürüji bildirişiniň jikme-jikliklerini ýükläp bolmady.",
+    driverUpdateFailed: "Sürüji bildirişini täzeläp bolmady.",
+    driverUpdated: "Sürüji bildirişindäki üýtgeşmeler ýatda saklandy.",
+    driverListing: "Sürüji bildirişi",
+    editDriverListing: "Sürüji bildirişini üýtget",
+    editDriverListingDescription: "Bildirişiň ýerleşişini, hünär talaplaryny we aragatnaşyk maglumatlaryny täzeläň.",
+    availableDrivers: "Elýeterli sürüjiler",
+    driverJobListings: "Sürüji iş bildirişleri",
+    noDriversFound: "Gabat gelýän sürüji bildirişi tapylmady",
+    noDriversFoundDescription: "Ýerleşiş ýa-da hünär süzgüçlerini üýtgedip, gaýtadan synanyşyň.",
+    myListingsUnifiedDescription: "Ýük, ulag we sürüji bildirişlerini bir ýerde üýtgediň we ýagdaýlaryny dolandyryň.",
+    listingType: "Bildiriş görnüşi",
+    status: "Ýagdaý",
+    noListingsInThisSection: "Bu bölümde bildiriş ýok",
+    noListingsInThisSectionDescription: "Täze bildiriş dörediň ýa-da başga görnüşi we ýagdaýy saýlaň.",
+    saved: "Ýatda saklandy",
+    ok: "Bolýar",
+    loading: "Ýüklenýär",
   },
   de: {
+    planFeatureTrialDays: "{count} Tage kostenlos testen",
+    availableFromOptional: "Beginn (optional)",
+    pauseDemand: "Pausieren",
     screenshotUrl: "Screenshot-URL",
     liveApi: "Live-API",
+    ok: "Bestätigen",
   },
-  bg: {},
+  bg: {
+    planFeatureTrialDays: "{count} дни безплатен пробен период",
+    ok: "Добре",
+  },
   el: {
+    planFeatureTrialDays: "{count} ημέρες δωρεάν δοκιμή",
+    pauseDemand: "Παύση",
+    completeDemand: "Ολοκλήρωση",
     emailDelivery: "Παράδοση email: {status}",
+    logisticsMarketplace: "Αγορά Logistics της Logivya",
+    load: "Φορτίο",
+    vehicleMarketplace: "Αγορά οχημάτων",
+    driverMarketplace: "Αγορά οδηγών",
+    findVehicle: "Εύρεση οχήματος",
+    ok: "Εντάξει",
+    loading: "Φόρτωση",
   },
   sr: {
+    planFeatureTrialDays: "{count} dana besplatnog probnog perioda",
+    demandRequestCreatedWithMatches: "Vaš zahtev je aktivan i već je pronađeno {count} odgovarajućih oglasa.",
+    matchScore: "{count}% podudaranje",
     notificationChannelEmail: "E-pošta",
     email: "E-pošta",
     emailDelivery: "Isporuka e-pošte: {status}",
     feedbackTitle: "Povratne informacije za Logivya",
     roleOperator: "Operater",
+    driverMarketplace: "Tržište vozača",
+    shareVehicle: "Objavi vozilo",
+    findVehicle: "Pronađi vozilo",
+    findDriver: "Pronađi vozača",
+    description: "Opis",
+    status: "Status oglasa",
+    vehicleMarketplace: "Tržište vozila",
+    driverListingTitle: "Naslov oglasa",
+    ok: "U redu",
+    loading: "Učitavanje",
   },
 };
 
@@ -242,6 +356,7 @@ function normalizeRomanianTypography(value) {
 }
 
 const curatedKeyOverrides = {
+  ar: {},
   ro: {
     "notification.channel.android_push": "Notificare Android",
     "notification.channel.ios_push": "Notificare iOS",
@@ -402,7 +517,146 @@ const curatedKeyOverrides = {
   },
 };
 
-const protectedTokenPattern = /\{[^{}]+\}|https?:\/\/[^\s]+|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|#[0-9a-f]{3,8}\b|\b(?:Logivya|WhatsApp|PayTR|Iyzico|Stripe|Android|iOS|API|QR|ISO-8601|URL|KVKK|SaaS|JWT|Redis|Prisma|Vercel|Cloudflare|Render|Expo|Google Play)\b/gi;
+const canonicalUserNamingOverrides = {
+  ar: {
+    web: {
+      "home.plan.starter.name": "Logivya Plus",
+      "home.plan.professional.name": "Logivya Pro",
+      "home.plan.trial.feature1": "حساب واحد",
+      "home.plan.starter.feature1": "حسابان",
+      "home.plan.professional.feature1": "3 حسابات",
+      "adminSubscriptions.seats": "المستخدمون",
+      "users.usedSeats": "المستخدمون الحاليون",
+      "auth.seatLimitReached": "لا توجد مقاعد مستخدمين متاحة في الشركة.",
+      "api.error.seatLimitReached": "لقد وصلت إلى الحد الأقصى للمستخدمين في خطتك.",
+      "email.teamInvitation.linkMessage": "مرحباً {name}، دعاك {inviter} إلى مساحة عمل {workspace}. تنتهي صلاحية الدعوة في {expiresAt}. يجب أن تفتح أنت فقط هذا الرابط الآمن ذي الاستخدام الواحد: {url}",
+    },
+    mobile: {
+      seatsCount: "{used}/{limit} حسابات",
+      userSeats: "الحسابات",
+      invitedAt: "تاريخ الدعوة: {date}",
+      planStarterName: "Logivya Plus",
+      planProfessionalName: "Logivya Pro",
+    },
+  },
+  ro: {
+    web: {
+      "home.plan.trial.feature1": "1 cont",
+      "home.plan.starter.feature1": "2 conturi",
+      "home.plan.professional.feature1": "3 conturi",
+      "adminSubscriptions.seats": "Utilizatori",
+      "users.usedSeats": "Utilizatori folosiți",
+      "auth.seatLimitReached": "Nu mai sunt locuri disponibile pentru utilizatori în companie.",
+      "api.error.seatLimitReached": "Ați atins limita de utilizatori a planului.",
+      "email.teamInvitation.linkMessage": "Bună {name}, {inviter} te-a invitat în spațiul de lucru {workspace}. Invitația expiră la {expiresAt}. Doar tu trebuie să deschizi acest link securizat de unică folosință: {url}",
+    },
+    mobile: { seatsCount: "{used}/{limit} conturi", userSeats: "Conturi", invitedAt: "Invitat la: {date}" },
+  },
+  ru: {
+    web: {
+      "home.plan.trial.feature1": "1 аккаунт",
+      "home.plan.starter.feature1": "2 аккаунта",
+      "home.plan.professional.feature1": "3 аккаунта",
+      "adminSubscriptions.seats": "Пользователи",
+      "users.usedSeats": "Используемые пользователи",
+      "auth.seatLimitReached": "В компании нет доступных мест для пользователей.",
+      "api.error.seatLimitReached": "Достигнут лимит пользователей вашего тарифа.",
+      "email.teamInvitation.linkMessage": "Здравствуйте, {name}. {inviter} приглашает вас в рабочее пространство {workspace}. Приглашение действительно до {expiresAt}. Только вы должны открыть эту одноразовую защищенную ссылку: {url}",
+    },
+    mobile: { seatsCount: "{used}/{limit} аккаунтов", userSeats: "Аккаунты", invitedAt: "Приглашен: {date}" },
+  },
+  az: {
+    web: {
+      "home.plan.trial.feature1": "1 hesab",
+      "home.plan.starter.feature1": "2 hesab",
+      "home.plan.professional.feature1": "3 hesab",
+      "adminSubscriptions.seats": "İstifadəçilər",
+      "users.usedSeats": "İstifadə olunan istifadəçilər",
+      "auth.seatLimitReached": "Şirkətdə istifadəçi yeri qalmayıb.",
+      "api.error.seatLimitReached": "Planınızın istifadəçi limitinə çatmısınız.",
+      "email.teamInvitation.linkMessage": "Salam {name}, {inviter} sizi {workspace} iş sahəsinə dəvət etdi. Bu dəvət {expiresAt} tarixinədək etibarlıdır. Birdəfəlik təhlükəsiz keçidi yalnız siz açın: {url}",
+    },
+    mobile: { seatsCount: "{used}/{limit} hesab", userSeats: "Hesablar", invitedAt: "Dəvət tarixi: {date}" },
+  },
+  tk: {
+    web: {
+      "home.plan.trial.feature1": "1 hasap",
+      "home.plan.starter.feature1": "2 hasap",
+      "home.plan.professional.feature1": "3 hasap",
+      "adminSubscriptions.seats": "Ulanyjylar",
+      "users.usedSeats": "Ulanylýan ulanyjylar",
+      "auth.seatLimitReached": "Kompaniýada ulanyjy ýeri galmady.",
+      "api.error.seatLimitReached": "Meýilnamaňyzyň ulanyjy çägine ýetdiňiz.",
+      "email.teamInvitation.linkMessage": "Salam {name}, {inviter} sizi {workspace} iş giňişligine çagyrdy. Çakylyk {expiresAt} çenli güýje girýär. Bir gezeklik ygtybarly baglanyşygy diňe siz açyň: {url}",
+    },
+    mobile: { seatsCount: "{used}/{limit} hasap", userSeats: "Hasaplar", invitedAt: "Çagyrylan senesi: {date}" },
+  },
+  de: {
+    web: {
+      "home.plan.trial.feature1": "1 Konto",
+      "home.plan.starter.feature1": "2 Konten",
+      "home.plan.professional.feature1": "3 Konten",
+      "adminSubscriptions.seats": "Benutzer",
+      "users.usedSeats": "Verwendete Benutzer",
+      "auth.seatLimitReached": "Im Unternehmen sind keine Benutzerplätze mehr verfügbar.",
+      "api.error.seatLimitReached": "Sie haben das Benutzerlimit Ihres Tarifs erreicht.",
+      "email.teamInvitation.linkMessage": "Hallo {name}, {inviter} hat Sie in den Arbeitsbereich {workspace} eingeladen. Diese Einladung ist bis {expiresAt} gültig. Nur Sie dürfen diesen einmalig verwendbaren sicheren Link öffnen: {url}",
+    },
+    mobile: { seatsCount: "{used}/{limit} Konten", userSeats: "Konten", invitedAt: "Eingeladen: {date}" },
+  },
+  bg: {
+    web: {
+      "home.plan.trial.feature1": "1 акаунт",
+      "home.plan.starter.feature1": "2 акаунта",
+      "home.plan.professional.feature1": "3 акаунта",
+      "adminSubscriptions.seats": "Потребители",
+      "users.usedSeats": "Използвани потребители",
+      "auth.seatLimitReached": "В компанията няма свободни места за потребители.",
+      "api.error.seatLimitReached": "Достигнахте лимита на потребителите за плана.",
+      "email.teamInvitation.linkMessage": "Здравейте, {name}. {inviter} ви покани в работното пространство {workspace}. Поканата е валидна до {expiresAt}. Само вие трябва да отворите тази еднократна защитена връзка: {url}",
+    },
+    mobile: { seatsCount: "{used}/{limit} акаунта", userSeats: "Акаунти", invitedAt: "Поканен на: {date}" },
+  },
+  el: {
+    web: {
+      "home.plan.trial.feature1": "1 λογαριασμός",
+      "home.plan.starter.feature1": "2 λογαριασμοί",
+      "home.plan.professional.feature1": "3 λογαριασμοί",
+      "adminSubscriptions.seats": "Χρήστες",
+      "users.usedSeats": "Χρήστες σε χρήση",
+      "auth.seatLimitReached": "Δεν υπάρχουν διαθέσιμες θέσεις χρηστών στην εταιρεία.",
+      "api.error.seatLimitReached": "Έχετε φτάσει το όριο χρηστών του προγράμματός σας.",
+      "email.teamInvitation.linkMessage": "Γεια σας {name}, ο χρήστης {inviter} σας προσκάλεσε στον χώρο εργασίας {workspace}. Η πρόσκληση ισχύει έως {expiresAt}. Μόνο εσείς πρέπει να ανοίξετε αυτόν τον ασφαλή σύνδεσμο μίας χρήσης: {url}",
+    },
+    mobile: { seatsCount: "{used}/{limit} λογαριασμοί", userSeats: "Λογαριασμοί", invitedAt: "Πρόσκληση: {date}" },
+  },
+  sr: {
+    web: {
+      "home.plan.trial.feature1": "1 nalog",
+      "home.plan.starter.feature1": "2 naloga",
+      "home.plan.professional.feature1": "3 naloga",
+      "adminSubscriptions.seats": "Korisnici",
+      "users.usedSeats": "Korišćeni korisnici",
+      "auth.seatLimitReached": "U kompaniji nema dostupnih mesta za korisnike.",
+      "api.error.seatLimitReached": "Dostigli ste ograničenje broja korisnika za plan.",
+      "email.teamInvitation.linkMessage": "Zdravo {name}, {inviter} vas je pozvao u radni prostor {workspace}. Poziv važi do {expiresAt}. Samo vi treba da otvorite ovu jednokratnu bezbednu vezu: {url}",
+    },
+    mobile: { seatsCount: "{used}/{limit} naloga", userSeats: "Nalozi", invitedAt: "Pozvan: {date}" },
+  },
+};
+
+for (const localeOverrides of Object.values(canonicalUserNamingOverrides)) {
+  localeOverrides.web["home.plan.starter.name"] = "Logivya Plus";
+  localeOverrides.web["home.plan.professional.name"] = "Logivya Pro";
+  localeOverrides.mobile.planStarterName = "Logivya Plus";
+  localeOverrides.mobile.planProfessionalName = "Logivya Pro";
+  const invitationMessage = localeOverrides.web["email.teamInvitation.linkMessage"];
+  if (invitationMessage && !invitationMessage.includes("support@logivya.com")) {
+    localeOverrides.web["email.teamInvitation.linkMessage"] = `${invitationMessage} Support: support@logivya.com`;
+  }
+}
+
+const protectedTokenPattern = /\{[^{}]+\}|https?:\/\/[^\s]+|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|#[0-9a-f]{3,8}\b|\b(?:Logivya|WhatsApp|Telegram|PayTR|Iyzico|Stripe|Android|iOS|API|QR|ISO-8601|URL|KVKK|SaaS|JWT|Redis|Prisma|Vercel|Cloudflare|Render|Expo|Google Play)\b/gi;
 const turkishResidue = /\b(?:kullanıcı|şirket|ayarlar|kaydet|başarısız|başarılı|ödeme|abonelik|deneme|destek|hesaplar|gruplar|kategoriler|gönder|bağlantı|yeniden|silindi|iptal edildi|bulunamadı|yüklenemedi|geçersiz)\b/i;
 
 function readJson(file) {
@@ -546,18 +800,51 @@ async function googleTranslate(text, locale, attempt = 0) {
   return translated;
 }
 
+function decodeHtmlEntities(value) {
+  return value
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&apos;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+}
+
+async function googleMobileTranslate(text, locale) {
+  const target = locale === "sr" ? "sr" : googleLocale[locale];
+  const url = new URL("https://translate.google.com/m");
+  url.searchParams.set("sl", "en");
+  url.searchParams.set("tl", target);
+  url.searchParams.set("q", text);
+  const response = await fetch(url, {
+    headers: { "user-agent": "Mozilla/5.0 (compatible; LogivyaLocalizationQA/1.0)" },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`Google mobile translator returned ${response.status}`);
+  const html = await response.text();
+  const translated = html.match(/<div class="result-container">([\s\S]*?)<\/div>/i)?.[1];
+  if (!translated) throw new Error("Google mobile translator response could not be parsed");
+  return decodeHtmlEntities(translated.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "")).trim();
+}
+
 async function translateText(text, locale) {
   if (process.env.L10N_OFFLINE_ONLY === "1") throw new Error(`No reviewed cached translation is available for ${locale}`);
   try {
-    return await myMemoryTranslate(text, locale);
-  } catch (memoryError) {
+    return await googleMobileTranslate(text, locale);
+  } catch (mobileError) {
     try {
-      return await bingTranslate(text, locale);
-    } catch (bingError) {
+      return await myMemoryTranslate(text, locale);
+    } catch (memoryError) {
       try {
-        return await googleTranslate(text, locale);
-      } catch (googleError) {
-        throw new Error(`Translation RPCs failed: MyMemory: ${memoryError instanceof Error ? memoryError.message : String(memoryError)}; Bing: ${bingError instanceof Error ? bingError.message : String(bingError)}; Google: ${googleError instanceof Error ? googleError.message : String(googleError)}`);
+        return await bingTranslate(text, locale);
+      } catch (bingError) {
+        try {
+          return await googleTranslate(text, locale);
+        } catch (googleError) {
+          throw new Error(`Translation RPCs failed: Google mobile: ${mobileError instanceof Error ? mobileError.message : String(mobileError)}; MyMemory: ${memoryError instanceof Error ? memoryError.message : String(memoryError)}; Bing: ${bingError instanceof Error ? bingError.message : String(bingError)}; Google API: ${googleError instanceof Error ? googleError.message : String(googleError)}`);
+        }
       }
     }
   }
@@ -647,11 +934,12 @@ function hasQuestionMarkCorruption(source, value) {
 }
 
 const nativeIdenticalValues = {
-  ro: new Set(["Administrator", "Operator", "Popular", "Urgent", "Plan", "Manual", "Individual", "Marketing", "Total", "Export", "Feedback", "Manager", "Interval: 1"]),
+  ar: new Set(),
+  ro: new Set(["Administrator", "Operator", "Popular", "Urgent", "Plan", "Manual", "Individual", "Marketing", "Total", "Export", "Feedback", "Manager", "Interval: 1", "Normal"]),
   ru: new Set(),
-  az: new Set(["Status", "Operator", "Plan"]),
+  az: new Set(["Status", "Operator", "Plan", "Normal"]),
   tk: new Set(["Status", "Operator"]),
-  de: new Set(["Support", "Status", "Administrator", "Operator", "System", "Start", "Ticket", "Name", "Marketing", "Information", "Version", "Export", "Compliance", "Feedback", "Manager", "Tickets", "Orange"]),
+  de: new Set(["Support", "Status", "Administrator", "Operator", "System", "Start", "Ticket", "Name", "Marketing", "Information", "Version", "Export", "Compliance", "Feedback", "Manager", "Tickets", "Orange", "Normal", "Team"]),
   bg: new Set(),
   el: new Set(),
   sr: new Set(["Status", "Administrator", "Plan", "Marketing", "Interval: 1"]),
@@ -683,7 +971,7 @@ function validateCatalog(locale, english, dictionary, name) {
 }
 
 async function buildLocale(locale, rootEnglish, rootTurkish, mobileBase) {
-  const localePath = path.join(root, "locales", `${locale}.json`);
+  const localePath = path.join(root, "packages", "locales", `${locale}.json`);
   const mobileLocalePath = path.join(root, "apps", "mobile", "src", "i18n", "locales", `${locale}.json`);
   const existing = await readJson(localePath).catch(() => ({}));
   const existingMobile = await readJson(mobileLocalePath).catch(() => ({}));
@@ -702,6 +990,10 @@ async function buildLocale(locale, rootEnglish, rootTurkish, mobileBase) {
   };
   Object.entries(rootEnglish).forEach(([key, source]) => seedTranslation(source, existing[key]));
   Object.entries(mobileBase.en).forEach(([key, source]) => seedTranslation(source, existingMobile[key]));
+  Object.entries(curatedMobileOverrides[locale]).forEach(([key, translated]) => {
+    const source = mobileBase.en[key];
+    if (source) seedTranslation(source, translated);
+  });
   for (const source of valuesToTranslate) {
     const cached = translationCache[`${locale}\u0000${source}`];
     if (typeof cached === "string" && cached.trim()) translationMemory.set(source, cached);
@@ -745,7 +1037,7 @@ async function buildLocale(locale, rootEnglish, rootTurkish, mobileBase) {
   const rootDictionary = {};
   for (const [key, source] of Object.entries(rootEnglish)) {
     const existingValue = existing[key];
-    const forceRegenerate = key === "home.trialBadge" || key.startsWith("home.plan.");
+    const forceRegenerate = key === "home.trialBadge" || key.startsWith("home.plan.") || key.startsWith("legal.");
     const validExisting = typeof existingValue === "string"
       && existingValue.trim()
       && !forceRegenerate
@@ -760,6 +1052,10 @@ async function buildLocale(locale, rootEnglish, rootTurkish, mobileBase) {
     if (locale === "sr") rootDictionary[key] = toSerbianLatin(rootDictionary[key]);
   }
   Object.assign(rootDictionary, curatedKeyOverrides[locale]);
+  for (const [key, source] of Object.entries(rootEnglish)) {
+    if (key.startsWith("home.plan.")) rootDictionary[key] = translationMemory.get(source) ?? source;
+  }
+  Object.assign(rootDictionary, canonicalUserNamingOverrides[locale].web);
   if (locale === "ro") {
     Object.keys(rootDictionary).forEach((key) => {
       rootDictionary[key] = normalizeRomanianTypography(rootDictionary[key]);
@@ -773,6 +1069,7 @@ async function buildLocale(locale, rootEnglish, rootTurkish, mobileBase) {
     if (locale === "sr") mobileDictionary[key] = toSerbianLatin(mobileDictionary[key]);
   }
   Object.assign(mobileDictionary, curatedMobileOverrides[locale]);
+  Object.assign(mobileDictionary, canonicalUserNamingOverrides[locale].mobile);
   if (locale === "ro") {
     Object.keys(mobileDictionary).forEach((key) => {
       mobileDictionary[key] = normalizeRomanianTypography(mobileDictionary[key]);
@@ -802,13 +1099,16 @@ if (!process.argv.includes("--write")) {
 }
 
 const [rootEnglish, rootTurkish, mobileBase] = await Promise.all([
-  readJson(path.join(root, "locales", "en.json")),
-  readJson(path.join(root, "locales", "tr.json")),
+  readJson(path.join(root, "packages", "locales", "en.json")),
+  readJson(path.join(root, "packages", "locales", "tr.json")),
   readMobileBase(),
 ]);
 translationCache = await readJson(cachePath).catch(() => ({}));
-if (JSON.stringify(Object.keys(rootEnglish)) !== JSON.stringify(Object.keys(rootTurkish))) throw new Error("English and Turkish web keys differ");
-if (JSON.stringify(Object.keys(mobileBase.en)) !== JSON.stringify(Object.keys(mobileBase.tr))) throw new Error("English and Turkish mobile keys differ");
+const haveSameKeys = (left, right) =>
+  JSON.stringify(Object.keys(left).sort()) === JSON.stringify(Object.keys(right).sort());
+
+if (!haveSameKeys(rootEnglish, rootTurkish)) throw new Error("English and Turkish web keys differ");
+if (!haveSameKeys(mobileBase.en, mobileBase.tr)) throw new Error("English and Turkish mobile keys differ");
 
 const summary = [];
 for (const locale of targetLocales) summary.push(await buildLocale(locale, rootEnglish, rootTurkish, mobileBase));

@@ -1,9 +1,21 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
+
 import { requireApiSession } from "@/server/auth/session";
-import { PURCHASABLE_PLAN_CODES } from "@/server/billing/plan-matrix";
-import { prisma } from "@/server/db";
-import { isBillingProfileComplete } from "@/server/billing/subscription-guard";
-import { writeAuditLog } from "@/server/security/audit";
-const schema=z.object({planSlug:z.enum(PURCHASABLE_PLAN_CODES),billingPeriod:z.enum(["MONTHLY","YEARLY"])});
-export async function POST(request:Request){try{const{company,user}=await requireApiSession();const parsed=schema.safeParse(await request.json());if(!parsed.success)return NextResponse.json({error:"validation.invalid"},{status:400});const[plan,profile]=await Promise.all([prisma.plan.findUnique({where:{slug:parsed.data.planSlug}}),prisma.companyBillingProfile.findUnique({where:{companyId:company.id}})]);if(!plan)return NextResponse.json({error:"NOT_FOUND"},{status:404});if(!isBillingProfileComplete(profile))return NextResponse.json({error:"billing.profileIncomplete"},{status:400});const existing=await prisma.subscription.findFirst({where:{companyId:company.id,status:"MANUAL_PENDING",planId:plan.id}});if(!existing)await prisma.subscription.create({data:{companyId:company.id,planId:plan.id,status:"MANUAL_PENDING",billingPeriod:parsed.data.billingPeriod,source:"MANUAL_ADMIN",provider:"MANUAL"}});await writeAuditLog(request,{companyId:company.id,userId:user.id,action:"subscription.upgrade_requested",entityType:"Plan",entityId:plan.id,after:parsed.data});return NextResponse.json({ok:true,message:"Paket yükseltme talebiniz alındı. Ekibimiz sizinle iletişime geçecektir."})}catch(error){return NextResponse.json({error:error instanceof Error?error.message:"errors.generic"},{status:403})}}
+import { assertSubscriptionRequestCsrf } from "@/server/billing/subscription-request-security";
+
+export async function POST(request: Request) {
+  try {
+    assertSubscriptionRequestCsrf(request);
+    await requireApiSession();
+    return NextResponse.json({
+      error: "SUBSCRIPTION_REQUEST_FLOW_REQUIRED",
+      message: "Abonelik talebi oluşturmak için ödeme bilgileri ve sözleşme onayı adımlarını tamamlayın.",
+    }, { status: 409 });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "SUBSCRIPTION_REQUEST_FAILED";
+    const status = code === "UNAUTHORIZED" ? 401 : code === "CSRF_REJECTED" ? 403 : 500;
+    return NextResponse.json({
+      error: status === 500 ? "SUBSCRIPTION_REQUEST_FAILED" : code,
+    }, { status });
+  }
+}

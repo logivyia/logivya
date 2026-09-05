@@ -9,7 +9,7 @@ import { requestPhonePairingCode } from "@/server/whatsapp/pairing-code-flow";
 import { visiblePhonePairingCode } from "@/server/whatsapp/pairing-code-state";
 import { pairingUserMessage } from "@/server/whatsapp/pairing-errors";
 import { whatsappLastErrorCode, whatsappUserMessage } from "@/server/whatsapp/user-errors";
-import { normalizeWhatsAppPhoneNumber } from "@/server/whatsapp/phone";
+import { parsePhonePairingRequest, persistPhonePairingMetadata, phonePairingErrorCode } from "@/server/whatsapp/phone-pairing-input";
 import { findReusableWhatsAppAccount, findSingleSlotWhatsAppAccount } from "@/server/whatsapp/reusable-account";
 import { assertWhatsAppWorkerReachable, isWhatsAppWaitTimeout } from "@/server/whatsapp/worker-health";
 import { logger } from "@/server/observability/logger";
@@ -22,11 +22,9 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const { company, membership, user } = await requireApiSession();
     requirePermission(membership.role, "connect_accounts");
-    const body = await request.json() as { phoneNumber?: unknown };
-    if (typeof body.phoneNumber !== "string") throw new Error("INVALID_WHATSAPP_PHONE");
-    const phoneNumber = normalizeWhatsAppPhoneNumber(body.phoneNumber);
-    logger.info("whatsapp.pairing.requested", { companyId: company.id, userId: user.id, phoneNumber: `${phoneNumber.slice(0, 3)}****${phoneNumber.slice(-2)}` });
-    await enforceWhatsAppRateLimit("pairing-phone", phoneNumber);
+    const phone = parsePhonePairingRequest(await request.json());
+    logger.info("whatsapp.pairing.requested", { companyId: company.id, userId: user.id, countryIso: phone.countryIso, phoneNumber: `${phone.digits.slice(0, 3)}****${phone.digits.slice(-2)}` });
+    await enforceWhatsAppRateLimit("pairing-phone", phone.e164);
     await cleanupStuckWhatsAppAccounts(company.id);
     const connected = await prisma.whatsAppAccount.findFirst({ where: { companyId: company.id, userId: user.id, archivedAt: null, status: "CONNECTED" } });
     if (connected) {
@@ -42,15 +40,16 @@ export async function POST(request: Request) {
     }
     if (!account) {
       account = await prisma.whatsAppAccount.create({
-        data: { companyId: company.id, userId: user.id, label: null, phoneNumber, provider: process.env.WHATSAPP_PROVIDER || "baileys", status: AccountStatus.CREATED },
+        data: { companyId: company.id, userId: user.id, label: null, phoneNumber: phone.e164, countryIso: phone.countryIso, messageLocale: phone.locale, connectionMethod: "PHONE_CODE", provider: process.env.WHATSAPP_PROVIDER || "baileys", status: AccountStatus.CREATED },
       });
     }
 
     accountId = account.id;
-    await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.pairing.requested", entityType: "WhatsAppAccount", entityId: accountId, after: { phoneNumber: `${phoneNumber.slice(0, 3)}****${phoneNumber.slice(-2)}` } });
+    await persistPhonePairingMetadata({ accountId, companyId: company.id, userId: user.id, phone, source: "web" });
+    await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.pairing.requested", entityType: "WhatsAppAccount", entityId: accountId, after: { countryIso: phone.countryIso, phoneNumber: `${phone.digits.slice(0, 3)}****${phone.digits.slice(-2)}` } });
     try {
-      const { ready } = await requestPhonePairingCode({ accountId, phoneNumber, source: "web", companyId: company.id, userId: user.id });
-      if (!ready) return NextResponse.json({ ok: true, alreadyConnected: true, accountId, status: "CONNECTED", message: "WhatsApp hesabÄ±nÄ±z zaten baÄŸlÄ±." });
+      const { ready } = await requestPhonePairingCode({ accountId, phoneNumber: phone.e164, source: "web", companyId: company.id, userId: user.id });
+      if (!ready) return NextResponse.json({ ok: true, alreadyConnected: true, accountId, status: "CONNECTED", message: "WhatsApp hesabınız zaten bağlı." });
       return NextResponse.json({ ok: true, accountId, status: AccountStatus.PAIRING_CODE_READY, pairingCode: ready.pairingCode, expiresAt: ready.pairingCodeExpiresAt, pairingCodeExpiresAt: ready.pairingCodeExpiresAt }, { status: 201 });
     } catch (waitError) {
       if (!isWhatsAppWaitTimeout(waitError)) throw waitError;
@@ -68,10 +67,11 @@ export async function POST(request: Request) {
       }, { status: 202 });
     }
   } catch (error) {
-    const status = whatsappRequestErrorStatus(error, error instanceof Error && error.message === "INVALID_WHATSAPP_PHONE" ? 400 : 503);
+    const validationCode = phonePairingErrorCode(error);
+    const status = whatsappRequestErrorStatus(error, validationCode ? 400 : 503);
     const message = pairingUserMessage(error);
     logger.error("whatsapp.pairing.request_failed", error, { accountId, status, message });
     if (accountId) await prisma.whatsAppAccount.updateMany({ where: { id: accountId }, data: { status: "FAILED", lastError: whatsappLastErrorCode(error) } });
-    return NextResponse.json({ error: status === 401 ? "UNAUTHORIZED" : message, accountId }, { status });
+    return NextResponse.json({ error: status === 401 ? "UNAUTHORIZED" : message, code: validationCode ?? undefined, accountId }, { status });
   }
 }

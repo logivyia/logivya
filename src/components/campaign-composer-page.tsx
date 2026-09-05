@@ -6,6 +6,7 @@ import { useI18n } from "@/i18n/provider";
 import { apiErrorMessage } from "@/i18n/api-error";
 import { intlLocale } from "@/i18n/config";
 import { formatNumber } from "@/i18n/format";
+import { countryRegistry } from "@/lib/international/country-registry";
 import {
   getBrowserScheduleTimeZone,
   getQuickScheduleInput,
@@ -13,6 +14,10 @@ import {
   parseSmartScheduleDateTime
 } from "@/lib/smart-schedule-date";
 import { cn } from "@/lib/utils";
+import {
+  WebMessageAttachmentPicker,
+  type WebMessageAttachment,
+} from "@/components/web-message-attachment-picker";
 
 type Group = { id: string; name: string; participantCount: number; canSend: boolean; account: { label: string } };
 type Category = { id: string; name: string; _count: { groups: number; contacts: number }; groups?: Array<{ groupId: string }> };
@@ -26,11 +31,17 @@ type ContactResponse = {
   message?: string;
   error?: string;
 };
-type Data = { groups: Group[]; categories: Category[]; entitlements?: { contactMessaging?: boolean } | null };
+type Data = {
+  groups: Group[];
+  categories: Category[];
+  entitlements?: { contactMessaging?: boolean; messageBrandingRequired?: boolean } | null;
+};
 type Mode = "SEND_NOW" | "SCHEDULED" | "RECURRING";
 
 const card = "rounded-2xl border bg-card p-5 shadow-[var(--shadow-soft)]";
 const tab = "rounded-xl border bg-card px-3 py-2 text-sm text-foreground hover:bg-muted-background";
+const OUTBOUND_TEXT_LIMIT = 4096;
+const STARTER_MESSAGE_LIMIT = OUTBOUND_TEXT_LIMIT - Math.max(...countryRegistry.map((country) => country.attribution.length)) - 2;
 
 function contactDisplayName(contact: Contact) {
   for (const value of [contact.displayName, contact.name, contact.pushName]) {
@@ -94,6 +105,9 @@ export function CampaignComposerPage() {
   const [frequency, setFrequency] = useState<"DAILY" | "WEEKLY" | "MONTHLY">("DAILY");
   const [interval, setIntervalValue] = useState(1);
   const [sending, setSending] = useState(false);
+  const [attachments, setAttachments] = useState<WebMessageAttachment[]>([]);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
+  const [attachmentError, setAttachmentError] = useState("");
   const scheduleTimeZone = useMemo(() => getBrowserScheduleTimeZone(), []);
 
   const scheduleState = useMemo(() => {
@@ -220,7 +234,50 @@ export function CampaignComposerPage() {
   const targetContent = selectedTargetCount
     ? t("composer.targetSummary", { total: selectedTargetCount, groups: resolved.size, contacts: selectedContacts.length + categoryContactCount })
     : t("composer.selectCategoryGroupContact");
-  const canSubmit = Boolean(text.trim()) && selectedTargetCount > 0 && !(mode === "SCHEDULED" && !scheduledAt.trim());
+  const messageLimit = data?.entitlements?.messageBrandingRequired ? STARTER_MESSAGE_LIMIT : OUTBOUND_TEXT_LIMIT;
+  const messageTooLong = text.length > messageLimit;
+  const canSubmit = Boolean(text.trim() || attachments.length) && !messageTooLong && !uploadingAttachments && !sending && selectedTargetCount > 0 && !(mode === "SCHEDULED" && !scheduledAt.trim());
+
+  async function uploadAttachments(files: File[]) {
+    setUploadingAttachments(true);
+    setAttachmentError("");
+    try {
+      const uploaded: WebMessageAttachment[] = [];
+      for (const file of files) {
+        const response = await fetch("/api/media/upload", {
+          method: "PUT",
+          headers: {
+            "content-type": file.type || "application/octet-stream",
+            "x-file-name": encodeURIComponent(file.name),
+            "x-file-size": String(file.size),
+            "x-message-platform": "WHATSAPP",
+          },
+          body: file,
+        });
+        const result = await response.json() as {
+          attachment?: { mediaFileId: string; fileName: string; mimeType: string; size: number; kind: WebMessageAttachment["kind"] };
+          error?: string;
+        };
+        if (!response.ok || !result.attachment) {
+          throw new Error(result.error || t("composer.uploadFailed"));
+        }
+        uploaded.push({
+          id: result.attachment.mediaFileId,
+          name: result.attachment.fileName,
+          mimeType: result.attachment.mimeType,
+          size: result.attachment.size,
+          kind: result.attachment.kind,
+        });
+      }
+      setAttachments((current) => [...current, ...uploaded]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t("composer.uploadFailed");
+      setAttachmentError(message);
+      throw error;
+    } finally {
+      setUploadingAttachments(false);
+    }
+  }
 
   async function refreshContacts() {
     const requestVersion = ++contactRequestVersionRef.current;
@@ -303,6 +360,10 @@ export function CampaignComposerPage() {
   }
 
   async function send() {
+    if (text.length > messageLimit) {
+      setStatus(t("composer.attributionLengthExceeded", { max: messageLimit }));
+      return;
+    }
     setSending(true);
     setStatus("");
     if (mode === "SCHEDULED" && scheduleState?.ok === false) {
@@ -314,8 +375,9 @@ export function CampaignComposerPage() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        title: text.slice(0, 60),
+        title: text.trim().slice(0, 60) || attachments[0]?.name.slice(0, 60) || t("composer.attachmentCampaign"),
         content: text,
+        mediaFileIds: attachments.map((attachment) => attachment.id),
         groupIds: selected,
         categoryIds: selectedCategories,
         contactIds: selectedContacts,
@@ -336,6 +398,8 @@ export function CampaignComposerPage() {
     setSelected([]);
     setSelectedCategories([]);
     setSelectedContacts([]);
+    setAttachments([]);
+    setAttachmentError("");
     localStorage.removeItem("logivya.selectedGroupIds");
   }
 
@@ -366,15 +430,50 @@ export function CampaignComposerPage() {
         <section className={card}>
           <div className="flex items-center justify-between gap-4">
             <h2 className="font-semibold">{t("composer.write")}</h2>
-            <span className="text-xs text-muted">{text.length}/4096</span>
+            <span className={cn("text-xs text-muted", messageTooLong && "font-semibold text-rose-600")}>{text.length}/{messageLimit}</span>
           </div>
           <textarea
-            maxLength={4096}
+            maxLength={messageLimit}
             value={text}
             onChange={(event) => setText(event.target.value)}
             placeholder={t("composer.placeholder")}
             className="mt-4 min-h-64 w-full rounded-xl border bg-input p-4 text-sm text-input-foreground outline-none focus:border-primary"
           />
+          <WebMessageAttachmentPicker
+            className="mt-4"
+            attachments={attachments}
+            onUpload={uploadAttachments}
+            onRemove={(id) => {
+              setAttachments((current) => current.filter((attachment) => attachment.id !== id));
+              setAttachmentError("");
+            }}
+            uploading={uploadingAttachments}
+            error={attachmentError || null}
+            disabled={sending}
+            maxFiles={30}
+            onValidationError={setAttachmentError}
+            labels={{
+              trigger: t("composer.addMedia"),
+              title: t("composer.addMedia"),
+              description: t("composer.attachmentDescription"),
+              photo: t("composer.photo"),
+              video: t("composer.video"),
+              document: t("composer.document"),
+              close: t("common.close"),
+              remove: t("composer.removeAttachment"),
+              selected: t("composer.selectedAttachments"),
+              limitReached: t("composer.attachmentLimit"),
+              invalidType: t("composer.attachmentInvalidType"),
+            }}
+          />
+          {data.entitlements?.messageBrandingRequired ? (
+            <p className="mt-3 rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs leading-5 text-foreground">
+              {t("accounts.starterAttributionNotice")}
+            </p>
+          ) : null}
+          {messageTooLong ? (
+            <p className="mt-3 text-xs font-semibold text-rose-600">{t("composer.attributionLengthExceeded", { max: messageLimit })}</p>
+          ) : null}
           <div className="mt-4 grid grid-cols-3 gap-2">
             {(["SEND_NOW", "SCHEDULED", "RECURRING"] as Mode[]).map((value) => (
               <button
@@ -434,6 +533,7 @@ export function CampaignComposerPage() {
           <div className="mt-5 rounded-xl border bg-accent p-4 text-accent-foreground">
             <p className="text-xs font-semibold">{t("composer.targetLabel")}: {targetTitle}</p>
             <p className="mt-2 text-sm leading-6">{t("composer.contentLabel")}: {targetContent}</p>
+            <p className="mt-2 text-xs leading-5">{locale === "tr" ? "Ortak gruplara bu gönderide yalnızca bir kez iletilir. Gönderimler en az 5 saniye arayla ilerler; kuyruk ve ekler süreyi uzatabilir. Yalnızca paylaşımınıza izin verilen hedefleri seçin." : "Shared groups receive this send once. Sends are spaced at least 5 seconds apart; queues and attachments may take longer. Select only recipients that permit your messages."}</p>
           </div>
           <button
             disabled={sending || !canSubmit}

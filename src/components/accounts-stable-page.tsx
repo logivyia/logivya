@@ -2,11 +2,14 @@
 
 /* eslint-disable react-hooks/set-state-in-effect,@next/next/no-img-element */
 import { useCallback, useEffect, useState } from "react";
-import { Archive, LoaderCircle, MessageCircle, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import Link from "next/link";
+import { Archive, History, LoaderCircle, MessageCircle, Plus, RefreshCw, Send, Smartphone, Trash2, UsersRound, X } from "lucide-react";
 
 import { useI18n } from "@/i18n/provider";
 import { statusLabel } from "@/i18n/status";
 import { formatNumber } from "@/i18n/format";
+import { countryRegistry, getCountryByLocale } from "@/lib/international/country-registry";
+import { inferPhoneCountry, normalizePhonePairingInput } from "@/lib/phone/normalize";
 
 type Account = {
   id: string;
@@ -38,19 +41,8 @@ const buttonBase = "inline-flex items-center justify-center gap-2 rounded-2xl px
 const lightButton = `${buttonBase} border bg-card text-card-foreground hover:bg-secondary disabled:bg-secondary disabled:text-muted`;
 const orangeButton = `${buttonBase} bg-orange-500 text-white shadow-lg shadow-orange-500/20 hover:bg-orange-600 disabled:bg-orange-200 disabled:text-white`;
 
-const countryOptions = [
-  { value: "90", label: "TR +90" },
-  { value: "40", label: "RO +40" },
-  { value: "49", label: "DE +49" },
-  { value: "994", label: "AZ +994" },
-  { value: "44", label: "UK +44" },
-] as const;
-
-function defaultCountryCode(locale: string) {
-  if (locale === "ro") return "40";
-  if (locale === "de") return "49";
-  if (locale === "az") return "994";
-  return "90";
+function defaultCountryIso(locale: string) {
+  return getCountryByLocale(locale)?.countryIso ?? "TR";
 }
 
 function isConnected(status?: string | null) {
@@ -63,14 +55,6 @@ function statusTone(status: string) {
   if (["FAILED", "ERROR", "RECONNECT_REQUIRED", "DISCONNECTED"].includes(value)) return "bg-rose-50 text-rose-700";
   if (value === "ARCHIVED") return "bg-slate-100 text-slate-700";
   return "bg-orange-50 text-orange-700";
-}
-
-function normalizePhone(countryCode: string, phone: string) {
-  const cc = countryCode.replace(/\D/g, "");
-  let digits = phone.replace(/\D/g, "");
-  while (digits.startsWith("0")) digits = digits.slice(1);
-  if (digits.startsWith(cc)) return digits;
-  return `${cc}${digits}`;
 }
 
 function userFacingWhatsAppErrorKey(message?: string | null) {
@@ -102,7 +86,7 @@ export function AccountsStablePage() {
   const [session, setSession] = useState<Session | null>(null);
   const [label, setLabel] = useState("");
   const [phone, setPhone] = useState("");
-  const [countryCode, setCountryCode] = useState(() => defaultCountryCode(locale));
+  const [countryIso, setCountryIso] = useState(() => defaultCountryIso(locale));
   const [modalError, setModalError] = useState("");
   const [error, setError] = useState("");
 
@@ -187,7 +171,7 @@ export function AccountsStablePage() {
     const name = window.prompt(t("accounts.labelPrompt"), label || t("accounts.defaultLabel"));
     if (name === null) return;
     setLabel(name.trim() || t("accounts.defaultLabel"));
-    setCountryCode(defaultCountryCode(locale));
+    setCountryIso(defaultCountryIso(locale));
     setPhone("");
     setSession(null);
     setModalError("");
@@ -196,8 +180,9 @@ export function AccountsStablePage() {
 
   async function openExisting(account: Account, mode: "qr" | "phone") {
     setLabel(account.displayName || t("accounts.defaultLabel"));
-    setPhone(account.phoneNumber || "");
-    setCountryCode(defaultCountryCode(locale));
+    const inferredCountry = inferPhoneCountry(account.phoneNumber);
+    setPhone("");
+    setCountryIso(inferredCountry?.countryIso ?? defaultCountryIso(locale));
     setSession(null);
     setModalError(isConnected(account.status) ? t("accounts.alreadyConnected") : account.lastError || "");
     setModal({ accountId: account.id, mode });
@@ -233,8 +218,15 @@ export function AccountsStablePage() {
 
   async function startPhone() {
     setModalError("");
-    const normalized = normalizePhone(countryCode, phone);
-    if (!normalized) {
+    let normalized: ReturnType<typeof normalizePhonePairingInput>;
+    try {
+      normalized = normalizePhonePairingInput({ countryIso, nationalNumber: phone });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "INVALID_WHATSAPP_PHONE";
+      setModalError(t(code === "DUPLICATE_PHONE_COUNTRY_CODE" ? "accounts.countryCodeDuplicate" : code === "UNSUPPORTED_PHONE_COUNTRY" ? "accounts.countryUnsupported" : "accounts.phoneInvalid"));
+      return;
+    }
+    if (!normalized.e164) {
       setModalError(t("accounts.phoneRequired"));
       return;
     }
@@ -243,7 +235,7 @@ export function AccountsStablePage() {
       const res = await fetch(accountId ? `/api/accounts/${accountId}/pairing-code` : "/api/accounts/whatsapp/create-pairing-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: label || t("accounts.defaultLabel"), phoneNumber: normalized }),
+        body: JSON.stringify({ label: label || t("accounts.defaultLabel"), countryIso: normalized.countryIso, nationalNumber: normalized.nationalNumber }),
       });
       const value = await res.json().catch(() => ({}));
       if (!res.ok || !value.ok) throw new Error(value.error || "accounts.actionFailed");
@@ -305,6 +297,25 @@ export function AccountsStablePage() {
         </div>
       </section>
 
+      <nav aria-label={t("nav.accounts")} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { href: "/accounts", label: t("accounts.workspaceTab"), icon: Smartphone, current: true },
+          { href: "/groups?platform=WHATSAPP", label: t("nav.groups"), icon: UsersRound },
+          { href: "/send-message?platform=WHATSAPP", label: t("nav.sendMessage"), icon: Send },
+          { href: "/message-history?platform=WHATSAPP", label: t("nav.history"), icon: History },
+        ].map(({ href, label: actionLabel, icon: Icon, current }) => (
+          <Link
+            key={href}
+            aria-current={current ? "page" : undefined}
+            href={href}
+            className={`flex min-h-14 items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-bold transition ${current ? "border-orange-500 bg-orange-500 text-white" : "bg-card text-card-foreground hover:border-orange-500/50 hover:bg-orange-500/5"}`}
+          >
+            <Icon aria-hidden className="size-5 shrink-0" />
+            <span>{actionLabel}</span>
+          </Link>
+        ))}
+      </nav>
+
       {error ? <div className="rounded-2xl bg-rose-50 px-5 py-4 text-sm text-rose-700">{error}</div> : null}
 
       {loading ? (
@@ -350,22 +361,22 @@ export function AccountsStablePage() {
 
       {modal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
-          <div className="w-full max-w-2xl rounded-3xl bg-white p-8 text-slate-950 shadow-2xl">
+          <div className="w-full max-w-2xl rounded-3xl border bg-card p-8 text-card-foreground shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-3xl font-black">{t("accounts.connectTitle")}</h2>
-                <p className="mt-2 text-slate-600">{t("accounts.connectDescription")}</p>
+                <p className="mt-2 text-muted">{t("accounts.connectDescription")}</p>
               </div>
-              <button aria-label={t("accounts.close")} className="rounded-full p-2 text-slate-900 hover:bg-slate-100" type="button" onClick={() => setModal(null)}>
+              <button aria-label={t("accounts.close")} className="rounded-full p-2 text-foreground hover:bg-muted-background" type="button" onClick={() => setModal(null)}>
                 <X />
               </button>
             </div>
 
-            <div className="mt-7 grid grid-cols-2 rounded-2xl bg-slate-100 p-1">
-              <button className={`rounded-xl px-4 py-3 font-bold ${modal.mode === "qr" ? "bg-orange-500 text-white" : "text-slate-900"}`} type="button" onClick={() => setModal({ ...modal, mode: "qr" })}>
+            <div className="mt-7 grid grid-cols-2 rounded-2xl bg-muted-background p-1">
+              <button className={`rounded-xl px-4 py-3 font-bold ${modal.mode === "qr" ? "bg-orange-500 text-white" : "text-foreground"}`} type="button" onClick={() => setModal({ ...modal, mode: "qr" })}>
                 {t("accounts.qrTab")}
               </button>
-              <button className={`rounded-xl px-4 py-3 font-bold ${modal.mode === "phone" ? "bg-orange-500 text-white" : "text-slate-900"}`} type="button" onClick={() => setModal({ ...modal, mode: "phone" })}>
+              <button className={`rounded-xl px-4 py-3 font-bold ${modal.mode === "phone" ? "bg-orange-500 text-white" : "text-foreground"}`} type="button" onClick={() => setModal({ ...modal, mode: "phone" })}>
                 {t("accounts.codeTab")}
               </button>
             </div>
@@ -374,25 +385,29 @@ export function AccountsStablePage() {
               <div className="mt-7 rounded-2xl bg-emerald-50 p-4 text-emerald-700">{t("accounts.connectedTitle")}</div>
             ) : modal.mode === "phone" ? (
               <div className="mt-7 space-y-5">
-                <label className="block text-sm font-bold text-slate-900">{t("accounts.phoneLabel")}</label>
+                <label className="block text-sm font-bold text-foreground">{t("accounts.phoneLabel")}</label>
                 <div className="grid gap-3 sm:grid-cols-[140px_1fr]">
                   <select
                     aria-label={t("accounts.countryCode")}
-                    className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-950"
-                    value={countryCode}
-                    onChange={(event) => setCountryCode(event.target.value)}
+                    className="rounded-2xl border bg-input px-4 py-3 text-input-foreground outline-none focus:border-primary"
+                    value={countryIso}
+                    onChange={(event) => {
+                      setCountryIso(event.target.value);
+                      setPhone("");
+                      setModalError("");
+                    }}
                   >
-                    {countryOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
+                    {countryRegistry.map((option) => (
+                      <option key={option.countryIso} value={option.countryIso}>
+                        {option.nativeCountryName} ({option.countryIso} {option.callingCode})
                       </option>
                     ))}
                   </select>
                   <input
                     aria-label={t("accounts.phoneNumber")}
-                    className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-950 placeholder:text-slate-400"
+                    className="rounded-2xl border bg-input px-4 py-3 text-input-foreground outline-none placeholder:text-muted focus:border-primary"
                     inputMode="tel"
-                    placeholder={t("accounts.phonePlaceholder")}
+                    placeholder={countryRegistry.find((option) => option.countryIso === countryIso)?.phonePlaceholder ?? t("accounts.phonePlaceholder")}
                     value={phone}
                     onChange={(event) => setPhone(event.target.value)}
                   />
@@ -401,8 +416,8 @@ export function AccountsStablePage() {
                   {visiblePairing ? t("accounts.newCode") : t("accounts.createPhoneCode")}
                 </button>
                 {visiblePairing ? (
-                  <div className="rounded-3xl border border-orange-200 bg-orange-50 p-6 text-center">
-                    <p className="text-sm font-semibold text-slate-700">{t("accounts.phoneInstructions")}</p>
+                  <div className="rounded-3xl border border-orange-500/30 bg-orange-500/10 p-6 text-center">
+                    <p className="text-sm font-semibold text-foreground">{t("accounts.phoneInstructions")}</p>
                     <p className="mt-4 text-4xl font-black tracking-[0.35em] text-orange-600">{visiblePairing}</p>
                   </div>
                 ) : null}
@@ -413,7 +428,7 @@ export function AccountsStablePage() {
                   {t("accounts.qrGenerate")}
                 </button>
                 {session && !visibleQr ? (
-                  <div className="mx-auto flex max-w-md items-center justify-center gap-3 rounded-3xl bg-slate-50 p-6 text-slate-700">
+                  <div className="mx-auto flex max-w-md items-center justify-center gap-3 rounded-3xl bg-muted-background p-6 text-muted">
                     <LoaderCircle className="h-5 w-5 animate-spin" />
                     {t("accounts.qrPreparing")}
                   </div>

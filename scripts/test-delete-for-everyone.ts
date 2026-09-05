@@ -28,13 +28,15 @@ function main() {
   assertExists("prisma/migrations/20260701012000_delete_for_everyone_revoke/migration.sql");
 
   assertIncludes("src/server/whatsapp/provider.ts", "deleteGroupMessage(input: DeleteGroupMessageInput): Promise<DeleteResult>");
-  assertIncludes("src/worker/baileys-provider.ts", "return { externalMessageId: result.key.id, messageKey: result.key }");
+  assertIncludes("src/worker/baileys-provider.ts", "messageKey: result.key");
+  assertIncludes("src/server/messages/delete-for-everyone.ts", 'status: { in: ["SENT", "DELIVERED"] }');
   assertIncludes("src/worker/baileys-provider.ts", "async deleteGroupMessage(input: DeleteGroupMessageInput): Promise<DeleteResult>");
   assertIncludes("src/worker/baileys-provider.ts", "socket.sendMessage(input.groupExternalId, { delete: deleteKey })");
 
   assertIncludes("src/server/queues/contracts.ts", "export type DeleteForEveryoneJob");
   assertIncludes("src/server/messages/delete-for-everyone.ts", "WHATSAPP_DELETE_FOR_EVERYONE_WINDOW_MS");
   assertIncludes("src/server/messages/delete-for-everyone.ts", "queue.add(\"delete-for-everyone\"");
+  assertIncludes("src/server/messages/delete-for-everyone.ts", "createdById: input.userId");
   assertIncludes("src/server/messages/delete-for-everyone.ts", "recipient.account.userId !== input.userId");
   assertIncludes("src/server/messages/delete-for-everyone.ts", "recipient.group?.userId !== input.userId");
   assertIncludes("src/worker/index.ts", "job.name === \"delete-for-everyone\"");
@@ -51,6 +53,8 @@ function main() {
   assertExists("src/app/api/mobile/messages/history/[id]/delete-for-everyone/route.ts");
   assertExists("src/app/api/mobile/messages/history/[id]/delete-for-me/route.ts");
   assertExists("src/app/api/mobile/messages/history/[id]/platform-delete/route.ts");
+  assertIncludes("src/app/api/messages/campaigns/[id]/delete-everyone/route.ts", 'requirePermission(membership.role, "send_messages")');
+  assertIncludes("src/app/api/mobile/messages/history/[id]/delete-for-everyone/route.ts", 'requirePermission(membership.role, "send_messages")');
 
   assertIncludes("src/components/message-history-stable-page.tsx", "history.deleteForMe");
   assertIncludes("src/components/message-history-stable-page.tsx", "history.deleteEveryone");

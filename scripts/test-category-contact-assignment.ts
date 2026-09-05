@@ -24,8 +24,8 @@ for (const field of ["categoryId String", "contactId  String", "userId     Strin
   assert(schema.includes(field), `CategoryContact must include scoped field: ${field}`);
 }
 assert(schema.includes("@@unique([categoryId, contactId])"), "Duplicate category/contact assignments must be prevented.");
-assert(schema.includes("contacts    CategoryContact[]"), "Category must expose persisted contact assignments.");
-assert(schema.includes("groups      CategoryGroup[]"), "Stable CategoryGroup architecture must remain intact.");
+assert(/\bcontacts\s+CategoryContact\[\]/.test(schema), "Category must expose persisted contact assignments.");
+assert(/\bgroups\s+CategoryGroup\[\]/.test(schema), "Stable CategoryGroup architecture must remain intact.");
 
 const migration = read("prisma/migrations/20260712130000_contact_category_assignment/migration.sql");
 assert(migration.includes('CREATE TABLE IF NOT EXISTS "CategoryContact"'), "Migration must safely create the new join table.");
@@ -35,7 +35,7 @@ assert(!/DELETE\s+FROM\s+"CategoryGroup"/i.test(migration), "Migration must pres
 
 const service = read("src/server/categories/category-targets.ts");
 assert(service.includes("MAX_CONTACT_ASSIGNMENTS = 50_000"), "Contact assignment payloads must have an enterprise-safe hard bound.");
-assert(service.includes("CONTACT_MESSAGING_REQUIRES_PROFESSIONAL"), "Starter direct API attempts must receive the Professional entitlement error.");
+assert(service.includes("CONTACT_CATEGORY_SUBSCRIPTION_MESSAGE"), "Inactive subscriptions must receive a localized contact-category entitlement message.");
 assert(service.includes("companyId: scope.companyId"), "Category contacts must be company scoped.");
 assert(service.includes("userId: scope.userId"), "Category contacts must be user scoped.");
 assert(service.includes("accountId: account.id"), "Category contacts must be WhatsApp-account scoped.");
@@ -63,7 +63,7 @@ const localizedAssignmentUiContracts = [
     assignable: 't("categories.assignableContacts")',
     selectVisible: 't("composer.selectVisibleContacts")',
     loadMore: 't("composer.loadMoreContacts")',
-    professionalLock: 't("categories.contactAssignmentProfessional")',
+    entitlementNotice: 't("categories.contactAssignmentProfessional")',
   },
   {
     file: "apps/mobile/src/screens/app/category-detail-screen.tsx",
@@ -71,7 +71,7 @@ const localizedAssignmentUiContracts = [
     assignable: 't("assignableContacts")',
     selectVisible: 't("selectVisibleContacts")',
     loadMore: 't("loadMoreContacts")',
-    professionalLock: 't("contactCategoryProfessionalRequired")',
+    entitlementNotice: 't("contactCategoryProfessionalRequired")',
   },
 ];
 
@@ -81,7 +81,7 @@ for (const ui of localizedAssignmentUiContracts) {
   assert(source.includes(ui.assignable), `${ui.file} must show assignable contacts through localization.`);
   assert(source.includes(ui.selectVisible), `${ui.file} must support localized visible-page selection.`);
   assert(source.includes(ui.loadMore), `${ui.file} must support localized incremental contact loading.`);
-  assert(source.includes(ui.professionalLock), `${ui.file} must explain the Starter entitlement lock through localization.`);
+  assert(source.includes(ui.entitlementNotice), `${ui.file} must explain inactive subscription access through localization.`);
 }
 
 const localizedEmptyAudienceContracts = [

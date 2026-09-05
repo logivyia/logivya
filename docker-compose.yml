@@ -17,9 +17,12 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/logivya
       REDIS_URL: redis://redis:6379
+      MEDIA_STORAGE_DIR: /app/media
     ports: ["3000:3000"]
+    volumes: [logivya-media:/app/media]
     depends_on: [postgres, redis]
   whatsapp-worker:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -30,10 +33,39 @@ services:
       WHATSAPP_SESSION_DIR: /app/sessions
       WHATSAPP_SESSION_VOLUME_PERSISTENT: "true"
       WORKER_HEALTH_PORT: 3001
+      MEDIA_STORAGE_DIR: /app/media
     ports: ["3001:3001"]
-    volumes: [logivya-whatsapp-sessions:/app/sessions]
+    volumes: [logivya-whatsapp-sessions:/app/sessions, logivya-media:/app/media]
     depends_on: [postgres, redis]
+  whatsapp-ingestion-worker:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    command: ["npm", "run", "worker:whatsapp-ingestion"]
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/logivya
+      REDIS_URL: redis://redis:6379
+      MEDIA_STORAGE_DIR: /app/media
+    volumes: [logivya-media:/app/media]
+    depends_on: [postgres, redis]
+  telegram-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.telegram
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/logivya
+      TELEGRAM_SESSION_DIR: /app/telegram-sessions
+      TELEGRAM_WORKER_PORT: 3011
+      MEDIA_STORAGE_DIR: /app/media
+    ports: ["3011:3011"]
+    volumes: [logivya-telegram-sessions:/app/telegram-sessions, logivya-media:/app/media]
+    depends_on: [postgres]
 volumes:
   logivya-postgres:
   logivya-redis:
   logivya-whatsapp-sessions:
+  logivya-telegram-sessions:
+  logivya-media:

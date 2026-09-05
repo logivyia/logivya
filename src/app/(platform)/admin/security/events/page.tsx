@@ -1,1 +1,7 @@
-import { AdminListPage } from "@/components/operations-pages";import { requirePlatformAdmin } from "@/server/auth/platform-admin";export default async function Page(){await requirePlatformAdmin();return <AdminListPage titleKey="admin.list.securityEvents" endpoint="/api/admin/security/events" kind="events"/>}
+import { AdminListPage } from "@/components/operations-pages";
+import { requirePlatformAdmin } from "@/server/auth/platform-admin";
+
+export default async function Page() {
+  await requirePlatformAdmin("admin.security.read");
+  return <AdminListPage titleKey="admin.list.securityEvents" endpoint="/api/admin/security/events" kind="events" />;
+}

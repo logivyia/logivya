@@ -36,10 +36,16 @@ const mobileSendRoute = read("src/app/api/mobile/messages/send/route.ts");
 const mobileScheduleRoute = read("src/app/api/mobile/messages/schedule/route.ts");
 const mobileQrRoute = read("src/app/api/mobile/whatsapp/accounts/qr/route.ts");
 const mobilePhoneCodeRoute = read("src/app/api/mobile/whatsapp/accounts/phone-code/route.ts");
+const webQrRoute = read("src/app/api/accounts/whatsapp/create-session/route.ts");
+const regenerateQrRoute = read("src/app/api/accounts/whatsapp/[id]/regenerate-qr/route.ts");
 const platformRoute = read("src/app/api/platform/route.ts");
 const mobileGroupsRoute = read("src/app/api/mobile/groups/route.ts");
 const mobileResponse = read("src/server/mobile/response.ts");
 const mobileApiClient = read("apps/mobile/src/api/client.ts");
+const packageManifest = read("package.json");
+const workerDockerfile = read("Dockerfile.worker");
+const productionWorkerDockerfile = read("ops/vps/Dockerfile.worker");
+const offlineBatchPatch = read("scripts/patch-baileys-disable-offline-batch.mjs");
 
 assertIncludes(webCampaignRoute, "createMessageDeliveryCampaign", "web campaign route");
 assertIncludes(mobileSendRoute, "createMobileMessageCampaign", "mobile send route");
@@ -68,14 +74,27 @@ assertNotMatches(sendableGroups, /canSend:\s*true[^}]*\}/, "sendable group query
 assertIncludes(provider, "groupsOwnershipRepairedCount", "group sync ownership repair telemetry");
 assertIncludes(provider, "{ userId: ownerUserId, companyId: account.companyId }", "group sync ownership repair");
 assertIncludes(provider, 'throw new Error("WHATSAPP_ACCOUNT_OWNER_MISSING")', "group sync owner guard");
-assertIncludes(provider, "whatsapp.qr.connection_closed_after_ready", "QR mode must not be overwritten by reconnect-required close handling");
-assertIncludes(provider, "whatsapp.qr.transient_close_retry_scheduled", "QR mode must retry transient socket closes before failing");
-assertIncludes(provider, "whatsapp.qr.error_after_ready_ignored", "QR mode must preserve QR_READY after late handler errors");
+assertIncludes(provider, "whatsapp.qr.fresh_socket_retry_scheduled", "QR mode must replace a closed pairing socket before exposing another QR");
+assertIncludes(provider, "scheduleFreshQrRetry", "QR mode must retry transient closes on a clean socket");
+assertIncludes(provider, "scheduleQrPostScanRestart", "QR mode must preserve accepted pairing credentials across restartRequired closes");
+assertIncludes(provider, "WA_QR_PAIRING_POST_SCAN_RESTART_SCHEDULED", "QR post-scan restart must be observable in production logs");
+const qrPostScanRestartBlock = provider.slice(
+  provider.indexOf("private async scheduleQrPostScanRestart"),
+  provider.indexOf("private async reissuePairingCodeOnFreshSocket"),
+);
+assertIncludes(qrPostScanRestartBlock, 'this.startSession(accountId, "PAIR_QR")', "QR post-scan restart must reuse the paired auth state without a fresh reset");
+assertNotMatches(qrPostScanRestartBlock, /clearTemporaryAuth|clearWhatsAppSession/, "QR post-scan restart must never delete newly accepted pairing credentials");
+assertIncludes(provider, "whatsapp.qr.stale_token_rejected", "QR mode must reject database QR tokens that no longer have a live pairing socket");
+const qrReceiptBlock = provider.slice(
+  provider.indexOf('if (qr && currentMode === "PAIR_QR")'),
+  provider.indexOf('} else if (qr)', provider.indexOf('if (qr && currentMode === "PAIR_QR")')),
+);
+assertNotMatches(qrReceiptBlock, /qrTransientRetries\.delete\(accountId\)/, "receiving another QR must not reset the closed-socket retry budget");
 assertIncludes(provider, "whatsapp.pairing.stale_socket_close_ignored", "phone pairing must ignore stale socket closes after a newer code request");
-assertIncludes(provider, "whatsapp.pairing.same_code_refresh_scheduled", "phone pairing must refresh the same visible code after socket closes");
-assertIncludes(provider, "activeSocket.requestPairingCode(normalizedPhoneNumber, pairingCode)", "phone pairing refresh must re-register the same visible code with Baileys");
-assertIncludes(provider, "preserveUnregisteredPairingAuth", "phone pairing retries must preserve unregistered auth instead of creating a new companion identity each time");
-assertIncludes(provider, "whatsapp.pairing.unregistered_auth_preserved", "phone pairing must log preserved unregistered auth for production diagnostics");
+assertIncludes(provider, "whatsapp.pairing.active_code_reused", "phone pairing retries must reuse the active code while its socket is still live");
+assertIncludes(provider, "WA_PAIRING_VISIBLE_CODE_INVALIDATED", "phone pairing must invalidate a visible code when its owning socket closes");
+assertIncludes(provider, "WA_PAIRING_VISIBLE_CODE_RETRY_REQUIRED", "phone pairing must require an explicit new code instead of rotating one in the background");
+assertNotMatches(provider, /preserveUnregisteredPairingAuth/, "phone pairing must never preserve partial auth from a closed socket");
 assertIncludes(provider, "Browsers.ubuntu", "phone pairing must use Baileys' canonical WEB_BROWSER identity by default");
 assertIncludes(provider, 'WHATSAPP_PAIRING_BROWSER_NAME || "Chrome"', "phone pairing must use a canonical Chrome browser identity by default");
 assertIncludes(provider, 'WHATSAPP_PAIRING_BROWSER_OS || "ubuntu"', "phone pairing must default to the Baileys Ubuntu web browser tuple");
@@ -84,18 +103,40 @@ assertIncludes(provider, "WHATSAPP_COMPANION_PLATFORM_ID", "phone pairing must c
 assertIncludes(provider, "companionPlatformDisplay", "phone pairing must log the visible companion platform display");
 assertIncludes(provider, "fetchLatestWaWebVersion", "phone pairing must prefer the live WhatsApp Web client revision");
 assertIncludes(provider, "fetchCurrentWhatsAppWebVersion", "phone pairing must centralize WhatsApp Web version resolution");
+assertIncludes(provider, "forceLive", "fresh pairing sockets must force a live WhatsApp Web version lookup");
 assertIncludes(provider, 'source: "wa-web"', "phone pairing must log the live WhatsApp Web version source");
 assertIncludes(provider, "waVersionSource", "phone pairing must expose the WhatsApp Web version source in production logs");
 assertIncludes(provider, "countryCode: WHATSAPP_PAIRING_COUNTRY_CODE", "phone pairing must send an explicit country code to Baileys");
 assertIncludes(provider, "browser: WHATSAPP_BROWSER", "phone pairing must log/audit the Baileys browser identity");
-assertIncludes(provider, "async refreshPairingCode", "phone pairing reuse must have worker-side socket refresh");
-assertIncludes(provider, "whatsapp.pairing.refresh_fallback_new_code", "phone pairing refresh must fall back to a new clean code when the old code cannot be re-registered");
+assertIncludes(provider, "async refreshPairingCode", "phone pairing reuse must be decided by the worker that owns the socket");
+assertIncludes(provider, "whatsapp.pairing.refresh_requires_explicit_new_code", "phone pairing refresh must never generate a hidden replacement code");
 assertIncludes(provider, "whatsapp.pairing.registered_close_reconnect", "phone pairing must reconnect instead of clearing newly registered credentials");
-assertIncludes(provider, "whatsapp.pairing.error_after_code_ignored", "phone pairing must not overwrite PAIRING_CODE_READY after late handler errors");
+assertIncludes(provider, "WA_PAIRING_REGISTERED_OPEN_WATCHDOG_SCHEDULED", "phone pairing must watch for accepted credentials that never reach connection.open");
+assertIncludes(provider, "WA_PAIRING_REGISTERED_OPEN_WATCHDOG_TRIGGERED", "phone pairing must restart a registered socket that stalls before connection.open");
+assertIncludes(provider, '"connection.open.pairing.registered_watchdog"', "stalled registered pairing credentials must be persisted before socket restart");
+assertIncludes(provider, "whatsapp.pairing.error_visible_code_invalidated", "late phone-pairing errors must invalidate the visible code instead of rotating it");
+assertIncludes(pairingFlow, "WA_PAIRING_VISIBLE_CODE_REUSED_WITHOUT_SOCKET_RESET", "repeated API requests must not reset the socket that owns a visible code");
 assertIncludes(provider, "preservePairingCode ? \"PAIRING_CODE_READY\"", "phone pairing retries must not hide an active pairing code");
 assertIncludes(sessionManager, "snapshotHasRegisteredCredentials", "session snapshots must distinguish partial pairing credentials from registered sessions");
 assertIncludes(sessionManager, "registered ? AccountStatus.CONNECTED : AccountStatus.PENDING_PAIRING", "partial pairing credentials must not be stored as connected sessions");
 assertIncludes(workerHealth, "whatsAppSession.findUnique", "QR wait must fall back to worker session QR");
+assertIncludes(workerHealth, "correlationId?: string", "QR wait must accept request correlation");
+assertIncludes(workerHealth, 'action: "WHATSAPP_QR_GENERATED"', "QR wait must verify worker generation audit");
+assertIncludes(workerHealth, "auditLog.findFirst", "QR wait must match the worker generation event");
+assertIncludes(workerHealth, "QR_CODE_STABILITY_MS", "QR wait must reject immediately replaced QR values");
+assertIncludes(provider, "qrRequestCorrelationIds", "QR provider must retain request correlation through socket generation");
+assertIncludes(provider, "qrRequestCorrelationIds.get(accountId)", "QR generated audit must carry the active request correlation");
+assertIncludes(worker, "createFreshQrSession(accountId, { correlationId })", "QR worker must forward request correlation to the provider");
+for (const [label, route] of [
+  ["mobile QR route", mobileQrRoute],
+  ["web QR route", webQrRoute],
+  ["regenerate QR route", regenerateQrRoute],
+] as const) {
+  assertIncludes(route, "const qrCorrelationId = randomUUID()", `${label} must create a unique QR request correlation`);
+  assertIncludes(route, "correlationId: qrCorrelationId", `${label} must enqueue the QR request correlation`);
+  assertIncludes(route, "updatedAfter: qrRequestedAt, correlationId: qrCorrelationId", `${label} must wait for only its own fresh QR`);
+  assertIncludes(route, "qrCode: null", `${label} must not expose a stale QR while generation is pending`);
+}
 assertIncludes(accountsStablePage, "/api/accounts/whatsapp/${modal.accountId}/status", "accounts modal must poll the scoped WhatsApp status route");
 assertIncludes(accountsStablePage, "src={visibleQr}", "accounts modal must render backend QR image directly");
 assertNotMatches(accountsStablePage, /api\.qrserver\.com/, "accounts modal must not send QR data to third-party renderers");
@@ -115,8 +156,8 @@ assertNotMatches(worker, /recoverable-recipient-\$\{recipient\.id\}-\$\{Date\.no
 assertIncludes(provider, 'throw new Error("WHATSAPP_CREDENTIALS_MISSING")', "missing credentials must require fresh pairing");
 assertIncludes(provider, 'throw new Error("WHATSAPP_LOGGED_OUT")', "logged-out accounts must not enter reconnect retry loops");
 assertIncludes(worker, 'action === "pairing-refresh"', "worker must support live refresh of reused pairing codes");
-assertIncludes(pairingFlow, "refreshRequestedAt", "pairing flow must wait for worker refresh before returning reused codes");
-assertIncludes(pairingFlow, 'action: "pairing-refresh"', "pairing flow must enqueue refresh jobs for reused pairing codes");
+assertNotMatches(pairingFlow, /action:\s*"pairing-refresh"/, "repeated API requests must not enqueue a hidden replacement code");
+assertNotMatches(pairingFlow, /refreshRequestedAt/, "reused visible codes must not reset or refresh their owning socket");
 assertIncludes(pairingFlow, "hasExpiringPairingCode", "pairing flow must not return nearly expired in-flight codes");
 assertIncludes(workerHealth, "updatedAfter", "pairing wait must not return pre-refresh stale codes");
 assertIncludes(workerHealth, "PAIRING_CODE_MIN_TTL_MS", "pairing wait must require enough remaining pairing code TTL");
@@ -124,12 +165,19 @@ assertIncludes(workerHealth, "PAIRING_CODE_MIN_TTL_MS", "pairing wait must requi
 assertIncludes(mobileQrRoute, 'status: "CONNECTED"', "mobile QR connected-account reuse");
 assertIncludes(mobilePhoneCodeRoute, 'status: "CONNECTED"', "mobile phone-code connected-account reuse");
 assertIncludes(platformRoute, "isRecoverableWhatsAppStatus", "web platform group filtering");
-assertIncludes(mobileGroupsRoute, "isRecoverableWhatsAppStatus", "mobile group filtering");
+assertIncludes(mobileGroupsRoute, "listRecoverableWhatsAppAccounts", "mobile group filtering");
 assertIncludes(mobileResponse, "WHATSAPP_WORKER_UNAVAILABLE", "mobile worker-unavailable response");
 assertIncludes(mobileApiClient, "whatsappServiceUnavailableError", "mobile worker-unavailable user message");
 assertIncludes(worker, "classifyWorkerProcessError", "worker process rejection classification");
 assertIncludes(worker, "WORKER_UNHANDLED_REJECTION_ISOLATED", "recoverable worker rejection containment");
 assertIncludes(worker, "fatalShutdownRequested", "fatal worker shutdown deduplication");
 assertIncludes(worker, "recoverableRejectionAlertAt", "recoverable rejection alert throttling");
+assertIncludes(worker, "whatsapp.session.recovery_sweep_paused_active_pairing", "background session recovery must not compete with QR or phone pairing");
+assertIncludes(packageManifest, "patch-baileys-disable-offline-batch.mjs", "production install must apply the bounded offline-history policy");
+assertIncludes(workerDockerfile, "COPY scripts/patch-baileys-disable-offline-batch.mjs", "worker image must contain the offline-history patch before npm install");
+assertIncludes(productionWorkerDockerfile, "COPY scripts/patch-baileys-disable-offline-batch.mjs", "production worker image must contain the offline-history patch before npm install");
+assertIncludes(productionWorkerDockerfile, "node scripts/patch-baileys-disable-offline-batch.mjs", "production worker image must apply the offline-history patch");
+assertIncludes(offlineBatchPatch, "LOGIVYA_OFFLINE_BATCH_DISABLED", "offline-history patch must remain idempotent");
+assertIncludes(offlineBatchPatch, "offline preview ignored by Logivya outbound worker", "patched offline preview handler must not request encrypted history batches");
 
 console.info("message delivery root-cause regression checks passed");

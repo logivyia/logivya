@@ -78,11 +78,11 @@ export function IconBadge({ icon, tone = "primary" }: { icon: IconName; tone?: T
   );
 }
 
-export function StatCard({ label, value, icon, tone = "primary" }: { label: string; value: string | number; icon: IconName; tone?: Tone }) {
+export function StatCard({ label, value, icon, tone = "primary", compact = false }: { label: string; value: string | number; icon: IconName; tone?: Tone; compact?: boolean }) {
   const theme = useTheme();
   const locale = useSettingsStore((state) => state.locale);
   return (
-    <SurfaceCard style={styles.statCard}>
+    <SurfaceCard style={[styles.statCard, compact ? styles.statCardCompact : null]}>
       <IconBadge icon={icon} tone={tone} />
       <Text style={[styles.statValue, { color: theme.text }]} numberOfLines={1}>
         {typeof value === "number" ? formatNumber(value, locale) : value}
@@ -108,27 +108,31 @@ export function SectionTitle({ title, action }: { title: string; action?: ReactN
 
 export function ActionRow({
   icon,
+  iconElement,
   title,
   description,
   badge,
   onPress,
-  tone = "primary"
+  tone = "primary",
+  compact = false
 }: {
-  icon: IconName;
+  icon?: IconName;
+  iconElement?: ReactNode;
   title: string;
   description?: string;
   badge?: string;
   onPress: () => void;
   tone?: Tone;
+  compact?: boolean;
 }) {
   const theme = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [styles.actionRow, { backgroundColor: theme.card, borderColor: theme.border }, pressed ? styles.pressed : null]}
+      style={({ pressed }) => [styles.actionRow, compact ? styles.actionRowCompact : null, { backgroundColor: theme.card, borderColor: theme.border }, pressed ? styles.pressed : null]}
     >
-      <IconBadge icon={icon} tone={tone} />
+      {iconElement ?? (icon ? <IconBadge icon={icon} tone={tone} /> : null)}
       <View style={styles.actionText}>
         <Text style={[styles.actionTitle, { color: theme.text }]} numberOfLines={2}>
           {title}
@@ -149,6 +153,7 @@ export function Chip({ label, active, onPress }: { label: string; active: boolea
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ selected: active }}
       onPress={onPress}
       style={[styles.chip, { backgroundColor: active ? theme.primary : theme.cardMuted, borderColor: active ? theme.primary : theme.border }]}
     >
@@ -236,6 +241,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
     width: "100%"
   },
+  statCardCompact: {
+    flexBasis: "46%",
+    flexGrow: 1,
+    padding: 14,
+    width: "auto"
+  },
   statValue: {
     fontSize: 26,
     fontWeight: "900"
@@ -264,6 +275,10 @@ const styles = StyleSheet.create({
     gap: 12,
     minHeight: 74,
     padding: 14
+  },
+  actionRowCompact: {
+    minHeight: 58,
+    padding: 10
   },
   actionText: {
     flex: 1,

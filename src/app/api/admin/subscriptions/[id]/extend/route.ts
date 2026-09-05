@@ -1,17 +1,83 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requirePlatformAdmin } from "@/server/auth/platform-admin";
-import { prisma } from "@/server/db";
+
+import { requireCriticalAdminAction } from "@/server/auth/platform-admin";
+import {
+  AdminSubscriptionActionError,
+  performAdminSubscriptionAction,
+} from "@/server/billing/admin-subscription-actions";
+import { requestId, safeAdminError } from "@/server/security/admin-request";
 import { writeAuditLog } from "@/server/security/audit";
 
-const schema=z.object({endsAt:z.coerce.date(),note:z.string().max(500).optional()});
-export async function POST(request:Request,{params}:{params:Promise<{id:string}>}){
-  try{
-    const{user}=await requirePlatformAdmin("admin.subscriptions.approve", request),{id}=await params,parsed=schema.safeParse(await request.json());
-    if(!parsed.success)return NextResponse.json({error:"validation.invalid"},{status:400});
-    const before=await prisma.subscription.findUnique({where:{id}});if(!before)return NextResponse.json({error:"NOT_FOUND"},{status:404});
-    const subscription=await prisma.$transaction(async(tx)=>{const changed=await tx.subscription.update({where:{id},data:{endsAt:parsed.data.endsAt,currentPeriodEndsAt:parsed.data.endsAt,status:"ACTIVE",expiredAt:null}});await tx.subscriptionEvent.create({data:{companyId:changed.companyId,subscriptionId:id,actorUserId:user.id,type:"SUBSCRIPTION_ACTIVATED",message:"Abonelik süresi uzatıldı.",metadata:{note:parsed.data.note??"",endsAt:parsed.data.endsAt}}});await tx.subscriptionAuditLog.create({data:{companyId:changed.companyId,subscriptionId:id,actorUserId:user.id,eventType:"ADMIN_EXTEND",previousState:{status:before.status,endsAt:before.endsAt?.toISOString()??null},newState:{status:changed.status,endsAt:changed.endsAt?.toISOString()??null,note:parsed.data.note??""}}});return changed});
-    await writeAuditLog(request,{companyId:subscription.companyId,userId:user.id,action:"subscription.extended",entityType:"Subscription",entityId:id,before:{endsAt:before.endsAt},after:{endsAt:subscription.endsAt,note:parsed.data.note}});
-    return NextResponse.json({subscription});
-  }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"errors.generic"},{status:403})}
+const schema = z.object({
+  endsAt: z.coerce.date(),
+  reason: z.string().trim().min(5).max(500),
+});
+
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const correlationId = requestId(request);
+  try {
+    const parsed = schema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "VALIDATION_ERROR", requestId: correlationId },
+        { status: 400 },
+      );
+    }
+    const { user } = await requireCriticalAdminAction(
+      request,
+      "admin.subscriptions.approve",
+      parsed.data.reason,
+    );
+    const { id } = await params;
+    const result = await performAdminSubscriptionAction({
+      subscriptionId: id,
+      actorUserId: user.id,
+      correlationId,
+      data: {
+        action: "EXTEND",
+        endsAt: parsed.data.endsAt,
+        reason: parsed.data.reason,
+      },
+    });
+    await writeAuditLog(request, {
+      companyId: result.before.companyId,
+      userId: user.id,
+      actorType: "PLATFORM_ADMIN",
+      action: "admin.subscription.extend",
+      reason: parsed.data.reason,
+      entityType: "Subscription",
+      entityId: id,
+      correlationId,
+      before: { status: result.before.status, endsAt: result.before.endsAt },
+      after: {
+        status: result.subscription.status,
+        endsAt: result.subscription.endsAt,
+      },
+    });
+    return NextResponse.json({
+      ok: true,
+      subscription: result.subscription,
+      requestId: correlationId,
+    });
+  } catch (error) {
+    if (error instanceof AdminSubscriptionActionError) {
+      return NextResponse.json(
+        { error: error.code, requestId: correlationId },
+        {
+          status:
+            error.code === "NOT_FOUND"
+              ? 404
+              : error.code === "STATE_CHANGED"
+                ? 409
+                : 400,
+        },
+      );
+    }
+    const safe = safeAdminError(error, correlationId);
+    return NextResponse.json(safe.body, { status: safe.status });
+  }
 }

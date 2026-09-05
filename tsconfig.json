@@ -33,5 +33,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "apps/mobile", "scripts"]
+  "exclude": ["node_modules", "apps/mobile", "scripts", "tmp", "artifacts", "outputs"]
 }

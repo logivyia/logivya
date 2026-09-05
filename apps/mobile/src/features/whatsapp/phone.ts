@@ -1,27 +1,51 @@
+import { countryRegistry, type MobileCountryRegistryEntry } from "@/generated/country-registry";
 import { translateCurrent } from "@/i18n/runtime";
+import {
+  MobilePhoneNormalizationError,
+  normalizeMobilePhone,
+} from "@/features/whatsapp/phone-normalization";
 
-const TURKEY_MOBILE_E164_REGEX = /^\+905\d{9}$/;
+export type MobilePhonePairingInput = {
+  countryIso: string;
+  nationalNumber: string;
+  e164: string;
+};
 
+export function getMobileCountry(countryIso: string | null | undefined): MobileCountryRegistryEntry {
+  return countryRegistry.find((entry) => entry.countryIso === countryIso?.toUpperCase()) ?? countryRegistry[0];
+}
+
+export function getMobileCountryForLocale(locale: string | null | undefined): MobileCountryRegistryEntry {
+  const normalized = locale?.toLowerCase().replace("_", "-").split("-")[0];
+  return countryRegistry.find((entry) => entry.localeId === normalized) ?? countryRegistry[0];
+}
+
+export function searchMobileCountries(query: string) {
+  const normalized = query.normalize("NFKC").trim().toLocaleLowerCase();
+  if (!normalized) return countryRegistry;
+  return countryRegistry.filter((entry) => [
+    entry.countryName,
+    entry.nativeCountryName,
+    entry.countryIso,
+    entry.callingCode,
+    ...entry.aliases,
+  ].some((value) => value.toLocaleLowerCase().includes(normalized)));
+}
+
+export function normalizeInternationalPhone(countryIso: string, input: string): MobilePhonePairingInput {
+  const country = getMobileCountry(countryIso);
+  if (country.countryIso !== countryIso.toUpperCase()) throw new Error(translateCurrent("phoneCountryUnsupported"));
+  try {
+    return normalizeMobilePhone(country, input);
+  } catch (error) {
+    if (error instanceof MobilePhoneNormalizationError) {
+      throw new Error(translateCurrent("internationalPhoneInvalid"));
+    }
+    throw error;
+  }
+}
+
+/** Backward-compatible export for older imports. */
 export function normalizeTurkishPhone(input: string): string {
-  const raw = input.trim();
-  const digits = raw.replace(/\D/g, "");
-  let normalized = "";
-
-  if (raw.startsWith("+")) {
-    normalized = `+${digits}`;
-  } else if (digits.startsWith("0090") && digits.length === 14) {
-    normalized = `+${digits.slice(2)}`;
-  } else if (digits.startsWith("90") && digits.length === 12) {
-    normalized = `+${digits}`;
-  } else if (digits.startsWith("0") && digits.length === 11) {
-    normalized = `+90${digits.slice(1)}`;
-  } else if (digits.startsWith("5") && digits.length === 10) {
-    normalized = `+90${digits}`;
-  }
-
-  if (!TURKEY_MOBILE_E164_REGEX.test(normalized)) {
-    throw new Error(translateCurrent("turkeyMobilePhoneInvalid"));
-  }
-
-  return normalized;
+  return normalizeInternationalPhone("TR", input).e164;
 }

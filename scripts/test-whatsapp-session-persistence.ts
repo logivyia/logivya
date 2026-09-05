@@ -60,6 +60,8 @@ assert(provider.includes("STABLE WHATSAPP/MESSAGE CORE"), "Baileys provider must
 for (const marker of [
   "backupWhatsAppSessionToDatabase(accountId, \"creds.update\")",
   "backupWhatsAppSessionToDatabase(accountId, \"connection.open\")",
+  '"connection.open.pairing.registered"',
+  '"connection.open.pairing.registered_watchdog"',
   "backupWhatsAppSessionToDatabase(input.accountId, \"message.sent\")",
   "backupWhatsAppSessionToDatabase(input.accountId, \"message.deleted\")",
   "restoreWhatsAppSessionFromDatabase(accountId)",
@@ -86,11 +88,11 @@ for (const marker of [
   "WA_PAIRING_CREDS_RECEIVED",
   "WHATSAPP_PAIRING_RETRY_SCHEDULED",
   "whatsapp.pairing.code_request_retry_scheduled",
-  "canRefreshSamePairingCodeAfterClose",
-  "same_code_refresh_skipped_rejected_auth",
+  "WA_PAIRING_VISIBLE_CODE_INVALIDATED",
+  "WA_PAIRING_VISIBLE_CODE_RETRY_REQUIRED",
+  "whatsapp.pairing.active_code_reused",
+  "whatsapp.qr.stale_token_rejected",
   "code === 401",
-  "preserveUnregisteredPairingAuth",
-  "whatsapp.pairing.unregistered_auth_preserved",
   "PAIRING_CODE_TTL_MS",
   "PHONE_PAIRING_QR_REF_TIMEOUT_MS",
   "qrTimeout: PHONE_PAIRING_QR_REF_TIMEOUT_MS",
@@ -108,13 +110,25 @@ for (const marker of [
   "companionPlatformDisplay",
   "countryCode: WHATSAPP_PAIRING_COUNTRY_CODE",
   "browser: WHATSAPP_BROWSER",
-  "whatsapp.pairing.same_code_refreshed",
   "WA_ACCOUNT_CONNECTED",
   "WA_GROUP_SYNC_START",
   "WA_GROUP_SYNC_SUCCESS",
+  "WA_SESSION_SNAPSHOT_CONNECTION_OPEN_RETRY_SCHEDULED",
 ]) {
   assert(provider.includes(marker), `Baileys provider must emit structured marker: ${marker}`);
 }
+assert(provider.includes('backupWhatsAppSessionToDatabase(accountId, "connection.open")'), "The first connected session must be persisted immediately.");
+
+for (const marker of [
+  "WA_SESSION_SNAPSHOT_REQUIRED_IMMEDIATE",
+  "session_key_material_missing",
+  "snapshotHasSessionKeyMaterial(snapshot)",
+]) {
+  assert(sessionManager.includes(marker), `Session persistence must enforce durable connected credentials: ${marker}`);
+}
+assert(!/\^\(creds\\\.update\|connection\\\.open\|/.test(sessionManager), "connection.open must never be throttled as a high-frequency snapshot.");
+assert(provider.includes("PAIRING_CODE_SOCKET_CLOSED_ERROR"), "A visible phone pairing code must require an explicit retry after its owning socket closes.");
+assert(!provider.includes("preserveUnregisteredPairingAuth"), "A closed pairing socket must not preserve partial auth for a competing socket.");
 
 const pairingFlow = read("src/server/whatsapp/pairing-code-flow.ts");
 for (const marker of [
@@ -127,10 +141,8 @@ for (const marker of [
   "PAIRING_CODE_STABILITY_MS",
   "PAIRING_IN_FLIGHT_MS",
   "hasExpiringPairingCode",
-  "WA_PAIRING_CODE_REUSED",
   "WA_PAIRING_IN_FLIGHT_REUSED",
-  "pairing-refresh",
-  "refreshRequestedAt",
+  "WA_PAIRING_VISIBLE_CODE_REUSED_WITHOUT_SOCKET_RESET",
 ]) {
   assert(pairingFlow.includes(marker), `Pairing code flow is missing idempotency marker: ${marker}`);
 }
@@ -166,6 +178,7 @@ assert(worker.includes("restoreWhatsAppSessionFromDatabase(account.id)"), "Worke
 assert(worker.includes("hasRestorableWhatsAppCredentials(accountId)"), "Worker failures must distinguish restorable sessions from true auth loss.");
 assert(worker.includes("whatsapp.session.recovery_skipped_no_restorable_credentials"), "Worker must not silently convert read-side missing credentials into auth-required state.");
 assert(worker.includes("sessionRecoveryRunning"), "Worker must not overlap periodic session recovery sweeps.");
+assert(worker.includes("whatsapp.session.recovery_sweep_paused_active_pairing"), "Worker recovery sweeps must pause while QR or phone pairing is active.");
 assert(worker.includes("WHATSAPP_SESSION_RECOVERY_CONCURRENCY"), "Worker session recovery must use bounded concurrency.");
 assert(worker.includes("whatsapp.session.recovery_skipped_live_socket"), "Worker session recovery must not restart an already healthy socket.");
 assert(worker.includes("credentialsVerified: true, sessionRestored: true"), "Worker recovery must not re-read the same database snapshot during provider reconnect.");
@@ -173,7 +186,7 @@ assert(worker.includes("whatsapp.worker.reconnect.skipped_active_pairing"), "Wor
 assert(worker.includes("whatsapp.worker.reconnect.skipped_stale_connected_job"), "Worker must skip reconnect jobs that were queued before a newer successful connection state.");
 assert(worker.includes("whatsapp.worker.pairing_retry_scheduled"), "Worker must not mark recoverable phone pairing socket closes as failed.");
 assert(worker.includes("return await provider.requestPairingCode"), "Worker must await pairing provider calls so retry-scheduled errors are caught instead of retried by BullMQ.");
-assert(worker.includes('action === "pairing-refresh"') && worker.includes("return await provider.refreshPairingCode"), "Worker must re-register reused phone pairing codes on a live socket before API returns them.");
+assert(worker.includes('action === "pairing-refresh"') && worker.includes("return await provider.refreshPairingCode"), "Worker must retain guarded compatibility for any already-queued pairing refresh jobs.");
 
 const restoreHelper = read("src/server/whatsapp/session-restore.ts");
 assert(restoreHelper.includes("STABLE WHATSAPP/MESSAGE CORE"), "On-demand restore helper must carry the stable-core warning.");

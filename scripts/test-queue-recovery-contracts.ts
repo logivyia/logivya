@@ -11,6 +11,7 @@ const schema = read("prisma/schema.prisma");
 const recovery = read("src/server/queues/recovery.ts");
 const worker = read("src/worker/index.ts");
 const pipeline = read("src/server/messages/delivery-pipeline.ts");
+const repair = read("scripts/repair-stuck-message-delivery.ts");
 
 for (const marker of ["nextRunAt", "recurringOccurrenceKey", "@@index([scheduleType, status, nextRunAt])"]) {
   assert(schema.includes(marker), `Durable queue schema marker missing: ${marker}`);
@@ -33,5 +34,9 @@ assert(worker.includes("reconcileDurableMessageQueues"), "Worker startup must re
 assert(worker.includes('if (!claimed.count) {'), "Delete processing must stop when another job owns the durable claim.");
 assert(pipeline.includes("nextRunAt: firstRecurringRunAt"), "Recurring campaign creation must persist its first run time.");
 assert(pipeline.includes("runAt: nextRunAt.toISOString()"), "Recurring jobs must carry their exact durable run time.");
+assert(pipeline.includes("assertMessageDeliveryQueueReady"), "Message creation must fail closed when no message worker can consume the queue.");
+assert(repair.includes("--apply"), "Stuck message repair must default to dry-run and require --apply for mutations.");
+assert(repair.includes("MESSAGE_QUEUE_NO_CONSUMER"), "Stuck message repair must mark unrecoverable queue-consumer gaps explicitly.");
+assert(repair.includes("repair-recipient-${recipient.id}"), "Stuck message repair must use deterministic job ids.");
 
 console.log("Durable queue recovery contracts passed.");

@@ -29,6 +29,7 @@ const categoryKeys: Record<NotificationCategory, TranslationKey> = {
   INVITATION: "notificationCategoryInvitation",
   WHATSAPP: "notificationCategoryWhatsapp",
   MESSAGE: "notificationCategoryMessage",
+  MARKETPLACE: "notificationCategoryMarketplace",
   SYSTEM: "notificationCategorySystem",
   MARKETING: "notificationCategoryMarketing",
   COMPLIANCE: "notificationCategoryCompliance",

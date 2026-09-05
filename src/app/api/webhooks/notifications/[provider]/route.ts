@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { recordNotificationProviderWebhook } from "@/server/notifications/engine";
 import { HmacWebhookSigner } from "@/server/security/webhook-signing";
+import { readBoundedRequestText, RequestBodyError } from "@/server/security/request-body";
 
 const schema = z.object({
   eventId: z.string().min(1).max(240),
@@ -15,7 +16,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
   const normalizedProvider = provider.toLowerCase().replace(/[^a-z0-9_-]/g, "");
   const secret = process.env[`NOTIFICATION_WEBHOOK_SECRET_${normalizedProvider.toUpperCase().replace(/-/g, "_")}`];
   if (!secret) return NextResponse.json({ error: "NOTIFICATION_WEBHOOK_NOT_CONFIGURED" }, { status: 503 });
-  const rawBody = await request.text();
+  let rawBody: string;
+  try { rawBody = await readBoundedRequestText(request, 1_000_000); }
+  catch (error) {
+    return NextResponse.json({ error: "NOTIFICATION_WEBHOOK_PAYLOAD_INVALID" }, { status: error instanceof RequestBodyError ? error.status : 400 });
+  }
   const signature = request.headers.get("x-logivya-signature") || "";
   const signatureValid = await new HmacWebhookSigner().verify(rawBody, signature, secret);
   if (!signatureValid) return NextResponse.json({ error: "NOTIFICATION_WEBHOOK_SIGNATURE_INVALID" }, { status: 401 });

@@ -114,6 +114,15 @@ export function evaluateWorkerHeartbeat(
   return "HEALTHY";
 }
 
+export function evaluateDeploymentReleaseEvidence(
+  apiRelease: string | null | undefined,
+  workerRelease: string | null | undefined,
+): HealthState {
+  // Web and background workers are deployed independently. Different release
+  // labels are therefore evidence of component-level rollout, not an outage.
+  return apiRelease?.trim() && workerRelease?.trim() ? "HEALTHY" : "UNKNOWN";
+}
+
 export function evaluateQueueBacklog(input: {
   waiting: number;
   active: number;

@@ -124,22 +124,35 @@ export async function readDatabaseBackupMetadata(connectionString) {
 export async function openDatabaseBackupSnapshot(connectionString) {
   const { Client } = await import("pg");
   const client = new Client({ connectionString });
+  let backgroundConnectionError = null;
+  client.on("error", (error) => {
+    backgroundConnectionError ||= error;
+  });
   await client.connect();
   await client.query("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
   try {
+    // Exported snapshots must stay open for the full pg_dump. Large production
+    // databases can exceed provider defaults for idle read-only transactions.
+    await client.query("SET LOCAL idle_in_transaction_session_timeout = 0");
     const snapshotId = (await client.query("SELECT pg_export_snapshot() AS snapshot")).rows[0].snapshot;
     const source = await databaseMetadataFromClient(client, connectionString);
+    const keepAliveTimer = setInterval(() => {
+      void client.query("SELECT 1").catch(() => undefined);
+    }, 15_000);
+    keepAliveTimer.unref?.();
     return {
       snapshotId,
       source,
       close: async () => {
+        clearInterval(keepAliveTimer);
         await client.query("ROLLBACK").catch(() => undefined);
-        await client.end();
+        await client.end().catch(() => undefined);
+        return backgroundConnectionError;
       },
     };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
-    await client.end();
+    await client.end().catch(() => undefined);
     throw error;
   }
 }
@@ -247,7 +260,9 @@ async function spawnPgRestoreList() {
 }
 
 function isClosedToolInputError(error) {
-  return error?.code === "EPIPE" || error?.code === "ERR_STREAM_DESTROYED";
+  return error?.code === "EPIPE"
+    || error?.code === "EOF"
+    || error?.code === "ERR_STREAM_DESTROYED";
 }
 
 function waitForToolInput(childInput) {
@@ -508,7 +523,12 @@ export async function decryptToRestoreProcess(archivePath, manifest, target) {
   child.stderr.on("data", (chunk) => stderr.push(Buffer.from(chunk)));
   child.stdout.resume();
   try {
-    await Promise.all([pipeline(createReadStream(archivePath), decipher, child.stdin), childExit(child, stderr)]);
+    const [decryptResult, restoreResult] = await Promise.allSettled([
+      fullyDecryptIntoToolInput(archivePath, decipher, child.stdin),
+      childExit(child, stderr),
+    ]);
+    if (decryptResult.status === "rejected") throw decryptResult.reason;
+    if (restoreResult.status === "rejected") throw restoreResult.reason;
   } finally {
     await cleanup();
   }

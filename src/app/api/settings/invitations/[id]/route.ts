@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireApiSession } from "@/server/auth/session";
-import { revokeCompanyInvitation } from "@/server/team/company-invitations";
+import { companyInvitationErrorStatus, companyInvitationPublicErrorCode, revokeCompanyInvitation } from "@/server/team/company-invitations";
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -14,7 +14,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     }, id);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "errors.generic";
-    return NextResponse.json({ error: message }, { status: message === "UNAUTHORIZED" ? 401 : message === "NOT_FOUND" ? 404 : 403 });
+    const code = companyInvitationPublicErrorCode(error);
+    return NextResponse.json({ error: code }, { status: companyInvitationErrorStatus(code) });
   }
 }

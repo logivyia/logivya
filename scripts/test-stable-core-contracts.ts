@@ -26,6 +26,7 @@ function assertNotIncludes(file: string, value: string) {
 const stableCoreFiles = [
   "src/lib/whatsapp/session-manager.ts",
   "src/server/whatsapp/session-restore.ts",
+  "src/server/whatsapp/account-scope.ts",
   "src/server/whatsapp/account-lock.ts",
   "src/server/whatsapp/sendable-groups.ts",
   "src/server/messages/delivery-pipeline.ts",
@@ -87,6 +88,38 @@ assertIncludes("src/server/whatsapp/session-restore.ts", "status: AccountStatus.
 assertNotIncludes("src/server/whatsapp/session-restore.ts", "WA_AUTH_REQUIRED_CONFIRMED");
 assertNotIncludes("src/server/whatsapp/session-restore.ts", 'lastError: "WHATSAPP_CREDENTIALS_MISSING"');
 assert(restoreHelper.includes("isFatalWhatsAppSessionError"), "Restore helper must preserve explicit fatal auth checks.");
+
+const accountScope = read("src/server/whatsapp/account-scope.ts");
+for (const marker of [
+  "RESTORABLE_STATUSES",
+  "AccountStatus.FAILED",
+  "AccountStatus.ERROR",
+  "hasRestorableWhatsAppCredentials",
+  "requestWhatsAppSessionRestoreIfNeeded",
+  "listRecoverableWhatsAppAccounts",
+]) {
+  assert(accountScope.includes(marker), `Cross-device account recovery is missing marker: ${marker}`);
+}
+assert(
+  accountScope.includes("const accounts = await listRecoverableWhatsAppAccounts"),
+  "Current account selection must skip non-restorable accounts instead of letting them shadow a valid server session.",
+);
+
+const mobileGroupsRoute = read("src/app/api/mobile/groups/route.ts");
+assert(
+  mobileGroupsRoute.includes("listRecoverableWhatsAppAccounts"),
+  "Mobile groups must remain available while a server-backed WhatsApp session is being restored.",
+);
+
+const messagingScreen = read("apps/mobile/src/screens/app/messaging-screen.tsx");
+assert(
+  messagingScreen.includes("Promise.allSettled"),
+  "The iOS Send Message screen must isolate endpoint failures instead of failing the entire screen.",
+);
+assert(
+  messagingScreen.includes("if (error && !groups.length && !categories.length)"),
+  "The iOS Send Message screen must show a blocking error only when all audience sources are unavailable.",
+);
 
 for (const route of ["src/app/api/auth/logout/route.ts", "src/app/api/mobile/auth/logout/route.ts"]) {
   const source = read(route);

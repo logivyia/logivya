@@ -22,7 +22,10 @@ const fileEnv = {
 const databaseUrl = fileEnv.DATABASE_URL || process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is missing.");
 
-const phone = process.argv[2] || "905520048107";
+const phone = process.argv[2]?.replace(/\D/g, "");
+if (!phone || phone.length < 7) {
+  throw new Error("A phone number argument is required (for example: npx tsx scripts/inspect-whatsapp-live.ts 90XXXXXXXXXX).");
+}
 
 async function rows<T extends QueryResultRow>(client: Client, sql: string, params: unknown[] = []) {
   const result = await client.query<T>(sql, params);

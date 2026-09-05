@@ -8,10 +8,12 @@ import { TextField } from "@/components/text-field";
 import { colors } from "@/theme/colors";
 import { useTranslation } from "@/i18n/use-translation";
 import { useTheme } from "@/theme/theme-provider";
+import { useAuthStore } from "@/auth/auth-store";
 
 export function AccountDeletionScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
+  const isOwner = useAuthStore((state) => state.user?.role === "OWNER");
   const [confirmation, setConfirmation] = useState("");
   const [password, setPassword] = useState("");
   const [scope, setScope] = useState<"USER" | "COMPANY">("USER");
@@ -31,7 +33,7 @@ export function AccountDeletionScreen() {
     if (!canSubmit) return;
     setLoading(true);
     try {
-      await requestAccountDeletion({ scope, confirmation: scope === "COMPANY" ? "DELETE MY LOGIVYA COMPANY" : "DELETE MY LOGIVYA ACCOUNT", password });
+      await requestAccountDeletion({ scope, confirmation: scope === "COMPANY" ? "DELETE MY LOGIVYA WORKSPACE" : "DELETE MY LOGIVYA ACCOUNT", password });
       setConfirmation("");
       setPassword("");
       await load();
@@ -62,8 +64,12 @@ export function AccountDeletionScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={[styles.warningCard, { backgroundColor: theme.card, borderColor: colors.danger }]}>
           <Text style={[styles.title, { color: theme.text }]}>{t("deleteAccount")}</Text>
-          <Text style={[styles.description, { color: theme.muted }]}>{t("accountDeleteFullWarning")}</Text>
-          <View style={styles.scopeRow}><ScopeButton label={t("userAccountScope")} active={scope === "USER"} onPress={() => { setScope("USER"); setConfirmation(""); }}/><ScopeButton label={t("companyAccountScope")} active={scope === "COMPANY"} onPress={() => { setScope("COMPANY"); setConfirmation(""); }}/></View>
+          <Text style={[styles.description, { color: theme.muted }]}>
+            {t(isOwner ? "accountDeleteFullWarning" : "sharedMembershipDeleteScope")}
+          </Text>
+          {isOwner ? (
+            <View style={styles.scopeRow}><ScopeButton label={t("userAccountScope")} active={scope === "USER"} onPress={() => { setScope("USER"); setConfirmation(""); }}/><ScopeButton label={t("companyAccountScope")} active={scope === "COMPANY"} onPress={() => { setScope("COMPANY"); setConfirmation(""); }}/></View>
+          ) : null}
           <Text style={[styles.confirmationLabel, { color: theme.text }]}>{t("confirmationPrompt")}</Text>
           <Text style={[styles.confirmationText, { color: colors.danger }]}>{confirmationText}</Text>
           <TextField label={t("confirmationTextLabel")} value={confirmation} onChangeText={setConfirmation} autoCapitalize="characters" />

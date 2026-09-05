@@ -29,7 +29,9 @@ const statusHistory = [
   { status: "QUEUED", at: startedAt.toISOString() },
   { status: "RUNNING", at: new Date().toISOString() },
 ];
-const connectionString = requiredEnv("DATABASE_URL");
+const connectionString = process.env.BACKUP_DATABASE_URL?.trim()
+  || process.env.DATABASE_URL_UNPOOLED?.trim()
+  || requiredEnv("DATABASE_URL");
 const snapshot = await openDatabaseBackupSnapshot(connectionString);
 
 let manifest;

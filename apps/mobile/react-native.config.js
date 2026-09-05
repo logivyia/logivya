@@ -6,6 +6,7 @@ const disabledNativeDependencies = [
   "@react-native-community/netinfo",
   "@react-native-firebase/analytics",
   "@react-native-firebase/app",
+  "@react-native-firebase/perf",
   "@sentry/react-native",
   "expo",
   "expo-application",
@@ -27,17 +28,27 @@ const disabledNativeDependencies = [
   "react-native-worklets"
 ];
 
-module.exports = nativeDiagnosticMode
-  ? {
-      dependencies: Object.fromEntries(
-        disabledNativeDependencies.map((name) => [
-          name,
-          {
-            platforms: {
-              android: null
-            }
+const androidDiagnosticDependencies = nativeDiagnosticMode
+  ? Object.fromEntries(
+      disabledNativeDependencies.map((name) => [
+        name,
+        {
+          platforms: {
+            android: null
           }
-        ])
-      )
-    }
+        }
+      ])
+    )
   : {};
+
+module.exports = {
+  dependencies: {
+    ...androidDiagnosticDependencies,
+    "@react-native-firebase/perf": {
+      platforms: {
+        ...(androidDiagnosticDependencies["@react-native-firebase/perf"]?.platforms || {}),
+        ios: null
+      }
+    }
+  }
+};

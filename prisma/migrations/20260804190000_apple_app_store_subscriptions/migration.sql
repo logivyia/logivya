@@ -1,0 +1,7 @@
+ALTER TYPE "BillingProvider" ADD VALUE IF NOT EXISTS 'APPLE_APP_STORE';
+ALTER TYPE "PaymentMethod" ADD VALUE IF NOT EXISTS 'APPLE_IN_APP_PURCHASE';
+
+ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "appleAppAccountToken" TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "Company_appleAppAccountToken_key"
+ON "Company"("appleAppAccountToken");

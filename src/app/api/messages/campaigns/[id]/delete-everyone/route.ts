@@ -10,7 +10,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const { id } = await params;
     const { company, membership, user } = await requireApiSession();
-    requirePermission(membership.role, "delete_campaigns");
+    // Ownership is enforced by requestCampaignDeleteForEveryone. This lets an
+    // OPERATOR revoke their own send without granting cross-user deletion.
+    requirePermission(membership.role, "send_messages");
     await enforceOperationRateLimit({
       scope: "message.delete-everyone",
       subject: `${company.id}:${user.id}`,

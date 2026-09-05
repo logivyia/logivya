@@ -5,8 +5,25 @@ const config = getDefaultConfig(__dirname);
 const defaultResolveRequest = config.resolver.resolveRequest;
 const sourceRoot = path.resolve(__dirname, "src");
 const workspaceRoot = path.resolve(__dirname, "../..");
+const configuredMaxWorkers = Number(process.env.LOGIVYA_METRO_MAX_WORKERS);
+
+if (Number.isInteger(configuredMaxWorkers) && configuredMaxWorkers > 0) {
+  config.maxWorkers = configuredMaxWorkers;
+}
 
 config.watchFolders = [...new Set([...(config.watchFolders || []), workspaceRoot])];
+
+// The monorepo watch root is needed for shared source, not generated web builds
+// or archived release binaries. Crawling these causes avoidable I/O and races
+// with Next's output cleanup when mobile and web checks run together.
+const existingBlockList = config.resolver.blockList;
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+config.resolver.blockList = [
+  ...(Array.isArray(existingBlockList) ? existingBlockList : existingBlockList ? [existingBlockList] : []),
+  ...[".next", "artifacts", ".local-android"].map(
+    (directory) => new RegExp(`^${escapeRegExp(path.join(workspaceRoot, directory))}(?:[\\\\/]|$)`),
+  ),
+];
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (platform === "web" && moduleName === "zustand/middleware") {

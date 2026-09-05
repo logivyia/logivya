@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeCorrelationId } from "@logivya/logging";
-import { SESSION_COOKIE } from "@/server/auth/session";
-
-const authPaths = ["/login", "/register", "/forgot-password", "/reset-password"];
+import { SESSION_COOKIE } from "@/server/auth/session-cookie";
+import { assertWebMutationOrigin } from "@/server/security/request-origin";
 
 export function proxy(request: NextRequest) {
   const generatedRequestId = crypto.randomUUID();
@@ -18,7 +17,6 @@ export function proxy(request: NextRequest) {
   };
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
   const hasBearerToken = /^Bearer\s+\S+/i.test(request.headers.get("authorization") || "");
-  const isAuthPath = authPaths.some((path) => request.nextUrl.pathname.startsWith(path));
   const isProtected = ["/dashboard", "/accounts", "/groups", "/categories", "/send-message", "/messages", "/message-history", "/settings", "/support", "/activity", "/onboarding", "/admin"].some((path) => request.nextUrl.pathname.startsWith(path));
   if (process.env.MAINTENANCE_MODE === "true" && !request.nextUrl.pathname.startsWith("/admin") && isProtected) {
     return withIds(NextResponse.json({ error: "MAINTENANCE_MODE" }, { status: 503 }));
@@ -28,17 +26,16 @@ export function proxy(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith("/api/admin/")) {
     if (!hasSession && !hasBearerToken) return withIds(NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 }));
   }
-  if (isApiRequest && hasSession && !hasBearerToken && ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
-    const origin = request.headers.get("origin");
-    const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
-    let originHost: string | undefined;
-    try { originHost = origin ? new URL(origin).host : undefined; } catch { originHost = undefined; }
-    if (!originHost || !host || originHost !== host) return withIds(NextResponse.json({ error: "CSRF_REJECTED" }, { status: 403 }));
+  const isWebLogin = request.nextUrl.pathname === "/api/auth/login";
+  if (isApiRequest && (hasSession || isWebLogin)) {
+    // An Authorization header is not proof of bearer authentication. Web routes
+    // may still authenticate the cookie, so it cannot disable this boundary.
+    try { assertWebMutationOrigin(request); }
+    catch { return withIds(NextResponse.json({ error: "CSRF_REJECTED" }, { status: 403 })); }
   }
-  if (hasSession && isAuthPath) return withIds(NextResponse.redirect(new URL("/dashboard", request.url)));
   return withIds(NextResponse.next({ request: { headers: requestHeaders } }));
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2)$).*)"],
+  matcher: ["/api/:path*", "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2)$).*)"],
 };

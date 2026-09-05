@@ -73,7 +73,7 @@ assert(mobileAuth.includes("AUTH_REFRESH_TOKEN_REPLAY_DETECTED"));
 assert(mobileAuth.includes("pg_advisory_xact_lock"));
 assert(mobileAuth.includes("deviceFingerprint: replay.session.deviceId"));
 assert(sessions.includes("where: { userId, revokedAt: null"), "Session list and revocation must be scoped to the authenticated user.");
-assert(proxy.includes("isApiRequest && hasSession && !hasBearerToken"), "Cookie-authenticated API mutations must enforce same-origin CSRF checks.");
+assert(proxy.includes("isApiRequest && (hasSession || isWebLogin)") && proxy.includes("assertWebMutationOrigin(request)"), "Cookie-authenticated API mutations and login must enforce trusted-origin CSRF checks even with an Authorization header.");
 assert(vercelIgnore.includes("/sessions"), "Only the repository-root session snapshot directory may be excluded from Vercel uploads.");
 assert(!/^sessions$/m.test(vercelIgnore), "Vercel uploads must not exclude API session routes.");
 assertPermissionNotGranted(manifest, "android.permission.READ_EXTERNAL_STORAGE");

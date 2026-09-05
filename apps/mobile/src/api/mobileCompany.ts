@@ -5,16 +5,9 @@ export type MobileCompanyProfile = {
   name: string;
   email: string | null;
   phone: string | null;
-  address: string | null;
-  taxOffice: string | null;
-  taxNumber: string | null;
-  city: string | null;
-  district: string | null;
-  country: string | null;
-  postalCode: string | null;
 };
 
-export type UpdateMobileCompanyProfileInput = Omit<MobileCompanyProfile, "id">;
+export type UpdateMobileCompanyProfileInput = Pick<MobileCompanyProfile, "name" | "phone">;
 
 export function getMobileCompanyProfile() {
   return apiClient.request<{ company: MobileCompanyProfile }>("/api/mobile/company/profile");

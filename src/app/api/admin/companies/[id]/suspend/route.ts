@@ -1,3 +1,76 @@
-import { NextResponse } from "next/server";import { z } from "zod";import { requireCriticalAdminAction } from "@/server/auth/platform-admin";import { prisma } from "@/server/db";import { writeAuditLog } from "@/server/security/audit";
-const schema=z.object({reason:z.string().min(5).max(500)});
-export async function POST(request:Request,{params}:{params:Promise<{id:string}>}){try{const body=schema.parse(await request.json()),{user}=await requireCriticalAdminAction(request,"companies:manage",body.reason),{id}=await params;const company=await prisma.company.update({where:{id},data:{securityStatus:"DISABLED",campaignsPausedAt:new Date()}});await prisma.userSession.updateMany({where:{companyId:id,revokedAt:null},data:{revokedAt:new Date()}});await writeAuditLog(request,{companyId:id,userId:user.id,action:"company.admin_suspended",entityType:"Company",entityId:id,after:{reason:body.reason}});return NextResponse.json({company})}catch(error){return NextResponse.json({error:error instanceof Error?error.message:"FORBIDDEN"},{status:403})}}
+import { NextResponse } from "next/server";
+import { z } from "zod";
+
+import { requireCriticalAdminAction } from "@/server/auth/platform-admin";
+import { prisma } from "@/server/db";
+import { requestId, safeAdminError } from "@/server/security/admin-request";
+import { writeAuditLog } from "@/server/security/audit";
+
+const schema = z.object({ reason: z.string().trim().min(5).max(500) });
+
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const id = requestId(request);
+  try {
+    const parsed = schema.safeParse(await request.json());
+    if (!parsed.success)
+      return NextResponse.json(
+        { error: "VALIDATION_ERROR", requestId: id },
+        { status: 400 },
+      );
+    const { user } = await requireCriticalAdminAction(
+      request,
+      "admin.companies.update",
+      parsed.data.reason,
+    );
+    const { id: companyId } = await params;
+    const existing = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { id: true, securityStatus: true, campaignsPausedAt: true },
+    });
+    if (!existing)
+      return NextResponse.json(
+        { error: "NOT_FOUND", requestId: id },
+        { status: 404 },
+      );
+    if (existing.securityStatus === "DISABLED")
+      return NextResponse.json({ ok: true, idempotent: true, requestId: id });
+
+    const company = await prisma.$transaction(async (tx) => {
+      const changed = await tx.company.update({
+        where: { id: companyId },
+        data: { securityStatus: "DISABLED", campaignsPausedAt: new Date() },
+        select: { id: true, securityStatus: true, campaignsPausedAt: true },
+      });
+      await tx.userSession.updateMany({
+        where: { companyId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      return changed;
+    });
+    await writeAuditLog(request, {
+      companyId,
+      userId: user.id,
+      actorType: "PLATFORM_ADMIN",
+      action: "company.admin_suspended",
+      entityType: "Company",
+      entityId: companyId,
+      reason: parsed.data.reason,
+      before: {
+        securityStatus: existing.securityStatus,
+        campaignsPausedAt: existing.campaignsPausedAt,
+      },
+      after: {
+        securityStatus: company.securityStatus,
+        campaignsPausedAt: company.campaignsPausedAt,
+      },
+      requestId: id,
+    });
+    return NextResponse.json({ company, requestId: id });
+  } catch (error) {
+    const safe = safeAdminError(error, id);
+    return NextResponse.json(safe.body, { status: safe.status });
+  }
+}

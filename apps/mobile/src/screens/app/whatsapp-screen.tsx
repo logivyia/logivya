@@ -1,10 +1,13 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import type { MobileWhatsAppAccount } from "@/api/mobileWhatsApp";
+import { getMobileContacts, syncMobileContacts } from "@/api/mobileContacts";
+import { syncCurrentMobileGroups } from "@/api/mobileGroups";
+import { getMobileWhatsAppAccountStatus, type MobileWhatsAppAccount } from "@/api/mobileWhatsApp";
 import { useWhatsAppStore } from "@/features/whatsapp/whatsappStore";
 import { mapWhatsAppStatus, type WhatsAppStatusTone } from "@/features/whatsapp/whatsappStatus";
 import { Badge, IconBadge, PageHeader, SectionTitle, StatCard, SurfaceCard } from "@/components/ui";
@@ -16,9 +19,18 @@ import { Screen } from "@/components/screen";
 import { useTranslation } from "@/i18n/use-translation";
 import { colors } from "@/theme/colors";
 import { useTheme } from "@/theme/theme-provider";
-import type { WhatsAppStackParamList } from "@/types/navigation";
+import type { AppTabParamList, WhatsAppStackParamList } from "@/types/navigation";
 
 type WhatsAppNavigation = NativeStackNavigationProp<WhatsAppStackParamList>;
+type SyncResource = "groups" | "contacts";
+
+const SYNC_POLL_MS = 1_500;
+const GROUP_SYNC_POLL_ATTEMPTS = 12;
+const CONTACT_SYNC_POLL_ATTEMPTS = 20;
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
 function badgeTone(tone: WhatsAppStatusTone) {
   if (tone === "success") return "success" as const;
@@ -27,16 +39,17 @@ function badgeTone(tone: WhatsAppStatusTone) {
   return "default" as const;
 }
 
-function AccountAction({ label, icon, onPress, danger = false, loading = false }: { label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void; danger?: boolean; loading?: boolean }) {
+function AccountAction({ label, icon, onPress, danger = false, loading = false, disabled = false }: { label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void; danger?: boolean; loading?: boolean; disabled?: boolean }) {
   const theme = useTheme();
+  const unavailable = loading || disabled;
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={loading}
+      disabled={unavailable}
       onPress={onPress}
       style={({ pressed }) => [
         styles.actionButton,
-        { borderColor: danger ? colors.danger : theme.border, opacity: pressed || loading ? 0.72 : 1 }
+        { borderColor: danger ? colors.danger : theme.border, opacity: pressed || unavailable ? 0.62 : 1 }
       ]}
     >
       <Ionicons name={icon} size={17} color={danger ? colors.danger : theme.text} />
@@ -45,13 +58,38 @@ function AccountAction({ label, icon, onPress, danger = false, loading = false }
   );
 }
 
+function WorkspaceAction({ active = false, icon, label, onPress }: { active?: boolean; icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.workspaceAction,
+        {
+          backgroundColor: active ? theme.primary : theme.card,
+          borderColor: active ? theme.primary : theme.border,
+          opacity: pressed ? 0.78 : 1,
+        },
+      ]}
+    >
+      <Ionicons name={icon} size={23} color={active ? theme.primaryText : theme.text} />
+      <Text style={[styles.workspaceActionText, { color: active ? theme.primaryText : theme.text }]} numberOfLines={2}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function AccountCard({ account }: { account: MobileWhatsAppAccount }) {
   const theme = useTheme();
   const { t } = useTranslation();
-  const { reconnect, archive, remove, actionLoadingId } = useWhatsAppStore();
+  const { reconnect, archive, remove, refresh, actionLoadingId } = useWhatsAppStore();
+  const [syncingResource, setSyncingResource] = useState<SyncResource | null>(null);
   const status = mapWhatsAppStatus(account.status, account.lastError);
   const phoneNumber = account.phoneNumber || t("unknown");
   const loading = actionLoadingId === account.id;
+  const connected = account.status === "CONNECTED";
+  const actionUnavailable = Boolean(actionLoadingId) || syncingResource !== null;
   const connectionTone = badgeTone(status.tone);
 
   const confirmAction = (title: string, message: string, action: () => Promise<void>) => {
@@ -59,6 +97,87 @@ function AccountCard({ account }: { account: MobileWhatsAppAccount }) {
       { text: t("cancel"), style: "cancel" },
       { text: t("confirm"), onPress: () => void action(), style: title === t("delete") ? "destructive" : "default" }
     ]);
+  };
+
+  const assertConnected = () => {
+    if (connected) return true;
+    Alert.alert(t("whatsappRefreshUnavailableTitle"), t("whatsappRefreshRequiresConnection"));
+    return false;
+  };
+
+  const handleRefreshGroups = async () => {
+    if (!assertConnected() || actionUnavailable) return;
+    setSyncingResource("groups");
+    try {
+      const previousSyncAt = account.lastGroupSyncAt ?? account.lastSyncedAt;
+      const requested = await syncCurrentMobileGroups(account.id);
+      let refreshedAccount: MobileWhatsAppAccount | null = null;
+      let completed = requested.completedAccountIds.includes(account.id);
+
+      for (let attempt = 0; !completed && attempt < GROUP_SYNC_POLL_ATTEMPTS; attempt += 1) {
+        await wait(SYNC_POLL_MS);
+        const response = await getMobileWhatsAppAccountStatus(account.id);
+        refreshedAccount = response.account;
+        const currentSyncAt = refreshedAccount.lastGroupSyncAt ?? refreshedAccount.lastSyncedAt;
+        completed = Boolean(currentSyncAt && currentSyncAt !== previousSyncAt);
+      }
+
+      await refresh();
+      const groupCount = refreshedAccount?.groupCount ?? requested.groupCount;
+      Alert.alert(
+        completed ? t("whatsappGroupsRefreshCompleteTitle") : t("whatsappRefreshQueuedTitle"),
+        completed
+          ? t("whatsappGroupsRefreshCompleteDescription", { count: groupCount })
+          : t("whatsappGroupsRefreshQueuedDescription")
+      );
+    } catch (error) {
+      Alert.alert(t("whatsappRefreshFailedTitle"), error instanceof Error ? error.message : t("whatsappGroupsRefreshFailed"));
+    } finally {
+      setSyncingResource(null);
+    }
+  };
+
+  const handleRefreshContacts = async () => {
+    if (!assertConnected() || actionUnavailable) return;
+    setSyncingResource("contacts");
+    try {
+      const requested = await syncMobileContacts(account.id);
+      let completed = false;
+      let partial = false;
+      let contactCount = account.contactCount;
+
+      for (let attempt = 0; attempt < CONTACT_SYNC_POLL_ATTEMPTS; attempt += 1) {
+        await wait(SYNC_POLL_MS);
+        const response = await getMobileContacts({ accountId: account.id, page: 1, limit: 10 });
+        contactCount = response.pageInfo.total;
+        if (response.syncRun?.id !== requested.syncRunId) continue;
+        if (response.syncRun.status === "FAILED" || response.syncRun.status === "CANCELLED") {
+          throw new Error(t("whatsappContactsRefreshFailed"));
+        }
+        if (response.syncRun.status === "COMPLETED") {
+          completed = true;
+          break;
+        }
+        if (response.syncRun.status === "PARTIAL") {
+          partial = true;
+          break;
+        }
+      }
+
+      await refresh();
+      Alert.alert(
+        completed ? t("whatsappContactsRefreshCompleteTitle") : t("whatsappRefreshQueuedTitle"),
+        completed
+          ? t("whatsappContactsRefreshCompleteDescription", { count: contactCount })
+          : partial
+            ? t("whatsappContactsRefreshPartialDescription", { count: contactCount })
+            : t("whatsappContactsRefreshQueuedDescription")
+      );
+    } catch (error) {
+      Alert.alert(t("whatsappRefreshFailedTitle"), error instanceof Error ? error.message : t("whatsappContactsRefreshFailed"));
+    } finally {
+      setSyncingResource(null);
+    }
   };
 
   return (
@@ -76,19 +195,42 @@ function AccountCard({ account }: { account: MobileWhatsAppAccount }) {
           <Text style={[styles.statValue, { color: theme.text }]}>{account.groupCount}</Text>
           <Text style={[styles.statLabel, { color: theme.muted }]}>{t("connectedGroups")}</Text>
         </View>
+        <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
+        <View style={styles.groupStatContent}>
+          <Text style={[styles.statValue, { color: theme.text }]}>{account.contactCount}</Text>
+          <Text style={[styles.statLabel, { color: theme.muted }]}>{t("connectedContacts")}</Text>
+        </View>
       </View>
 
+      <Text style={[styles.refreshHelp, { color: theme.muted }]}>{t("whatsappRefreshWithoutDisconnect")}</Text>
+
       <View style={styles.actions}>
+        <AccountAction
+          icon="people-outline"
+          label={syncingResource === "groups" ? t("refreshingGroups") : t("refreshGroups")}
+          loading={syncingResource === "groups"}
+          disabled={!connected || actionUnavailable}
+          onPress={() => void handleRefreshGroups()}
+        />
+        <AccountAction
+          icon="person-add-outline"
+          label={syncingResource === "contacts" ? t("refreshingContacts") : t("refreshContacts")}
+          loading={syncingResource === "contacts"}
+          disabled={!connected || actionUnavailable}
+          onPress={() => void handleRefreshContacts()}
+        />
         <AccountAction
           icon="refresh-outline"
           label={t("reconnect")}
           loading={loading}
+          disabled={actionUnavailable}
           onPress={() => confirmAction(t("reconnect"), t("reconnectConfirmation"), () => reconnect(account.id))}
         />
         <AccountAction
           icon="archive-outline"
           label={t("archive")}
           loading={loading}
+          disabled={actionUnavailable}
           onPress={() => confirmAction(t("archive"), t("archiveConfirmation"), () => archive(account.id))}
         />
         <AccountAction
@@ -96,6 +238,7 @@ function AccountCard({ account }: { account: MobileWhatsAppAccount }) {
           label={t("delete")}
           danger
           loading={loading}
+          disabled={actionUnavailable}
           onPress={() => confirmAction(t("delete"), t("deleteConfirmation"), () => remove(account.id))}
         />
       </View>
@@ -107,6 +250,7 @@ export function WhatsAppScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<WhatsAppNavigation>();
+  const tabNavigation = navigation.getParent<BottomTabNavigationProp<AppTabParamList>>();
   const { accounts, loading, refreshing, loadAttempted, error, load, refresh, resetConnection } = useWhatsAppStore();
   const connectedCount = accounts.filter((account) => account.status === "CONNECTED").length;
   const groupCount = accounts.reduce((total, account) => total + account.groupCount, 0);
@@ -145,6 +289,13 @@ export function WhatsAppScreen() {
           title={t("whatsappAccounts")}
           description={t("whatsappScreenSubtitle")}
         />
+
+        <View accessibilityRole="tablist" style={styles.workspaceGrid}>
+          <WorkspaceAction active icon="person-circle-outline" label={t("accountsTab")} onPress={() => undefined} />
+          <WorkspaceAction icon="people-outline" label={t("groups")} onPress={() => tabNavigation?.navigate("Groups", { initialPlatform: "WHATSAPP" })} />
+          <WorkspaceAction icon="send-outline" label={t("messagingTitle")} onPress={() => tabNavigation?.navigate("Messaging", { initialPlatform: "WHATSAPP" })} />
+          <WorkspaceAction icon="time-outline" label={t("historyTab")} onPress={() => tabNavigation?.navigate("MessageHistory", { initialPlatform: "WHATSAPP" })} />
+        </View>
 
         <View style={styles.grid}>
           <StatCard icon="checkmark-circle-outline" label={t("statusConnected")} value={connectedCount} tone="success" />
@@ -202,6 +353,28 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 12
   },
+  workspaceGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10
+  },
+  workspaceAction: {
+    alignItems: "center",
+    borderRadius: 16,
+    borderWidth: 1,
+    flexBasis: "47%",
+    flexDirection: "row",
+    flexGrow: 1,
+    gap: 9,
+    minHeight: 58,
+    paddingHorizontal: 14,
+    paddingVertical: 10
+  },
+  workspaceActionText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "900"
+  },
   connectionButtons: {
     gap: 12
   },
@@ -248,7 +421,12 @@ const styles = StyleSheet.create({
   },
   groupStatContent: {
     alignItems: "center",
+    flex: 1,
     gap: 4
+  },
+  statDivider: {
+    height: 46,
+    width: 1
   },
   statValue: {
     fontSize: 28,
@@ -257,6 +435,11 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 13,
     fontWeight: "800"
+  },
+  refreshHelp: {
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 19
   },
   actions: {
     flexDirection: "row",

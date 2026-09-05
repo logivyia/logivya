@@ -8,6 +8,7 @@ import { prisma } from "@/server/db";
 import { resolveCurrentWhatsAppAccount } from "@/server/whatsapp/account-scope";
 import { resolveOwnedWhatsAppContacts } from "@/server/whatsapp/contacts";
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
+import { uniqueSelectedGroupIds, uniqueGroupDeliveryTargets } from "@/server/messages/unique-targets";
 
 const schema = z.object({
   groupIds: z.array(z.string()).default([]),
@@ -32,8 +33,8 @@ export async function POST(request: Request) {
           select: { groupId: true },
         })
       : [];
-    const ids = [...new Set([...body.groupIds, ...links.map((item) => item.groupId)])];
-    const groups = await resolveSendableWhatsAppGroups(company.id, ids, { userId: user.id, accountId: account.id });
+    const ids = uniqueSelectedGroupIds(body.groupIds, links);
+    const groups = uniqueGroupDeliveryTargets(await resolveSendableWhatsAppGroups(company.id, ids, { userId: user.id, accountId: account.id }));
     const categoryContactResolution = await resolveCategoryContactsForSend(
       { companyId: company.id, userId: user.id, accountId: account.id },
       body.categoryIds,

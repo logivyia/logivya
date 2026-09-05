@@ -2,19 +2,44 @@ import { NextResponse } from "next/server";
 
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { prisma } from "@/server/db";
-import { announcementPreview, announcementPreviewHash } from "@/server/notifications/announcements";
+import {
+  announcementPreview,
+  announcementPreviewHash,
+} from "@/server/notifications/announcements";
+import { requestId, safeAdminError } from "@/server/security/admin-request";
 
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
-    await requirePlatformAdmin("platform:read", request);
+    await requirePlatformAdmin("admin.notifications.read", request);
     const { id } = await params;
-    const announcement = await prisma.notificationAnnouncement.findUnique({ where: { id } });
-    if (!announcement) return NextResponse.json({ error: "NOTIFICATION_NOT_FOUND" }, { status: 404 });
-    const recipientCount = await prisma.companyUser.count({ where: { status: "ACTIVE", ...(announcement.companyId ? { companyId: announcement.companyId } : {}) } });
+    const announcement = await prisma.notificationAnnouncement.findUnique({
+      where: { id },
+    });
+    if (!announcement)
+      return NextResponse.json(
+        { error: "NOTIFICATION_NOT_FOUND" },
+        { status: 404 },
+      );
+    const recipientCount = await prisma.companyUser.count({
+      where: {
+        status: "ACTIVE",
+        ...(announcement.companyId
+          ? { companyId: announcement.companyId }
+          : {}),
+      },
+    });
     const previewHash = announcementPreviewHash(announcement);
-    return NextResponse.json({ preview: announcementPreview(announcement, recipientCount), previewHash, unchanged: previewHash === announcement.previewHash, requiresSecondConfirmation: recipientCount >= 1_000 });
+    return NextResponse.json({
+      preview: announcementPreview(announcement, recipientCount),
+      previewHash,
+      unchanged: previewHash === announcement.previewHash,
+      requiresSecondConfirmation: recipientCount >= 1_000,
+    });
   } catch (error) {
-    const code = error instanceof Error ? error.message : "NOTIFICATION_ANNOUNCEMENT_PREVIEW_FAILED";
-    return NextResponse.json({ error: code }, { status: code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500 });
+    const safe = safeAdminError(error, requestId(request));
+    return NextResponse.json(safe.body, { status: safe.status });
   }
 }

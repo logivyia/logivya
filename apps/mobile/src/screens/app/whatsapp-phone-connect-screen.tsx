@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import { normalizeTurkishPhone } from "@/features/whatsapp/phone";
+import { getMobileCountry, getMobileCountryForLocale, normalizeInternationalPhone, searchMobileCountries } from "@/features/whatsapp/phone";
 import { useWhatsAppStore } from "@/features/whatsapp/whatsappStore";
 import { mapWhatsAppStatus } from "@/features/whatsapp/whatsappStatus";
 import { ErrorState } from "@/components/state/error-state";
@@ -23,18 +23,24 @@ function isExpired(value?: string | null) {
 
 export function WhatsAppPhoneConnectScreen() {
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { locale, t } = useTranslation();
   const navigation = useNavigation<WhatsAppNavigation>();
   const { phoneCode, generatePhoneCode, pollAccount, resetConnection } = useWhatsAppStore();
   const [phoneInput, setPhoneInput] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [countryIso, setCountryIso] = useState(() => getMobileCountryForLocale(locale).countryIso);
+  const [countryModalOpen, setCountryModalOpen] = useState(false);
+  const [countrySearch, setCountrySearch] = useState("");
+
+  const selectedCountry = getMobileCountry(countryIso);
+  const visibleCountries = searchMobileCountries(countrySearch);
 
   const status = mapWhatsAppStatus(phoneCode.account?.status);
   const pairingCode = phoneCode.account?.pairingCode;
 
   const submit = async () => {
     try {
-      const normalized = normalizeTurkishPhone(phoneInput);
+      const normalized = normalizeInternationalPhone(countryIso, phoneInput);
       setFormError(null);
       await generatePhoneCode(normalized);
     } catch (error) {
@@ -79,15 +85,19 @@ export function WhatsAppPhoneConnectScreen() {
           <Text style={[styles.label, { color: theme.text }]}>{t("country")}</Text>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel={t("selectCountry")}
+            onPress={() => setCountryModalOpen(true)}
             style={({ pressed }) => [
               styles.countrySelector,
               { borderColor: theme.border, backgroundColor: theme.background, opacity: pressed ? 0.8 : 1 }
             ]}
           >
-            <Text style={[styles.countryText, { color: theme.text }]}>{t("countryTurkey")} (+90)</Text>
+            <Text style={[styles.countryText, { color: theme.text }]}>
+              {selectedCountry.nativeCountryName} ({selectedCountry.callingCode})
+            </Text>
           </Pressable>
 
-          <TextField label={t("phoneNumber")} value={phoneInput} onChangeText={setPhoneInput} placeholder={t("phonePlaceholder")} keyboardType="phone-pad" />
+          <TextField label={t("phoneNumber")} value={phoneInput} onChangeText={setPhoneInput} placeholder={selectedCountry.phonePlaceholder} keyboardType="phone-pad" />
 
           {phoneCode.normalizedPhone ? (
             <Text style={[styles.normalized, { color: theme.muted }]}>
@@ -145,6 +155,44 @@ export function WhatsAppPhoneConnectScreen() {
           <Text style={[styles.linkText, { color: theme.primary }]}>{t("whatsappAccounts")}</Text>
         </Pressable>
       </ScrollView>
+
+      <Modal visible={countryModalOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setCountryModalOpen(false)}>
+        <View style={[styles.modalScreen, { backgroundColor: theme.background }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>{t("selectCountry")}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel={t("cancel")} onPress={() => setCountryModalOpen(false)} style={styles.modalClose}>
+              <Text style={[styles.modalCloseText, { color: theme.primary }]}>×</Text>
+            </Pressable>
+          </View>
+          <TextField label={t("searchCountry")} value={countrySearch} onChangeText={setCountrySearch} placeholder={t("searchCountryPlaceholder")} />
+          <ScrollView contentContainerStyle={styles.countryList} keyboardShouldPersistTaps="handled">
+            {visibleCountries.map((entry) => (
+              <Pressable
+                key={entry.countryIso}
+                accessibilityRole="button"
+                accessibilityState={{ selected: entry.countryIso === countryIso }}
+                onPress={() => {
+                  setCountryIso(entry.countryIso);
+                  setPhoneInput("");
+                  setFormError(null);
+                  setCountrySearch("");
+                  setCountryModalOpen(false);
+                }}
+                style={({ pressed }) => [
+                  styles.countryOption,
+                  { borderColor: entry.countryIso === countryIso ? theme.primary : theme.border, backgroundColor: theme.card, opacity: pressed ? 0.75 : 1 }
+                ]}
+              >
+                <View style={styles.countryNameBlock}>
+                  <Text style={[styles.countryOptionName, { color: theme.text }]}>{entry.nativeCountryName}</Text>
+                  <Text style={[styles.countryOptionMeta, { color: theme.muted }]}>{entry.countryName} · {entry.countryIso}</Text>
+                </View>
+                <Text style={[styles.countryCallingCode, { color: theme.primary }]}>{entry.callingCode}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -247,5 +295,61 @@ const styles = StyleSheet.create({
   },
   expiredBox: {
     gap: 10
+  },
+  modalScreen: {
+    flex: 1,
+    gap: 16,
+    paddingHorizontal: 18,
+    paddingTop: 18
+  },
+  modalHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: "900"
+  },
+  modalClose: {
+    alignItems: "center",
+    height: 48,
+    justifyContent: "center",
+    width: 48
+  },
+  modalCloseText: {
+    fontSize: 34,
+    lineHeight: 36
+  },
+  countryList: {
+    gap: 10,
+    paddingBottom: 40
+  },
+  countryOption: {
+    alignItems: "center",
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 68,
+    paddingHorizontal: 16,
+    paddingVertical: 10
+  },
+  countryNameBlock: {
+    flex: 1,
+    gap: 3,
+    paddingRight: 12
+  },
+  countryOptionName: {
+    fontSize: 16,
+    fontWeight: "900"
+  },
+  countryOptionMeta: {
+    fontSize: 13,
+    fontWeight: "600"
+  },
+  countryCallingCode: {
+    fontSize: 16,
+    fontWeight: "900"
   }
 });

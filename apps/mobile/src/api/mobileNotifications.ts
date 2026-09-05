@@ -26,6 +26,7 @@ export type NotificationCategory =
   | "INVITATION"
   | "WHATSAPP"
   | "MESSAGE"
+  | "MARKETPLACE"
   | "SYSTEM"
   | "MARKETING"
   | "COMPLIANCE"

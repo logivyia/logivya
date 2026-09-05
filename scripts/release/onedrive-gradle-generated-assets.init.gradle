@@ -1,0 +1,227 @@
+def stagingRoot = new File(
+    System.getenv("LOGIVYA_GRADLE_BUILD_STAGING_DIR") ?:
+        "C:/Users/burak/AppData/Local/Temp/logivya-gradle-build-v145"
+)
+
+gradle.beforeProject { project ->
+    if (project.path != ":") {
+        def appBuildRoot = System.getenv("LOGIVYA_GRADLE_APP_BUILD_DIR")
+        if (project.path == ":app" && appBuildRoot) {
+            project.layout.buildDirectory.set(new File(appBuildRoot))
+        } else {
+            def projectKey = project.path.substring(1).replace(":", "_")
+            project.layout.buildDirectory.set(new File(stagingRoot, projectKey))
+        }
+    }
+
+    project.tasks.configureEach { task ->
+        if (task.name.endsWith("mergeReleaseNativeLibs")) {
+            task.doNotTrackState("Native outputs can be hard-linked to OneDrive-backed module builds on Windows")
+        }
+    }
+}
+
+gradle.afterProject { project, state ->
+    // Some React Native modules register their native merge tasks late in the
+    // evaluation phase. Apply the OneDrive hard-link workaround again after
+    // the project has been fully evaluated so Gradle never snapshots those
+    // JNI inputs as ordinary files.
+    project.tasks.matching { task ->
+        task.name.endsWith("mergeReleaseNativeLibs")
+    }.configureEach { task ->
+        task.doNotTrackState("Native inputs can be hard-linked on OneDrive-backed Windows workspaces")
+    }
+
+    def nativeBuildTasks = project.tasks.matching { task ->
+        task.name.startsWith("buildCMakeRelWithDebInfo") ||
+            task.name == "externalNativeBuildRelease"
+    }
+    def nativeMergeTasks = project.tasks.matching { task ->
+        task.name.endsWith("mergeReleaseNativeLibs")
+    }
+
+    // Windows can store NDK and Prefab shared libraries (including libc++,
+    // fbjni and React Native) as WOF reparse points. Java NIO can read them,
+    // but Gradle 8 refuses to snapshot them as regular task inputs. Limit
+    // materialization to generated .so outputs beneath this project's build
+    // directory; package sources and shared dependency caches stay untouched.
+    // Register unconditionally because variant tasks may be added later.
+    def materializeNativeLibraries = project.tasks.register(
+        "materializeReleaseNativeLibraries"
+    ) {
+        dependsOn(nativeBuildTasks)
+        doLast {
+            def buildRoot = project.layout.buildDirectory.get().asFile
+            if (!buildRoot.isDirectory()) {
+                return
+            }
+
+            def nativeLibraries = []
+            def paths = java.nio.file.Files.walk(buildRoot.toPath())
+            try {
+                paths.filter { path ->
+                    path.fileName.toString().endsWith(".so")
+                }.forEach { path -> nativeLibraries.add(path) }
+            } finally {
+                paths.close()
+            }
+
+            nativeLibraries.each { path ->
+                if (!path.toAbsolutePath().normalize().startsWith(
+                    buildRoot.toPath().toAbsolutePath().normalize()
+                )) {
+                    throw new GradleException("Native output escaped the project build directory")
+                }
+                def temporary = java.nio.file.Files.createTempFile(
+                    path.parent,
+                    ".${path.fileName}.",
+                    ".materialized"
+                )
+                try {
+                    java.nio.file.Files.copy(
+                        path,
+                        temporary,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                    )
+                    if (java.nio.file.Files.mismatch(path, temporary) != -1L) {
+                        throw new GradleException("Native library copy verification failed: ${path}")
+                    }
+                    java.nio.file.Files.move(
+                        temporary,
+                        path,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                    )
+                } finally {
+                    java.nio.file.Files.deleteIfExists(temporary)
+                }
+            }
+
+            if (!nativeLibraries.isEmpty()) {
+                logger.lifecycle(
+                    "Materialized ${nativeLibraries.size()} native libraries for ${project.path}"
+                )
+            }
+        }
+    }
+
+    nativeMergeTasks.configureEach { task ->
+        task.dependsOn(materializeNativeLibraries)
+    }
+}
+
+gradle.afterProject { project, state ->
+    if (project.path != ":react-native-reanimated") {
+        return
+    }
+
+    def workletsProject = gradle.rootProject.findProject(":react-native-worklets")
+    if (workletsProject == null) {
+        return
+    }
+
+    // Reanimated's generated CMake files resolve the Worklets shared library
+    // from the package's conventional build directory. Mirror staged outputs
+    // there before any Reanimated ABI is linked.
+    def syncWorklets = project.tasks.register("syncStagedWorkletsLibraries") {
+        dependsOn(workletsProject.tasks.matching { task ->
+            task.name.startsWith("buildCMakeRelWithDebInfo")
+        })
+        doLast {
+            def legacySourceRoot = new File(
+                workletsProject.layout.buildDirectory.get().asFile,
+                "intermediates/cmake/release/obj"
+            )
+            def cxxSourceRoot = new File(
+                workletsProject.layout.buildDirectory.get().asFile,
+                "intermediates/cxx/RelWithDebInfo"
+            )
+            def destinationRoot = new File(
+                workletsProject.projectDir,
+                "build/intermediates/cmake/release/obj"
+            )
+
+            ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"].each { abi ->
+                def source = new File(legacySourceRoot, "${abi}/libworklets.so")
+                if (!source.isFile() && cxxSourceRoot.isDirectory()) {
+                    source = project.fileTree(cxxSourceRoot)
+                        .matching { include "**/${abi}/libworklets.so" }
+                        .files
+                        .find { candidate -> candidate.isFile() }
+                }
+                if (!(source?.isFile())) {
+                    throw new GradleException(
+                        "Missing staged Worklets library for ${abi} under " +
+                            "${legacySourceRoot} or ${cxxSourceRoot}"
+                    )
+                }
+
+                def destination = new File(destinationRoot, "${abi}/libworklets.so")
+                destination.parentFile.mkdirs()
+                java.nio.file.Files.copy(
+                    source.toPath(),
+                    destination.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                )
+            }
+        }
+    }
+
+    project.tasks.matching { task ->
+        task.name.startsWith("buildCMakeRelWithDebInfo")
+    }.configureEach { task ->
+        task.dependsOn(syncWorklets)
+    }
+}
+
+gradle.projectsEvaluated {
+    def appProject = gradle.rootProject.findProject(":app")
+    if (appProject == null) {
+        return
+    }
+
+    def codegenProjects = gradle.rootProject.allprojects.findAll { candidate ->
+        candidate.path != ":app" &&
+            !candidate.tasks.matching {
+                task -> task.name == "generateCodegenArtifactsFromSchema"
+            }.isEmpty()
+    }
+
+    // React Native's generated autolinking CMake file uses each package's
+    // conventional build directory. Mirror staged codegen output there before
+    // the app's native configuration runs.
+    def syncCodegen = appProject.tasks.register("syncStagedCodegenDirectories") {
+        dependsOn(codegenProjects.collectMany { candidate ->
+            candidate.tasks.matching {
+                task -> task.name == "generateCodegenArtifactsFromSchema"
+            }.toList()
+        })
+
+        doLast {
+            codegenProjects.each { candidate ->
+                def source = new File(
+                    candidate.layout.buildDirectory.get().asFile,
+                    "generated/source/codegen/jni"
+                )
+                if (!source.isDirectory()) {
+                    return
+                }
+
+                def destination = new File(
+                    candidate.projectDir,
+                    "build/generated/source/codegen/jni"
+                )
+                appProject.copy {
+                    from(source)
+                    into(destination)
+                }
+            }
+        }
+    }
+
+    appProject.tasks.matching { task ->
+        task.name.startsWith("configureCMakeRelWithDebInfo") ||
+            task.name.startsWith("buildCMakeRelWithDebInfo")
+    }.configureEach { task ->
+        task.dependsOn(syncCodegen)
+    }
+}

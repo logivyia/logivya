@@ -19,7 +19,10 @@ export async function GET() {
     const [initialAccounts, groups, rawCategories, campaigns, subscription, onboarding, announcements] = await Promise.all([
       prisma.whatsAppAccount.findMany({
         where: { companyId: company.id, userId: user.id },
-        include: { _count: { select: { groups: true, contacts: true } }, sessions: { orderBy: { updatedAt: "desc" }, take: 1 } },
+        include: {
+          _count: { select: { groups: true, contacts: { where: { isActive: true, isWhatsAppUser: true, NOT: { displayNameSource: "PHONE_FALLBACK" } } } } },
+          sessions: { orderBy: { updatedAt: "desc" }, take: 1 },
+        },
         orderBy: { createdAt: "desc" },
         take: 100,
       }),
@@ -81,7 +84,10 @@ export async function GET() {
     if (restoreCount) {
       accounts = await prisma.whatsAppAccount.findMany({
         where: { companyId: company.id, userId: user.id },
-        include: { _count: { select: { groups: true, contacts: true } }, sessions: { orderBy: { updatedAt: "desc" }, take: 1 } },
+        include: {
+          _count: { select: { groups: true, contacts: { where: { isActive: true, isWhatsAppUser: true, NOT: { displayNameSource: "PHONE_FALLBACK" } } } } },
+          sessions: { orderBy: { updatedAt: "desc" }, take: 1 },
+        },
         orderBy: { createdAt: "desc" },
         take: 100,
       });
@@ -120,7 +126,11 @@ export async function GET() {
       onboarding,
       announcements,
     });
-  } catch {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  } catch (error) {
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+    logger.error("platform.bootstrap_failed", error);
+    return NextResponse.json({ error: "PLATFORM_BOOTSTRAP_FAILED" }, { status: 500 });
   }
 }

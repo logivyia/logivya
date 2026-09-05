@@ -101,7 +101,7 @@ async function main() {
     companyId: starter.company.id,
     actorUserId: starterInvitee.id,
     actorRole: "OPERATOR",
-  }, { name: "Unauthorized member", email: "unauthorized@example.test" }), "FORBIDDEN");
+  }, { name: "Unauthorized member", email: "unauthorized@example.test" }), "INVITATION_PERMISSION_DENIED");
 
   const starterAccepted = await acceptCompanyInvitation({
     token: await invitationToken(starterInvitation.invitation.id),
@@ -119,7 +119,7 @@ async function main() {
   assert((await subscriptionAccess.getCurrent(starter.company.id))?.plan.slug === "starter", "Invited member's company must resolve the one authoritative Starter subscription.");
   assert((await subscriptionAccess.canSendTargets(starter.company.id, { groupCount: 1, contactCount: 0 })).allowed, "Starter company must retain group messaging.");
   const starterContactAccess = await subscriptionAccess.canSendTargets(starter.company.id, { groupCount: 0, contactCount: 1 });
-  assert(!starterContactAccess.allowed && starterContactAccess.reason === "entitlement.contactMessaging", "Starter contact messaging must be rejected by the backend entitlement service.");
+  assert(starterContactAccess.allowed, "Starter contact messaging must be allowed by the backend entitlement service.");
 
   const memberSession = await prisma.userSession.create({
     data: {
@@ -192,6 +192,7 @@ async function main() {
   });
   await persistWhatsAppContacts(ownerAccount.id, [
     { id: "905550000001@s.whatsapp.net", notify: "Owner Contact" },
+    { id: "905550000099@s.whatsapp.net" },
     { id: "120363000000@g.us", name: "Must Be Ignored" },
   ], { source: "INTEGRATION_TEST" });
   await persistWhatsAppContacts(memberAccount.id, [
@@ -201,6 +202,8 @@ async function main() {
   const memberContacts = await listOwnedWhatsAppContacts({ companyId: professional.company.id, userId: professionalMember.id, accountId: memberAccount.id, page: 1, limit: 10 });
   assert(ownerContacts.contacts.length === 1 && ownerContacts.contacts[0]?.phone === "905550000001", "Owner must see only the owner's account contacts.");
   assert(memberContacts.contacts.length === 1 && memberContacts.contacts[0]?.phone === "905550000002", "Invited member must see only the member's account contacts.");
+  const ownerInternalContacts = await listOwnedWhatsAppContacts({ companyId: professional.company.id, userId: professional.owner.id, accountId: ownerAccount.id, page: 1, limit: 10, includePhoneFallback: true });
+  assert(ownerInternalContacts.contacts.length === 2, "Phone-fallback identities must remain available to internal reconciliation without polluting the address-book UI.");
   await expectError(() => resolveOwnedWhatsAppContacts({ companyId: professional.company.id, userId: professional.owner.id, accountId: ownerAccount.id }, [memberContacts.contacts[0]!.id]), "WHATSAPP_CONTACT_OWNERSHIP_MISMATCH");
 
   await persistWhatsAppContacts(ownerAccount.id, [

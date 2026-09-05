@@ -1,39 +1,29 @@
 import { NextResponse } from "next/server";
 
 import { requireApiSession } from "@/server/auth/session";
-import { prisma } from "@/server/db";
 import { pendingMfaEnrollmentStatus } from "@/server/security/mfa";
+import { listMfaMethodState } from "@/server/security/mfa-policy";
 
 export async function GET() {
   try {
     const context = await requireApiSession();
-    const [credential, trustedDevices, recentEvents, setup] = await Promise.all([
-      prisma.mfaCredential.findFirst({
-        where: { userId: context.user.id, verifiedAt: { not: null }, revokedAt: null },
-        orderBy: { verifiedAt: "desc" },
-        include: { recoveryCodes: { where: { usedAt: null }, select: { id: true } } },
-      }),
-      prisma.trustedDevice.findMany({
-        where: { userId: context.user.id, revokedAt: null, expiresAt: { gt: new Date() } },
-        orderBy: { lastUsedAt: "desc" },
-        select: { id: true, deviceName: true, ipAddress: true, userAgent: true, trustedAt: true, lastUsedAt: true, expiresAt: true },
-      }),
-      prisma.securityEvent.findMany({
-        where: { userId: context.user.id },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-        select: { id: true, type: true, severity: true, message: true, ipAddress: true, createdAt: true },
+    const [methodState, setup] = await Promise.all([
+      listMfaMethodState({
+        userId: context.user.id,
+        companyPolicy: context.company.mfaPolicy,
+        role: context.membership.role,
+        preferredMethod: context.user.preferredMfaMethod,
       }),
       pendingMfaEnrollmentStatus(context.user.id),
     ]);
+    const enabled = methodState.methods.filter((method) => method.enabled);
     return NextResponse.json({
-      enabled: Boolean(credential),
-      required: context.user.mfaRequired,
-      enabledAt: credential?.verifiedAt,
-      recoveryCodesRemaining: credential?.recoveryCodes.length ?? 0,
+      enabled: enabled.length > 0,
+      enabledAt: enabled[0]?.enabledAt,
+      verifiedEmail: context.user.email,
+      methods: methodState.methods,
+      preferredMethod: methodState.preferredMethod,
       ...setup,
-      trustedDevices,
-      recentEvents,
     });
   } catch {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });

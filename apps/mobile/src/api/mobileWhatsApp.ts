@@ -1,4 +1,5 @@
 import { apiClient } from "@/api/client";
+import { normalizeMobileWhatsAppAccountResponse } from "@/api/mobile-whatsapp-normalizer";
 
 export type MobileWhatsAppStatus =
   | "CONNECTED"
@@ -15,6 +16,8 @@ export type MobileWhatsAppAccount = {
   id: string;
   label: string | null;
   phoneNumber: string | null;
+  countryIso?: string | null;
+  messageLocale?: string | null;
   displayName: string | null;
   status: MobileWhatsAppStatus;
   qrCode?: string | null;
@@ -60,12 +63,14 @@ export function createMobileWhatsAppQrSession() {
   return apiClient.post<{ account: MobileWhatsAppAccount }>("/api/mobile/whatsapp/accounts/qr", {});
 }
 
-export function createMobileWhatsAppPhoneCode(phoneNumber: string) {
-  return apiClient.post<{ account: MobileWhatsAppAccount }>("/api/mobile/whatsapp/accounts/phone-code", { phoneNumber });
+export async function createMobileWhatsAppPhoneCode(input: { countryIso: string; nationalNumber: string }) {
+  const response = await apiClient.post<unknown>("/api/mobile/whatsapp/accounts/phone-code", input);
+  return normalizeMobileWhatsAppAccountResponse(response);
 }
 
-export function getMobileWhatsAppAccountStatus(id: string) {
-  return apiClient.request<{ account: MobileWhatsAppAccount }>(`/api/mobile/whatsapp/accounts/${id}/status`, { retry: false });
+export async function getMobileWhatsAppAccountStatus(id: string) {
+  const response = await apiClient.request<unknown>(`/api/mobile/whatsapp/accounts/${id}/status`, { retry: false });
+  return normalizeMobileWhatsAppAccountResponse(response);
 }
 
 export function reconnectMobileWhatsAppAccount(id: string) {

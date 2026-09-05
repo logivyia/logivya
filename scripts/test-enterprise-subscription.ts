@@ -21,11 +21,15 @@ assert.equal(CORE_PLAN_MATRIX.trial.totalUserSeats, 1);
 assert.equal(CORE_PLAN_MATRIX.trial.whatsappConnections, 1);
 assert.equal(CORE_PLAN_MATRIX.trial.contactMessaging, true);
 assert.equal(CORE_PLAN_MATRIX.starter.monthlyPriceTry, 280);
+assert.equal(CORE_PLAN_MATRIX.starter.yearlyPriceTry, 3000);
+assert.equal(CORE_PLAN_MATRIX.starter.yearlyMonthlyEquivalentTry, 250);
 assert.equal(CORE_PLAN_MATRIX.starter.totalUserSeats, 2);
 assert.equal(CORE_PLAN_MATRIX.starter.whatsappConnections, 2);
-assert.equal(CORE_PLAN_MATRIX.starter.contactMessaging, false);
+assert.equal(CORE_PLAN_MATRIX.starter.contactMessaging, true);
 assert.equal(CORE_PLAN_MATRIX.starter.advertisingEnabled, true);
 assert.equal(CORE_PLAN_MATRIX.professional.monthlyPriceTry, 380);
+assert.equal(CORE_PLAN_MATRIX.professional.yearlyPriceTry, 4200);
+assert.equal(CORE_PLAN_MATRIX.professional.yearlyMonthlyEquivalentTry, 350);
 assert.equal(CORE_PLAN_MATRIX.professional.totalUserSeats, 3);
 assert.equal(CORE_PLAN_MATRIX.professional.whatsappConnections, 3);
 assert.equal(CORE_PLAN_MATRIX.professional.contactMessaging, true);
@@ -33,15 +37,18 @@ assert.equal(CORE_PLAN_MATRIX.professional.advertisingEnabled, false);
 assert.deepEqual([...CORE_PLAN_CODES], ["trial", "starter", "professional"]);
 assert.deepEqual([...PURCHASABLE_PLAN_CODES], ["starter", "professional"]);
 
-const previousAttribution = process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT;
-delete process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT;
-assert.deepEqual(applyAdvertisingDeliveryPolicy("Mesaj", true), { content: "Mesaj", attributionApplied: false, attributionConfigured: false });
-process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT = "Logivya ile gönderildi";
-assert.equal(applyAdvertisingDeliveryPolicy("Mesaj", true).content, "Mesaj\n\nLogivya ile gönderildi");
-assert.equal(applyAdvertisingDeliveryPolicy("Mesaj\n\nLogivya ile gönderildi", true).content, "Mesaj\n\nLogivya ile gönderildi");
+assert.equal(
+  applyAdvertisingDeliveryPolicy("Mesaj", true, "tr").content,
+  "Mesaj\n\nBu mesaj logivya.com üzerinden gönderilmiştir.",
+);
+assert.equal(
+  applyAdvertisingDeliveryPolicy("Mesaj\n\nBu mesaj logivya.com üzerinden gönderilmiştir.", true, "tr").content,
+  "Mesaj\n\nBu mesaj logivya.com üzerinden gönderilmiştir.",
+);
 assert.equal(applyAdvertisingDeliveryPolicy("Mesaj", false).content, "Mesaj");
-if (previousAttribution === undefined) delete process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT;
-else process.env.MESSAGE_ADVERTISING_ATTRIBUTION_TEXT = previousAttribution;
+assert.equal(CORE_PLAN_MATRIX.trial.messageBrandingRequired, true);
+assert.equal(CORE_PLAN_MATRIX.starter.messageBrandingRequired, true);
+assert.equal(CORE_PLAN_MATRIX.professional.messageBrandingRequired, false);
 
 assert.doesNotThrow(() => assertPlanSeatCompatibility({ usedSeats: 2, targetSeatLimit: 2, planSlug: "starter" }));
 assert.throws(
@@ -135,14 +142,22 @@ const adminActionSource = read("src/app/api/admin/subscriptions/[id]/action/rout
 const billingPlansSource = read("src/app/api/billing/plans/route.ts");
 const billingUpgradeSource = read("src/app/api/billing/request-upgrade/route.ts");
 const mobileBillingUpgradeSource = read("src/app/api/mobile/subscription/request-upgrade/route.ts");
+const billingRequestSource = read("src/app/api/billing/subscription-requests/route.ts");
+const mobileBillingRequestSource = read("src/app/api/mobile/subscription/requests/route.ts");
 const billingPageSource = read("src/components/billing-subscriptions-page.tsx");
 const webhookSource = read("src/server/billing/webhook-handler.ts");
 assert(adminActivationSource.includes("activateSubscriptionManually"));
 assert(adminActivationSource.includes("PURCHASABLE_PLAN_CODES"));
 assert(adminActionSource.includes("PURCHASABLE_PLAN_CODES"));
-assert(billingPlansSource.includes("CORE_PLAN_CODES"));
-assert(billingUpgradeSource.includes("PURCHASABLE_PLAN_CODES"));
-assert(mobileBillingUpgradeSource.includes("PURCHASABLE_PLAN_CODES"));
+assert(billingPlansSource.includes("getNormalizedPlanCatalog"));
+assert(billingUpgradeSource.includes("SUBSCRIPTION_REQUEST_FLOW_REQUIRED"));
+assert(mobileBillingUpgradeSource.includes("SUBSCRIPTION_REQUEST_FLOW_REQUIRED"));
+assert(billingRequestSource.includes("PURCHASABLE_PLAN_CODES"));
+assert(billingRequestSource.includes("createManualSubscriptionDraft"));
+assert(billingRequestSource.includes("billingPeriod"));
+assert(mobileBillingRequestSource.includes("PURCHASABLE_PLAN_CODES"));
+assert(mobileBillingRequestSource.includes("createManualSubscriptionDraft"));
+assert(mobileBillingRequestSource.includes("billingPeriod"));
 assert(!billingPageSource.includes('plan.slug === "enterprise"'));
 assert(webhookSource.includes("activateCompanySubscription"));
 assert(webhookSource.includes('event.status === "REFUNDED" || event.status === "CHARGEBACK"'));

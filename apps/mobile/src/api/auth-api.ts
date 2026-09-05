@@ -1,7 +1,13 @@
 import { apiClient } from "@/api/client";
 import { config } from "@/constants/config";
 import { getMobilePlatform } from "@/utils/device";
-import type { AuthSessionPayload, AuthTokens, LoginResponsePayload, MobileCompany, MobileUser } from "@/types/api";
+import type {
+  AuthSessionPayload,
+  AuthTokens,
+  LoginResponsePayload,
+  MobileCompany,
+  MobileUser,
+} from "@/types/api";
 
 export type MobileMePayload = {
   user: Omit<MobileUser, "role"> & { role?: string };
@@ -9,6 +15,8 @@ export type MobileMePayload = {
   role: string;
   isAdmin?: boolean;
   isPlatformAdmin?: boolean;
+  platformAdminRole?: string | null;
+  adminPermissions?: string[];
   permissions: string[];
 };
 
@@ -16,13 +24,59 @@ function normalizeIdentifier(identifier: string) {
   return identifier.trim().toLowerCase();
 }
 
-export function loginRequest(input: { identifier: string; password: string; deviceId: string; appVersion?: string; trustedDeviceToken?: string }) {
-  return apiClient.post<LoginResponsePayload>("/api/mobile/auth/login", {
-    ...input,
-    identifier: normalizeIdentifier(input.identifier),
-    platform: getMobilePlatform(),
-    appVersion: input.appVersion ?? config.appVersion,
-  }, { auth: false, retry: false, hostFallback: false });
+export function loginRequest(input: {
+  identifier: string;
+  password: string;
+  deviceId: string;
+  appVersion?: string;
+  trustedDeviceToken?: string;
+}) {
+  return apiClient.post<LoginResponsePayload>(
+    "/api/mobile/auth/login",
+    {
+      ...input,
+      identifier: normalizeIdentifier(input.identifier),
+      platform: getMobilePlatform(),
+      appVersion: input.appVersion ?? config.appVersion,
+    },
+    { auth: false, retry: false },
+  );
+}
+
+export function socialLoginRequest(input: {
+  provider: "GOOGLE" | "APPLE";
+  identityToken: string;
+  nonce?: string;
+  deviceId: string;
+  appVersion?: string;
+  trustedDeviceToken?: string;
+}) {
+  return apiClient.post<LoginResponsePayload>(
+    "/api/mobile/auth/social",
+    {
+      ...input,
+      platform: getMobilePlatform(),
+      appVersion: input.appVersion ?? config.appVersion,
+    },
+    { auth: false, retry: false },
+  );
+}
+
+export function changeTemporaryPasswordRequest(input: {
+  challengeToken: string;
+  temporaryPassword: string;
+  newPassword: string;
+  newPasswordConfirmation: string;
+}) {
+  return apiClient.post<{ success: true }>(
+    "/api/mobile/auth/temporary-password",
+    input,
+    {
+      auth: false,
+      retry: false,
+      hostFallback: false,
+    },
+  );
 }
 
 export function verifyMfaLoginRequest(input: {
@@ -34,25 +88,63 @@ export function verifyMfaLoginRequest(input: {
   appVersion?: string;
   setupToken?: string;
 }) {
-  return apiClient.post<AuthSessionPayload>("/api/mobile/auth/mfa/verify", {
-    ...input,
-    platform: getMobilePlatform(),
-    appVersion: input.appVersion ?? config.appVersion,
-  }, { auth: false, retry: false, hostFallback: false });
+  return apiClient.post<AuthSessionPayload>(
+    "/api/mobile/auth/mfa/verify",
+    {
+      ...input,
+      platform: getMobilePlatform(),
+      appVersion: input.appVersion ?? config.appVersion,
+    },
+    { auth: false, retry: false, hostFallback: false },
+  );
+}
+
+export function selectMfaLoginMethodRequest(input: {
+  challengeToken: string;
+  method: "TOTP" | "EMAIL_OTP";
+  deviceId: string;
+}) {
+  return apiClient.post<
+    Partial<import("@/types/api").MfaLoginChallengePayload>
+  >("/api/mobile/auth/mfa/select", input, {
+    auth: false,
+    retry: false,
+    hostFallback: false,
+  });
+}
+
+export function resendMfaEmailCodeRequest(input: {
+  challengeToken: string;
+  deviceId: string;
+}) {
+  return apiClient.post<{ emailMasked: string; expiresAt: string }>(
+    "/api/mobile/auth/mfa/email/send",
+    input,
+    { auth: false, retry: false, hostFallback: false },
+  );
 }
 
 export function acceptInvitationRequest(invitationToken: string) {
-  return apiClient.post<{ status: "ACCEPTED"; companyId: string; role: string; tokens: AuthTokens }>(
+  return apiClient.post<{
+    status: "ACCEPTED";
+    companyId: string;
+    role: string;
+    tokens: AuthTokens;
+  }>(
     `/api/mobile/company/invitations/${encodeURIComponent(invitationToken)}/accept`,
     { action: "ACCEPT" },
   );
 }
 
 export function acceptInvitationCodeRequest(invitationCode: string) {
-  return apiClient.post<{ status: "ACCEPTED"; companyId: string; role: string; tokens: AuthTokens }>(
-    "/api/mobile/company/invitations/code/accept",
-    { code: invitationCode.trim() },
-  );
+  return apiClient.post<{
+    status: "ACCEPTED";
+    companyId: string;
+    role: string;
+    tokens: AuthTokens;
+  }>("/api/mobile/company/invitations/code/accept", {
+    code: invitationCode.trim(),
+  });
 }
 
 export function registerRequest(input: {
@@ -70,25 +162,33 @@ export function registerRequest(input: {
   invitationCode?: string;
   deviceId: string;
 }) {
-  return apiClient.post<AuthSessionPayload>("/api/mobile/auth/register", {
-    name: input.fullName,
-    email: input.email.trim().toLowerCase(),
-    phone: input.phone?.trim(),
-    password: input.password,
-    passwordConfirmation: input.passwordConfirmation,
-    termsAccepted: input.acceptTerms,
-    privacyAccepted: input.acceptPrivacy,
-    kvkkAccepted: input.acceptKvkk,
-    referralCode: undefined,
-    invitationToken: input.invitationToken,
-    invitationCode: input.invitationCode,
-    deviceId: input.deviceId,
-    platform: getMobilePlatform()
-  }, { auth: false });
+  return apiClient.post<AuthSessionPayload>(
+    "/api/mobile/auth/register",
+    {
+      name: input.fullName,
+      email: input.email.trim().toLowerCase(),
+      phone: input.phone?.trim(),
+      password: input.password,
+      passwordConfirmation: input.passwordConfirmation,
+      termsAccepted: input.acceptTerms,
+      privacyAccepted: input.acceptPrivacy,
+      kvkkAccepted: input.acceptKvkk,
+      referralCode: undefined,
+      invitationToken: input.invitationToken,
+      invitationCode: input.invitationCode,
+      deviceId: input.deviceId,
+      platform: getMobilePlatform(),
+    },
+    { auth: false },
+  );
 }
 
 export function forgotPasswordRequest(identifier: string) {
-  return apiClient.post<{ message: string }>("/api/mobile/auth/forgot-password", { identifier: normalizeIdentifier(identifier) }, { auth: false });
+  return apiClient.post<{ message: string }>(
+    "/api/mobile/auth/forgot-password",
+    { identifier: normalizeIdentifier(identifier) },
+    { auth: false },
+  );
 }
 
 export function resetPasswordRequest(input: {
@@ -97,12 +197,16 @@ export function resetPasswordRequest(input: {
   password: string;
   confirmPassword: string;
 }) {
-  return apiClient.post<{ message: string }>("/api/mobile/auth/reset-password", {
-    identifier: normalizeIdentifier(input.identifier),
-    code: input.code.trim(),
-    password: input.password,
-    passwordConfirmation: input.confirmPassword
-  }, { auth: false });
+  return apiClient.post<{ message: string }>(
+    "/api/mobile/auth/reset-password",
+    {
+      identifier: normalizeIdentifier(input.identifier),
+      code: input.code.trim(),
+      password: input.password,
+      passwordConfirmation: input.confirmPassword,
+    },
+    { auth: false },
+  );
 }
 
 export function meRequest() {
@@ -110,5 +214,7 @@ export function meRequest() {
 }
 
 export function logoutRequest(refreshToken: string) {
-  return apiClient.post<{ message: string }>("/api/mobile/auth/logout", { refreshToken });
+  return apiClient.post<{ message: string }>("/api/mobile/auth/logout", {
+    refreshToken,
+  });
 }

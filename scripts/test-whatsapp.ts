@@ -1,8 +1,10 @@
+import assertStrict from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { AccountStatus } from "@prisma/client";
 import { normalizePhoneNumber } from "../src/lib/phone/normalize";
 import { assertValidTransition, MODERN_ACCOUNT_STATUSES } from "../src/lib/whatsapp/account-status-machine";
+import { assertSameOrigin } from "../src/server/whatsapp/request-guards";
 
 const root = process.cwd();
 function files(directory: string): string[] {
@@ -30,6 +32,55 @@ for (const input of ["", "123", "+00"]) {
   }
 }
 
+const directSameOriginRequest = new Request("http://localhost:3000/api/accounts/whatsapp/create-session", {
+  method: "POST",
+  headers: { origin: "http://localhost:3000" },
+});
+const originalAppUrl = process.env.APP_URL;
+const originalPublicAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+process.env.APP_URL = "http://localhost:3000";
+process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
+assertStrict.doesNotThrow(() => assertSameOrigin(directSameOriginRequest));
+process.env.APP_URL = "https://www.logivya.com";
+process.env.NEXT_PUBLIC_APP_URL = "https://www.logivya.com";
+
+const reverseProxySameOriginRequest = new Request("http://logivya-web:3000/api/accounts/whatsapp/create-session", {
+  method: "POST",
+  headers: {
+    host: "logivya-web:3000",
+    origin: "https://www.logivya.com",
+    "x-forwarded-host": "www.logivya.com",
+    "x-forwarded-proto": "https",
+  },
+});
+assertStrict.doesNotThrow(() => assertSameOrigin(reverseProxySameOriginRequest));
+
+const forwardedChainSameOriginRequest = new Request("http://logivya-web:3000/api/accounts/whatsapp/create-pairing-session", {
+  method: "POST",
+  headers: {
+    origin: "https://www.logivya.com",
+    "x-forwarded-host": "www.logivya.com, logivya-edge",
+  },
+});
+assertStrict.doesNotThrow(() => assertSameOrigin(forwardedChainSameOriginRequest));
+
+for (const request of [
+  new Request("http://logivya-web:3000/api/accounts/whatsapp/create-session", {
+    method: "POST",
+    headers: { origin: "https://attacker.example", "x-forwarded-host": "www.logivya.com" },
+  }),
+  new Request("http://localhost:3000/api/accounts/whatsapp/create-pairing-session", {
+    method: "POST",
+    headers: { origin: "not-a-valid-origin" },
+  }),
+]) {
+  assertStrict.throws(() => assertSameOrigin(request), /CSRF_REJECTED/);
+}
+
+assertStrict.throws(() => assertSameOrigin(new Request("http://localhost:3000/api/accounts/whatsapp/create-session", { method: "POST" })), /CSRF_REJECTED/);
+if (originalAppUrl === undefined) delete process.env.APP_URL; else process.env.APP_URL = originalAppUrl;
+if (originalPublicAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL; else process.env.NEXT_PUBLIC_APP_URL = originalPublicAppUrl;
+
 assertValidTransition(AccountStatus.CREATED, AccountStatus.PENDING_QR);
 assertValidTransition(AccountStatus.PENDING_PAIRING, AccountStatus.PAIRING_CODE_READY);
 try {
@@ -42,6 +93,7 @@ try {
 const allowedRawStatusFiles = new Set([
   "src/lib/whatsapp/account-status-machine.ts",
   "src/lib/i18n/status-labels.ts",
+  "src/i18n/status.ts",
   "src/worker/baileys-provider.ts",
   "src/worker/index.ts",
   "src/server/billing/subscription-access.ts",

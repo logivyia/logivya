@@ -28,5 +28,7 @@ export function requestLogContext(request: Request) {
     method: request.method,
     platform: request.headers.get("x-client-platform") || "web",
     appVersion: request.headers.get("x-logivya-app-version") || undefined,
+    buildNumber: request.headers.get("x-logivya-version-code") || undefined,
+    recoveryId: request.headers.get("x-client-recovery-id") || undefined,
   };
 }

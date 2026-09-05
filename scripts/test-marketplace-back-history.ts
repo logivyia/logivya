@@ -1,0 +1,15 @@
+import assert from "node:assert/strict";
+import { TabRouter } from "../apps/mobile/node_modules/@react-navigation/routers/src/TabRouter";
+const routeNames = ["Dashboard", "HomeMoving", "FindLoads", "WhatsApp", "Messaging"];
+const options = { routeNames, routeParamList: Object.fromEntries(routeNames.map((name) => [name, undefined])), routeGetIdList: {} };
+const router = TabRouter({ backBehavior: "fullHistory", initialRouteName: "Dashboard" });
+let state = router.getInitialState(options);
+const visit = (name: string, params?: object) => { state = router.getStateForAction(state, { type: "NAVIGATE", payload: { name, params } }, options)!; };
+const back = () => { state = router.getStateForAction(state, { type: "GO_BACK" }, options)!; return state.routes[state.index]!; };
+visit("HomeMoving"); visit("FindLoads", { scope: "HOME_MOVING", initialQuery: "Ankara" });
+assert.equal(back().name, "HomeMoving", "Sector search returns to its sector, not overview");
+visit("WhatsApp"); visit("Messaging"); assert.equal(back().name, "WhatsApp", "Send returns to WhatsApp");
+visit("FindLoads", { scope: "GLOBAL" }); visit("HomeMoving"); visit("FindLoads", { scope: "HOME_MOVING" });
+assert.equal(back().name, "HomeMoving");
+assert.deepEqual(back().params, { scope: "GLOBAL" }, "Repeated tabs restore their earlier route parameters");
+console.log("Back history preserves WhatsApp, sector, repeated tabs and route parameters.");

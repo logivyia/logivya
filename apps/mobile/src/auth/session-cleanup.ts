@@ -8,7 +8,7 @@ import { useSubscriptionStore } from "@/features/subscription/subscriptionStore"
 import { useSupportStore } from "@/features/support/supportStore";
 import { useWhatsAppStore } from "@/features/whatsapp/whatsappStore";
 import { queryClient } from "@/services/offline-query";
-import { clearTokens } from "@/storage/secure-storage";
+import { clearPendingMfaChallenge, clearTokens } from "@/storage/secure-storage";
 
 export function clearMobileRuntimeSessionState() {
   queryClient.clear();
@@ -24,6 +24,6 @@ export function clearMobileRuntimeSessionState() {
 }
 
 export async function clearMobileSessionState() {
-  await clearTokens();
+  await Promise.all([clearTokens(), clearPendingMfaChallenge()]);
   clearMobileRuntimeSessionState();
 }

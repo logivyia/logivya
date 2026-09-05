@@ -1,0 +1,97 @@
+{
+  "status": "LEGAL_REVIEW_REQUIRED",
+  "generatedFor": "engineering-inventory-only",
+  "releaseVerificationRequired": true,
+  "sourceCandidateManifest": {
+    "status": "VERIFIED_LOCAL_PRODUCTION_CANDIDATE",
+    "packageName": "com.logivya.mobile",
+    "versionCode": 196,
+    "versionName": "1.0.181",
+    "sha256": "2C76A8FBA9AD855BF2A9E3D97273644837ADEB8B520B9E0BE6361951DD0EB717",
+    "allowBackup": false,
+    "cleartextTraffic": false,
+    "targetSdk": 36
+  },
+  "runtimePermissions": ["POST_NOTIFICATIONS"],
+  "androidPermissions": [
+    "INTERNET",
+    "ACCESS_NETWORK_STATE",
+    "ACCESS_WIFI_STATE",
+    "POST_NOTIFICATIONS",
+    "VIBRATE",
+    "WAKE_LOCK",
+    "RECEIVE_BOOT_COMPLETED",
+    "USE_BIOMETRIC",
+    "USE_FINGERPRINT",
+    "DETECT_SCREEN_CAPTURE"
+  ],
+  "generatedTechnicalPermissionGroups": ["firebase-messaging", "launcher-badges", "install-referrer"],
+  "prohibitedUnexpectedPermissions": [
+    "READ_CONTACTS",
+    "WRITE_CONTACTS",
+    "ACCESS_FINE_LOCATION",
+    "ACCESS_COARSE_LOCATION",
+    "RECORD_AUDIO",
+    "CAMERA",
+    "READ_SMS",
+    "READ_CALL_LOG",
+    "READ_EXTERNAL_STORAGE",
+    "READ_MEDIA_IMAGES",
+    "WRITE_EXTERNAL_STORAGE",
+    "AD_ID",
+    "ACCESS_ADSERVICES_ATTRIBUTION",
+    "ACCESS_ADSERVICES_AD_ID"
+  ],
+  "optionalSdks": [
+    { "provider": "Firebase Analytics", "purposeCode": "PRODUCT_ANALYTICS", "defaultEnabled": false },
+    { "provider": "Sentry", "purposeCode": "CRASH_DIAGNOSTICS", "defaultEnabled": false },
+    { "provider": "Firebase Performance Monitoring", "purposeCode": "CRASH_DIAGNOSTICS", "defaultEnabled": false, "platform": "Android" }
+  ],
+  "dataCategories": [
+    { "code": "ACCOUNT_IDENTITY", "collected": true, "required": true },
+    { "code": "COMPANY_TEAM", "collected": true, "required": true },
+    { "code": "WHATSAPP_CUSTOMER_DIRECTED", "collected": "feature-dependent", "required": false },
+    { "code": "TELEGRAM_CUSTOMER_DIRECTED", "collected": "feature-dependent", "required": false },
+    { "code": "FACEBOOK_PAGES_CUSTOMER_DIRECTED", "collected": "feature-dependent", "required": false },
+    { "code": "MESSAGE_PHOTOS", "collected": "user-submitted", "required": false },
+    { "code": "MESSAGE_VIDEOS", "collected": "user-submitted", "required": false },
+    { "code": "MESSAGE_FILES_DOCUMENTS", "collected": "user-submitted", "required": false },
+    { "code": "FREIGHT_MARKETPLACE_CONTENT", "collected": "user-submitted", "required": false },
+    { "code": "SMART_MATCHING_CONTENT", "collected": "feature-dependent", "required": false },
+    { "code": "PRODUCT_ANALYTICS", "collected": "preference-dependent", "required": false },
+    { "code": "CRASH_DIAGNOSTICS", "collected": "preference-dependent", "required": false },
+    { "code": "SUPPORT_CONTENT", "collected": "user-submitted", "required": false },
+    { "code": "BILLING_REFERENCE", "collected": "purchase-dependent", "required": false }
+  ],
+  "playDataSafetyRequiredAdditions": [
+    {
+      "dataType": "Photos",
+      "collected": true,
+      "shared": false,
+      "ephemeral": false,
+      "required": false,
+      "purposes": ["APP_FUNCTIONALITY"]
+    },
+    {
+      "dataType": "Videos",
+      "collected": true,
+      "shared": false,
+      "ephemeral": false,
+      "required": false,
+      "purposes": ["APP_FUNCTIONALITY"]
+    },
+    {
+      "dataType": "Files and docs",
+      "collected": true,
+      "shared": false,
+      "ephemeral": false,
+      "required": false,
+      "purposes": ["APP_FUNCTIONALITY"]
+    }
+  ],
+  "permissionRemediation": {
+    "permission": "CAMERA",
+    "status": "VERIFIED_ABSENT_FROM_V196_BUNDLE",
+    "reason": "The app uses system photo and document pickers, contains no camera capture flow, and the verified v196 AAB does not request CAMERA."
+  }
+}

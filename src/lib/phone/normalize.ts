@@ -1,37 +1,117 @@
+import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js/core";
+import phoneMetadata from "libphonenumber-js/min/metadata";
 import { z } from "zod";
 
-const TURKEY_MOBILE_MSISDN_REGEX = /^905\d{9}$/;
-const INVALID_TURKEY_MOBILE_PHONE = "Lütfen geçerli bir Türkiye mobil numarası girin.";
+import { countryRegistry, getCountryByIso } from "@/lib/international/country-registry";
 
-function normalizeTurkeyMobilePhone(value: string) {
-  const raw = value.trim();
-  const digits = raw.replace(/\D/g, "");
-  let normalized = "";
+const SAFE_PHONE_INPUT = /^\+?[0-9\s().-]+$/u;
 
-  if (raw.startsWith("+")) {
-    normalized = digits;
-  } else if (digits.startsWith("0090") && digits.length === 14) {
-    normalized = digits.slice(2);
-  } else if (digits.startsWith("90") && digits.length === 12) {
-    normalized = digits;
-  } else if (digits.startsWith("0") && digits.length === 11) {
-    normalized = `90${digits.slice(1)}`;
-  } else if (digits.startsWith("5") && digits.length === 10) {
-    normalized = `90${digits}`;
+export type PhonePairingPayload = {
+  countryIso?: unknown;
+  countryCode?: unknown;
+  nationalNumber?: unknown;
+  phoneNumber?: unknown;
+};
+
+export type NormalizedPhonePairing = {
+  countryIso: string;
+  callingCode: string;
+  locale: string;
+  nationalNumber: string;
+  e164: string;
+  digits: string;
+};
+
+function parseAndValidate(value: string, countryIso?: string | null) {
+  const parsed = countryIso
+    ? parsePhoneNumberFromString(value, countryIso as CountryCode, phoneMetadata)
+    : parsePhoneNumberFromString(value, phoneMetadata);
+  if (!parsed || !parsed.isPossible() || !parsed.isValid()) throw new Error("INVALID_WHATSAPP_PHONE");
+  return parsed;
+}
+
+export function normalizePhonePairingInput(payload: PhonePairingPayload): NormalizedPhonePairing {
+  const rawIso = typeof payload.countryIso === "string"
+    ? payload.countryIso
+    : typeof payload.countryCode === "string"
+      ? payload.countryCode
+      : null;
+  const structured = typeof payload.nationalNumber === "string";
+
+  if (structured) {
+    const country = getCountryByIso(rawIso);
+    if (!country) throw new Error("UNSUPPORTED_PHONE_COUNTRY");
+    const rawNational = String(payload.nationalNumber).normalize("NFKC").trim();
+    if (!rawNational || !SAFE_PHONE_INPUT.test(rawNational)) {
+      throw new Error("INVALID_WHATSAPP_PHONE");
+    }
+    const digits = rawNational.replace(/\D/gu, "");
+    const callingDigits = country.callingCode.slice(1);
+    const internationalValue = rawNational.startsWith("+")
+      ? `+${digits}`
+      : rawNational.startsWith("00")
+        ? `+${digits.slice(2)}`
+        : digits.startsWith(callingDigits)
+          ? `+${digits}`
+          : null;
+    const parsed = parseAndValidate(
+      internationalValue ?? digits.replace(/^0+/, ""),
+      internationalValue ? undefined : country.countryIso,
+    );
+    if (parsed.country !== country.countryIso) throw new Error("PHONE_COUNTRY_MISMATCH");
+    return {
+      countryIso: country.countryIso,
+      callingCode: country.callingCode,
+      locale: country.localeId,
+      nationalNumber: parsed.nationalNumber,
+      e164: parsed.number,
+      digits: parsed.number.slice(1),
+    };
   }
 
-  if (!TURKEY_MOBILE_MSISDN_REGEX.test(normalized)) {
-    throw new Error("INVALID_WHATSAPP_PHONE");
-  }
+  if (typeof payload.phoneNumber !== "string") throw new Error("INVALID_WHATSAPP_PHONE");
+  const raw = payload.phoneNumber.normalize("NFKC").trim();
+  if (!raw || !/^\+?[0-9\s().-]+$/u.test(raw)) throw new Error("INVALID_WHATSAPP_PHONE");
+  const legacyDigits = raw.replace(/\D/gu, "");
+  const legacyCountry = [...countryRegistry]
+    .sort((left, right) => right.callingCode.length - left.callingCode.length)
+    .find((country) => legacyDigits.startsWith(country.callingCode.slice(1)));
+  const legacyValue = raw.startsWith("+")
+    ? raw
+    : raw.startsWith("00")
+      ? `+${raw.slice(2)}`
+      : legacyCountry
+        ? `+${legacyDigits}`
+        : raw;
+  const parsed = parseAndValidate(legacyValue, legacyValue.startsWith("+") ? undefined : "TR");
+  const country = getCountryByIso(parsed.country);
+  if (!country) throw new Error("UNSUPPORTED_PHONE_COUNTRY");
+  return {
+    countryIso: country.countryIso,
+    callingCode: country.callingCode,
+    locale: country.localeId,
+    nationalNumber: parsed.nationalNumber,
+    e164: parsed.number,
+    digits: parsed.number.slice(1),
+  };
+}
 
-  return normalized;
+export function inferPhoneCountry(value: string | null | undefined) {
+  if (!value) return null;
+  try {
+    const normalized = value.startsWith("+") ? value : `+${value.replace(/\D/gu, "")}`;
+    const parsed = parseAndValidate(normalized);
+    return getCountryByIso(parsed.country);
+  } catch {
+    return null;
+  }
 }
 
 export const whatsappPhoneSchema = z.string().trim().min(7).max(32).transform((value, context) => {
   try {
-    return normalizeTurkeyMobilePhone(value);
+    return normalizePhonePairingInput({ phoneNumber: value }).digits;
   } catch {
-    context.addIssue({ code: "custom", message: INVALID_TURKEY_MOBILE_PHONE });
+    context.addIssue({ code: "custom", message: "INVALID_WHATSAPP_PHONE" });
     return z.NEVER;
   }
 });
@@ -40,4 +120,8 @@ export function normalizePhoneNumber(value: string) {
   const parsed = whatsappPhoneSchema.safeParse(value);
   if (!parsed.success) throw new Error("INVALID_WHATSAPP_PHONE");
   return parsed.data;
+}
+
+export function supportedPhoneCountries() {
+  return countryRegistry;
 }

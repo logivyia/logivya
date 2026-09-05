@@ -6,6 +6,7 @@ import { prisma } from "@/server/db";
 import { createMessageCorrelationId, readCampaignCorrelationId } from "@/server/messages/correlation";
 import { messageQueue } from "@/server/queues/client";
 import { writeAuditLog } from "@/server/security/audit";
+import { hasUnconfirmedDelivery, UNKNOWN_DELIVERY_OUTCOME } from "@/server/messages/delivery-intent";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -13,9 +14,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     requirePermission(membership.role, "retry_campaigns");
     const recipient = await prisma.messageRecipient.findFirst({
       where: { id, status: "FAILED", campaign: { companyId: company.id, createdById: user.id, deletedAt: null } },
-      select: { id: true, campaignId: true, campaign: { select: { contentJson: true } } },
+      select: { id: true, campaignId: true, messageKeyJson: true, campaign: { select: { contentJson: true } } },
     });
     if (!recipient) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
+    if (hasUnconfirmedDelivery(recipient.messageKeyJson)) return NextResponse.json({ code: UNKNOWN_DELIVERY_OUTCOME, error: "Gönderimin sonucu doğrulanamadı. Tekrar göndermeden önce WhatsApp üzerinden teslim durumunu kontrol edin." }, { status: 409 });
     const correlationId = readCampaignCorrelationId(recipient.campaign.contentJson) ?? createMessageCorrelationId();
     const access = await subscriptionAccess.canSendMessage(company.id, 1);
     if (!access.allowed) return NextResponse.json({ error: "Aboneliginiz aktif degil. Mesaj gondermek icin paketinizi yenileyin.", code: "SUBSCRIPTION_LOCKED", details: access, correlationId }, { status: 403 });

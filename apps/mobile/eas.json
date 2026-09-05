@@ -1,4 +1,4 @@
-﻿{
+{
   "cli": {
     "version": ">= 14.0.0",
     "appVersionSource": "local"
@@ -30,12 +30,19 @@
     },
     "production": {
       "autoIncrement": false,
+      "distribution": "store",
       "env": {
         "APP_ENV": "production",
         "EXPO_PUBLIC_API_BASE_URL": "https://www.logivya.com",
-        "EXPO_PUBLIC_APP_VERSION": "1.0.106",
-        "ANDROID_VERSION_CODE": "136",
-        "IOS_BUILD_NUMBER": "136",
+        "EXPO_PUBLIC_APP_VERSION": "1.0.208",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "842461920651-qcli52m4b9ldmqqgogi19bhu59r8nrhb.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "842461920651-e2jr49djp2f8o4qpa676008ss6ptc4q6.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "842461920651-0afu2v0l74u3bohfv7ft3j7826iu4hah.apps.googleusercontent.com",
+        "ANDROID_VERSION_CODE": "223",
+        "EXPO_PUBLIC_BUILD_MARKER": "MARKETPLACE_EXPERIENCE_V223",
+        "LOGIVYA_RELEASE_ID": "android-v223-1.0.208",
+        "LOGIVYA_BUILD_DATE": "2026-09-05T08:10:01.127Z",
+        "IOS_BUILD_NUMBER": "185",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "android": {
@@ -45,14 +52,53 @@
         "simulator": false
       }
     },
+    "ios-production": {
+      "extends": "production",
+      "credentialsSource": "local",
+      "autoIncrement": false,
+      "distribution": "store",
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_API_BASE_URL": "https://www.logivya.com",
+        "EXPO_PUBLIC_APP_VERSION": "1.0.14",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "842461920651-qcli52m4b9ldmqqgogi19bhu59r8nrhb.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "842461920651-e2jr49djp2f8o4qpa676008ss6ptc4q6.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "842461920651-0afu2v0l74u3bohfv7ft3j7826iu4hah.apps.googleusercontent.com",
+        "IOS_BUILD_NUMBER": "189",
+        "EXPO_PUBLIC_BUILD_MARKER": "IOS_MARKETPLACE_EXPERIENCE_V189",
+        "LOGIVYA_RELEASE_ID": "ios-v189-1.0.14",
+        "LOGIVYA_BUILD_DATE": "2026-09-05T08:10:01.127Z",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      },
+      "ios": {
+        "simulator": false
+      }
+    },
+    "ios-testflight-internal": {
+      "extends": "ios-production",
+      "distribution": "store",
+      "env": {
+        "EXPO_PUBLIC_APP_VERSION": "1.0.7",
+        "IOS_BUILD_NUMBER": "177",
+        "EXPO_PUBLIC_BUILD_MARKER": "IOS_UNIFIED_MASTER_INTERNAL_V177",
+        "LOGIVYA_RELEASE_ID": "ios-v177-1.0.7-internal",
+        "LOGIVYA_BUILD_DATE": "2026-09-01T12:58:28Z"
+      }
+    },
     "production-apk": {
       "autoIncrement": false,
       "env": {
         "APP_ENV": "production",
         "EXPO_PUBLIC_API_BASE_URL": "https://www.logivya.com",
-        "EXPO_PUBLIC_APP_VERSION": "1.0.106",
-        "ANDROID_VERSION_CODE": "136",
-        "IOS_BUILD_NUMBER": "136",
+        "EXPO_PUBLIC_APP_VERSION": "1.0.148",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "842461920651-qcli52m4b9ldmqqgogi19bhu59r8nrhb.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "842461920651-e2jr49djp2f8o4qpa676008ss6ptc4q6.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "842461920651-0afu2v0l74u3bohfv7ft3j7826iu4hah.apps.googleusercontent.com",
+        "ANDROID_VERSION_CODE": "179",
+        "EXPO_PUBLIC_BUILD_MARKER": "ANDROID_FREIGHT_MARKETPLACE_INTERNAL_V179",
+        "LOGIVYA_RELEASE_ID": "android-v179-1.0.148",
+        "LOGIVYA_BUILD_DATE": "2026-08-24T18:42:20Z",
+        "IOS_BUILD_NUMBER": "148",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "android": {
@@ -145,6 +191,31 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {},
+    "android-closed": {
+      "android": {
+        "track": "alpha",
+        "releaseStatus": "completed"
+      }
+    },
+    "android-internal": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed"
+      }
+    },
+    "ios-production": {
+      "ios": {
+        "ascApiKeyPath": ".eas-credentials/app-store-connect-api-key.p8",
+        "ascApiKeyId": "743K53Y4NM",
+        "ascApiKeyIssuerId": "3be0582c-68ff-4f1e-af4c-a07fa75d1a85",
+        "ascAppId": "6792539737",
+        "appleTeamId": "YMW24BAWTV",
+        "sku": "LOGIVYA001",
+        "language": "tr-TR",
+        "appName": "Logivya",
+        "bundleIdentifier": "com.logivya.mobile"
+      }
+    }
   }
 }

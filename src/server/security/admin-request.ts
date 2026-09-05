@@ -2,6 +2,8 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import IORedis from "ioredis";
 import { requestObservabilityIds } from "@/server/observability/request-id";
+import { assertWebMutationOrigin } from "@/server/security/request-origin";
+import { adminRateLimitPolicy, consumeAdminRateLimit } from "@/server/security/admin-rate-limit";
 
 let redis: IORedis | undefined;
 
@@ -47,22 +49,12 @@ export function requestId(request?: Request) {
 }
 
 export function assertAdminCsrf(request: Request) {
-  if (!["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) return;
-  const origin = request.headers.get("origin");
-  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
-  if (!origin || !host || new URL(origin).host !== host) throw new Error("CSRF_REJECTED");
+  assertWebMutationOrigin(request);
 }
 
 export async function enforceAdminRateLimit(request: Request, userId: string, permission: string) {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const mutation = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method);
-  const max = mutation ? 20 : 240;
-  const windowSeconds = mutation ? 600 : 60;
-  const key = `logivya:admin:${request.method}:${permission}:${userId}:${ip}`;
   const client = await readyRedisClient();
-  const count = await client.incr(key);
-  if (count === 1) await client.expire(key, windowSeconds);
-  if (count > max) throw new Error("ADMIN_RATE_LIMITED");
+  await consumeAdminRateLimit(client, adminRateLimitPolicy(request, userId, permission));
 }
 
 export function safeAdminError(error: unknown, id: string) {
@@ -71,6 +63,7 @@ export function safeAdminError(error: unknown, id: string) {
     : code === "FORBIDDEN" || code === "CSRF_REJECTED" ? 403
     : code === "ADMIN_RATE_LIMITED" ? 429
     : code === "ADMIN_RECENT_AUTH_REQUIRED" || code === "ADMIN_MFA_REQUIRED" ? 428
+    : code === "ADMIN_REASON_REQUIRED" ? 400
     : 500;
   return { status, body: { error: status === 500 ? "ADMIN_REQUEST_FAILED" : code, requestId: id } };
 }

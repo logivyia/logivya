@@ -7,7 +7,12 @@ import {
   type PaymentWebhookProvider,
 } from "@/server/billing/payment-webhook-verification";
 import { retrieveAndVerifyIyzicoPayment } from "@/server/billing/iyzico-payment-verification";
+import {
+  completeIyzicoCheckoutPayment,
+  failIyzicoCheckout,
+} from "@/server/billing/iyzico-checkout";
 import { prisma } from "@/server/db";
+import { readBoundedRequestText, RequestBodyError } from "@/server/security/request-body";
 
 function metadataDate(metadata: unknown, key: string) {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
@@ -23,13 +28,16 @@ function metadataBillingPeriod(metadata: unknown) {
   return value === "MONTHLY" || value === "YEARLY" ? value : null;
 }
 
+function metadataString(metadata: unknown, key: string) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 export async function receivePaymentWebhook(provider: PaymentWebhookProvider, request: Request) {
-  const contentLength = Number(request.headers.get("content-length") || 0);
-  if (Number.isFinite(contentLength) && contentLength > 1_000_000) return { status: 413, body: { error: "WEBHOOK_PAYLOAD_TOO_LARGE" } };
-  const payload = await request.text();
-  if (Buffer.byteLength(payload, "utf8") > 1_000_000) return { status: 413, body: { error: "WEBHOOK_PAYLOAD_TOO_LARGE" } };
   let receiptId: string | null = null;
   try {
+    const payload = await readBoundedRequestText(request, 1_000_000);
     const event = verifyPaymentWebhook(provider, request, payload);
     const receipt = await prisma.billingWebhookReceipt.upsert({
       where: { provider_eventId: { provider, eventId: event.eventId } },
@@ -121,6 +129,14 @@ export async function receivePaymentWebhook(provider: PaymentWebhookProvider, re
     }
 
     if (event.status === "FAILED") {
+      const manualRequestId = metadataString(payment.metadata, "manualRequestId");
+      if (provider === "IYZICO" && manualRequestId) {
+        await failIyzicoCheckout(
+          payment.id,
+          manualRequestId,
+          event.failureReason ?? "IYZICO_PAYMENT_FAILED",
+        );
+      }
       if (!["SUCCEEDED", "PAID", "MANUALLY_CONFIRMED"].includes(payment.status)) {
         await prisma.$transaction([
           prisma.payment.update({
@@ -166,6 +182,22 @@ export async function receivePaymentWebhook(provider: PaymentWebhookProvider, re
       return { status: 200, body: { ok: true, failed: true, eventId: event.eventId } };
     }
 
+    if (provider === "IYZICO" && event.checkoutToken) {
+      const result = await completeIyzicoCheckoutPayment({
+        paymentId: payment.id,
+        token: event.checkoutToken,
+        correlationId: event.eventId,
+      });
+      await prisma.billingWebhookReceipt.update({
+        where: { id: receipt.id },
+        data: { status: "PROCESSED", processedAt: new Date(), lastError: null },
+      });
+      return {
+        status: 200,
+        body: { ok: true, idempotent: result.idempotent, eventId: event.eventId },
+      };
+    }
+
     const now = new Date();
     const billingPeriod = payment.subscription?.billingPeriod === "YEARLY"
       ? "YEARLY"
@@ -190,6 +222,7 @@ export async function receivePaymentWebhook(provider: PaymentWebhookProvider, re
       source: "PAYMENT_PROVIDER",
       reason: `${provider} verified webhook`,
       correlationId: event.eventId,
+      manualRequestId: metadataString(payment.metadata, "manualRequestId") ?? undefined,
       payment: {
         mode: "CONFIRM_EXISTING",
         paymentId: payment.id,
@@ -204,6 +237,9 @@ export async function receivePaymentWebhook(provider: PaymentWebhookProvider, re
     await prisma.billingWebhookReceipt.update({ where: { id: receipt.id }, data: { status: "PROCESSED", processedAt: new Date(), lastError: null } });
     return { status: 200, body: { ok: true, idempotent: result.idempotent, eventId: event.eventId } };
   } catch (error) {
+    if (error instanceof RequestBodyError) {
+      return { status: error.status, body: { error: error.code === "REQUEST_BODY_TOO_LARGE" ? "WEBHOOK_PAYLOAD_TOO_LARGE" : "INVALID_WEBHOOK_PAYLOAD" } };
+    }
     if (receiptId) {
       await prisma.billingWebhookReceipt.update({
         where: { id: receiptId },

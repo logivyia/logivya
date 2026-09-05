@@ -2,13 +2,16 @@ import { create } from "zustand";
 
 import type { AuthTokens, MobileCompany, MobileUser } from "@/types/api";
 
-type AuthStatus = "booting" | "recovering" | "authenticated" | "unauthenticated";
+type AuthStatus =
+  "booting" | "recovering" | "authenticated" | "unauthenticated";
 
 type AuthState = {
   status: AuthStatus;
   user: MobileUser | null;
   company: MobileCompany | null;
   permissions: string[];
+  adminPermissions: string[];
+  platformAdminRole: string | null;
   isPlatformAdmin: boolean;
   tokens: AuthTokens | null;
   setBooting: () => void;
@@ -17,6 +20,8 @@ type AuthState = {
     user: MobileUser;
     company: MobileCompany;
     permissions: string[];
+    adminPermissions?: string[];
+    platformAdminRole?: string | null;
     isAdmin?: boolean;
     isPlatformAdmin?: boolean;
     tokens: AuthTokens;
@@ -31,6 +36,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   company: null,
   permissions: [],
+  adminPermissions: [],
+  platformAdminRole: null,
   isPlatformAdmin: false,
   tokens: null,
   setBooting: () => set({ status: "booting" }),
@@ -41,8 +48,14 @@ export const useAuthStore = create<AuthState>((set) => ({
       user: session.user,
       company: session.company,
       permissions: session.permissions,
-      isPlatformAdmin: session.isAdmin === true || session.isPlatformAdmin === true || session.user.isAdmin === true || session.user.isPlatformAdmin === true,
-      tokens: session.tokens
+      adminPermissions: session.adminPermissions ?? [],
+      platformAdminRole: session.platformAdminRole ?? null,
+      isPlatformAdmin:
+        session.isAdmin === true ||
+        session.isPlatformAdmin === true ||
+        session.user.isAdmin === true ||
+        session.user.isPlatformAdmin === true,
+      tokens: session.tokens,
     }),
   setCompany: (company) => set({ company }),
   setTokens: (tokens) => set({ tokens }),
@@ -52,7 +65,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       user: null,
       company: null,
       permissions: [],
+      adminPermissions: [],
+      platformAdminRole: null,
       isPlatformAdmin: false,
-      tokens: null
-    })
+      tokens: null,
+    }),
 }));

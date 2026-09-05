@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createMobileSession, requireMobileAuth } from "@/server/mobile/auth";
 import { prisma } from "@/server/db";
 import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
+import { isMobileWorkspaceEnrollmentAllowed } from "@/server/mobile/registration-policy";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 import { writeAuditLog } from "@/server/security/audit";
 import { acceptCompanyInvitation, companyInvitationErrorStatus, declineCompanyInvitation } from "@/server/team/company-invitations";
@@ -34,6 +35,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ ide
       return mobileSuccess({ status: "DECLINED" as const });
     }
 
+    if (!isMobileWorkspaceEnrollmentAllowed(context.platform)) {
+      return mobileError("WORKSPACE_ENROLLMENT_UNAVAILABLE_ON_IOS", "iOS uygulamasında davetle çalışma alanına katılma kullanılamaz.", { status: 403 });
+    }
+
     const result = await acceptCompanyInvitation({ token: identifier, userId: context.user.id, email: context.user.email }, request);
     const tokens = await createMobileSession({
       userId: context.user.id,
@@ -62,7 +67,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ide
         INVITATION_ALREADY_USED: "Bu davet daha önce kullanılmış.",
         INVITATION_REVOKED: "Bu davet iptal edilmiş.",
         INVITATION_DECLINED: "Bu davet daha önce reddedilmiş.",
-        SEAT_LIMIT_REACHED: "Şirkette kullanılabilir ekip koltuğu kalmamış.",
+        SEAT_LIMIT_REACHED: "Çalışma alanında kullanılabilir hesap kapasitesi kalmamış.",
         RATE_LIMITED: "Çok fazla deneme yaptınız. Lütfen daha sonra tekrar deneyin.",
       };
       if (messages[error.message]) {

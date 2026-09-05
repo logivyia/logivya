@@ -7,6 +7,7 @@ import { registerMobileNotificationToken } from "@/api/mobileNotifications";
 import { config } from "@/constants/config";
 import { captureAppError } from "@/services/crash-reporting";
 import { trackEvent } from "@/services/analytics";
+import { createNotificationResponseDeduper } from "@/services/notification-response-dedupe";
 import { getOrCreateDeviceId } from "@/storage/device-storage";
 
 type PermissionLike = {
@@ -18,6 +19,7 @@ type NotificationData = Record<string, unknown>;
 
 const BACKGROUND_NOTIFICATION_TASK = "LOGIVYA_BACKGROUND_NOTIFICATION";
 let notificationRuntimeConfigured = false;
+const notificationResponseDeduper = createNotificationResponseDeduper();
 
 export const LOGIVYA_NOTIFICATION_TYPES = {
   WHATSAPP_DISCONNECTED: "whatsapp.disconnected",
@@ -36,7 +38,8 @@ export const LOGIVYA_NOTIFICATION_TYPES = {
   SUPPORT_TICKET_REOPENED: "support.ticket_reopened",
   CAMPAIGN_COMPLETED: "campaign.completed",
   CAMPAIGN_FAILED: "campaign.failed",
-  CAMPAIGN_PARTIAL_DELIVERY: "campaign.partial_delivery"
+  CAMPAIGN_PARTIAL_DELIVERY: "campaign.partial_delivery",
+  MARKETPLACE_REQUEST_MATCH_FOUND: "marketplace.request_match_found"
 } as const;
 
 export function configureNotificationRuntime() {
@@ -120,6 +123,7 @@ async function registerNotificationDevice() {
       createAndroidChannel("account", "Hesap", Notifications.AndroidImportance.DEFAULT),
       createAndroidChannel("whatsapp", "WhatsApp bağlantısı", Notifications.AndroidImportance.HIGH),
       createAndroidChannel("messages", "Mesajlar", Notifications.AndroidImportance.DEFAULT),
+      createAndroidChannel("marketplace", "Lojistik pazarı", Notifications.AndroidImportance.HIGH),
       createAndroidChannel("support", "Destek", Notifications.AndroidImportance.DEFAULT),
       createAndroidChannel("billing", "Abonelik ve ödemeler", Notifications.AndroidImportance.HIGH)
     ]);
@@ -163,16 +167,20 @@ export function subscribeNotificationHandlers(onOpen?: (url: string) => void) {
 
   try {
     response = Notifications.addNotificationResponseReceivedListener((event) => {
-      try {
-        const url = getNotificationDeepLink(event.notification.request.content.data ?? {});
-        if (typeof url === "string" && onOpen) onOpen(url);
-        void trackEvent("push_opened", { url: typeof url === "string" ? url : undefined });
-      } catch (error) {
-        captureAppError(error, { source: "notification-open" });
-      }
+      handleNotificationResponse(event, onOpen, "listener");
     });
   } catch (error) {
     captureAppError(error, { source: "notification-response-subscribe" });
+  }
+
+  try {
+    const initialResponse = Notifications.getLastNotificationResponse();
+    if (initialResponse) {
+      handleNotificationResponse(initialResponse, onOpen, "initial");
+      Notifications.clearLastNotificationResponse();
+    }
+  } catch (error) {
+    captureAppError(error, { source: "notification-initial-response" });
   }
 
   return () => {
@@ -187,6 +195,21 @@ export function subscribeNotificationHandlers(onOpen?: (url: string) => void) {
       captureAppError(error, { source: "notification-response-unsubscribe" });
     }
   };
+}
+
+function handleNotificationResponse(
+  event: Notifications.NotificationResponse,
+  onOpen: ((url: string) => void) | undefined,
+  source: "initial" | "listener",
+) {
+  try {
+    const url = getNotificationDeepLink(event.notification.request.content.data ?? {});
+    if (typeof url !== "string" || !notificationResponseDeduper.shouldHandle(event)) return;
+    if (onOpen) onOpen(url);
+    void trackEvent("push_opened", { url, source });
+  } catch (error) {
+    captureAppError(error, { source: "notification-open" });
+  }
 }
 
 function getNotificationDeepLink(data: NotificationData) {
@@ -220,6 +243,10 @@ function getNotificationDeepLink(data: NotificationData) {
     case LOGIVYA_NOTIFICATION_TYPES.CAMPAIGN_FAILED:
     case LOGIVYA_NOTIFICATION_TYPES.CAMPAIGN_PARTIAL_DELIVERY:
       return "logivya://messages";
+    case LOGIVYA_NOTIFICATION_TYPES.MARKETPLACE_REQUEST_MATCH_FOUND: {
+      const requestId = typeof data.requestId === "string" ? data.requestId : null;
+      return requestId ? `logivya://marketplace/requests/${requestId}/matches` : "logivya://marketplace/requests";
+    }
     default:
       return undefined;
   }
@@ -229,6 +256,7 @@ function createAndroidChannel(id: string, name: string, importance: Notification
   return Notifications.setNotificationChannelAsync(id, {
     name,
     importance,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
     vibrationPattern: [0, 250, 180, 250],
     enableVibrate: true
   });

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/server/auth/permissions";
 import { requireApiSession } from "@/server/auth/session";
@@ -28,11 +29,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await enforceWhatsAppRateLimit("qr-account", id);
     await resetAccountForConnection(id, AccountStatus.PENDING_QR);
     logger.info("whatsapp.connect.requested", { companyId: company.id, userId: user.id, accountId: id, mode: "QR_REGENERATE" });
-    const job = await enqueueWhatsAppJob("connect", { action: "connect", accountId: id }, { jobId: `regenerate-${id}-${Date.now()}` });
+    const qrRequestedAt = new Date();
+    const qrCorrelationId = randomUUID();
+    const job = await enqueueWhatsAppJob("connect", { action: "connect", accountId: id, correlationId: qrCorrelationId }, { jobId: `regenerate-${id}-${Date.now()}` });
     logger.info("whatsapp.connect.job.enqueued", { accountId: id, jobId: job.id, action: "connect", mode: "QR_REGENERATE" });
     await writeAuditLog(request, { companyId: company.id, userId: user.id, action: "whatsapp.qr.regenerated", entityType: "WhatsAppAccount", entityId: id });
     try {
-      const ready = await waitForAccountQr(id);
+      const ready = await waitForAccountQr(id, { updatedAfter: qrRequestedAt, correlationId: qrCorrelationId });
       return NextResponse.json({ ok: true, accountId: id, status: ready.status, qr: ready.qrCode, qrCode: ready.qrCode, expiresAt: ready.qrExpiresAt, qrExpiresAt: ready.qrExpiresAt });
     } catch (waitError) {
       if (!isWhatsAppWaitTimeout(waitError)) throw waitError;
@@ -42,10 +45,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         pending: true,
         accountId: id,
         status: pending?.status || AccountStatus.PENDING_QR,
-        qr: pending?.qrCode || null,
-        qrCode: pending?.qrCode || null,
-        expiresAt: pending?.qrExpiresAt || null,
-        qrExpiresAt: pending?.qrExpiresAt || null,
+        qr: null,
+        qrCode: null,
+        expiresAt: null,
+        qrExpiresAt: null,
         message: "QR kod hazırlanıyor. Lütfen birkaç saniye bekleyin.",
       }, { status: 202 });
     }

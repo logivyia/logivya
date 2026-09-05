@@ -11,6 +11,7 @@ export type ManualActivationInput = {
   adminUserId: string;
   note: string;
   idempotencyKey: string;
+  requestId?: string;
   customAmount?: number;
 };
 
@@ -25,6 +26,7 @@ export function activateSubscriptionManually(input: ManualActivationInput) {
     actorUserId: input.adminUserId,
     reason: input.note,
     correlationId: input.idempotencyKey,
+    manualRequestId: input.requestId,
     payment: {
       mode: "CREATE",
       provider: "MANUAL",
@@ -32,6 +34,10 @@ export function activateSubscriptionManually(input: ManualActivationInput) {
       paymentMethod: input.paymentMethod,
       currency: input.currency,
       customAmount: input.customAmount,
+      metadata:
+        input.paymentMethod === "FREE_PROMO"
+          ? { grantType: "ADMIN_PROMOTIONAL" }
+          : undefined,
     },
   });
 }

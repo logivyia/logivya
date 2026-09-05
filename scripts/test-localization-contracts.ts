@@ -18,18 +18,31 @@ import {
 import { translate as translateMobile, translations } from "../apps/mobile/src/i18n/translations";
 
 const root = process.cwd();
-const expectedLocales = ["tr", "en", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"] as const;
+const expectedLocales = ["tr", "en", "ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"] as const;
+const canonicalAccountLabels = {
+  tr: ["1 Hesap", "2 Hesap", "3 Hesap", "{used}/{limit} hesap", "Hesaplar"],
+  en: ["1 Account", "2 Accounts", "3 Accounts", "{used}/{limit} accounts", "Accounts"],
+  ar: ["حساب واحد", "حسابان", "3 حسابات", "{used}/{limit} حسابات", "الحسابات"],
+  ro: ["1 cont", "2 conturi", "3 conturi", "{used}/{limit} conturi", "Conturi"],
+  ru: ["1 \u0430\u043a\u043a\u0430\u0443\u043d\u0442", "2 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430", "3 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430", "{used}/{limit} \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u043e\u0432", "\u0410\u043a\u043a\u0430\u0443\u043d\u0442\u044b"],
+  az: ["1 hesab", "2 hesab", "3 hesab", "{used}/{limit} hesab", "Hesablar"],
+  tk: ["1 hasap", "2 hasap", "3 hasap", "{used}/{limit} hasap", "Hasaplar"],
+  de: ["1 Konto", "2 Konten", "3 Konten", "{used}/{limit} Konten", "Konten"],
+  bg: ["1 \u0430\u043a\u0430\u0443\u043d\u0442", "2 \u0430\u043a\u0430\u0443\u043d\u0442\u0430", "3 \u0430\u043a\u0430\u0443\u043d\u0442\u0430", "{used}/{limit} \u0430\u043a\u0430\u0443\u043d\u0442\u0430", "\u0410\u043a\u0430\u0443\u043d\u0442\u0438"],
+  el: ["1 \u03bb\u03bf\u03b3\u03b1\u03c1\u03b9\u03b1\u03c3\u03bc\u03cc\u03c2", "2 \u03bb\u03bf\u03b3\u03b1\u03c1\u03b9\u03b1\u03c3\u03bc\u03bf\u03af", "3 \u03bb\u03bf\u03b3\u03b1\u03c1\u03b9\u03b1\u03c3\u03bc\u03bf\u03af", "{used}/{limit} \u03bb\u03bf\u03b3\u03b1\u03c1\u03b9\u03b1\u03c3\u03bc\u03bf\u03af", "\u039b\u03bf\u03b3\u03b1\u03c1\u03b9\u03b1\u03c3\u03bc\u03bf\u03af"],
+  sr: ["1 nalog", "2 naloga", "3 naloga", "{used}/{limit} naloga", "Nalozi"],
+} as const;
 
 function placeholders(value: string) {
   return [...value.matchAll(/\{([^{}]+)\}/g)].map((match) => match[1]).sort();
 }
 
 async function readDictionary(locale: string) {
-  return JSON.parse(await readFile(path.join(root, "locales", `${locale}.json`), "utf8")) as Record<string, string>;
+  return JSON.parse(await readFile(path.join(root, "packages", "locales", `${locale}.json`), "utf8")) as Record<string, string>;
 }
 
 async function main() {
-assert.deepEqual(locales, expectedLocales, "Web must expose exactly the approved ten locales.");
+assert.deepEqual(locales, expectedLocales, "Web must expose exactly the approved eleven locales.");
 assert.deepEqual(mobileLocales, expectedLocales, "Mobile must expose the same locale list as web.");
 assert.equal(fallbackLocale, "en", "Web fallback must be English.");
 assert.equal(mobileFallbackLocale, "en", "Mobile fallback must be English.");
@@ -58,6 +71,16 @@ for (const locale of expectedLocales) {
     assert(dictionary[key].trim(), `${locale} mobile ${key} must not be empty.`);
     assert.deepEqual(placeholders(dictionary[key]), placeholders(translations.en[key]), `${locale} mobile ${key} placeholders must match English.`);
   }
+}
+
+for (const locale of expectedLocales) {
+  const dictionary = await readDictionary(locale);
+  const [trial, starter, professional, mobileCount, mobileLabel] = canonicalAccountLabels[locale];
+  assert.equal(dictionary["home.plan.trial.feature1"], trial, `${locale} trial capacity must use account naming.`);
+  assert.equal(dictionary["home.plan.starter.feature1"], starter, `${locale} starter capacity must use account naming.`);
+  assert.equal(dictionary["home.plan.professional.feature1"], professional, `${locale} professional capacity must use account naming.`);
+  assert.equal(translations[locale].seatsCount, mobileCount, `${locale} mobile capacity must use account naming.`);
+  assert.equal(translations[locale].userSeats, mobileLabel, `${locale} mobile capacity label must use account naming.`);
 }
 
 assert(!Object.values(await readDictionary("sr")).some((value) => /[\u0400-\u04ff]/.test(value)), "Web Serbian must use Latin script only.");
@@ -94,7 +117,7 @@ assert(mobileApiClient.includes('headers.set("X-Logivya-Locale", locale)'), "Mob
 assert(mobileApp.includes("applyAccountLocale(accountLocale)"), "Mobile login and session restore must apply the profile locale across devices.");
 assert(mobilePreferenceRoute.includes("prisma.user.update"), "Mobile locale preference must be stored on the user profile.");
 
-console.log("Localization contracts passed for web and mobile across 10 locales.");
+console.log("Localization contracts passed for web and mobile across 11 locales.");
 }
 
 main().catch((error) => {

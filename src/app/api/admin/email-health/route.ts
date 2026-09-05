@@ -3,10 +3,11 @@ import { getEmailProviderStatus } from "@/lib/email/email-provider";
 import { verifyEmailProviderConnection } from "@/lib/email/send-email";
 import { requirePlatformAdmin } from "@/server/auth/platform-admin";
 import { logger } from "@/server/observability/logger";
+import { requestId, safeAdminError } from "@/server/security/admin-request";
 
 export async function GET(request: Request) {
   try {
-    await requirePlatformAdmin("platform:read", request);
+    await requirePlatformAdmin("admin.systemHealth.read", request);
     const status = getEmailProviderStatus();
     const connection = await verifyEmailProviderConnection();
 
@@ -29,6 +30,7 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     logger.error("Admin email health check failed", error);
-    return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    const safe = safeAdminError(error, requestId(request));
+    return NextResponse.json(safe.body, { status: safe.status });
   }
 }

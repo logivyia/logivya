@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import { retentionObjects } from "../ops/vps/recovery-retention.mjs";
+const now = Date.now();
+const base = "logivya-backups/recovery-v1/production/postgres/2026/08/01/";
+const id = "production-postgres-test";
+const manifest = { status: "VERIFIED", environment: "production", backupId: id, archiveFile: `${id}.dump.enc`, startedAt: new Date(now - 31 * 86400000).toISOString(), retentionExpiresAt: new Date(now - 86400000).toISOString(), storageLocations: [{ bucket: "primary", objectKey: `${base}${id}.dump.enc` }] };
+assert.equal(retentionObjects(manifest, `${base}${id}.manifest.json`, "primary", now).length, 2);
+for (const changed of [ { status: "FAILED" }, { environment: "staging" }, { startedAt: new Date(now - 86400000).toISOString() }, { archiveFile: "../../victim" }, { retentionExpiresAt: "invalid" }, { storageLocations: [] }, { backupId: "../victim" } ]) assert.deepEqual(retentionObjects({ ...manifest, ...changed }, `${base}${id}.manifest.json`, "primary", now), []);
+assert.deepEqual(retentionObjects(manifest, `logivya-backups/production/postgres/${id}.manifest.json`, "primary", now), []);
+assert.deepEqual(retentionObjects(manifest, `${base}${id}.manifest.json`, "unrelated-bucket", now), []);
+console.log("Retention: age, signed-object boundaries, legacy exclusion and path traversal checks passed.");

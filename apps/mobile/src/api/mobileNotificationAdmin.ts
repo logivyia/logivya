@@ -17,7 +17,12 @@ export type AdminNotificationEvent = {
   occurredAt: string;
   company?: { name: string } | null;
   actor?: { email: string } | null;
-  _count: { notifications: number; deliveries: number; outbox: number; deadLetters: number };
+  _count: {
+    notifications: number;
+    deliveries: number;
+    outbox: number;
+    deadLetters: number;
+  };
 };
 
 export type AdminNotificationDelivery = {
@@ -76,6 +81,11 @@ export type AdminNotificationProviderResponse = {
   recentWebhooks: number;
 };
 
+export type AdminNotificationPageInfo = {
+  hasMore: boolean;
+  nextCursor: string | null;
+};
+
 export type AnnouncementDraftInput = {
   title: string;
   body: string;
@@ -88,51 +98,92 @@ export type AnnouncementDraftInput = {
   endsAt?: string;
 };
 
-export function getAdminNotificationEvents() {
-  return apiClient.requestRaw<{ events: AdminNotificationEvent[] }>("/api/admin/notifications/events?limit=50");
+export function getAdminNotificationEvents(cursor?: string) {
+  const cursorQuery = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
+  return apiClient.requestRaw<{
+    events: AdminNotificationEvent[];
+    pageInfo: AdminNotificationPageInfo;
+  }>(`/api/admin/notifications/events?limit=50${cursorQuery}`);
 }
 
-export function getAdminNotificationDeliveries(status?: string) {
-  const query = status && status !== "ALL" ? `?limit=50&status=${encodeURIComponent(status)}` : "?limit=50";
-  return apiClient.requestRaw<{ deliveries: AdminNotificationDelivery[] }>(`/api/admin/notifications/deliveries${query}`);
+export function getAdminNotificationDeliveries(
+  status?: string,
+  cursor?: string,
+) {
+  const statusQuery =
+    status && status !== "ALL" ? `&status=${encodeURIComponent(status)}` : "";
+  const cursorQuery = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
+  return apiClient.requestRaw<{
+    deliveries: AdminNotificationDelivery[];
+    pageInfo: AdminNotificationPageInfo;
+  }>(
+    `/api/admin/notifications/deliveries?limit=50${statusQuery}${cursorQuery}`,
+  );
 }
 
-export function getAdminNotificationDeadLetters() {
-  return apiClient.requestRaw<{ deadLetters: AdminNotificationDeadLetter[] }>("/api/admin/notifications/dead-letters?limit=50");
+export function getAdminNotificationDeadLetters(cursor?: string) {
+  const cursorQuery = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
+  return apiClient.requestRaw<{
+    deadLetters: AdminNotificationDeadLetter[];
+    pageInfo: AdminNotificationPageInfo;
+  }>(`/api/admin/notifications/dead-letters?limit=50${cursorQuery}`);
 }
 
-export function retryAdminNotificationDeadLetter(id: string, resolution: string) {
-  return apiClient.requestRaw<{ ok: true }>(`/api/admin/notifications/dead-letters/${id}/retry`, {
-    method: "POST",
-    body: JSON.stringify({ resolution })
-  });
+export function retryAdminNotificationDeadLetter(
+  id: string,
+  resolution: string,
+) {
+  return apiClient.requestRaw<{ ok: true }>(
+    `/api/admin/notifications/dead-letters/${id}/retry`,
+    {
+      method: "POST",
+      body: JSON.stringify({ resolution }),
+    },
+  );
 }
 
 export function getAdminNotificationTemplates() {
-  return apiClient.requestRaw<{ templates: AdminNotificationTemplate[] }>("/api/admin/notification-templates");
+  return apiClient.requestRaw<{ templates: AdminNotificationTemplate[] }>(
+    "/api/admin/notification-templates",
+  );
 }
 
-export function testAdminNotificationTemplate(id: string) {
-  return apiClient.requestRaw<{ ok: true }>(`/api/admin/notification-templates/${id}/test`, {
-    method: "POST",
-    body: JSON.stringify({ variables: {} })
-  });
+export function testAdminNotificationTemplate(id: string, reason: string) {
+  return apiClient.requestRaw<{ ok: true }>(
+    `/api/admin/notification-templates/${id}/test`,
+    {
+      method: "POST",
+      body: JSON.stringify({ variables: {}, reason }),
+    },
+  );
 }
 
 export function getAdminNotificationAnnouncements() {
-  return apiClient.requestRaw<{ announcements: AdminNotificationAnnouncement[] }>("/api/admin/announcements");
+  return apiClient.requestRaw<{
+    announcements: AdminNotificationAnnouncement[];
+  }>("/api/admin/announcements");
 }
 
-export function createAdminNotificationAnnouncement(input: AnnouncementDraftInput) {
-  return apiClient.requestRaw<{ announcement: AdminNotificationAnnouncement }>("/api/admin/announcements", {
-    method: "POST",
-    body: JSON.stringify(input)
-  });
+export function createAdminNotificationAnnouncement(
+  input: AnnouncementDraftInput,
+) {
+  return apiClient.requestRaw<{ announcement: AdminNotificationAnnouncement }>(
+    "/api/admin/announcements",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function previewAdminNotificationAnnouncement(id: string) {
   return apiClient.requestRaw<{
-    preview: { recipientCount: number; channels: string[]; locale: string; scheduledAt: string };
+    preview: {
+      recipientCount: number;
+      channels: string[];
+      locale: string;
+      scheduledAt: string;
+    };
     previewHash: string;
     unchanged: boolean;
     requiresSecondConfirmation: boolean;
@@ -141,21 +192,38 @@ export function previewAdminNotificationAnnouncement(id: string) {
 
 export function publishAdminNotificationAnnouncement(
   id: string,
-  input: { previewHash: string; confirmation: string; secondConfirmation?: string }
+  input: {
+    previewHash: string;
+    confirmation: string;
+    secondConfirmation?: string;
+    reason: string;
+  },
 ) {
-  return apiClient.requestRaw<{ ok: true; recipientCount: number; status: string }>(`/api/admin/announcements/${id}/publish`, {
+  return apiClient.requestRaw<{
+    ok: true;
+    recipientCount: number;
+    status: string;
+  }>(`/api/admin/announcements/${id}/publish`, {
     method: "POST",
-    body: JSON.stringify(input)
+    body: JSON.stringify(input),
   });
 }
 
-export function cancelAdminNotificationAnnouncement(id: string, reason: string) {
-  return apiClient.requestRaw<{ ok: true }>(`/api/admin/announcements/${id}/cancel`, {
-    method: "POST",
-    body: JSON.stringify({ reason })
-  });
+export function cancelAdminNotificationAnnouncement(
+  id: string,
+  reason: string,
+) {
+  return apiClient.requestRaw<{ ok: true }>(
+    `/api/admin/announcements/${id}/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+  );
 }
 
 export function getAdminNotificationProviders() {
-  return apiClient.requestRaw<AdminNotificationProviderResponse>("/api/admin/notifications/providers");
+  return apiClient.requestRaw<AdminNotificationProviderResponse>(
+    "/api/admin/notifications/providers",
+  );
 }

@@ -1,6 +1,4 @@
-import { NextResponse } from "next/server";
-import { publicHealthResponse } from "@/server/monitoring/contracts";
-
+/** Process liveness only. Dependency availability is reported by /api/health/ready. */
 export function GET() {
-  return NextResponse.json(publicHealthResponse("HEALTHY"), { headers: { "cache-control": "no-store" } });
+  return Response.json({ status: "alive" }, { headers: { "cache-control": "no-store" } });
 }

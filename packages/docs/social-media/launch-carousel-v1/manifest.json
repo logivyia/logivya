@@ -1,0 +1,40 @@
+{
+  "generatedAt": "2026-08-23T11:44:17.101Z",
+  "platformFormat": "Instagram/Facebook portrait 4:5",
+  "dimensions": {
+    "width": 1080,
+    "height": 1350
+  },
+  "outputs": [
+    {
+      "file": "packages/docs/social-media/launch-carousel-v1/01-logivya-iletisim-merkezi.png",
+      "width": 1080,
+      "height": 1350,
+      "title": "Tüm iletişim akışınız. Tek platform."
+    },
+    {
+      "file": "packages/docs/social-media/launch-carousel-v1/02-logivya-hesap-kisi-grup.png",
+      "width": 1080,
+      "height": 1350,
+      "title": "Hesaplar, kişiler ve gruplar hep güncel."
+    },
+    {
+      "file": "packages/docs/social-media/launch-carousel-v1/03-logivya-kategori-mesaj-planlama.png",
+      "width": 1080,
+      "height": 1350,
+      "title": "Doğru mesaj. Doğru hedef. Doğru zaman."
+    },
+    {
+      "file": "packages/docs/social-media/launch-carousel-v1/04-logivya-bildirim-kontrolu.png",
+      "width": 1080,
+      "height": 1350,
+      "title": "Kontrol sizde. Gürültü değil."
+    },
+    {
+      "file": "packages/docs/social-media/launch-carousel-v1/05-logivya-guvenlik.png",
+      "width": 1080,
+      "height": 1350,
+      "title": "İletişiminiz için çok katmanlı koruma."
+    }
+  ]
+}

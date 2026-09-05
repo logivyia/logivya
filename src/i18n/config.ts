@@ -1,10 +1,10 @@
-export const locales = ["tr", "en", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"] as const;
+export const locales = ["tr", "en", "ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"] as const;
 
 export type Locale = (typeof locales)[number];
 
 export const fallbackLocale: Locale = "en";
 
-export const rtlLocales: readonly Locale[] = [];
+export const rtlLocales: readonly Locale[] = ["ar"];
 
 export type LocaleMetadata = {
   name: string;
@@ -16,6 +16,7 @@ export type LocaleMetadata = {
 export const localeMetadata: Record<Locale, LocaleMetadata> = {
   tr: { name: "Turkish", nativeName: "Türkçe", intlLocale: "tr-TR", direction: "ltr" },
   en: { name: "English", nativeName: "English", intlLocale: "en-US", direction: "ltr" },
+  ar: { name: "Arabic", nativeName: "العربية", intlLocale: "ar-SA", direction: "rtl" },
   ro: { name: "Romanian", nativeName: "Română", intlLocale: "ro-RO", direction: "ltr" },
   ru: { name: "Russian", nativeName: "Русский", intlLocale: "ru-RU", direction: "ltr" },
   az: { name: "Azerbaijani", nativeName: "Azərbaycan dili", intlLocale: "az-AZ", direction: "ltr" },

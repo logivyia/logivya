@@ -1,5 +1,7 @@
 .git
 .next
+.next-*
+.next-stale-*
 .turbo
 .vercel
 .tools
@@ -23,8 +25,14 @@ apps/mobile/.expo
 apps/mobile/.expo-shared
 apps/mobile/google-services.json
 
+artifacts
+
 *.aab
 *.apk
 *.keystore
 *.jks
 *.log
+
+# Local disaster-recovery archives are not application source files.
+encrypted-postgres-backup-*.zip
+restore-proof-*.zip

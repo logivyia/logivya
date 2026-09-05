@@ -29,6 +29,20 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
     ex.autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)
   }
 }
+// Release v217 silently lost Screens when Windows cloud-backed dependency
+// directories were skipped by the autolinker. A compilable APK is not enough:
+// native-stack requires this package and its Fabric descriptors at startup.
+def logivyaAutolinkingFile = new File(rootDir, "build/generated/autolinking/autolinking.json")
+if (logivyaAutolinkingFile.exists()) {
+  def nativeConfig = new groovy.json.JsonSlurper().parse(logivyaAutolinkingFile)
+  def screens = nativeConfig.dependencies?.get('react-native-screens')?.platforms?.android
+  if (!screens?.packageImportPath?.contains('RNScreensPackage') ||
+      !screens?.componentDescriptors?.contains('RNSScreenComponentDescriptor')) {
+    throw new GradleException("Required react-native-screens Android package is missing from autolinking. Restore the installed dependency source and regenerate autolinking before building.")
+  }
+} else {
+  throw new GradleException("Android autolinking manifest was not generated; refusing an incomplete build.")
+}
 expoAutolinking.useExpoModules()
 
 rootProject.name = 'Logivya'

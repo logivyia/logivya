@@ -33,6 +33,8 @@ export type MobileBootstrap = {
   role: string;
   isAdmin?: boolean;
   isPlatformAdmin?: boolean;
+  platformAdminRole?: string | null;
+  adminPermissions?: string[];
   permissions: string[];
   subscription: MobileSubscription;
   trial: { isTrial: boolean; remainingDays: number };
@@ -40,6 +42,13 @@ export type MobileBootstrap = {
   whatsapp: {
     connectedCount: number;
     accounts: DashboardWhatsAppAccount[];
+  };
+  dashboardMetrics: {
+    whatsappAccountCount: number;
+    connectedWhatsAppAccountCount: number;
+    syncedWhatsAppGroupCount: number;
+    contactCount: number;
+    showContacts: boolean;
   };
   featureFlags: Array<{ key: string; description?: string | null }>;
   app: { minimumSupportedVersion: string };
@@ -59,7 +68,8 @@ export function getMobileBootstrap() {
 }
 
 export function getMobileMessageHistory(limit = 50) {
-  return apiClient.request<{ campaigns: MessageCampaignSummary[]; pageInfo: { nextCursor: string | null; hasMore: boolean } }>(
-    `/api/mobile/messages/history?limit=${limit}`
-  );
+  return apiClient.request<{
+    campaigns: MessageCampaignSummary[];
+    pageInfo: { nextCursor: string | null; hasMore: boolean };
+  }>(`/api/mobile/messages/history?limit=${limit}`);
 }

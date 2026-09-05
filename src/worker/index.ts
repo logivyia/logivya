@@ -1,12 +1,12 @@
 import "./health";
-import { Worker, type Job } from "bullmq";
+import { Worker, type Job, type Queue } from "bullmq";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { QUEUES, WHATSAPP_MESSAGE_JOB_OPTIONS } from "@/server/queues/contracts";
 import { BaileysWhatsAppProvider } from "@/worker/baileys-provider";
 import { classifyWorkerProcessError } from "@/worker/process-errors";
 import { parseRecurringRule } from "@/server/queues/recurring";
-import { deadLetterQueue, messageQueue, redisConnectionOptions, whatsappQueue } from "@/server/queues/client";
+import { campaignQueue, deadLetterQueue, messageQueue, redisConnectionOptions, whatsappQueue } from "@/server/queues/client";
 import { reconcileDurableMessageQueues, scheduleFollowingRecurringRun } from "@/server/queues/recovery";
 import { logger } from "@/server/observability/logger";
 import { raiseOperationalAlert } from "@/server/observability/alerts";
@@ -27,10 +27,20 @@ import { subscriptionAccess } from "@/server/billing/subscription-access";
 import { composeOutboundMessage } from "@/server/messages/outbound-composer";
 import { createMessageCorrelationId, readCampaignCorrelationId, withCampaignMetadata } from "@/server/messages/correlation";
 import { updateMessageCampaignDeliveryAggregate } from "@/server/messages/delivery-state";
+import { hasUnconfirmedDelivery, pendingDeliveryState, sendWithDeliveryIntent, UnknownDeliveryOutcomeError, UNKNOWN_DELIVERY_OUTCOME } from "@/server/messages/delivery-intent";
+import { uniqueGroupDeliveryTargets } from "@/server/messages/unique-targets";
 import { traceMessageStage } from "@/server/messages/delivery-tracing";
-import { isDeleteWindowOpen, parseStoredMessageKey, updateCampaignDeleteAggregate } from "@/server/messages/delete-for-everyone";
+import {
+  isDeleteWindowOpen,
+  parseStoredDeletedMessageKeyIds,
+  parseStoredMessageKeys,
+  serializeStoredMessageKeys,
+  updateCampaignDeleteAggregate,
+} from "@/server/messages/delete-for-everyone";
 import type { MessageRecipientJobPayload } from "@/server/messages/delivery-pipeline";
+import { loadOutboundMessageAttachments, type OutboundMessageAttachment } from "@/server/media/message-attachments";
 import type { DeleteForEveryoneJob } from "@/server/queues/contracts";
+import type { SendResult } from "@/server/whatsapp/provider";
 /**
  * STABLE WHATSAPP/MESSAGE CORE - DO NOT MODIFY WITHOUT EXPLICIT APPROVAL.
  * CRITICAL LOGIVYA WHATSAPP CONNECTION MODULE.
@@ -42,7 +52,8 @@ import { hasRestorableWhatsAppCredentials, restoreWhatsAppSessionFromDatabase } 
 const workerId = process.env.WORKER_ID || `${os.hostname()}-${process.pid}`;
 const workerStartedAt = new Date().toISOString();
 const workerCapacity = 8;
-const sessionRecoveryConcurrency = Math.min(4, Math.max(1, Math.trunc(Number(process.env.WHATSAPP_SESSION_RECOVERY_CONCURRENCY || 2) || 2)));
+const sessionRecoveryConcurrency = Math.min(4, Math.max(1, Math.trunc(Number(process.env.WHATSAPP_SESSION_RECOVERY_CONCURRENCY || 1) || 1)));
+const sessionRecoveryStaggerMs = Math.min(30_000, Math.max(0, Math.trunc(Number(process.env.WHATSAPP_SESSION_RECOVERY_STAGGER_MS || 3_000) || 3_000)));
 let activeWorkerJobs = 0;
 if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required");
 
@@ -86,6 +97,20 @@ assertLocalWorkerDoesNotConsumeProductionQueues();
 const connection = redisConnectionOptions();
 const provider = new BaileysWhatsAppProvider();
 const workers: Worker[] = [];
+const producerQueues = {
+  campaign: campaignQueue(),
+  deadLetter: deadLetterQueue(),
+  message: messageQueue(),
+  sync: whatsappQueue(),
+};
+const producerQueueEntries = Object.entries(producerQueues) as Array<[string, Queue]>;
+for (const [purpose, queue] of producerQueueEntries) {
+  queue.on("error", (error) => logger.error("worker.producer_queue.error", error, {
+    workerId,
+    purpose,
+    queue: queue.name,
+  }));
+}
 let shutdownStarted = false;
 let fatalShutdownRequested = false;
 const recoverableRejectionAlertAt = new Map<string, number>();
@@ -168,6 +193,8 @@ function isExplicitWhatsAppAuthFailure(error: unknown) {
 
 function isPermanentMessageDeliveryError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
+  if (message === UNKNOWN_DELIVERY_OUTCOME) return true;
+  if (/^WHATSAPP_SEND_(PAUSED|SAFETY_UNAVAILABLE)$/.test(message)) return true;
   return /MESSAGE_TARGET_MISSING|MESSAGE_JOB_COMPANY_MISMATCH|MESSAGE_JOB_CAMPAIGN_MISMATCH|MESSAGE_JOB_TENANT_MISMATCH|MESSAGE_JOB_OWNERSHIP_MISMATCH|WHATSAPP_CONTACT_OWNERSHIP_MISMATCH|WHATSAPP_GROUP_OWNERSHIP_MISMATCH|WHATSAPP_ACCOUNT_NOT_FOUND|WHATSAPP_LOGGED_OUT|WHATSAPP_CREDENTIALS_MISSING|GROUP_MESSAGING_NOT_AVAILABLE|CONTACT_MESSAGING_REQUIRES_PROFESSIONAL|SUBSCRIPTION_LOCKED|MESSAGE_ATTRIBUTION_LENGTH_EXCEEDED/i.test(message);
 }
 
@@ -225,7 +252,7 @@ registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign, async (job) => {
     recurringRule,
     currentRunAt: parsedRunAt,
     correlationId: templateCorrelationId,
-  });
+  }, producerQueues.campaign);
   if (!(await subscriptionAccess.canUseRecurringMessages(companyId))) {
     logger.warn("message.recurring.skipped_subscription", { workerId, companyId, templateCampaignId, correlationId: templateCorrelationId });
     return;
@@ -241,7 +268,7 @@ registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign, async (job) => {
     const groupIds = template.recipients.filter((recipient) => recipient.targetType === "GROUP").map((recipient) => recipient.groupId).filter((groupId): groupId is string => Boolean(groupId));
     const contactIds = template.recipients.filter((recipient) => recipient.targetType === "CONTACT").map((recipient) => recipient.contactId).filter((contactId): contactId is string => Boolean(contactId));
     groups = groupIds.length
-      ? await resolveSendableWhatsAppGroups(companyId, groupIds, { userId: template.createdById, accountId: accountIds[0] })
+      ? uniqueGroupDeliveryTargets(await resolveSendableWhatsAppGroups(companyId, groupIds, { userId: template.createdById, accountId: accountIds[0] }))
       : [];
     contacts = contactIds.length
       ? await resolveOwnedWhatsAppContacts({ companyId, userId: template.createdById, accountId: accountIds[0] }, contactIds)
@@ -301,23 +328,18 @@ registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign, async (job) => {
     throw error;
   });
   if (!occurrence) return;
-  const queue = messageQueue();
-  try {
-    for (const [index, recipient] of occurrence.recipients.entries()) {
-      const payload: MessageRecipientJobPayload = { companyId, campaignId: occurrence.id, recipientId: recipient.id, correlationId, source: "recurring" };
-      await queue.add("send-recipient", payload, {
-        jobId: `recipient-${recipient.id}`,
-        delay: index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000),
-        ...WHATSAPP_MESSAGE_JOB_OPTIONS,
-      });
-    }
-  } finally {
-    await queue.close().catch(() => undefined);
+  for (const [index, recipient] of occurrence.recipients.entries()) {
+    const payload: MessageRecipientJobPayload = { companyId, campaignId: occurrence.id, recipientId: recipient.id, correlationId, source: "recurring" };
+    await producerQueues.message.add("send-recipient", payload, {
+      jobId: `recipient-${recipient.id}`,
+      delay: index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000),
+      ...WHATSAPP_MESSAGE_JOB_OPTIONS,
+    });
   }
 }, { connection, concurrency: 2 }));
 
 registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
-  const { action, accountId, phoneNumber, preserveRetryCounter, syncRunId } = job.data as { action: "connect" | "pairing" | "pairing-refresh" | "sync" | "sync-contacts" | "disconnect" | "reconnect"; accountId: string; phoneNumber?: string; preserveRetryCounter?: boolean; syncRunId?: string };
+  const { action, accountId, phoneNumber, preserveRetryCounter, syncRunId, correlationId } = job.data as { action: "connect" | "pairing" | "pairing-refresh" | "sync" | "sync-contacts" | "disconnect" | "reconnect"; accountId: string; phoneNumber?: string; preserveRetryCounter?: boolean; syncRunId?: string; correlationId?: string };
   return withWhatsAppAccountLock(accountId, `worker:${action}`, async () => {
     try {
       logger.info("whatsapp.worker.job.received", { workerId, jobId: job.id, action, accountId });
@@ -354,7 +376,7 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
         return;
       }
       if (["connect", "reconnect"].includes(action) && account.status === "ERROR") return;
-      if (action === "connect") return await provider.createFreshQrSession(accountId);
+      if (action === "connect") return await provider.createFreshQrSession(accountId, { correlationId });
       if (action === "pairing") {
         if (!phoneNumber) throw new Error("Invalid phone number.");
         return await provider.requestPairingCode(accountId, phoneNumber, { preserveRetryCounter });
@@ -382,15 +404,23 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
         logger.error("whatsapp.contacts.sync_failed_without_connection_downgrade", error, { workerId, jobId: job.id, accountId, syncRunId });
         throw error;
       }
+      if (action === "sync") {
+        logger.error("whatsapp.groups.sync_failed_without_connection_downgrade", error, { workerId, jobId: job.id, accountId });
+        throw error;
+      }
       if (action === "pairing" && errorMessage(error).includes("WHATSAPP_PAIRING_RETRY_SCHEDULED")) {
         logger.warn("whatsapp.worker.pairing_retry_scheduled", { workerId, jobId: job.id, accountId, action });
+        return;
+      }
+      if (action === "pairing" && errorMessage(error).includes("WHATSAPP_PAIRING_PROVIDER_REJECTED")) {
+        logger.error("whatsapp.worker.pairing_provider_rejected", error, { workerId, jobId: job.id, accountId, action });
         return;
       }
       const guardedAccount = await prisma.whatsAppAccount.findUnique({
         where: { id: accountId },
         select: { status: true, pairingCode: true, pairingCodeExpiresAt: true, updatedAt: true, lastError: true },
       }).catch(() => null);
-      if ((action === "reconnect" || action === "sync") && guardedAccount && hasActivePhonePairing(guardedAccount)) {
+      if (action === "reconnect" && guardedAccount && hasActivePhonePairing(guardedAccount)) {
         logger.warn("whatsapp.worker.reconnect.failure_skipped_active_pairing", { workerId, jobId: job.id, accountId, action, status: guardedAccount.status });
         return;
       }
@@ -453,6 +483,7 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
   await prisma.messageCampaign.updateMany({ where: { id: recipient.campaignId, status: "QUEUED" }, data: { status: "SENDING" } });
   try {
     logger.info("message.job.started", { ...baseLog, targetType, attempt: job.attemptsMade + 1 });
+    if (hasUnconfirmedDelivery(recipient.messageKeyJson)) throw new UnknownDeliveryOutcomeError();
     if ((targetType === "GROUP" && !recipient.group) || (targetType === "CONTACT" && !recipient.contact)) {
       logger.warn("message.target_resolution_failed", { ...baseLog, reason: "MESSAGE_TARGET_MISSING", targetType });
       throw new Error("MESSAGE_TARGET_MISSING");
@@ -507,6 +538,14 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
         renderedAt: recipient.renderedAt,
       },
     });
+    const outboundAttachments = await loadOutboundMessageAttachments({
+      contentJson: recipient.campaign.contentJson,
+      companyId: recipient.campaign.companyId,
+      userId: recipient.campaign.createdById,
+    });
+    const storedMessageKeys = parseStoredMessageKeys(recipient.messageKeyJson);
+    const totalMessageParts = outboundAttachments.length || 1;
+    if (storedMessageKeys.length > totalMessageParts) throw new Error("WHATSAPP_MESSAGE_KEY_COUNT_INVALID");
     if (targetType === "GROUP" && !deliveryPolicy.entitlements.groupMessaging) throw new Error("GROUP_MESSAGING_NOT_AVAILABLE");
     if (targetType === "CONTACT" && !deliveryPolicy.entitlements.contactMessaging) throw new Error("CONTACT_MESSAGING_REQUIRES_PROFESSIONAL");
     logger.info("message.outbound_payload.prepared", {
@@ -521,6 +560,9 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
       finalPayloadHash: deliveryPolicy.finalPayloadHash,
       transportAdapter: recipient.account.provider,
       reusedStableRendering: deliveryPolicy.reusedStableRendering,
+      attachmentCount: outboundAttachments.length,
+      attachmentKinds: outboundAttachments.map((attachment) => attachment.kind),
+      attachmentTotalSize: outboundAttachments.reduce((total, attachment) => total + attachment.size, 0),
     });
     if (!deliveryPolicy.reusedStableRendering) {
       await traceMessageStage("worker.recipient.persist_rendering", baseLog, async () => {
@@ -537,8 +579,9 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
         });
       });
     }
-    const sendOutcome = targetType === "CONTACT"
-      ? await (async () => {
+    let sendAccountId: string;
+    let sendPart: (attachment: OutboundMessageAttachment | undefined, content: string, beforeTransport: () => Promise<void>) => Promise<SendResult>;
+    if (targetType === "CONTACT") {
           const target = await prisma.contact.findFirst({
             where: {
               id: recipient.contact!.id,
@@ -552,24 +595,18 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
           });
           if (!target) throw new Error("WHATSAPP_CONTACT_OWNERSHIP_MISMATCH");
           logger.debug("message.send.attempt", { ...baseLog, targetType, accountId: target.accountId, contactId: target.id });
-          const result = await traceMessageStage("worker.baileys.contact_send", { ...baseLog, accountId: target.accountId, contactId: target.id }, async () =>
-            withWhatsAppAccountLock(
-              target.accountId,
-              "message-send-contact",
-              () => provider.sendContactMessage({
-                accountId: target.accountId,
-                contactExternalId: target.externalContactId,
-                content: deliveryPolicy.content,
-                correlationId,
-                campaignId: recipient.campaignId,
-                recipientId: recipient.id,
-              }),
-              { ttlMs: 180_000, timeoutMs: 45_000, correlationId },
-            ),
-          );
-          return { accountId: target.accountId, result };
-        })()
-      : await (async () => {
+          sendAccountId = target.accountId;
+          sendPart = (attachment, content, beforeTransport) => provider.sendContactMessage({
+            beforeTransport,
+            accountId: target.accountId,
+            contactExternalId: target.externalContactId,
+            content,
+            attachment,
+            correlationId,
+            campaignId: recipient.campaignId,
+            recipientId: recipient.id,
+          });
+    } else {
           const sourceGroup = recipient.group!;
           const [target] = await traceMessageStage("worker.target.resolve", baseLog, async () =>
             resolveSendableWhatsAppGroups(recipient.campaign.companyId, [sourceGroup.id], { userId: recipient.campaign.createdById, accountId: recipient.accountId }),
@@ -581,38 +618,75 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
             });
           }
           logger.debug("message.send.attempt", { ...baseLog, targetType, accountId: target.accountId, groupId: target.id });
-          const result = await traceMessageStage("worker.baileys.send", { ...baseLog, accountId: target.accountId, groupId: target.id, groupExternalId: target.externalGroupId }, async () =>
-            withWhatsAppAccountLock(
-              target.accountId,
-              "message-send",
-              () => provider.sendGroupMessage({
-                accountId: target.accountId,
-                groupExternalId: target.externalGroupId,
-                content: deliveryPolicy.content,
-                correlationId,
-                campaignId: recipient.campaignId,
-                recipientId: recipient.id,
-              }),
-              { ttlMs: 180_000, timeoutMs: 45_000, correlationId },
+          sendAccountId = target.accountId;
+          sendPart = (attachment, content, beforeTransport) => provider.sendGroupMessage({
+            beforeTransport,
+            accountId: target.accountId,
+            groupExternalId: target.externalGroupId,
+            content,
+            attachment,
+            correlationId,
+            campaignId: recipient.campaignId,
+            recipientId: recipient.id,
+          });
+    }
+    const messageKeys = [...storedMessageKeys];
+    let firstSentAt = recipient.sentAt;
+    let allMessagePartsDelivered = storedMessageKeys.length === 0;
+    await withWhatsAppAccountLock(
+      sendAccountId,
+      targetType === "CONTACT" ? "message-send-contact" : "message-send",
+      async () => {
+        for (let partIndex = messageKeys.length; partIndex < totalMessageParts; partIndex += 1) {
+          const attachment = outboundAttachments.length ? outboundAttachments[partIndex] : undefined;
+          const partContent = partIndex === 0 ? deliveryPolicy.content : "";
+          await sendWithDeliveryIntent({
+            persistIntent: async () => {
+              await prisma.messageRecipient.update({ where: { id: recipient.id, status: "SENDING" },
+                data: { messageKeyJson: pendingDeliveryState(messageKeys, partIndex) } });
+            },
+            send: beforeTransport => traceMessageStage(
+              targetType === "CONTACT" ? "worker.baileys.contact_send" : "worker.baileys.send",
+              { ...baseLog, accountId: sendAccountId, partIndex, totalMessageParts, attachmentKind: attachment?.kind },
+              () => sendPart(attachment, partContent, beforeTransport),
             ),
-          );
-          return { accountId: target.accountId, result };
-        })();
-    const sendResult = sendOutcome.result;
-    const sentAt = new Date();
-    const messageKeyJson = JSON.parse(JSON.stringify(sendResult.messageKey)) as Prisma.InputJsonValue;
-    await traceMessageStage("worker.recipient.mark_sent", { ...baseLog, accountId: sendOutcome.accountId, externalMessageId: sendResult.externalMessageId }, async () => {
+            persistResult: async sendResult => {
+              messageKeys.push(sendResult.messageKey);
+              allMessagePartsDelivered = allMessagePartsDelivered
+                && (sendResult.acknowledgement === "DELIVERED" || sendResult.acknowledgement === "READ");
+              firstSentAt ??= new Date();
+              await prisma.messageRecipient.update({
+                where: { id: recipient.id },
+                data: {
+                  externalMessageId: sendResult.externalMessageId,
+                  messageKeyJson: serializeStoredMessageKeys(messageKeys),
+                  messageKeyFromMe: sendResult.messageKey.fromMe ?? null,
+                  messageKeyParticipant: sendResult.messageKey.participant ?? null,
+                  sentAt: firstSentAt,
+                },
+              });
+            },
+          });
+        }
+      },
+      { ttlMs: 3_600_000, timeoutMs: 45_000, correlationId },
+    );
+    const finalMessageKey = messageKeys.at(-1);
+    if (!finalMessageKey?.id) throw new Error("WHATSAPP_MESSAGE_KEY_MISSING");
+    const sentAt = firstSentAt ?? new Date();
+    const finalRecipientStatus = allMessagePartsDelivered ? "DELIVERED" : "SENT";
+    await traceMessageStage("worker.recipient.mark_sent", { ...baseLog, accountId: sendAccountId, externalMessageId: finalMessageKey.id, totalMessageParts, finalRecipientStatus }, async () => {
       await prisma.messageRecipient.update({
         where: { id: recipient.id },
         data: {
-          status: "SENT",
+          status: finalRecipientStatus,
           sentAt,
           failedAt: null,
           errorMessage: null,
-          externalMessageId: sendResult.externalMessageId,
-          messageKeyJson,
-          messageKeyFromMe: sendResult.messageKey.fromMe ?? null,
-          messageKeyParticipant: sendResult.messageKey.participant ?? null,
+          externalMessageId: finalMessageKey.id,
+          messageKeyJson: serializeStoredMessageKeys(messageKeys),
+          messageKeyFromMe: finalMessageKey.fromMe ?? null,
+          messageKeyParticipant: finalMessageKey.participant ?? null,
           deleteForEveryoneStatus: "NOT_REQUESTED",
           deleteForEveryoneAttemptedAt: null,
           deleteForEveryoneCompletedAt: null,
@@ -620,7 +694,7 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
         },
       });
     });
-    logger.debug("message.send.succeeded", { ...baseLog, targetType, accountId: sendOutcome.accountId });
+    logger.debug("message.send.succeeded", { ...baseLog, targetType, accountId: sendAccountId, totalMessageParts, finalRecipientStatus });
   } catch (error) {
     const attempts = Number(job.opts.attempts ?? 1);
     const finalAttempt = job.attemptsMade + 1 >= attempts;
@@ -644,29 +718,21 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
             where: { id: recipient.accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
             data: { status: "CONNECTING", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
           });
-          const reconnectQueue = whatsappQueue();
           try {
-            await reconnectQueue.add("reconnect", { action: "reconnect", accountId: recipient.accountId }, { jobId: `send-reconnect-${recipient.accountId}`, removeOnComplete: 50, removeOnFail: 100 });
+            await producerQueues.sync.add("reconnect", { action: "reconnect", accountId: recipient.accountId }, { jobId: `send-reconnect-${recipient.accountId}`, removeOnComplete: 50, removeOnFail: 100 });
           } catch (queueError) {
             logger.error("message.reconnect.enqueue_failed", queueError, { ...baseLog, accountId: recipient.accountId });
-          } finally {
-            await reconnectQueue.close().catch(() => undefined);
           }
         }
       }
       if (finalAttempt) {
         const errorCode = "WHATSAPP_DELIVERY_RETRIES_EXHAUSTED";
         logger.error("MESSAGE_FAILED", error, { ...baseLog, accountId: recipient.accountId, reason: errorCode });
-        const queue = deadLetterQueue();
-        try {
-          await queue.add(
-            "message-send-failed",
-            { ...jobData, companyId: recipient.campaign.companyId, campaignId: recipient.campaignId, recipientId: recipient.id, correlationId, errorMessage: errorCode, permanentFailure: false },
-            { jobId: `dead-letter-${recipient.id}` },
-          );
-        } finally {
-          await queue.close().catch(() => undefined);
-        }
+        await producerQueues.deadLetter.add(
+          "message-send-failed",
+          { ...jobData, companyId: recipient.campaign.companyId, campaignId: recipient.campaignId, recipientId: recipient.id, correlationId, errorMessage: errorCode, permanentFailure: false },
+          { jobId: `dead-letter-${recipient.id}` },
+        );
       } else {
         logger.warn("MESSAGE_RETRY", { ...baseLog, accountId: recipient.accountId, finalAttempt });
         logger.warn("message.send.retrying_connection", { ...baseLog, accountId: recipient.accountId, finalAttempt });
@@ -680,12 +746,7 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
     });
     if (finalAttempt || permanentFailure) {
       logger.error("MESSAGE_FAILED", error, { ...baseLog, accountId: recipient.accountId });
-      const queue = deadLetterQueue();
-      try {
-        await queue.add("message-send-failed", { ...jobData, companyId: recipient.campaign.companyId, campaignId: recipient.campaignId, recipientId: recipient.id, correlationId, errorMessage, permanentFailure }, { jobId: `dead-letter-${recipient.id}` });
-      } finally {
-        await queue.close();
-      }
+      await producerQueues.deadLetter.add("message-send-failed", { ...jobData, companyId: recipient.campaign.companyId, campaignId: recipient.campaignId, recipientId: recipient.id, correlationId, errorMessage, permanentFailure }, { jobId: `dead-letter-${recipient.id}` });
     }
     logger.error("message.send.failed", error, { ...baseLog, accountId: recipient.accountId, finalAttempt, permanentFailure });
     if (permanentFailure) return;
@@ -748,7 +809,7 @@ async function processDeleteForEveryoneJob(job: Job<DeleteForEveryoneJob>) {
     logger.error("message.delete.tenant_mismatch", new Error("MESSAGE_DELETE_TENANT_MISMATCH"), baseLog);
     return;
   }
-  if (recipient.status !== "SENT") {
+  if (!["SENT", "DELIVERED"].includes(recipient.status)) {
     await prisma.messageRecipient.update({ where: { id: recipient.id }, data: { deleteForEveryoneStatus: "FAILED", deleteForEveryoneError: "MESSAGE_NOT_SENT" } });
     await finishAggregate();
     return;
@@ -759,11 +820,18 @@ async function processDeleteForEveryoneJob(job: Job<DeleteForEveryoneJob>) {
     logger.warn("message.delete.expired", baseLog);
     return;
   }
-  const messageKey = parseStoredMessageKey(recipient.messageKeyJson);
-  if (!messageKey) {
+  const messageKeys = parseStoredMessageKeys(recipient.messageKeyJson);
+  const deletedMessageKeyIds = parseStoredDeletedMessageKeyIds(recipient.messageKeyJson);
+  const pendingMessageKeys = messageKeys.filter((key) => key.id && !deletedMessageKeyIds.has(key.id));
+  if (!messageKeys.length) {
     await prisma.messageRecipient.update({ where: { id: recipient.id }, data: { deleteForEveryoneStatus: "FAILED", deleteForEveryoneError: "WHATSAPP_MESSAGE_KEY_MISSING" } });
     await finishAggregate();
     logger.warn("message.delete.missing_key", baseLog);
+    return;
+  }
+  if (!pendingMessageKeys.length) {
+    await prisma.messageRecipient.update({ where: { id: recipient.id }, data: { deleteForEveryoneStatus: "DELETED", deleteForEveryoneCompletedAt: new Date(), deleteForEveryoneError: null } });
+    await finishAggregate();
     return;
   }
   const claimed = await prisma.messageRecipient.updateMany({
@@ -778,24 +846,35 @@ async function processDeleteForEveryoneJob(job: Job<DeleteForEveryoneJob>) {
     await withWhatsAppAccountLock(
       recipient.accountId,
       "message-delete-for-everyone",
-      () => recipient.targetType === "CONTACT"
-        ? provider.deleteContactMessage({
-            accountId: recipient.accountId,
-            contactExternalId: recipient.recipientExternalId,
-            messageKey,
-            campaignId: recipient.campaignId,
-            recipientId: recipient.id,
-            correlationId: jobData.correlationId,
-          })
-        : provider.deleteGroupMessage({
-            accountId: recipient.accountId,
-            groupExternalId: recipient.recipientExternalId,
-            messageKey,
-            campaignId: recipient.campaignId,
-            recipientId: recipient.id,
-            correlationId: jobData.correlationId,
-          }),
-      { ttlMs: 120_000, timeoutMs: 45_000, correlationId: jobData.correlationId },
+      async () => {
+        for (const messageKey of pendingMessageKeys) {
+          if (recipient.targetType === "CONTACT") {
+            await provider.deleteContactMessage({
+              accountId: recipient.accountId,
+              contactExternalId: recipient.recipientExternalId,
+              messageKey,
+              campaignId: recipient.campaignId,
+              recipientId: recipient.id,
+              correlationId: jobData.correlationId,
+            });
+          } else {
+            await provider.deleteGroupMessage({
+              accountId: recipient.accountId,
+              groupExternalId: recipient.recipientExternalId,
+              messageKey,
+              campaignId: recipient.campaignId,
+              recipientId: recipient.id,
+              correlationId: jobData.correlationId,
+            });
+          }
+          if (messageKey.id) deletedMessageKeyIds.add(messageKey.id);
+          await prisma.messageRecipient.update({
+            where: { id: recipient.id },
+            data: { messageKeyJson: serializeStoredMessageKeys(messageKeys, deletedMessageKeyIds) },
+          });
+        }
+      },
+      { ttlMs: 3_600_000, timeoutMs: 45_000, correlationId: jobData.correlationId },
     );
     await prisma.messageRecipient.update({
       where: { id: recipient.id },
@@ -823,13 +902,10 @@ async function processDeleteForEveryoneJob(job: Job<DeleteForEveryoneJob>) {
           where: { id: recipient.accountId, archivedAt: null, OR: [{ lastError: null }, { lastError: { not: "WHATSAPP_LOGGED_OUT" } }] },
           data: { status: "CONNECTING", lastError: "WHATSAPP_TRANSIENT_DISCONNECT" },
         });
-        const reconnectQueue = whatsappQueue();
         try {
-          await reconnectQueue.add("reconnect", { action: "reconnect", accountId: recipient.accountId }, { jobId: `delete-reconnect-${recipient.accountId}`, removeOnComplete: 50, removeOnFail: 100 });
+          await producerQueues.sync.add("reconnect", { action: "reconnect", accountId: recipient.accountId }, { jobId: `delete-reconnect-${recipient.accountId}`, removeOnComplete: 50, removeOnFail: 100 });
         } catch (queueError) {
           logger.error("message.delete.reconnect.enqueue_failed", queueError, baseLog);
-        } finally {
-          await reconnectQueue.close().catch(() => undefined);
         }
       }
     }
@@ -841,9 +917,37 @@ async function processDeleteForEveryoneJob(job: Job<DeleteForEveryoneJob>) {
 }
 
 let sessionRecoveryRunning = false;
+
+async function findActivePairingAccount() {
+  const now = new Date();
+  const recentPairingStart = new Date(Date.now() - 2 * 60_000);
+  return prisma.whatsAppAccount.findFirst({
+    where: {
+      archivedAt: null,
+      OR: [
+        { status: "PAIRING_CODE_READY", pairingCode: { not: null }, pairingCodeExpiresAt: { gt: now } },
+        { status: "PENDING_PAIRING", updatedAt: { gt: recentPairingStart } },
+        { status: "QR_READY", qrCode: { not: null }, qrExpiresAt: { gt: now } },
+        { status: "PENDING_QR", updatedAt: { gt: recentPairingStart } },
+      ],
+    },
+    select: { id: true, status: true },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
 async function recoverSessions() {
   if (sessionRecoveryRunning) {
     logger.warn("whatsapp.session.recovery_sweep_skipped_running", { workerId });
+    return;
+  }
+  const activePairing = await findActivePairingAccount();
+  if (activePairing) {
+    logger.warn("whatsapp.session.recovery_sweep_paused_active_pairing", {
+      workerId,
+      accountId: activePairing.id,
+      status: activePairing.status,
+    });
     return;
   }
   sessionRecoveryRunning = true;
@@ -852,7 +956,7 @@ async function recoverSessions() {
       where: {
         archivedAt: null,
         OR: [
-          { status: { in: ["PENDING_QR", "QR_READY", "CONNECTING", "CONNECTED", "DISCONNECTED", "RECONNECT_REQUIRED"] } },
+          { status: { in: ["CONNECTING", "CONNECTED", "DISCONNECTED", "RECONNECT_REQUIRED"] } },
           { sessions: { some: { sessionDataEncrypted: { not: null } } } },
         ],
       },
@@ -860,11 +964,25 @@ async function recoverSessions() {
       orderBy: { updatedAt: "asc" },
     });
     let nextAccountIndex = 0;
+    let lastRecoveryStartAt = 0;
     const recoverNextAccount = async () => {
       while (nextAccountIndex < recoverableAccounts.length) {
         const account = recoverableAccounts[nextAccountIndex++];
         if (!account) return;
         try {
+          const pairingStartedDuringSweep = await findActivePairingAccount();
+          if (pairingStartedDuringSweep) {
+            logger.warn("whatsapp.session.recovery_sweep_interrupted_active_pairing", {
+              workerId,
+              accountId: pairingStartedDuringSweep.id,
+              status: pairingStartedDuringSweep.status,
+            });
+            return;
+          }
+          if (["PENDING_QR", "QR_READY"].includes(account.status)) {
+            logger.warn("whatsapp.session.recovery_skipped_qr_pairing", { workerId, accountId: account.id, status: account.status });
+            continue;
+          }
           if (hasActivePhonePairing(account)) {
             logger.warn("whatsapp.session.recovery_skipped_active_pairing", { workerId, accountId: account.id, status: account.status });
             continue;
@@ -889,6 +1007,9 @@ async function recoverSessions() {
             });
             continue;
           }
+          const recoveryDelayMs = Math.max(0, lastRecoveryStartAt + sessionRecoveryStaggerMs - Date.now());
+          if (recoveryDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, recoveryDelayMs));
+          lastRecoveryStartAt = Date.now();
           await provider.reconnect(account.id, { credentialsVerified: true, sessionRestored: true });
         } catch (error) {
           logger.error("whatsapp.session.recovery_bootstrap_failed", error, { accountId: account.id });
@@ -920,7 +1041,10 @@ async function recoverDurableQueues() {
   if (queueRecoveryRunning) return;
   queueRecoveryRunning = true;
   try {
-    await reconcileDurableMessageQueues();
+    await reconcileDurableMessageQueues({
+      sendQueue: producerQueues.message,
+      recurringQueue: producerQueues.campaign,
+    });
   } finally {
     queueRecoveryRunning = false;
   }
@@ -950,6 +1074,7 @@ async function shutdown(signal: string, exitCode = 0) {
   shutdownStarted = true;
   logger.warn("worker.shutdown.started", { workerId, signal });
   await Promise.all(workers.map((worker) => worker.close().catch((error) => logger.error("worker.shutdown.queue_failed", error, { workerId, queue: worker.name }))));
+  await Promise.all(producerQueueEntries.map(([purpose, queue]) => queue.close().catch((error) => logger.error("worker.shutdown.producer_queue_failed", error, { workerId, purpose, queue: queue.name }))));
   await prisma.$disconnect();
   logger.warn("worker.shutdown.completed", { workerId, signal });
   process.exit(exitCode);

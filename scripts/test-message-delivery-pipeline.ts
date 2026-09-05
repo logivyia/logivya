@@ -15,6 +15,7 @@ const pipeline = read("src/server/messages/delivery-pipeline.ts");
 assert(pipeline.includes("createMessageCorrelationId()"), "Message pipeline must create correlation IDs.");
 assert(pipeline.includes("resolveCurrentWhatsAppAccount"), "Message pipeline must resolve the current scoped WhatsApp account.");
 assert(pipeline.includes("resolveSendableWhatsAppGroups(actor.companyId, requestedIds, { userId: actor.userId, accountId: currentAccount.id })"), "Message pipeline must resolve groups by actor and current account scope.");
+assert(pipeline.includes("assertMessageDeliveryQueueReady"), "Message pipeline must verify queue consumers before creating delivery records.");
 assert(!/isAuthorizedLogivyaPlatformAdmin|requirePlatformAdmin|burakidim@gmail\.com/i.test(pipeline), "Message pipeline must not depend on platform admin state.");
 
 const webRoute = read("src/app/api/campaigns/route.ts");
@@ -27,11 +28,16 @@ assert(contracts.includes("correlationId: string"), "Message queue contract must
 assert(contracts.includes("recoveryRetry?: boolean"), "Message queue contract must support recoverable retry payloads.");
 
 const worker = read("src/worker/index.ts");
+const claimIndex = worker.indexOf('data: { status: "SENDING", attemptCount: { increment: 1 } }');
+const targetResolutionFailureIndex = worker.indexOf("message.target_resolution_failed");
+assert(claimIndex >= 0 && targetResolutionFailureIndex > claimIndex, "Worker must claim the recipient before target resolution can fail so queued records cannot stay at attempt 0.");
 for (const value of [
   "MESSAGE_JOB_COMPANY_MISMATCH",
   "MESSAGE_JOB_CAMPAIGN_MISMATCH",
   "MESSAGE_JOB_TENANT_MISMATCH",
   "MESSAGE_JOB_OWNERSHIP_MISMATCH",
+  "isPermanentMessageDeliveryError",
+  "updateMessageCampaignDeliveryAggregate",
   "message.recurring.group_resolution_failed",
   "readCampaignCorrelationId",
   "withWhatsAppAccountLock",

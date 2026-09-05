@@ -1,13 +1,21 @@
 import { NextResponse } from "next/server";
-import { requirePermission } from "@/server/auth/permissions";
 import { requireApiSession } from "@/server/auth/session";
 import { prisma } from "@/server/db";
 import { writeAuditLog } from "@/server/security/audit";
+import {
+  assertTenantCapability,
+  resolveMembershipAccess,
+} from "@/server/team/membership-lifecycle";
 
 export async function POST(request: Request) {
   try {
-    const { company, membership, user } = await requireApiSession();
-    requirePermission(membership.role, "manage_billing");
+    const { company, user } = await requireApiSession();
+    const access = await resolveMembershipAccess(company.id, user.id);
+    assertTenantCapability(
+      access,
+      "tenant.subscription.manage",
+      "SHARED_SUBSCRIPTION_READ_ONLY",
+    );
     const subscription = await prisma.subscription.findFirst({ where: { companyId: company.id }, orderBy: { createdAt: "desc" } });
     if (!subscription) return NextResponse.json({ error: "subscription.inactive" }, { status: 404 });
     await prisma.subscription.update({ where: { id: subscription.id }, data: { cancelAtPeriodEnd: true, cancelledAt: new Date() } });

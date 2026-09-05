@@ -289,12 +289,16 @@ export async function sendPushToUserStrict(input: {
     where: { companyId: input.companyId, userId: input.userId, revokedAt: null, ...(input.platform ? { platform: input.platform } : {}) },
     select: { id: true, token: true },
   });
-  const tokens = readablePushTokens(devices).filter((device) => isExpoPushToken(device.token));
+  const readable = readablePushTokens(devices);
+  if (devices.length && !readable.length) throw new Error("PUSH_TOKEN_DECRYPTION_FAILED");
+  const tokens = readable.filter((device) => isExpoPushToken(device.token));
   if (!tokens.length) return { delivered: 0, skipped: true, providerMessageId: undefined, ticketIds: [] as string[], ticketDeviceMap: {} as Record<string, string>, invalidatedTokens: 0 };
 
   const messages = tokens.map((device) => ({
     to: device.token,
     sound: "default",
+    priority: "high",
+    ttl: 3600,
     title: input.title,
     body: input.message,
     channelId: androidChannelForType(input.type),
@@ -313,12 +317,14 @@ export async function sendPushToUserStrict(input: {
   for (const chunk of chunkArray(messages, 100)) {
     const response = await fetch(EXPO_PUSH_URL, {
       method: "POST",
+      signal: AbortSignal.timeout(15_000),
       headers: expoPushHeaders(),
       body: JSON.stringify(chunk),
     });
     if (!response.ok) throw new Error(`EXPO_PUSH_${response.status}`);
     const body = await response.json().catch(() => null) as { data?: Array<{ status?: string; id?: string; message?: string; details?: { error?: string } }> } | null;
     const tickets = Array.isArray(body?.data) ? body.data : [];
+    if (tickets.length !== chunk.length || tickets.some(ticket => (ticket.status !== "ok" && ticket.status !== "error") || (ticket.status === "ok" && (typeof ticket.id !== "string" || !ticket.id.trim())))) throw new Error("EXPO_PUSH_INVALID_RESPONSE");
     tickets.forEach((ticket, index) => {
       const matchingDevice = tokens.find((device) => device.token === chunk[index]?.to);
       if (ticket.status === "ok") {
@@ -333,7 +339,7 @@ export async function sendPushToUserStrict(input: {
       }
       if (ticket.status === "error") providerErrors.push(ticket.details?.error || ticket.message || "EXPO_PUSH_REJECTED");
     });
-    if (!tickets.length) delivered += chunk.length;
+
   }
 
   if (invalidTokenIds.length) {
@@ -363,6 +369,7 @@ function androidChannelForType(type: string) {
   if (type.startsWith("security.") || type.startsWith("auth.")) return "security";
   if (type.startsWith("whatsapp.")) return "whatsapp";
   if (type.startsWith("message.") || type.startsWith("campaign.")) return "messages";
+  if (type.startsWith("marketplace.")) return "marketplace";
   if (type.startsWith("support.")) return "support";
   if (type.startsWith("subscription.") || type.startsWith("billing.") || type.startsWith("payment.")) return "billing";
   if (type.startsWith("account.") || type.startsWith("invitation.")) return "account";

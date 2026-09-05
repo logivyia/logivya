@@ -4,12 +4,14 @@ import { isSmartScheduleDateError, parseSmartScheduleDateTime } from "@/lib/smar
 import { requireApiSession } from "@/server/auth/session";
 import { createMessageDeliveryCampaign, isMessageDeliveryError } from "@/server/messages/delivery-pipeline";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
+import { MAX_MESSAGE_ATTACHMENTS } from "@/server/security/uploads";
 
 const scheduledAtSchema = z.union([z.string(), z.date()]).nullable().optional();
 
 const schema = z.object({
   title: z.string().min(1).max(120),
-  content: z.string().min(1).max(4096),
+  content: z.string().max(4096).default(""),
+  mediaFileIds: z.array(z.string().cuid()).max(MAX_MESSAGE_ATTACHMENTS).default([]),
   groupIds: z.array(z.string()).default([]),
   categoryIds: z.array(z.string()).default([]),
   contactIds: z.array(z.string()).default([]),
@@ -23,6 +25,9 @@ const schema = z.object({
     interval: z.number().int().min(1).max(365).default(1),
   }).optional(),
 }).superRefine((value, ctx) => {
+  if (!value.content.trim() && !value.mediaFileIds.length) {
+    ctx.addIssue({ code: "custom", message: "validation.required", path: ["content"] });
+  }
   if (!value.groupIds.length && !value.categoryIds.length && !value.contactIds.length && !value.targets.length) {
     ctx.addIssue({ code: "custom", message: "validation.required", path: ["groupIds"] });
   }

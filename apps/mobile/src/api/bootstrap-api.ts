@@ -6,6 +6,8 @@ export type BootstrapPayload = {
   role: string;
   isAdmin?: boolean;
   isPlatformAdmin?: boolean;
+  platformAdminRole?: string | null;
+  adminPermissions?: string[];
   permissions: string[];
   subscription: unknown;
   notifications: { unreadCount: number };

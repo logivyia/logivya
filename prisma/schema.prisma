@@ -26,6 +26,16 @@ enum MembershipStatus {
   REMOVED
 }
 
+enum MembershipLifecycleState {
+  PENDING_ACTIVATION
+  ACTIVE_SHARED_MEMBER
+  SUSPENDED_FOR_SECURITY
+  SHARED_SUBSCRIPTION_EXPIRED
+  DETACHED
+  INDEPENDENT_OWNER
+  REMOVED_BEFORE_ACTIVATION
+}
+
 enum TrialEntitlementStatus {
   PENDING_IDENTITY
   ACTIVE
@@ -72,6 +82,35 @@ enum SubscriptionSource {
   TRIAL
   MANUAL_ADMIN
   PAYMENT_PROVIDER
+}
+
+enum SubscriptionRequestStatus {
+  DRAFT
+  AWAITING_PAYMENT
+  UNDER_REVIEW
+  APPROVED
+  ACTIVATED
+  CLARIFICATION_REQUIRED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+enum SubscriptionRequestActorType {
+  USER
+  ADMIN
+  SYSTEM
+}
+
+enum SubscriptionRequestPurpose {
+  TENANT_PLAN
+  SHARED_MEMBER_CONVERSION
+}
+
+enum BillingLegalDocumentType {
+  PRE_INFORMATION_FORM
+  DISTANCE_SALES_AGREEMENT
+  REFUND_WITHDRAWAL_POLICY
 }
 
 enum AccountStatus {
@@ -188,6 +227,14 @@ enum ChannelMessageStatus {
   CANCELED
 }
 
+enum FacebookPublicationJobStatus {
+  QUEUED
+  PROCESSING
+  SENT
+  FAILED
+  CANCELED
+}
+
 enum AiProviderType {
   OPENAI
   ANTHROPIC
@@ -259,6 +306,8 @@ enum WebhookDeliveryStatus {
 }
 
 enum BillingProvider {
+  APPLE_APP_STORE
+  GOOGLE_PLAY
   STRIPE
   PADDLE
   IYZICO
@@ -312,6 +361,8 @@ enum PaymentStatus {
 }
 
 enum PaymentMethod {
+  APPLE_IN_APP_PURCHASE
+  GOOGLE_PLAY_BILLING
   MANUAL_BANK_TRANSFER
   MANUAL
   FREE_PROMO
@@ -408,6 +459,7 @@ enum PrivacyJobStatus {
 }
 
 enum PrivacyDeletionScope {
+  MEMBERSHIP
   USER
   COMPANY
 }
@@ -515,6 +567,7 @@ enum NotificationCategory {
   INVITATION
   WHATSAPP
   MESSAGE
+  MARKETPLACE
   SYSTEM
   MARKETING
   COMPLIANCE
@@ -571,85 +624,351 @@ enum ContactSyncStatus {
   CANCELLED
 }
 
+enum FreightListingStatus {
+  ACTIVE
+  COMPLETED
+  INACTIVE
+  EXPIRED
+}
+
+enum FreightTrailerType {
+  CURTAINSIDER
+  OPEN_TRAILER
+  CLOSED_TRAILER
+  REFRIGERATED
+  CONTAINER
+  LOWBED
+  TRUCK
+  VAN
+  OTHER
+}
+
+enum FreightContainerStatus {
+  NONE
+  ONE_WAY
+  RETURN_REQUIRED
+}
+
+enum FreightWeightUnit {
+  METRIC_TONNE
+}
+
+enum DriverListingType {
+  DRIVER_AVAILABLE
+  DRIVER_WANTED
+}
+
+enum DriverEmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  DAILY
+}
+
+enum MarketplaceRequestKind {
+  LOAD
+  VEHICLE
+  DRIVER
+}
+
+enum MarketplaceRequestStatus {
+  ACTIVE
+  PAUSED
+  FULFILLED
+  EXPIRED
+}
+
+enum MarketplaceMatchStatus {
+  NEW
+  VIEWED
+  DISMISSED
+}
+
+enum SmartMatchSource {
+  LOGIVYA
+  WHATSAPP
+  TELEGRAM
+}
+
+enum SmartMatchingJobStatus {
+  QUEUED
+  RUNNING
+  PARTIAL
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum FreightCandidateIntent {
+  OFFER
+  NEED
+}
+
+enum SmartMatchResultStatus {
+  NEW
+  VIEWED
+  SAVED
+  DISMISSED
+  EXPIRED
+}
+
+enum WhatsAppIngestionStage {
+  WHATSAPP_INBOUND
+  CONTENT_NORMALIZATION
+  MEDIA_PROCESSING
+  AI_CLASSIFICATION
+  STRUCTURED_EXTRACTION
+  LOCATION_NORMALIZATION
+  PHONE_NORMALIZATION
+  DUPLICATE_DETECTION
+  LISTING_PUBLICATION
+  DEMAND_MATCHING
+  NOTIFICATION_DELIVERY
+  COMPLETED
+}
+
+enum WhatsAppIngestionStatus {
+  RECEIVED
+  PROCESSING
+  PENDING_REVIEW
+  AUTO_PUBLISHED
+  MANUALLY_PUBLISHED
+  REJECTED
+  DUPLICATE
+  EXPIRED
+  DELETED_AT_SOURCE
+  FAILED
+}
+
+enum LogisticsListingType {
+  LOAD
+  VEHICLE
+  PARTIAL_LOAD
+  DRIVER
+  NON_LOGISTICS
+  UNKNOWN
+}
+
+enum WhatsAppInboundAttachmentKind {
+  IMAGE
+  VIDEO
+  DOCUMENT
+  LOCATION
+  UNKNOWN
+}
+
+enum MarketplaceListingSource {
+  LOGIVYA
+  WHATSAPP
+  TELEGRAM
+}
+
+enum ProductFeatureStatus {
+  INTERNAL
+  BETA
+  PUBLIC
+  COMING_SOON
+  DISABLED
+}
+
+enum MarketplaceScope {
+  GLOBAL
+  HOME_MOVING
+  PARTIAL_LOAD
+  HEAVY_HAUL
+}
+
+enum LogisticsSectorClassification {
+  GENERAL_LOGISTICS
+  HOME_MOVING
+  PARTIAL_LOAD
+  HEAVY_HAUL
+  MULTI_SECTOR
+  UNKNOWN
+  NON_LOGISTICS
+}
+
+enum LogisticsSourceGroupHint {
+  GENERAL_LOGISTICS
+  HOME_MOVING
+  PARTIAL_LOAD
+  HEAVY_HAUL
+  MIXED
+  UNKNOWN
+}
+
+enum TelegramAccountStatus {
+  PENDING_AUTH
+  AUTHENTICATING
+  CONNECTED
+  REAUTHORIZATION_REQUIRED
+  DISCONNECTED
+  ERROR
+  ARCHIVED
+}
+
+enum TelegramAccountType {
+  USER
+  BOT
+}
+
+enum TelegramAuthState {
+  STARTING
+  WAIT_PHONE_NUMBER
+  WAIT_EMAIL_ADDRESS
+  WAIT_EMAIL_CODE
+  WAIT_CODE
+  WAIT_PASSWORD
+  WAIT_OTHER_DEVICE
+  READY
+  LOGGING_OUT
+  CLOSED
+  ERROR
+}
+
+enum TelegramChatType {
+  PRIVATE
+  BASIC_GROUP
+  SUPERGROUP
+  CHANNEL
+  SECRET
+  UNKNOWN
+}
+
+enum TelegramDispatchStatus {
+  ACTIVE
+  COMPLETED
+  PAUSED
+  CANCELED
+  FAILED
+}
+
+enum TelegramRunStatus {
+  QUEUED
+  PROCESSING
+  SENT
+  PARTIAL
+  FAILED
+  CANCELED
+}
+
+enum TelegramDeliveryStatus {
+  QUEUED
+  PROCESSING
+  FLOOD_WAIT
+  SENT
+  FAILED
+  CANCELED
+}
+
+enum TelegramMessageDeleteStatus {
+  NONE
+  PENDING
+  DELETED
+  FAILED
+}
+
 model User {
-  id                                String                      @id @default(cuid())
-  name                              String
-  username                          String                      @unique
-  email                             String                      @unique
-  emailVerifiedAt                   DateTime?
-  phone                             String?
-  passwordHash                      String
-  avatarUrl                         String?
-  locale                            String                      @default("en")
-  timezone                          String                      @default("Europe/Istanbul")
-  country                           String                      @default("TR")
-  theme                             String                      @default("system")
-  status                            UserStatus                  @default(ACTIVE)
-  mfaRequired                       Boolean                     @default(false)
-  mfaRequiredAt                     DateTime?
-  ownedCompanies                    Company[]                   @relation("CompanyOwner")
-  memberships                       CompanyUser[]
-  campaigns                         MessageCampaign[]
-  mediaFiles                        MediaFile[]
-  notifications                     Notification[]
-  notificationEvents                NotificationEvent[]         @relation("NotificationEventActor")
-  notificationPreferences           NotificationPreference[]
-  notificationDeliveries            NotificationDelivery[]
-  notificationOutbox                NotificationOutbox[]
-  notificationDevices               NotificationDevice[]
-  notificationDeadLettersResolved   NotificationDeadLetter[]    @relation("NotificationDeadLetterResolver")
-  notificationAnnouncementsCreated  NotificationAnnouncement[]  @relation("NotificationAnnouncementCreator")
-  notificationAnnouncementsApproved NotificationAnnouncement[]  @relation("NotificationAnnouncementApprover")
-  auditLogs                         AuditLog[]
-  activities                        Activity[]
-  assignedTasks                     Task[]                      @relation("TaskAssignee")
-  createdTasks                      Task[]                      @relation("TaskCreator")
-  notes                             Note[]
-  activityFeed                      ActivityFeedEntry[]
-  aiGenerations                     AiGeneration[]
-  userMetrics                       UserMetricDaily[]
-  loginAttempts                     LoginAttempt[]
-  sessions                          UserSession[]
-  mobileDeviceSessions              MobileDeviceSession[]
-  mobilePushTokens                  MobilePushToken[]
-  mobileFeedback                    MobileFeedback[]
-  trustedDevices                    TrustedDevice[]
-  securityEvents                    SecurityEvent[]
-  consents                          ConsentRecord[]
-  dataRequests                      DataSubjectRequest[]
-  privacyExportJobs                 PrivacyExportJob[]
-  privacyDeletionJobs               PrivacyDeletionJob[]
-  privacyLegalHolds                 PrivacyLegalHold[]
-  passwordResetTokens               PasswordResetToken[]
-  emailVerificationTokens           EmailVerificationToken[]
-  mfaCredentials                    MfaCredential[]
-  mfaLoginChallenges                MfaLoginChallenge[]
-  createdSupportTickets             SupportTicket[]             @relation("SupportTicketCreator")
-  assignedSupportTickets            SupportTicket[]             @relation("SupportTicketAssignee")
-  supportMessages                   SupportTicketMessage[]
-  supportTicketAudits               SupportTicketAudit[]        @relation("SupportTicketAuditActor")
-  supportNotificationOutbox         SupportNotificationOutbox[] @relation("SupportNotificationRecipient")
-  referralCodes                     ReferralCode[]
-  referredSignups                   ReferralSignup[]            @relation("ReferredUser")
-  emailDeliveries                   EmailDeliveryLog[]
-  messageVisibilityRecords          UserMessageVisibility[]
-  whatsAppAccounts                  WhatsAppAccount[]
-  whatsAppGroups                    WhatsAppGroup[]
-  contacts                          Contact[]
-  contactSyncRuns                   ContactSyncRun[]
-  categoryContactAssignments        CategoryContact[]
-  sentCompanyInvitations            CompanyInvitation[]         @relation("CompanyInvitationInviter")
-  acceptedCompanyInvitations        CompanyInvitation[]         @relation("CompanyInvitationAcceptedUser")
-  trialEntitlements                 TrialEntitlement[]
-  subscriptionAuditLogs             SubscriptionAuditLog[]      @relation("SubscriptionAuditActor")
-  platformAdmin                     PlatformAdmin?
-  adminAccessLogs                   AdminAccessLog[]
-  adminSessionEvents                AdminSessionEvent[]
-  twoFactorRecoveryCodes            TwoFactorRecoveryCode[]
-  manuallyActivatedSubscriptions    Subscription[]              @relation("ManualSubscriptionActivator")
-  subscriptionEvents                SubscriptionEvent[]
-  createdAt                         DateTime                    @default(now())
-  updatedAt                         DateTime                    @updatedAt
+  id                                 String                          @id @default(cuid())
+  name                               String
+  firstName                          String?
+  lastName                           String?
+  username                           String                          @unique
+  email                              String                          @unique
+  emailVerifiedAt                    DateTime?
+  phone                              String?
+  passwordHash                       String
+  avatarUrl                          String?
+  locale                             String                          @default("en")
+  timezone                           String                          @default("Europe/Istanbul")
+  country                            String                          @default("TR")
+  theme                              String                          @default("system")
+  status                             UserStatus                      @default(ACTIVE)
+  mustChangePassword                 Boolean                         @default(false)
+  temporaryPasswordSetAt             DateTime?
+  mfaRequired                        Boolean                         @default(false)
+  mfaRequiredAt                      DateTime?
+  preferredMfaMethod                 String?
+  ownedCompanies                     Company[]                       @relation("CompanyOwner")
+  memberships                        CompanyUser[]
+  campaigns                          MessageCampaign[]
+  mediaFiles                         MediaFile[]
+  notifications                      Notification[]
+  notificationEvents                 NotificationEvent[]             @relation("NotificationEventActor")
+  notificationPreferences            NotificationPreference[]
+  notificationDeliveries             NotificationDelivery[]
+  notificationOutbox                 NotificationOutbox[]
+  notificationDevices                NotificationDevice[]
+  notificationDeadLettersResolved    NotificationDeadLetter[]        @relation("NotificationDeadLetterResolver")
+  notificationAnnouncementsCreated   NotificationAnnouncement[]      @relation("NotificationAnnouncementCreator")
+  notificationAnnouncementsApproved  NotificationAnnouncement[]      @relation("NotificationAnnouncementApprover")
+  auditLogs                          AuditLog[]
+  activities                         Activity[]
+  assignedTasks                      Task[]                          @relation("TaskAssignee")
+  createdTasks                       Task[]                          @relation("TaskCreator")
+  notes                              Note[]
+  activityFeed                       ActivityFeedEntry[]
+  aiGenerations                      AiGeneration[]
+  userMetrics                        UserMetricDaily[]
+  loginAttempts                      LoginAttempt[]
+  sessions                           UserSession[]
+  mobileDeviceSessions               MobileDeviceSession[]
+  mobilePushTokens                   MobilePushToken[]
+  mobileFeedback                     MobileFeedback[]
+  freightListings                    FreightListing[]
+  vehicleListings                    VehicleListing[]
+  driverListings                     DriverListing[]
+  marketplaceRequests                MarketplaceDemandRequest[]
+  marketplaceListingMatches          MarketplaceDemandMatch[]        @relation("MarketplaceMatchListingOwner")
+  smartMatchingJobs                  SmartMatchingJob[]
+  freightOpportunityCandidates       FreightOpportunityCandidate[]
+  smartMatchResults                  SmartMatchResult[]
+  telegramAccounts                   TelegramAccount[]
+  telegramDispatches                 TelegramDispatch[]
+  trustedDevices                     TrustedDevice[]
+  securityEvents                     SecurityEvent[]
+  consents                           ConsentRecord[]
+  dataRequests                       DataSubjectRequest[]
+  privacyExportJobs                  PrivacyExportJob[]
+  privacyDeletionJobs                PrivacyDeletionJob[]
+  privacyLegalHolds                  PrivacyLegalHold[]
+  passwordResetTokens                PasswordResetToken[]
+  emailVerificationTokens            EmailVerificationToken[]
+  mfaCredentials                     MfaCredential[]
+  mfaLoginChallenges                 MfaLoginChallenge[]
+  createdSupportTickets              SupportTicket[]                 @relation("SupportTicketCreator")
+  assignedSupportTickets             SupportTicket[]                 @relation("SupportTicketAssignee")
+  supportMessages                    SupportTicketMessage[]
+  supportTicketAudits                SupportTicketAudit[]            @relation("SupportTicketAuditActor")
+  supportNotificationOutbox          SupportNotificationOutbox[]     @relation("SupportNotificationRecipient")
+  referralCodes                      ReferralCode[]
+  referredSignups                    ReferralSignup[]                @relation("ReferredUser")
+  emailDeliveries                    EmailDeliveryLog[]
+  messageVisibilityRecords           UserMessageVisibility[]
+  whatsAppAccounts                   WhatsAppAccount[]
+  whatsAppGroups                     WhatsAppGroup[]
+  contacts                           Contact[]
+  contactSyncRuns                    ContactSyncRun[]
+  categoryContactAssignments         CategoryContact[]
+  sentCompanyInvitations             CompanyInvitation[]             @relation("CompanyInvitationInviter")
+  acceptedCompanyInvitations         CompanyInvitation[]             @relation("CompanyInvitationAcceptedUser")
+  createdCompanyMemberships          CompanyUser[]                   @relation("CompanyMembershipCreator")
+  forcedPasswordChangeChallenges     ForcedPasswordChangeChallenge[]
+  trialEntitlements                  TrialEntitlement[]
+  subscriptionAuditLogs              SubscriptionAuditLog[]          @relation("SubscriptionAuditActor")
+  platformAdmin                      PlatformAdmin?
+  adminAccessLogs                    AdminAccessLog[]
+  adminSessionEvents                 AdminSessionEvent[]
+  twoFactorRecoveryCodes             TwoFactorRecoveryCode[]
+  manuallyActivatedSubscriptions     Subscription[]                  @relation("ManualSubscriptionActivator")
+  subscriptionEvents                 SubscriptionEvent[]
+  requestedSubscriptionRequests      SubscriptionRequest[]           @relation("SubscriptionRequestRequester")
+  reviewedSubscriptionRequests       SubscriptionRequest[]           @relation("SubscriptionRequestReviewer")
+  subscriptionRequestConsents        SubscriptionRequestConsent[]
+  subscriptionRequestTransitions     SubscriptionRequestTransition[]
+  updatedBillingSellerConfigurations BillingSellerConfiguration[]    @relation("BillingSellerConfigurationUpdater")
+  createdAt                          DateTime                        @default(now())
+  updatedAt                          DateTime                        @updatedAt
 }
 
 model Company {
@@ -664,12 +983,15 @@ model Company {
   phone                          String?
   email                          String?
   ownerId                        String
+  appleAppAccountToken           String?                         @unique
   owner                          User                            @relation("CompanyOwner", fields: [ownerId], references: [id])
   members                        CompanyUser[]
   invitations                    CompanyInvitation[]
+  forcedPasswordChangeChallenges ForcedPasswordChangeChallenge[]
   trialEntitlements              TrialEntitlement[]
   subscriptionAuditLogs          SubscriptionAuditLog[]
   subscriptions                  Subscription[]
+  subscriptionRequests           SubscriptionRequest[]
   accounts                       WhatsAppAccount[]
   groups                         WhatsAppGroup[]
   contacts                       Contact[]
@@ -733,7 +1055,19 @@ model Company {
   mobileDeviceSessions           MobileDeviceSession[]
   mobilePushTokens               MobilePushToken[]
   mobileFeedback                 MobileFeedback[]
+  freightListings                FreightListing[]
+  vehicleListings                VehicleListing[]
+  driverListings                 DriverListing[]
+  marketplaceRequests            MarketplaceDemandRequest[]
+  smartMatchingJobs              SmartMatchingJob[]
+  freightOpportunityCandidates   FreightOpportunityCandidate[]
+  smartMatchResults              SmartMatchResult[]
+  telegramAccounts               TelegramAccount[]
+  telegramChats                  TelegramChat[]
+  telegramCategoryChats          TelegramCategoryChat[]
+  telegramDispatches             TelegramDispatch[]
   securityStatus                 CompanySecurityStatus           @default(ACTIVE)
+  mfaPolicy                      String                          @default("NONE")
   billingLockedAt                DateTime?
   campaignsPausedAt              DateTime?
   retentionDays                  Int                             @default(90)
@@ -748,23 +1082,33 @@ model Company {
 }
 
 model CompanyUser {
-  id                  String                  @id @default(cuid())
-  companyId           String
-  userId              String
-  role                CompanyRole             @default(OPERATOR)
-  status              MembershipStatus        @default(ACTIVE)
-  company             Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  joinedAt            DateTime                @default(now())
-  seatActivatedAt     DateTime?               @default(now())
-  suspendedAt         DateTime?
-  removedAt           DateTime?
-  createdAt           DateTime                @default(now())
-  updatedAt           DateTime                @updatedAt
-  permissionOverrides CompanyUserPermission[]
+  id                     String                   @id @default(cuid())
+  companyId              String
+  userId                 String
+  createdByUserId        String?
+  role                   CompanyRole              @default(OPERATOR)
+  status                 MembershipStatus         @default(ACTIVE)
+  lifecycleState         MembershipLifecycleState
+  company                Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user                   User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdBy              User?                    @relation("CompanyMembershipCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  joinedAt               DateTime                 @default(now())
+  seatActivatedAt        DateTime?                @default(now())
+  activationCompletedAt  DateTime?
+  sharedAccessExpiredAt  DateTime?
+  detachedAt             DateTime?
+  independentConvertedAt DateTime?
+  suspendedAt            DateTime?
+  removedAt              DateTime?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  permissionOverrides    CompanyUserPermission[]
 
   @@unique([companyId, userId])
   @@index([userId])
+  @@index([createdByUserId])
+  @@index([companyId, lifecycleState])
+  @@index([userId, lifecycleState])
 }
 
 model CompanyInvitation {
@@ -821,37 +1165,38 @@ model InvitationDeliveryOutbox {
 }
 
 model Plan {
-  id                       String           @id @default(cuid())
+  id                       String                @id @default(cuid())
   name                     String
-  slug                     String           @unique
+  slug                     String                @unique
   description              String?
-  monthlyPrice             Decimal          @default(0) @db.Decimal(12, 2)
-  yearlyPrice              Decimal          @default(0) @db.Decimal(12, 2)
-  currency                 String           @default("TRY")
-  trialDays                Int              @default(0)
+  monthlyPrice             Decimal               @default(0) @db.Decimal(12, 2)
+  yearlyPrice              Decimal               @default(0) @db.Decimal(12, 2)
+  currency                 String                @default("TRY")
+  trialDays                Int                   @default(0)
   maxWhatsappAccounts      Int
-  maxTeamUsers             Int              @default(1)
+  maxTeamUsers             Int                   @default(1)
   maxGroups                Int
   maxMessagesPerDay        Int
   maxMessagesPerMonth      Int
-  groupMessagingEnabled    Boolean          @default(true)
-  contactMessagingEnabled  Boolean          @default(false)
-  deleteForEveryoneEnabled Boolean          @default(true)
-  advertisingEnabled       Boolean          @default(false)
-  hasScheduledMessages     Boolean          @default(false)
-  hasRecurringMessages     Boolean          @default(false)
-  advancedReportingEnabled Boolean          @default(false)
-  hasNoBranding            Boolean          @default(false)
-  hasCrm                   Boolean          @default(false)
-  hasApi                   Boolean          @default(false)
-  isPopular                Boolean          @default(false)
-  isCustom                 Boolean          @default(false)
-  isActive                 Boolean          @default(true)
+  groupMessagingEnabled    Boolean               @default(true)
+  contactMessagingEnabled  Boolean               @default(false)
+  deleteForEveryoneEnabled Boolean               @default(true)
+  advertisingEnabled       Boolean               @default(false)
+  hasScheduledMessages     Boolean               @default(false)
+  hasRecurringMessages     Boolean               @default(false)
+  advancedReportingEnabled Boolean               @default(false)
+  hasNoBranding            Boolean               @default(false)
+  hasCrm                   Boolean               @default(false)
+  hasApi                   Boolean               @default(false)
+  isPopular                Boolean               @default(false)
+  isCustom                 Boolean               @default(false)
+  isActive                 Boolean               @default(true)
   subscriptions            Subscription[]
+  subscriptionRequests     SubscriptionRequest[]
   payments                 Payment[]
   permissions              PlanPermission[]
-  createdAt                DateTime         @default(now())
-  updatedAt                DateTime         @default(now()) @updatedAt
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @default(now()) @updatedAt
 }
 
 model Subscription {
@@ -884,6 +1229,7 @@ model Subscription {
   events                    SubscriptionEvent[]
   auditLogs                 SubscriptionAuditLog[]
   appliedCoupons            SubscriptionCoupon[]
+  activationRequest         SubscriptionRequest?   @relation("SubscriptionRequestActivation")
 
   @@index([companyId, status])
   @@index([status, currentPeriodEndsAt])
@@ -906,6 +1252,109 @@ model SubscriptionAuditLog {
   @@index([companyId, createdAt])
   @@index([subscriptionId, createdAt])
   @@index([eventType, createdAt])
+}
+
+model SubscriptionRequest {
+  id                            String                          @id @default(cuid())
+  publicId                      String                          @unique
+  activeRequestKey              String?                         @unique
+  companyId                     String
+  purpose                       SubscriptionRequestPurpose      @default(TENANT_PLAN)
+  sourceCompanyId               String?
+  sourceMembershipId            String?
+  conversionCompanyId           String?
+  requestedByUserId             String?
+  reviewedByUserId              String?
+  planId                        String?
+  activationSubscriptionId      String?                         @unique
+  status                        SubscriptionRequestStatus       @default(AWAITING_PAYMENT)
+  paymentProvider               BillingProvider                 @default(MANUAL)
+  billingPeriod                 BillingPeriod
+  amount                        Decimal                         @db.Decimal(12, 2)
+  currency                      String                          @default("TRY")
+  planCode                      String
+  planName                      String
+  planSnapshot                  Json
+  buyerSnapshot                 Json
+  sellerSnapshot                Json
+  bankSnapshot                  Json
+  paymentReference              String                          @unique
+  transferDescriptionEmail      String?
+  pricingConfigVersion          String?
+  bankConfigVersion             String?
+  correlationId                 String?
+  immediatePerformanceConsentAt DateTime?
+  requestHash                   String
+  idempotencyKeyHash            String
+  customerNote                  String?
+  adminCustomerNote             String?
+  adminInternalNote             String?
+  reviewedAt                    DateTime?
+  approvedAt                    DateTime?
+  activatedAt                   DateTime?
+  rejectedAt                    DateTime?
+  cancelledAt                   DateTime?
+  expiresAt                     DateTime?
+  company                       Company                         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requestedBy                   User?                           @relation("SubscriptionRequestRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  reviewedBy                    User?                           @relation("SubscriptionRequestReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  plan                          Plan?                           @relation(fields: [planId], references: [id], onDelete: SetNull)
+  activationSubscription        Subscription?                   @relation("SubscriptionRequestActivation", fields: [activationSubscriptionId], references: [id], onDelete: SetNull)
+  consents                      SubscriptionRequestConsent[]
+  transitions                   SubscriptionRequestTransition[]
+  createdAt                     DateTime                        @default(now())
+  updatedAt                     DateTime                        @updatedAt
+
+  @@unique([companyId, idempotencyKeyHash])
+  @@index([companyId, status, createdAt])
+  @@index([paymentProvider, status, createdAt])
+  @@index([requestedByUserId, createdAt])
+  @@index([status, createdAt])
+  @@index([planCode, billingPeriod])
+  @@index([transferDescriptionEmail, createdAt])
+  @@index([purpose, status, createdAt])
+  @@index([sourceMembershipId, createdAt])
+  @@index([conversionCompanyId])
+}
+
+model SubscriptionRequestConsent {
+  id               String                   @id @default(cuid())
+  requestId        String
+  userId           String?
+  documentType     BillingLegalDocumentType
+  documentVersion  String
+  documentHash     String
+  locale           String
+  acceptedAt       DateTime
+  userAgentSummary String?
+  ipAddressMasked  String?
+  documentSnapshot Json
+  request          SubscriptionRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  user             User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt        DateTime                 @default(now())
+
+  @@unique([requestId, documentType])
+  @@index([userId, acceptedAt])
+  @@index([documentHash])
+}
+
+model SubscriptionRequestTransition {
+  id            String                       @id @default(cuid())
+  requestId     String
+  fromStatus    SubscriptionRequestStatus?
+  toStatus      SubscriptionRequestStatus
+  actorType     SubscriptionRequestActorType
+  actorUserId   String?
+  customerNote  String?
+  internalNote  String?
+  correlationId String?
+  request       SubscriptionRequest          @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actorUser     User?                        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  createdAt     DateTime                     @default(now())
+
+  @@index([requestId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([toStatus, createdAt])
 }
 
 model BillingWebhookReceipt {
@@ -961,15 +1410,19 @@ model TrialEntitlement {
 }
 
 model WhatsAppAccount {
-  id                         String             @id @default(cuid())
+  id                         String                   @id @default(cuid())
   userId                     String?
   companyId                  String
   label                      String?
   phoneNumber                String?
+  countryIso                 String?
+  messageLocale              String?
+  connectionMethod           String?
+  pairedAt                   DateTime?
   displayName                String?
   provider                   String
   providerSessionId          String?
-  status                     AccountStatus      @default(PENDING_QR)
+  status                     AccountStatus            @default(PENDING_QR)
   lastConnectedAt            DateTime?
   lastDisconnectedAt         DateTime?
   lastSyncedAt               DateTime?
@@ -982,30 +1435,31 @@ model WhatsAppAccount {
   contactSyncImplementation  String?
   lastConnectionLatencyMs    Int?
   batteryState               String?
-  healthScore                Int                @default(0)
-  recoveryLevel              Int                @default(0)
+  healthScore                Int                      @default(0)
+  recoveryLevel              Int                      @default(0)
   sessionRestoredAt          DateTime?
   sessionSnapshotAt          DateTime?
-  reconnectRetryCount        Int                @default(0)
+  reconnectRetryCount        Int                      @default(0)
   deviceId                   String?
-  syncIntervalMinutes        Int                @default(120)
+  syncIntervalMinutes        Int                      @default(120)
   archivedAt                 DateTime?
   lastError                  String?
   qrCode                     String?
   qrExpiresAt                DateTime?
   pairingCode                String?
   pairingCodeExpiresAt       DateTime?
-  user                       User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
-  company                    Company            @relation(fields: [companyId], references: [id])
+  user                       User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  company                    Company                  @relation(fields: [companyId], references: [id])
   sessions                   WhatsAppSession[]
   groups                     WhatsAppGroup[]
   contacts                   Contact[]
   contactSyncRuns            ContactSyncRun[]
   categoryContactAssignments CategoryContact[]
   recipients                 MessageRecipient[]
+  inboundListingMessages     WhatsAppInboundMessage[]
   trialEntitlement           TrialEntitlement?
-  createdAt                  DateTime           @default(now())
-  updatedAt                  DateTime           @updatedAt
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
 
   @@index([userId])
   @@index([companyId, status])
@@ -1033,24 +1487,41 @@ model WhatsAppSession {
 }
 
 model WhatsAppGroup {
-  id               String             @id @default(cuid())
-  userId           String?
-  companyId        String
-  accountId        String
-  externalGroupId  String
-  name             String
-  description      String?
-  participantCount Int                @default(0)
-  canSend          Boolean            @default(true)
-  isArchived       Boolean            @default(false)
-  lastSyncedAt     DateTime
-  user             User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
-  company          Company            @relation(fields: [companyId], references: [id])
-  account          WhatsAppAccount    @relation(fields: [accountId], references: [id])
-  categories       CategoryGroup[]
-  recipients       MessageRecipient[]
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id                                String                      @id @default(cuid())
+  userId                            String?
+  companyId                         String
+  accountId                         String
+  externalGroupId                   String
+  name                              String
+  description                       String?
+  participantCount                  Int                         @default(0)
+  canSend                           Boolean                     @default(true)
+  isArchived                        Boolean                     @default(false)
+  ingestionEnabled                  Boolean                     @default(false)
+  ingestionApprovedAt               DateTime?
+  ingestionApprovedById             String?
+  logisticsGroupRecommended         Boolean                     @default(false)
+  logisticsRecommendationConfidence Int?
+  autoPublicationEnabled            Boolean                     @default(false)
+  manualReviewRequired              Boolean                     @default(true)
+  minimumConfidence                 Int                         @default(85)
+  sectorHint                        LogisticsSourceGroupHint    @default(UNKNOWN)
+  ingestionPausedAt                 DateTime?
+  lastInboundMessageAt              DateTime?
+  lastPublishedListingAt            DateTime?
+  processedMessageCount             Int                         @default(0)
+  publishedListingCount             Int                         @default(0)
+  failedMessageCount                Int                         @default(0)
+  lastSyncedAt                      DateTime
+  user                              User?                       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  company                           Company                     @relation(fields: [companyId], references: [id])
+  account                           WhatsAppAccount             @relation(fields: [accountId], references: [id])
+  categories                        CategoryGroup[]
+  recipients                        MessageRecipient[]
+  inboundListingMessages            WhatsAppInboundMessage[]
+  ingestionAuditLogs                WhatsAppIngestionAuditLog[]
+  createdAt                         DateTime                    @default(now())
+  updatedAt                         DateTime                    @updatedAt
 
   @@unique([accountId, externalGroupId])
   @@index([userId])
@@ -1060,6 +1531,168 @@ model WhatsAppGroup {
   @@index([companyId, accountId])
   @@index([userId, accountId])
   @@index([companyId, isArchived])
+  @@index([ingestionEnabled, ingestionPausedAt, isArchived])
+  @@index([autoPublicationEnabled, manualReviewRequired])
+}
+
+model WhatsAppIngestionControl {
+  id                  String   @id @default("global")
+  globallyPaused      Boolean  @default(false)
+  emergencyKillSwitch Boolean  @default(false)
+  pauseReason         String?
+  rawRetentionDays    Int      @default(7)
+  mediaRetentionDays  Int      @default(7)
+  staleAlertMinutes   Int      @default(15)
+  updatedById         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model WhatsAppInboundMessage {
+  id                     String                      @id @default(cuid())
+  accountId              String
+  groupId                String
+  providerMessageId      String
+  providerMessageKeyHash String?
+  senderIdentityHash     String?
+  senderPhoneEncrypted   String?
+  senderDisplayNameEncrypted String?
+  messageType            String
+  sourceLanguage         String?
+  rawTextEncrypted       String?
+  normalizedText         String?
+  contentHash            String
+  status                 WhatsAppIngestionStatus     @default(RECEIVED)
+  currentStage           WhatsAppIngestionStage      @default(WHATSAPP_INBOUND)
+  stageVersion           Int                         @default(1)
+  attemptCount           Int                         @default(0)
+  nextAttemptAt          DateTime                    @default(now())
+  lockedAt               DateTime?
+  lockedBy               String?
+  lastHeartbeatAt        DateTime?
+  lastErrorCode          String?
+  lastErrorMessage       String?
+  sourceMessageTimestamp DateTime
+  receivedAt             DateTime                    @default(now())
+  processedAt            DateTime?
+  editedAtSource         DateTime?
+  deletedAtSource        DateTime?
+  rawExpiresAt           DateTime
+  account                WhatsAppAccount             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  group                  WhatsAppGroup               @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  attachments            WhatsAppInboundAttachment[]
+  extractions            WhatsAppListingExtraction[]
+  auditLogs              WhatsAppIngestionAuditLog[]
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+
+  @@unique([accountId, providerMessageId])
+  @@index([groupId, status, receivedAt])
+  @@index([status, currentStage, nextAttemptAt])
+  @@index([lockedAt, lastHeartbeatAt])
+  @@index([contentHash, sourceMessageTimestamp])
+  @@index([rawExpiresAt])
+}
+
+model WhatsAppInboundAttachment {
+  id                   String                        @id @default(cuid())
+  inboundMessageId     String
+  providerAttachmentId String?
+  kind                 WhatsAppInboundAttachmentKind @default(UNKNOWN)
+  mimeType             String?
+  fileName             String?
+  fileSize             Int?
+  contentHash          String?
+  captionEncrypted     String?
+  storageKeyEncrypted  String?
+  latitude             Decimal?                      @db.Decimal(10, 7)
+  longitude            Decimal?                      @db.Decimal(10, 7)
+  processedAt          DateTime?
+  expiresAt            DateTime
+  inboundMessage       WhatsAppInboundMessage        @relation(fields: [inboundMessageId], references: [id], onDelete: Cascade)
+  createdAt            DateTime                      @default(now())
+  updatedAt            DateTime                      @updatedAt
+
+  @@unique([inboundMessageId, providerAttachmentId])
+  @@index([contentHash])
+  @@index([expiresAt])
+}
+
+model WhatsAppListingExtraction {
+  id                       String                        @id @default(cuid())
+  inboundMessageId         String
+  extractionIndex          Int                           @default(0)
+  listingType              LogisticsListingType
+  isLogisticsListing       Boolean
+  sourceLanguage           String?
+  title                    String?
+  normalizedDescription    String?
+  originCountry            String?
+  originCity               String?
+  originDistrict           String?
+  originLocationId         String?
+  destinationCountry       String?
+  destinationCity          String?
+  destinationDistrict      String?
+  destinationLocationId    String?
+  routeDescription         String?
+  cargoType                String?
+  tonnageMin               Decimal?                      @db.Decimal(10, 2)
+  tonnageMax               Decimal?                      @db.Decimal(10, 2)
+  vehicleCategory          String?
+  trailerType              FreightTrailerType?
+  loadingDate              DateTime?                     @db.Date
+  freightAmount            Decimal?                      @db.Decimal(14, 2)
+  freightCurrency          String?                       @db.VarChar(3)
+  normalizedPhoneEncrypted String?
+  contactName              String?
+  companyName              String?
+  confidenceScore          Int
+  missingCriticalFields    String[]                      @default([])
+  extractedFromText        Boolean                       @default(true)
+  extractedFromMedia       Boolean                       @default(false)
+  structuredData           Json
+  semanticFingerprint      String
+  reviewStatus             WhatsAppIngestionStatus       @default(PENDING_REVIEW)
+  sectorClassification     LogisticsSectorClassification @default(UNKNOWN)
+  marketplaceScopes        MarketplaceScope[]            @default([GLOBAL])
+  sectorConfidenceScore    Int?
+  sectorEvidence           Json?
+  candidateId              String?
+  publishedListingKind     MarketplaceRequestKind?
+  publishedListingId       String?
+  reviewedById             String?
+  reviewedAt               DateTime?
+  reviewNote               String?
+  publishedAt              DateTime?
+  inboundMessage           WhatsAppInboundMessage        @relation(fields: [inboundMessageId], references: [id], onDelete: Cascade)
+  createdAt                DateTime                      @default(now())
+  updatedAt                DateTime                      @updatedAt
+
+  @@unique([inboundMessageId, extractionIndex])
+  @@index([reviewStatus, createdAt])
+  @@index([semanticFingerprint, createdAt])
+  @@index([listingType, reviewStatus, publishedAt])
+  @@index([candidateId])
+  @@index([publishedListingKind, publishedListingId])
+}
+
+model WhatsAppIngestionAuditLog {
+  id               String                   @id @default(cuid())
+  inboundMessageId String?
+  groupId          String?
+  actorUserId      String?
+  action           String
+  stage            WhatsAppIngestionStage?
+  status           WhatsAppIngestionStatus?
+  metadata         Json?
+  inboundMessage   WhatsAppInboundMessage?  @relation(fields: [inboundMessageId], references: [id], onDelete: Cascade)
+  group            WhatsAppGroup?           @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt        DateTime                 @default(now())
+
+  @@index([inboundMessageId, createdAt])
+  @@index([groupId, createdAt])
+  @@index([action, createdAt])
 }
 
 model Contact {
@@ -1125,18 +1758,19 @@ model ContactSyncRun {
 }
 
 model Category {
-  id          String                @id @default(cuid())
-  companyId   String
-  name        String
-  color       String
-  description String?
-  archivedAt  DateTime?
-  company     Company               @relation(fields: [companyId], references: [id])
-  groups      CategoryGroup[]
-  contacts    CategoryContact[]
-  metrics     CategoryMetricDaily[]
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+  id            String                 @id @default(cuid())
+  companyId     String
+  name          String
+  color         String
+  description   String?
+  archivedAt    DateTime?
+  company       Company                @relation(fields: [companyId], references: [id])
+  groups        CategoryGroup[]
+  contacts      CategoryContact[]
+  telegramChats TelegramCategoryChat[]
+  metrics       CategoryMetricDaily[]
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
 
   @@unique([companyId, name])
   @@index([companyId, archivedAt])
@@ -1239,6 +1873,12 @@ model MessageRecipient {
   errorMessage                 String?
   sentAt                       DateTime?
   failedAt                     DateTime?
+  renderedContent              String?
+  attributionApplied           Boolean?
+  attributionLocale            String?
+  attributionVersion           String?
+  effectivePlanCode            String?
+  renderedAt                   DateTime?
   campaign                     MessageCampaign         @relation(fields: [campaignId], references: [id])
   account                      WhatsAppAccount         @relation(fields: [accountId], references: [id])
   group                        WhatsAppGroup?          @relation(fields: [groupId], references: [id])
@@ -1270,7 +1910,7 @@ model UserMessageVisibility {
 }
 
 model MediaFile {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   companyId    String
   uploadedById String
   fileName     String
@@ -1278,11 +1918,14 @@ model MediaFile {
   size         Int
   storageKey   String
   publicUrl    String?
-  company      Company  @relation(fields: [companyId], references: [id])
-  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
-  createdAt    DateTime @default(now())
+  purpose      String?   @db.VarChar(80)
+  expiresAt    DateTime?
+  company      Company   @relation(fields: [companyId], references: [id])
+  uploadedBy   User      @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime  @default(now())
 
   @@index([companyId])
+  @@index([purpose, expiresAt])
 }
 
 model Notification {
@@ -1311,7 +1954,7 @@ model Notification {
   deliveries      NotificationDelivery[]
   outbox          NotificationOutbox[]
   createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
+  updatedAt       DateTime               @default(now()) @updatedAt
 
   @@index([userId, isRead, createdAt])
   @@index([companyId, userId, createdAt])
@@ -1420,7 +2063,7 @@ model NotificationTemplate {
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
 
-  @@unique([scopeKey, eventType, channel, locale, version])
+  @@unique([scopeKey, eventType, channel, locale, version], map: "NotificationTemplate_scopeKey_eventType_channel_locale_version_")
   @@index([eventType, channel, locale, isActive])
   @@index([status, updatedAt])
 }
@@ -1666,6 +2309,7 @@ model ChannelAccount {
   messages             ChannelMessage[]
   safetyProfile        AccountSafetyProfile?
   accountMetrics       AccountMetricDaily[]
+  telegramAccount      TelegramAccount?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
@@ -1716,6 +2360,52 @@ model ChannelMessage {
   @@index([companyId, createdAt])
   @@index([channelAccountId, status])
   @@index([campaignId, status])
+}
+
+// Durable, provider-isolated delivery queue for Meta Page publishing. Tokens are
+// intentionally never copied into the payload; they remain encrypted on the
+// owning ChannelAccount and are resolved only by the worker at delivery time.
+model FacebookPublicationJob {
+  id               String                       @id @default(cuid())
+  companyId        String
+  userId           String
+  channelAccountId String
+  channelMessageId String                       @unique
+  idempotencyKey   String                       @unique
+  status           FacebookPublicationJobStatus @default(QUEUED)
+  payload          Json
+  attemptCount     Int                          @default(0)
+  maxAttempts      Int                          @default(5)
+  nextAttemptAt    DateTime                     @default(now())
+  lockedAt         DateTime?
+  lockedBy         String?
+  lastAttemptAt    DateTime?
+  completedAt      DateTime?
+  lastErrorCode    String?
+  lastErrorMessage String?
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+
+  @@index([status, nextAttemptAt, createdAt])
+  @@index([lockedBy, lockedAt])
+  @@index([companyId, createdAt])
+  @@index([channelAccountId, status])
+}
+
+model FacebookOAuthTransaction {
+  id         String    @id @default(cuid())
+  stateHash  String    @unique
+  companyId  String
+  userId     String
+  platform   String
+  purpose    String    @default("FACEBOOK_PAGES_CONNECT")
+  expiresAt  DateTime
+  consumedAt DateTime?
+  errorCode  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([companyId, userId, createdAt])
+  @@index([expiresAt, consumedAt])
 }
 
 model AiProviderConfiguration {
@@ -2166,6 +2856,26 @@ model CompanyBillingProfile {
   @@index([billingType, country])
 }
 
+model BillingSellerConfiguration {
+  id                         String    @id @default("logivya")
+  officialName               String?
+  registeredAddress          String?
+  taxOffice                  String?
+  taxNumber                  String?
+  email                      String?
+  phone                      String?
+  tradeRegistryNumber        String?
+  tradeRegistryNotApplicable Boolean   @default(false)
+  mersisNumber               String?
+  mersisNotApplicable        Boolean   @default(false)
+  legalDocumentsApprovedAt   DateTime?
+  verifiedAt                 DateTime?
+  updatedByUserId            String?
+  updatedBy                  User?     @relation("BillingSellerConfigurationUpdater", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+}
+
 model Invoice {
   id                String              @id @default(cuid())
   companyId         String
@@ -2448,6 +3158,26 @@ model PasswordResetToken {
   @@index([email, createdAt])
 }
 
+model ForcedPasswordChangeChallenge {
+  id         String    @id @default(cuid())
+  userId     String
+  companyId  String
+  tokenHash  String    @unique
+  channel    String
+  deviceId   String?
+  platform   String?
+  appVersion String?
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt, expiresAt])
+  @@index([companyId, createdAt])
+}
+
 model EmailVerificationToken {
   id        String    @id @default(cuid())
   userId    String
@@ -2464,8 +3194,13 @@ model MfaCredential {
   id                       String                  @id @default(cuid())
   userId                   String
   type                     String
-  secretEncrypted          String
+  secretEncrypted          String?
   recoveryCodesHashed      String[]
+  status                   String                  @default("PENDING")
+  enabledAt                DateTime?
+  disabledAt               DateTime?
+  lastUsedAt               DateTime?
+  isPreferred              Boolean                 @default(false)
   verifiedAt               DateTime?
   lastUsedCounter          Int?
   setupTokenHash           String?                 @unique
@@ -2476,34 +3211,40 @@ model MfaCredential {
   recoveryCodesGeneratedAt DateTime?
   revokedAt                DateTime?
   createdAt                DateTime                @default(now())
-  updatedAt                DateTime                @updatedAt
+  updatedAt                DateTime                @default(now()) @updatedAt
   user                     User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   recoveryCodes            TwoFactorRecoveryCode[]
 
   @@index([userId, revokedAt])
   @@index([userId, verifiedAt, setupExpiresAt])
+  @@index([userId, status, type], map: "MfaCredential_user_status_type_idx")
 }
 
 model MfaLoginChallenge {
-  id         String    @id @default(cuid())
-  userId     String
-  companyId  String
-  tokenHash  String    @unique
-  channel    String
-  purpose    String    @default("LOGIN")
-  deviceId   String?
-  platform   String?
-  appVersion String?
-  ipAddress  String?
-  userAgent  String?
-  attempts   Int       @default(0)
-  expiresAt  DateTime
-  consumedAt DateTime?
-  createdAt  DateTime  @default(now())
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String    @id @default(cuid())
+  userId         String
+  companyId      String
+  tokenHash      String    @unique
+  channel        String
+  purpose        String    @default("LOGIN")
+  selectedMethod String?
+  otpCodeHash    String?
+  otpSentAt      DateTime?
+  otpExpiresAt   DateTime?
+  deviceId       String?
+  platform       String?
+  appVersion     String?
+  ipAddress      String?
+  userAgent      String?
+  attempts       Int       @default(0)
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, consumedAt, expiresAt])
   @@index([companyId, createdAt])
+  @@index([selectedMethod, otpExpiresAt], map: "MfaLoginChallenge_method_expiry_idx")
 }
 
 model IdempotencyKey {
@@ -2627,7 +3368,7 @@ model ConsentRecord {
   collectedAt      DateTime      @default(now())
   withdrawnAt      DateTime?
   createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  updatedAt        DateTime      @default(now()) @updatedAt
   user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   company          Company?      @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -2659,7 +3400,7 @@ model DataSubjectRequest {
   completedAt                DateTime?
   closedAt                   DateTime?
   createdAt                  DateTime                  @default(now())
-  updatedAt                  DateTime                  @updatedAt
+  updatedAt                  DateTime                  @default(now()) @updatedAt
   company                    Company?                  @relation(fields: [companyId], references: [id])
   user                       User?                     @relation(fields: [userId], references: [id])
   messages                   PrivacyRequestMessage[]
@@ -3124,6 +3865,577 @@ model Announcement {
   @@index([isActive, startsAt, endsAt])
 }
 
+model FreightListing {
+  id                    String                        @id @default(cuid())
+  companyId             String
+  ownerUserId           String
+  clientRequestId       String?
+  source                MarketplaceListingSource      @default(LOGIVYA)
+  sourceExtractionId    String?                       @unique
+  primarySector         LogisticsSectorClassification @default(GENERAL_LOGISTICS)
+  marketplaceScopes     MarketplaceScope[]            @default([GLOBAL])
+  sectorDetails         Json?
+  isPartialLoad         Boolean                       @default(false)
+  origin                String
+  originNormalized      String
+  destination           String
+  destinationNormalized String
+  loadingDate           DateTime                      @db.Date
+  cargoType             String?
+  weight                Decimal?                      @db.Decimal(10, 2)
+  weightUnit            FreightWeightUnit             @default(METRIC_TONNE)
+  trailerType           FreightTrailerType
+  vehicleCount          Int                           @default(1)
+  priceAmount           Decimal?                      @db.Decimal(14, 2)
+  currency              String?                       @db.VarChar(3)
+  customsInfo           String?
+  containerStatus       FreightContainerStatus        @default(NONE)
+  description           String?
+  contactPhone          String
+  status                FreightListingStatus          @default(ACTIVE)
+  publishedAt           DateTime                      @default(now())
+  completedAt           DateTime?
+  deactivatedAt         DateTime?
+  expiresAt             DateTime?
+  company               Company                       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  owner                 User                          @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+
+  @@unique([ownerUserId, clientRequestId])
+  @@index([status, loadingDate, createdAt])
+  @@index([status, trailerType, loadingDate])
+  @@index([ownerUserId, status, createdAt])
+  @@index([companyId, status, createdAt])
+  @@index([primarySector, status, createdAt])
+  @@index([expiresAt, status])
+  @@index([originNormalized])
+  @@index([destinationNormalized])
+}
+
+model VehicleListing {
+  id                     String                        @id @default(cuid())
+  companyId              String
+  ownerUserId            String
+  clientRequestId        String?
+  source                 MarketplaceListingSource      @default(LOGIVYA)
+  sourceExtractionId     String?                       @unique
+  primarySector          LogisticsSectorClassification @default(GENERAL_LOGISTICS)
+  marketplaceScopes      MarketplaceScope[]            @default([GLOBAL])
+  sectorDetails          Json?
+  origin                 String
+  originNormalized       String
+  destination            String?
+  destinationNormalized  String?
+  availableFrom          DateTime                      @db.Date
+  availableUntil         DateTime?                     @db.Date
+  trailerType            FreightTrailerType
+  capacityWeight         Decimal?                      @db.Decimal(10, 2)
+  weightUnit             FreightWeightUnit             @default(METRIC_TONNE)
+  vehicleCount           Int                           @default(1)
+  internationalTransport Boolean                       @default(false)
+  adrSuitable            Boolean                       @default(false)
+  priceAmount            Decimal?                      @db.Decimal(14, 2)
+  currency               String?                       @db.VarChar(3)
+  description            String?
+  contactPhone           String
+  status                 FreightListingStatus          @default(ACTIVE)
+  publishedAt            DateTime                      @default(now())
+  completedAt            DateTime?
+  deactivatedAt          DateTime?
+  expiresAt              DateTime?
+  company                Company                       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  owner                  User                          @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  createdAt              DateTime                      @default(now())
+  updatedAt              DateTime                      @updatedAt
+
+  @@unique([ownerUserId, clientRequestId])
+  @@index([status, availableFrom, createdAt])
+  @@index([status, trailerType, availableFrom])
+  @@index([ownerUserId, status, createdAt])
+  @@index([companyId, status, createdAt])
+  @@index([primarySector, status, createdAt])
+  @@index([expiresAt, status])
+  @@index([originNormalized])
+  @@index([destinationNormalized])
+}
+
+model DriverListing {
+  id                         String                        @id @default(cuid())
+  companyId                  String
+  ownerUserId                String
+  clientRequestId            String?
+  source                     MarketplaceListingSource      @default(LOGIVYA)
+  sourceExtractionId         String?                       @unique
+  primarySector              LogisticsSectorClassification @default(GENERAL_LOGISTICS)
+  marketplaceScopes          MarketplaceScope[]            @default([GLOBAL])
+  sectorDetails              Json?
+  listingType                DriverListingType
+  title                      String
+  titleNormalized            String
+  location                   String
+  locationNormalized         String
+  preferredRoute             String?
+  preferredRouteNormalized   String?
+  availableFrom              DateTime                      @db.Date
+  licenseClasses             String[]                      @default([])
+  experienceYears            Int                           @default(0)
+  employmentType             DriverEmploymentType
+  internationalExperience    Boolean                       @default(false)
+  adrCertificate             Boolean                       @default(false)
+  srcCertificate             Boolean                       @default(false)
+  psychotechnicalCertificate Boolean                       @default(false)
+  salaryAmount               Decimal?                      @db.Decimal(14, 2)
+  currency                   String?                       @db.VarChar(3)
+  description                String?
+  contactPhone               String
+  status                     FreightListingStatus          @default(ACTIVE)
+  publishedAt                DateTime                      @default(now())
+  completedAt                DateTime?
+  deactivatedAt              DateTime?
+  expiresAt                  DateTime?
+  company                    Company                       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  owner                      User                          @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  createdAt                  DateTime                      @default(now())
+  updatedAt                  DateTime                      @updatedAt
+
+  @@unique([ownerUserId, clientRequestId])
+  @@index([status, listingType, availableFrom, createdAt])
+  @@index([status, employmentType, availableFrom])
+  @@index([ownerUserId, status, createdAt])
+  @@index([companyId, status, createdAt])
+  @@index([primarySector, status, createdAt])
+  @@index([expiresAt, status])
+  @@index([titleNormalized])
+  @@index([locationNormalized])
+  @@index([preferredRouteNormalized])
+}
+
+model MarketplaceDemandRequest {
+  id                    String                        @id @default(cuid())
+  companyId             String
+  ownerUserId           String
+  clientRequestId       String?
+  kind                  MarketplaceRequestKind
+  primarySector         LogisticsSectorClassification @default(GENERAL_LOGISTICS)
+  marketplaceScopes     MarketplaceScope[]            @default([GLOBAL])
+  sectorCriteria        Json?
+  title                 String
+  keywords              String[]                      @default([])
+  keywordsNormalized    String[]                      @default([])
+  origin                String?
+  originNormalized      String?
+  destination           String?
+  destinationNormalized String?
+  originCountry         String?
+  originCity            String?
+  originDistrict        String?
+  originLocationId      String?
+  destinationCountry    String?
+  destinationCity       String?
+  destinationDistrict   String?
+  destinationLocationId String?
+  location              String?
+  locationNormalized    String?
+  availableFrom         DateTime?                     @db.Date
+  availableUntil        DateTime?                     @db.Date
+  trailerType           FreightTrailerType?
+  vehicleCategory       String?
+  vehicleBodyLength     Decimal?                      @db.Decimal(6, 2)
+  requiredPlateCountry  String?
+  transitRoute          String?
+  cargoType             String?
+  minWeight             Decimal?                      @db.Decimal(10, 2)
+  maxWeight             Decimal?                      @db.Decimal(10, 2)
+  driverListingType     DriverListingType?
+  licenseClasses        String[]                      @default([])
+  employmentType        DriverEmploymentType?
+  internationalRequired Boolean                       @default(false)
+  adrRequired           Boolean                       @default(false)
+  notificationsEnabled  Boolean                       @default(true)
+  pausedAt              DateTime?
+  status                MarketplaceRequestStatus      @default(ACTIVE)
+  expiresAt             DateTime
+  matchCount            Int                           @default(0)
+  lastMatchedAt         DateTime?
+  company               Company                       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  owner                 User                          @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  matches               MarketplaceDemandMatch[]
+  smartMatchingJobs     SmartMatchingJob[]
+  smartMatchResults     SmartMatchResult[]
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+
+  @@unique([ownerUserId, clientRequestId])
+  @@index([ownerUserId, status, createdAt])
+  @@index([companyId, status, createdAt])
+  @@index([kind, status, expiresAt])
+  @@index([primarySector, status, expiresAt])
+  @@index([originNormalized])
+  @@index([destinationNormalized])
+  @@index([locationNormalized])
+  @@index([originLocationId, destinationLocationId])
+}
+
+model MarketplaceListingRevision {
+  id                 String                 @id @default(cuid())
+  listingKind        MarketplaceRequestKind
+  listingId          String
+  revision           Int
+  sourceExtractionId String?
+  reason             String
+  snapshot           Json
+  createdAt          DateTime               @default(now())
+
+  @@unique([listingKind, listingId, revision])
+  @@index([sourceExtractionId])
+  @@index([listingKind, listingId, createdAt])
+}
+
+model SmartMatchingJob {
+  id                  String                   @id @default(cuid())
+  demandId            String
+  companyId           String
+  ownerUserId         String
+  triggerKey          String
+  status              SmartMatchingJobStatus   @default(QUEUED)
+  requestedSources    SmartMatchSource[]       @default([LOGIVYA, WHATSAPP, TELEGRAM])
+  completedSources    SmartMatchSource[]       @default([])
+  groupsProcessed     Int                      @default(0)
+  messagesAnalyzed    Int                      @default(0)
+  candidatesDetected  Int                      @default(0)
+  matchesFound        Int                      @default(0)
+  duplicatesRemoved   Int                      @default(0)
+  retryCount          Int                      @default(0)
+  maxAttempts         Int                      @default(3)
+  nextAttemptAt       DateTime                 @default(now())
+  lockedAt            DateTime?
+  lockedBy            String?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  errorSummary        Json?
+  notificationEventId String?
+  demand              MarketplaceDemandRequest @relation(fields: [demandId], references: [id], onDelete: Cascade)
+  company             Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  owner               User                     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  @@unique([demandId, triggerKey])
+  @@index([status, nextAttemptAt, createdAt])
+  @@index([ownerUserId, status, createdAt])
+  @@index([companyId, status, createdAt])
+}
+
+model FreightOpportunityCandidate {
+  id                                 String                        @id @default(cuid())
+  companyId                          String
+  ownerUserId                        String
+  sourcePlatform                     SmartMatchSource
+  sourceAccountId                    String
+  sourceGroupId                      String
+  sourceGroupName                    String
+  sourceMessageId                    String
+  opportunityIndex                   Int                           @default(0)
+  candidateType                      MarketplaceRequestKind
+  primarySector                      LogisticsSectorClassification @default(GENERAL_LOGISTICS)
+  marketplaceScopes                  MarketplaceScope[]            @default([GLOBAL])
+  sectorConfidenceScore              Int?
+  sectorEvidence                     Json?
+  intent                             FreightCandidateIntent        @default(OFFER)
+  origin                             String?
+  originNormalized                   String?
+  originCountry                      String?
+  originLocationType                 String?
+  destination                        String?
+  destinationNormalized              String?
+  destinationCountry                 String?
+  destinationLocationType            String?
+  loadingDate                        DateTime?                     @db.Date
+  cargoType                          String?
+  weight                             Decimal?                      @db.Decimal(10, 2)
+  weightUnit                         FreightWeightUnit?
+  trailerType                        FreightTrailerType?
+  vehicleCount                       Int?
+  priceAmount                        Decimal?                      @db.Decimal(14, 2)
+  currency                           String?                       @db.VarChar(3)
+  customsInformation                 String?
+  companyName                        String?
+  advertisedBusinessContactEncrypted String?
+  sourceTextEncrypted                String?
+  sourceTextHash                     String
+  searchText                         String
+  extractionConfidence               Int
+  duplicateKey                       String
+  sourceMessageTimestamp             DateTime
+  firstSeenAt                        DateTime                      @default(now())
+  lastSeenAt                         DateTime                      @default(now())
+  expiresAt                          DateTime
+  rawTextExpiresAt                   DateTime
+  matchingProcessedAt                DateTime?
+  company                            Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  owner                              User                          @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  smartMatchResults                  SmartMatchResult[]
+  createdAt                          DateTime                      @default(now())
+  updatedAt                          DateTime                      @updatedAt
+
+  @@unique([ownerUserId, sourcePlatform, sourceAccountId, sourceMessageId, opportunityIndex], map: "FreightOpportunityCandidate_source_key")
+  @@index([ownerUserId, sourcePlatform, candidateType, expiresAt], map: "FreightOpportunityCandidate_owner_source_kind_expiry_idx")
+  @@index([companyId, candidateType, expiresAt], map: "FreightOpportunityCandidate_company_kind_expiry_idx")
+  @@index([primarySector, expiresAt], map: "FreightOpportunityCandidate_sector_expiry_idx")
+  @@index([matchingProcessedAt, expiresAt, createdAt], map: "FreightOpportunityCandidate_processing_expiry_created_idx")
+  @@index([duplicateKey, sourceMessageTimestamp], map: "FreightOpportunityCandidate_duplicate_timestamp_idx")
+  @@index([originNormalized, destinationNormalized], map: "FreightOpportunityCandidate_route_idx")
+}
+
+model SmartMatchResult {
+  id                String                      @id @default(cuid())
+  demandId          String
+  candidateId       String
+  companyId         String
+  ownerUserId       String
+  sourcePlatform    SmartMatchSource
+  score             Int
+  status            SmartMatchResultStatus      @default(NEW)
+  originScore       Int
+  destinationScore  Int
+  vehicleScore      Int
+  weightScore       Int
+  dateScore         Int
+  freshnessScore    Int
+  explanation       Json
+  duplicateGroupKey String
+  sourceCount       Int                         @default(1)
+  matchedAt         DateTime                    @default(now())
+  notifiedAt        DateTime?
+  viewedAt          DateTime?
+  savedAt           DateTime?
+  dismissedAt       DateTime?
+  expiredAt         DateTime?
+  demand            MarketplaceDemandRequest    @relation(fields: [demandId], references: [id], onDelete: Cascade)
+  candidate         FreightOpportunityCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  company           Company                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  owner             User                        @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  @@unique([demandId, candidateId])
+  @@index([demandId, status, score, matchedAt], map: "SmartMatchResult_demand_status_score_matched_idx")
+  @@index([ownerUserId, status, matchedAt], map: "SmartMatchResult_owner_status_matched_idx")
+  @@index([duplicateGroupKey, demandId], map: "SmartMatchResult_duplicate_demand_idx")
+  @@index([notifiedAt, createdAt], map: "SmartMatchResult_notified_created_idx")
+}
+
+model MarketplaceDemandMatch {
+  id                  String                   @id @default(cuid())
+  requestId           String
+  listingKind         MarketplaceRequestKind
+  listingId           String
+  listingOwnerUserId  String
+  score               Int
+  reasons             String[]                 @default([])
+  status              MarketplaceMatchStatus   @default(NEW)
+  notificationEventId String?
+  matchedAt           DateTime                 @default(now())
+  notifiedAt          DateTime?
+  viewedAt            DateTime?
+  dismissedAt         DateTime?
+  request             MarketplaceDemandRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  listingOwner        User                     @relation("MarketplaceMatchListingOwner", fields: [listingOwnerUserId], references: [id], onDelete: Restrict)
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  @@unique([requestId, listingKind, listingId])
+  @@index([requestId, status, matchedAt])
+  @@index([listingKind, listingId])
+  @@index([notificationEventId])
+  @@index([notifiedAt, createdAt])
+}
+
+// Telegram is isolated from the stable WhatsApp delivery core. TDLib owns the
+// encrypted local session database; only its encrypted database key and safe
+// account metadata are stored here.
+model TelegramAccount {
+  id                   String                @id @default(cuid())
+  channelAccountId     String                @unique
+  companyId            String
+  ownerUserId          String
+  storageKey           String                @unique
+  label                String
+  accountType          TelegramAccountType   @default(USER)
+  phoneNumberMasked    String?
+  telegramUserId       String?
+  username             String?
+  firstName            String?
+  lastName             String?
+  status               TelegramAccountStatus @default(PENDING_AUTH)
+  authState            TelegramAuthState     @default(STARTING)
+  authStateDetail      Json?
+  databaseKeyEncrypted String
+  lastConnectedAt      DateTime?
+  lastDisconnectedAt   DateTime?
+  lastSyncedAt         DateTime?
+  lastErrorCode        String?
+  lastErrorMessage     String?
+  archivedAt           DateTime?
+  channelAccount       ChannelAccount        @relation(fields: [channelAccountId], references: [id], onDelete: Cascade)
+  company              Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  owner                User                  @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  chats                TelegramChat[]
+  dispatches           TelegramDispatch[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@unique([ownerUserId, telegramUserId])
+  @@index([companyId, ownerUserId, status])
+  @@index([ownerUserId, archivedAt])
+}
+
+model TelegramChat {
+  id                  String                   @id @default(cuid())
+  companyId           String
+  accountId           String
+  externalChatId      String
+  title               String
+  username            String?
+  type                TelegramChatType
+  participantCount    Int                      @default(0)
+  canSend             Boolean                  @default(false)
+  isActive            Boolean                  @default(true)
+  isArchived          Boolean                  @default(false)
+  rawPermissions      Json?
+  lastSyncedAt        DateTime
+  company             Company                  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  account             TelegramAccount          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  categoryAssignments TelegramCategoryChat[]
+  dispatchTargets     TelegramDispatchTarget[]
+  deliveries          TelegramDelivery[]
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  @@unique([accountId, externalChatId])
+  @@index([companyId, accountId, isActive, canSend])
+  @@index([accountId, type, isActive, isArchived])
+}
+
+model TelegramCategoryChat {
+  id         String       @id @default(cuid())
+  categoryId String
+  chatId     String
+  companyId  String
+  category   Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  chat       TelegramChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  company    Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt  DateTime     @default(now())
+
+  @@unique([categoryId, chatId])
+  @@index([chatId, categoryId])
+  @@index([companyId, categoryId])
+}
+
+model TelegramDispatch {
+  id                   String                   @id @default(cuid())
+  companyId            String
+  accountId            String
+  createdById          String
+  clientRequestId      String
+  title                String?
+  content              String
+  contentJson          Json?
+  scheduleType         ScheduleType             @default(SEND_NOW)
+  scheduledAt          DateTime?
+  timezone             String                   @default("Europe/Istanbul")
+  recurringRule        Json?
+  nextRunAt            DateTime
+  status               TelegramDispatchStatus   @default(ACTIVE)
+  deleteRequestedAt    DateTime?
+  deletedForEveryoneAt DateTime?
+  deleteTotalCount     Int                      @default(0)
+  deleteSuccessCount   Int                      @default(0)
+  deleteFailedCount    Int                      @default(0)
+  company              Company                  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  account              TelegramAccount          @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  createdBy            User                     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  targets              TelegramDispatchTarget[]
+  runs                 TelegramDispatchRun[]
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  @@unique([createdById, clientRequestId])
+  @@index([status, nextRunAt])
+  @@index([companyId, createdById, createdAt])
+  @@index([accountId, status, nextRunAt])
+}
+
+model TelegramDispatchTarget {
+  id         String           @id @default(cuid())
+  dispatchId String
+  chatId     String
+  dispatch   TelegramDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  chat       TelegramChat     @relation(fields: [chatId], references: [id], onDelete: Restrict)
+  createdAt  DateTime         @default(now())
+
+  @@unique([dispatchId, chatId])
+  @@index([chatId, dispatchId])
+}
+
+model TelegramDispatchRun {
+  id              String             @id @default(cuid())
+  dispatchId      String
+  occurrenceKey   String
+  scheduledFor    DateTime
+  status          TelegramRunStatus  @default(QUEUED)
+  totalRecipients Int                @default(0)
+  sentCount       Int                @default(0)
+  failedCount     Int                @default(0)
+  floodWaitCount  Int                @default(0)
+  startedAt       DateTime?
+  completedAt     DateTime?
+  dispatch        TelegramDispatch   @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  deliveries      TelegramDelivery[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@unique([dispatchId, occurrenceKey])
+  @@index([status, scheduledFor])
+  @@index([dispatchId, createdAt])
+}
+
+model TelegramDelivery {
+  id                   String                      @id @default(cuid())
+  runId                String
+  chatId               String
+  status               TelegramDeliveryStatus      @default(QUEUED)
+  attemptCount         Int                         @default(0)
+  nextAttemptAt        DateTime                    @default(now())
+  renderedContent      String?
+  attributionApplied   Boolean?
+  attributionLocale    String?
+  attributionVersion   String?
+  effectivePlanCode    String?
+  renderedAt           DateTime?
+  lockedAt             DateTime?
+  lockedBy             String?
+  externalMessageId    String?
+  errorCode            String?
+  errorMessage         String?
+  sentAt               DateTime?
+  deleteStatus         TelegramMessageDeleteStatus @default(NONE)
+  deleteRequestedAt    DateTime?
+  deletedForEveryoneAt DateTime?
+  deleteErrorCode      String?
+  run                  TelegramDispatchRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  chat                 TelegramChat                @relation(fields: [chatId], references: [id], onDelete: Restrict)
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+
+  @@unique([runId, chatId])
+  @@index([status, nextAttemptAt])
+  @@index([chatId, sentAt])
+  @@index([lockedBy, lockedAt])
+  @@index([deleteStatus, updatedAt])
+}
+
 model FeatureFlag {
   id                String   @id @default(cuid())
   key               String   @unique
@@ -3133,6 +4445,23 @@ model FeatureFlag {
   rolloutPercentage Int      @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+model ProductFeaturePublication {
+  id              String               @id @default(cuid())
+  key             String               @unique
+  status          ProductFeatureStatus
+  platformStatus  Json?
+  providerBlocked Boolean              @default(false)
+  blockerCode     String?
+  note            String?
+  updatedById     String?
+  effectiveAt     DateTime             @default(now())
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([status, effectiveAt])
+  @@index([providerBlocked])
 }
 
 model PlatformAdmin {

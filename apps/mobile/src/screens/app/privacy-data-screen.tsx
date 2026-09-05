@@ -13,6 +13,7 @@ import { PageHeader, SurfaceCard } from "@/components/ui";
 import { useTranslation } from "@/i18n/use-translation";
 import { configureAnalyticsCollection } from "@/services/analytics";
 import { configureCrashReporting } from "@/services/crash-reporting";
+import { configurePerformanceMonitoring } from "@/services/performance-monitoring";
 import { useTheme } from "@/theme/theme-provider";
 
 const tokenKey = (publicId: string) => `logivya.privacy.export.${publicId}`;
@@ -50,6 +51,7 @@ export function PrivacyDataScreen() {
       if (purpose === "CRASH_DIAGNOSTICS") {
         setDiagnosticsEnabled(enabled);
         await configureCrashReporting(enabled);
+        await configurePerformanceMonitoring(enabled);
       }
       await load();
     } catch (error) {

@@ -38,6 +38,29 @@ function isThisMonth(dateValue: string) {
   return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
 }
 
+function normalizeBootstrapDashboard(bootstrap: MobileBootstrap): MobileBootstrap {
+  const accounts = bootstrap.whatsapp?.accounts ?? [];
+  const reportedMetrics = bootstrap.dashboardMetrics as MobileBootstrap["dashboardMetrics"] | null | undefined;
+
+  return {
+    ...bootstrap,
+    whatsapp: {
+      connectedCount: bootstrap.whatsapp?.connectedCount ?? 0,
+      accounts
+    },
+    dashboardMetrics: {
+      whatsappAccountCount: reportedMetrics?.whatsappAccountCount ?? 0,
+      connectedWhatsAppAccountCount:
+        reportedMetrics?.connectedWhatsAppAccountCount ??
+        bootstrap.whatsapp?.connectedCount ??
+        0,
+      syncedWhatsAppGroupCount: reportedMetrics?.syncedWhatsAppGroupCount ?? 0,
+      contactCount: reportedMetrics?.contactCount ?? 0,
+      showContacts: reportedMetrics?.showContacts ?? false
+    }
+  };
+}
+
 export const useDashboardStore = create<DashboardState>((set, get) => ({
   data: null,
   metrics: emptyMetrics,
@@ -47,10 +70,19 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   load: async () => {
     set({ loading: true, error: null });
     try {
-      const [bootstrap, history] = await Promise.all([getMobileBootstrap(), getMobileMessageHistory()]);
-      const accountCount = bootstrap.whatsapp.accounts.length;
-      const contactCount = bootstrap.whatsapp.accounts.reduce((total, account) => total + account.contactCount, 0);
-      const groupCount = bootstrap.whatsapp.accounts.reduce((total, account) => total + account.groupCount, 0);
+      const [bootstrapPayload, history] = await Promise.all([
+        getMobileBootstrap(),
+        getMobileMessageHistory().catch(() => ({
+          campaigns: [],
+          pageInfo: { nextCursor: null, hasMore: false }
+        }))
+      ]);
+      const bootstrap = normalizeBootstrapDashboard(bootstrapPayload);
+      const {
+        whatsappAccountCount: accountCount,
+        contactCount,
+        syncedWhatsAppGroupCount: groupCount
+      } = bootstrap.dashboardMetrics;
       const monthlyCampaigns = history.campaigns.filter((campaign) => isThisMonth(campaign.createdAt));
       const activeCampaigns = history.campaigns.filter((campaign) => !["COMPLETED", "FAILED", "CANCELLED", "CANCELED"].includes(campaign.status)).length;
       const sentThisMonth = monthlyCampaigns.reduce((total, campaign) => total + campaign.sentCount, 0);

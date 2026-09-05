@@ -20,6 +20,11 @@ type QueueRecoveryResult = {
   skipped: number;
 };
 
+export type DurableQueueRecoveryClients = {
+  sendQueue: Queue;
+  recurringQueue: Queue;
+};
+
 const ACTIVE_JOB_STATES = new Set(["active", "waiting", "delayed", "prioritized", "waiting-children"]);
 
 function boundedInteger(value: string | undefined, fallback: number, min: number, max: number) {
@@ -55,7 +60,7 @@ export async function scheduleFollowingRecurringRun(input: {
   recurringRule: unknown;
   currentRunAt: Date;
   correlationId?: string;
-}) {
+}, recurringQueue?: Queue) {
   const rule = parseRecurringRule(input.recurringRule);
   if (!rule) throw new Error("RECURRING_RULE_INVALID");
   const nextRunAt = new Date(nextRecurringRunAfter(rule, input.currentRunAt.getTime()));
@@ -72,7 +77,8 @@ export async function scheduleFollowingRecurringRun(input: {
   });
   if (!updated.count) return null;
 
-  const queue = campaignQueue();
+  const queue = recurringQueue ?? campaignQueue();
+  const ownsQueue = !recurringQueue;
   const payload = input.correlationId
     ? { companyId: input.companyId, templateCampaignId: input.templateCampaignId, correlationId: input.correlationId, runAt: nextRunAt.toISOString() }
     : { companyId: input.companyId, templateCampaignId: input.templateCampaignId, runAt: nextRunAt.toISOString() };
@@ -82,12 +88,14 @@ export async function scheduleFollowingRecurringRun(input: {
       delay: Math.max(0, nextRunAt.getTime() - Date.now()),
     });
   } finally {
-    await queue.close().catch(() => undefined);
+    if (ownsQueue) await queue.close().catch(() => undefined);
   }
   return nextRunAt;
 }
 
-export async function reconcileDurableMessageQueues(): Promise<QueueRecoveryResult> {
+export async function reconcileDurableMessageQueues(
+  clients?: DurableQueueRecoveryClients,
+): Promise<QueueRecoveryResult> {
   const startedAt = Date.now();
   const batchSize = boundedInteger(process.env.QUEUE_RECOVERY_BATCH_SIZE, 500, 1, 5_000);
   const staleBefore = new Date(Date.now() - boundedInteger(process.env.QUEUE_RECOVERY_STALE_CLAIM_MS, 10 * 60_000, 60_000, 24 * 60 * 60_000));
@@ -148,7 +156,8 @@ export async function reconcileDurableMessageQueues(): Promise<QueueRecoveryResu
     take: batchSize,
   });
 
-  const sendQueue = messageQueue();
+  const sendQueue = clients?.sendQueue ?? messageQueue();
+  const ownsSendQueue = !clients?.sendQueue;
   try {
     for (const recipient of recipients) {
       if (recipient.campaign.scheduleType === "RECURRING" && !isRecurringOccurrence(recipient.campaign.contentJson, recipient.campaign.recurringOccurrenceKey)) {
@@ -225,7 +234,7 @@ export async function reconcileDurableMessageQueues(): Promise<QueueRecoveryResu
       else result.skipped += 1;
     }
   } finally {
-    await sendQueue.close().catch(() => undefined);
+    if (ownsSendQueue) await sendQueue.close().catch(() => undefined);
   }
 
   const templates = await prisma.messageCampaign.findMany({
@@ -239,7 +248,8 @@ export async function reconcileDurableMessageQueues(): Promise<QueueRecoveryResu
     orderBy: { createdAt: "asc" },
     take: batchSize * 2,
   });
-  const recurringQueue = campaignQueue();
+  const recurringQueue = clients?.recurringQueue ?? campaignQueue();
+  const ownsRecurringQueue = !clients?.recurringQueue;
   try {
     for (const template of templates) {
       if (isRecurringOccurrence(template.contentJson, null)) {
@@ -268,7 +278,7 @@ export async function reconcileDurableMessageQueues(): Promise<QueueRecoveryResu
       else result.skipped += 1;
     }
   } finally {
-    await recurringQueue.close().catch(() => undefined);
+    if (ownsRecurringQueue) await recurringQueue.close().catch(() => undefined);
   }
 
   logger.info("queue.recovery.completed", { ...result, durationMs: Date.now() - startedAt });

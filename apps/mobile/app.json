@@ -3,11 +3,11 @@
     "name": "Logivya",
     "slug": "logivya-mobile",
     "scheme": "logivya",
-    "version": "1.0.106",
+    "version": "1.0.208",
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/logivya/mobillogo1.png",
     "userInterfaceStyle": "automatic",
     "jsEngine": "hermes",
@@ -23,8 +23,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.logivya.mobile",
+      "appleTeamId": "YMW24BAWTV",
+      "buildNumber": "189",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Mesajlarınıza fotoğraf ve video ekleyebilmeniz için galeri erişimi kullanılır.",
         "UIBackgroundModes": [
           "remote-notification"
         ]
@@ -32,7 +36,7 @@
     },
     "android": {
       "package": "com.logivya.mobile",
-      "versionCode": 136,
+      "versionCode": 223,
       "googleServicesFile": "./google-services.json",
       "icon": "./assets/logivya/mobillogo1.png",
       "adaptiveIcon": {
@@ -47,26 +51,63 @@
     },
     "extra": {
       "apiBaseUrl": "https://www.logivya.com",
-      "apiFallbackBaseUrls": [
-        "https://logivya.com",
-        "https://logivya.vercel.app"
-      ],
-      "buildMarker": "PLAY_CONSOLE_READINESS_V136",
-      "releaseId": "android-v136-1.0.106",
-      "gitCommit": "7b1e9f1bb87919fd8425ea7c3808dc808877852f",
-      "buildDate": "2026-07-19T11:05:00Z",
-      "apiContractVersion": "2026-07-19",
+      "apiFallbackBaseUrls": [],
+      "buildMarker": "MARKETPLACE_EXPERIENCE_V223",
+      "releaseId": "android-v223-1.0.208",
+      "gitCommit": "393c7a5cc75dd2165ec93f48bc83686c31c9e862",
+      "buildDate": "2026-09-05T08:10:01.127Z",
+      "apiContractVersion": "2026-09-03",
       "sentryDsn": "",
+      "socialSignIn": {
+        "googleWebClientId": "842461920651-qcli52m4b9ldmqqgogi19bhu59r8nrhb.apps.googleusercontent.com",
+        "googleIosClientId": "842461920651-e2jr49djp2f8o4qpa676008ss6ptc4q6.apps.googleusercontent.com",
+        "googleAndroidClientId": "842461920651-0afu2v0l74u3bohfv7ft3j7826iu4hah.apps.googleusercontent.com"
+      },
       "eas": {
         "projectId": "fc2a52e8-5771-4b1a-bd58-b555c651e596"
       }
     },
     "plugins": [
       "expo-secure-store",
+      "expo-apple-authentication",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Logivya uygulama kilidini Face ID ile güvenli biçimde açın."
+        }
+      ],
       "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Mesajlarınıza fotoğraf ve video ekleyebilmeniz için galeri erişimi kullanılır.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      "expo-document-picker",
+      "expo-iap",
       "@react-native-community/datetimepicker",
       "@react-native-firebase/app",
       "@react-native-firebase/analytics",
+      "@react-native-firebase/perf",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "-keep class expo.modules.notifications.** { *; }\n-keep class expo.modules.taskManager.** { *; }\n-keep class expo.modules.adapters.react.apploader.RNHeadlessAppLoader { *; }\n-keep class expo.modules.securestore.** { *; }\n-keep class expo.modules.kotlin.** { *; }\n-keep class kotlin.reflect.** { *; }\n-keep class kotlin.Metadata { *; }"
+          },
+          "ios": {
+            "useFrameworks": "static",
+            "forceStaticLinking": [
+              "RNFBApp",
+              "RNFBAnalytics"
+            ]
+          }
+        }
+      ],
       [
         "@sentry/react-native/expo",
         {

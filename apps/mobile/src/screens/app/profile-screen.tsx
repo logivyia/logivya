@@ -10,7 +10,7 @@ import { Screen } from "@/components/screen";
 import { localeMetadata, type Locale } from "@/i18n/config";
 import { useTranslation } from "@/i18n/use-translation";
 import { useTheme } from "@/theme/theme-provider";
-import { formatRoleLabel } from "@/utils/roles";
+import { canManageOwnerProfile, formatRoleLabel } from "@/utils/roles";
 import type { ProfileStackParamList } from "@/types/navigation";
 
 export function ProfileScreen() {
@@ -20,6 +20,9 @@ export function ProfileScreen() {
   const user = useAuthStore((state) => state.user);
   const company = useAuthStore((state) => state.company);
   const permissions = useAuthStore((state) => state.permissions);
+  const isPlatformAdmin = useAuthStore((state) => state.isPlatformAdmin);
+  const canAccessStandaloneProfile = canManageOwnerProfile(isPlatformAdmin);
+  const isOwner = user?.role === "OWNER";
 
   async function handleLogout() {
     try {
@@ -27,6 +30,18 @@ export function ProfileScreen() {
     } catch {
       Alert.alert(t("logout"), t("logoutCompleted"));
     }
+  }
+
+  if (!canAccessStandaloneProfile) {
+    return (
+      <Screen style={styles.screen}>
+        <PageHeader eyebrow={t("accountSection")} title={t("profile")} description={t("operationForbiddenError")} />
+        <SurfaceCard style={styles.notice}>
+          <Text style={[styles.noticeTitle, { color: theme.text }]}>{t("operationForbiddenError")}</Text>
+          <Text style={[styles.noticeText, { color: theme.muted }]}>{t("companySettingsDescription")}</Text>
+        </SurfaceCard>
+      </Screen>
+    );
   }
 
   return (
@@ -48,15 +63,23 @@ export function ProfileScreen() {
             </View>
             <View style={styles.profileFacts}>
               <ProfileFact icon="call-outline" label={user?.phone ?? t("phoneNotSet")} />
-              <ProfileFact icon="business-outline" label={company?.name ?? t("company")} />
+              <ProfileFact icon="person-circle-outline" label={company?.name ?? t("companySettings")} />
               <ProfileFact icon="shield-checkmark-outline" label={t("sessionSecure")} />
             </View>
           </View>
         </SurfaceCard>
 
         <View style={styles.menu}>
-          <ActionRow icon="business-outline" title={t("companySettings")} description={t("companySettingsDescription")} onPress={() => navigation.navigate("CompanySettings")} />
-          <ActionRow icon="card-outline" title={t("subscription")} description={t("subscriptionDescription")} onPress={() => navigation.navigate("Subscription")} />
+          {isOwner ? (
+            <ActionRow icon="person-circle-outline" title={t("companySettings")} description={t("companySettingsDescription")} onPress={() => navigation.navigate("CompanySettings")} />
+          ) : null}
+          {isOwner ? (
+            <ActionRow icon="people-outline" title={t("users")} description={t("teamUsersMenuDescription")} onPress={() => navigation.navigate("TeamUsers")} />
+          ) : null}
+          <ActionRow icon="shield-checkmark-outline" title={t("security")} description={t("mfaSecurityDescription")} onPress={() => navigation.navigate("Security")} />
+          {isOwner ? (
+            <ActionRow icon="card-outline" title={t("subscription")} description={t("subscriptionDescription")} onPress={() => navigation.navigate("Subscription")} />
+          ) : null}
           <ActionRow icon="notifications-outline" title={t("notifications")} description={t("notificationsDescription")} onPress={() => navigation.navigate("Notifications")} />
           <ActionRow icon="chatbox-ellipses-outline" title={t("feedback")} description={t("feedbackMenuDescription")} onPress={() => navigation.navigate("Feedback")} />
           <ActionRow icon="settings-outline" title={t("settings")} description={t("settingsDescription")} onPress={() => navigation.navigate("Settings")} />

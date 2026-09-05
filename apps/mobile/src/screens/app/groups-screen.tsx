@@ -1,6 +1,6 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useRoute, type RouteProp } from "@react-navigation/native";
 
 import { Screen } from "@/components/screen";
 import { TextField } from "@/components/text-field";
@@ -11,10 +11,27 @@ import { LoadingState } from "@/components/state/loading-state";
 import { useCategoriesStore } from "@/features/categories/categoriesStore";
 import { useGroupsStore } from "@/features/groups/groupsStore";
 import { useWhatsAppStore } from "@/features/whatsapp/whatsappStore";
+import { useTelegramAccessEnabled } from "@/features/telegram/telegramAccessStore";
+import { getTelegramAccounts, getTelegramChats, type MobileTelegramAccount, type MobileTelegramChat } from "@/api/mobileTelegram";
 import { useTranslation } from "@/i18n/use-translation";
 import { formatDate, formatNumber } from "@/i18n/format";
+import { colors } from "@/theme/colors";
 import { useTheme } from "@/theme/theme-provider";
-import type { MobileGroup } from "@/api/mobileGroups";
+import type { AppTabParamList } from "@/types/navigation";
+
+type UnifiedGroup = {
+  id: string;
+  accountId: string;
+  name: string;
+  participantCount: number;
+  canSend: boolean;
+  categories: Array<{ category: { id: string; name: string; color: string | null } }>;
+  lastSyncedAt: string | null;
+  platform: "WHATSAPP" | "TELEGRAM";
+  type?: string;
+};
+
+const telegramPlatformFilterLabel = "Platform";
 
 export function GroupsScreen() {
   const theme = useTheme();
@@ -24,22 +41,80 @@ export function GroupsScreen() {
   const loadCategories = useCategoriesStore((state) => state.load);
   const accounts = useWhatsAppStore((state) => state.accounts);
   const loadAccounts = useWhatsAppStore((state) => state.load);
+  const telegramEnabled = useTelegramAccessEnabled();
+  const route = useRoute<RouteProp<AppTabParamList, "Groups">>();
+  const initialPlatform = route.params?.initialPlatform ?? "ALL";
+  const [platformFilter, setPlatformFilter] = useState<"ALL" | "WHATSAPP" | "TELEGRAM">(initialPlatform);
+  const [telegramChats, setTelegramChats] = useState<MobileTelegramChat[]>([]);
+  const [telegramAccounts, setTelegramAccounts] = useState<MobileTelegramAccount[]>([]);
+  const [telegramRefreshing, setTelegramRefreshing] = useState(false);
+
+  useEffect(() => {
+    setPlatformFilter(route.params?.initialPlatform ?? "ALL");
+  }, [route.params?.initialPlatform]);
+
+  const loadTelegram = useCallback(async () => {
+    if (!telegramEnabled) {
+      setTelegramChats([]);
+      setTelegramAccounts([]);
+      return;
+    }
+    setTelegramRefreshing(true);
+    try {
+      const [chatResult, accountResult] = await Promise.all([getTelegramChats(), getTelegramAccounts()]);
+      setTelegramChats(chatResult.chats.filter((chat) => ["BASIC_GROUP", "SUPERGROUP", "CHANNEL"].includes(chat.type)));
+      setTelegramAccounts(accountResult.accounts);
+    } finally {
+      setTelegramRefreshing(false);
+    }
+  }, [telegramEnabled]);
 
   useFocusEffect(
     useCallback(() => {
       void load();
       void loadCategories();
       void loadAccounts();
-    }, [load, loadAccounts, loadCategories])
+      void loadTelegram();
+    }, [load, loadAccounts, loadCategories, loadTelegram])
   );
 
+  const refreshAllGroups = useCallback(async () => {
+    await Promise.all([refresh(), loadTelegram()]);
+  }, [loadTelegram, refresh]);
+
   const filteredGroups = useMemo(() => {
-    return groups.filter((group) => {
+    const unified: UnifiedGroup[] = [
+      ...groups.map((group) => ({
+        id: group.id,
+        accountId: group.accountId,
+        name: group.name,
+        participantCount: group.participantCount ?? 0,
+        canSend: group.canSend,
+        categories: group.categories,
+        lastSyncedAt: group.lastSyncedAt,
+        platform: "WHATSAPP" as const,
+      })),
+      ...telegramChats.map((chat) => ({
+        id: chat.id,
+        accountId: chat.accountId,
+        name: chat.title,
+        participantCount: chat.participantCount,
+        canSend: chat.canSend,
+        categories: chat.categoryAssignments,
+        lastSyncedAt: chat.lastSyncedAt,
+        platform: "TELEGRAM" as const,
+        type: chat.type,
+      })),
+    ];
+    const search = filters.search.trim().toLocaleLowerCase(locale);
+    return unified.filter((group) => {
       const accountMatches = !filters.accountId || group.accountId === filters.accountId;
       const categoryMatches = !filters.categoryId || group.categories.some((item) => item.category.id === filters.categoryId);
-      return accountMatches && categoryMatches;
+      const platformMatches = platformFilter === "ALL" || group.platform === platformFilter;
+      const searchMatches = !search || group.name.toLocaleLowerCase(locale).includes(search);
+      return accountMatches && categoryMatches && platformMatches && searchMatches;
     });
-  }, [filters.accountId, filters.categoryId, groups]);
+  }, [filters.accountId, filters.categoryId, filters.search, groups, locale, platformFilter, telegramChats]);
   const sendableCount = filteredGroups.filter((group) => group.canSend).length;
   const memberCount = filteredGroups.reduce((total, group) => total + (group.participantCount ?? 0), 0);
 
@@ -51,7 +126,7 @@ export function GroupsScreen() {
     );
   }
 
-  if (error && groups.length === 0) {
+  if (error && groups.length === 0 && telegramChats.length === 0) {
     return (
       <Screen>
         <ErrorState title={error} onRetry={load} />
@@ -65,7 +140,7 @@ export function GroupsScreen() {
         data={filteredGroups}
         keyExtractor={(item) => item.id}
         keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing || telegramRefreshing} onRefresh={() => void refreshAllGroups()} tintColor={theme.primary} />}
         ListHeaderComponent={
           <View style={styles.header}>
             <PageHeader eyebrow={t("groupsEyebrow")} title={t("groupsTitle")} description={t("groupsSubtitle")} />
@@ -75,16 +150,26 @@ export function GroupsScreen() {
               <StatCard icon="send-outline" label={t("sendableMetric")} value={sendableCount} tone="success" />
             </View>
             <TextField label={t("searchGroups")} value={filters.search} onChangeText={setSearch} placeholder={t("searchGroupsPlaceholder")} returnKeyType="search" onSubmitEditing={load} />
+            {telegramEnabled ? <FilterRow label={telegramPlatformFilterLabel} items={[{ id: "ALL", label: "Tümü" }, { id: "WHATSAPP", label: "WhatsApp" }, { id: "TELEGRAM", label: "Telegram" }]} selectedId={platformFilter} onSelect={(value) => setPlatformFilter((value || "ALL") as "ALL" | "WHATSAPP" | "TELEGRAM")} /> : null}
             <Pressable
               accessibilityRole="button"
               disabled={refreshing}
-              onPress={refresh}
+              onPress={() => void refreshAllGroups()}
               style={[styles.refreshButton, { backgroundColor: theme.primary, opacity: refreshing ? 0.7 : 1 }]}
             >
-              <Text style={[styles.refreshButtonText, { color: theme.primaryText }]}>
+              <Text
+                style={[styles.refreshButtonText, { color: theme.primaryText }]}
+              >
                 {refreshing ? t("refreshingGroups") : t("refreshGroups")}
               </Text>
             </Pressable>
+            {error ? (
+              <View
+                style={[styles.refreshNotice, { borderColor: colors.danger }]}
+              >
+                <Text style={[styles.refreshNoticeText, { color: colors.danger }]}>{error}</Text>
+              </View>
+            ) : null}
             <FilterRow
               label={t("filterByAccount")}
               items={[
@@ -92,7 +177,8 @@ export function GroupsScreen() {
                 ...accounts.map((account) => ({
                   id: account.id,
                   label: account.label || account.displayName || account.phoneNumber || t("unknown")
-                }))
+                })),
+                ...(telegramEnabled ? telegramAccounts.map((account) => ({ id: account.id, label: account.username ? `Telegram · @${account.username}` : `Telegram · ${account.label}` })) : [])
               ]}
               selectedId={filters.accountId}
               onSelect={setAccountFilter}
@@ -112,7 +198,7 @@ export function GroupsScreen() {
           </View>
         }
         ListEmptyComponent={<EmptyState title={t("noGroupsFound")} description={t("noGroupsFoundDescription")} />}
-        renderItem={({ item }) => <GroupCard group={item} locale={locale} />}
+        renderItem={({ item }) => <GroupCard group={item} locale={locale} accountName={item.platform === "WHATSAPP" ? (accounts.find((account) => account.id === item.accountId)?.label || accounts.find((account) => account.id === item.accountId)?.displayName || accounts.find((account) => account.id === item.accountId)?.phoneNumber || t("unknown")) : (telegramAccounts.find((account) => account.id === item.accountId)?.username ? `@${telegramAccounts.find((account) => account.id === item.accountId)?.username}` : telegramAccounts.find((account) => account.id === item.accountId)?.label || "Telegram")} />}
         contentContainerStyle={styles.list}
       />
     </Screen>
@@ -157,19 +243,16 @@ function FilterRow({
   );
 }
 
-function GroupCard({ group, locale }: { group: MobileGroup; locale: ReturnType<typeof useTranslation>["locale"] }) {
+function GroupCard({ group, locale, accountName }: { group: UnifiedGroup; locale: ReturnType<typeof useTranslation>["locale"]; accountName: string }) {
   const theme = useTheme();
   const { t } = useTranslation();
-  const accounts = useWhatsAppStore((state) => state.accounts);
-  const account = accounts.find((item) => item.id === group.accountId);
-  const accountName = account?.label || account?.displayName || account?.phoneNumber || t("unknown");
 
   return (
     <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
       <View style={styles.cardHeader}>
         <View style={styles.cardTitleBlock}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>{group.name || t("unknown")}</Text>
-          <Text style={[styles.cardMeta, { color: theme.muted }]}>{accountName}</Text>
+          <Text style={[styles.cardMeta, { color: theme.muted }]}>{group.platform === "TELEGRAM" ? `Telegram · ${accountName}${group.type ? ` · ${group.type}` : ""}` : `WhatsApp · ${accountName}`}</Text>
         </View>
         <Badge label={group.canSend ? t("sendable") : t("notSendable")} tone={group.canSend ? "success" : "danger"} />
       </View>
@@ -260,6 +343,17 @@ const styles = StyleSheet.create({
   refreshButtonText: {
     fontSize: 14,
     fontWeight: "900"
+  },
+  refreshNotice: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 11
+  },
+  refreshNoticeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 19
   },
   card: {
     borderWidth: 1,

@@ -2,12 +2,14 @@ import * as SecureStore from "expo-secure-store";
 
 import { captureAppError } from "@/services/crash-reporting";
 import { translateCurrent } from "@/i18n/runtime";
+import type { MfaLoginChallengePayload } from "@/types/api";
 
 const ACCESS_TOKEN_KEY = "logivya.v2.accessToken";
 const REFRESH_TOKEN_KEY = "logivya.v2.refreshToken";
 const ACCESS_EXPIRES_KEY = "logivya.v2.accessTokenExpiresAt";
 const REFRESH_EXPIRES_KEY = "logivya.v2.refreshTokenExpiresAt";
 const MFA_TRUSTED_DEVICE_KEY = "logivya.v2.mfaTrustedDeviceToken";
+const PENDING_MFA_CHALLENGE_KEY = "logivya.v2.pendingMfaChallenge";
 const legacyKeys = {
   accessToken: "logivya.accessToken",
   refreshToken: "logivya.refreshToken",
@@ -168,4 +170,65 @@ export async function clearMfaTrustedDeviceToken() {
     SecureStore.deleteItemAsync(MFA_TRUSTED_DEVICE_KEY, secureStoreOptions),
     SecureStore.deleteItemAsync(legacyKeys.mfaTrustedDeviceToken),
   ]);
+}
+
+function isStoredMfaChallenge(value: unknown): value is MfaLoginChallengePayload {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<MfaLoginChallengePayload>;
+  return candidate.mfaRequired === true
+    && candidate.mfaSetupRequired === false
+    && typeof candidate.challengeToken === "string"
+    && candidate.challengeToken.length >= 32
+    && typeof candidate.expiresAt === "string"
+    && Number.isFinite(Date.parse(candidate.expiresAt))
+    && Array.isArray(candidate.availableMethods)
+    && candidate.availableMethods.every((method) => method === "TOTP" || method === "EMAIL_OTP")
+    && (candidate.selectedMethod === null
+      || candidate.selectedMethod === undefined
+      || candidate.selectedMethod === "TOTP"
+      || candidate.selectedMethod === "EMAIL_OTP");
+}
+
+export async function savePendingMfaChallenge(challenge: MfaLoginChallengePayload) {
+  if (challenge.mfaSetupRequired) {
+    await clearPendingMfaChallenge();
+    return;
+  }
+  const stored: MfaLoginChallengePayload = {
+    mfaRequired: true,
+    mfaSetupRequired: false,
+    challengeToken: challenge.challengeToken,
+    expiresAt: challenge.expiresAt,
+    availableMethods: challenge.availableMethods,
+    ...(challenge.selectedMethod !== undefined ? { selectedMethod: challenge.selectedMethod } : {}),
+    ...(challenge.preferredMethod !== undefined ? { preferredMethod: challenge.preferredMethod } : {}),
+    ...(challenge.emailMasked !== undefined ? { emailMasked: challenge.emailMasked } : {}),
+    ...(challenge.recoveryAvailable !== undefined ? { recoveryAvailable: challenge.recoveryAvailable } : {}),
+  };
+  try {
+    await setRequiredSecureItem(PENDING_MFA_CHALLENGE_KEY, stored);
+  } catch (error) {
+    captureAppError(error, { source: "secure-store-save-mfa-challenge" });
+  }
+}
+
+export async function readPendingMfaChallenge() {
+  try {
+    const raw = await SecureStore.getItemAsync(PENDING_MFA_CHALLENGE_KEY, secureStoreOptions);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isStoredMfaChallenge(parsed) || Date.parse(parsed.expiresAt) <= Date.now()) {
+      await clearPendingMfaChallenge();
+      return null;
+    }
+    return parsed;
+  } catch (error) {
+    captureAppError(error, { source: "secure-store-read-mfa-challenge" });
+    await clearPendingMfaChallenge();
+    return null;
+  }
+}
+
+export async function clearPendingMfaChallenge() {
+  await SecureStore.deleteItemAsync(PENDING_MFA_CHALLENGE_KEY, secureStoreOptions).catch(() => undefined);
 }

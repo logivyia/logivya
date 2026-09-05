@@ -91,6 +91,148 @@ export async function queueDeletionRequest(input: {
   });
 }
 
+export async function closeSharedMembership(input: {
+  companyId: string;
+  userId: string;
+  reason?: string;
+}) {
+  const now = new Date();
+  const request = await createPrivacyRequest({
+    companyId: input.companyId,
+    userId: input.userId,
+    type: "DELETION",
+    reason: input.reason,
+    metadata: {
+      scope: "MEMBERSHIP",
+      sharedTenantDataPreserved: true,
+      destructiveExecutionEnabled: false,
+    },
+  });
+  return prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "CompanyUser"
+      WHERE "companyId" = ${input.companyId}
+        AND "userId" = ${input.userId}
+      FOR UPDATE
+    `;
+    if (!locked.length) throw new PrivacyError("MEMBER_NOT_FOUND", 404);
+    const membership = await tx.companyUser.findUnique({
+      where: {
+        companyId_userId: {
+          companyId: input.companyId,
+          userId: input.userId,
+        },
+      },
+    });
+    if (!membership || membership.status === "REMOVED") {
+      throw new PrivacyError("MEMBER_NOT_FOUND", 404);
+    }
+    if (membership.role === "OWNER") {
+      throw new PrivacyError("TENANT_DELETE_FORBIDDEN", 403);
+    }
+
+    await tx.companyUser.update({
+      where: { id: membership.id },
+      data: {
+        status: "REMOVED",
+        lifecycleState: "DETACHED",
+        removedAt: now,
+        detachedAt: now,
+        suspendedAt: null,
+      },
+    });
+    await Promise.all([
+      tx.userSession.updateMany({
+        where: { userId: input.userId, revokedAt: null },
+        data: { revokedAt: now },
+      }),
+      tx.mobileDeviceSession.updateMany({
+        where: { userId: input.userId, revokedAt: null },
+        data: { revokedAt: now },
+      }),
+      tx.trustedDevice.updateMany({
+        where: { userId: input.userId, revokedAt: null },
+        data: { revokedAt: now },
+      }),
+      tx.forcedPasswordChangeChallenge.updateMany({
+        where: { userId: input.userId, usedAt: null },
+        data: { usedAt: now },
+      }),
+    ]);
+    const [otherMemberships, ownedCompanies] = await Promise.all([
+      tx.companyUser.count({
+        where: {
+          userId: input.userId,
+          status: "ACTIVE",
+          id: { not: membership.id },
+        },
+      }),
+      tx.company.count({ where: { ownerId: input.userId } }),
+    ]);
+    if (otherMemberships === 0 && ownedCompanies === 0) {
+      await tx.user.update({
+        where: { id: input.userId },
+        data: { status: "SUSPENDED" },
+      });
+    }
+    const job = await tx.privacyDeletionJob.create({
+      data: {
+        publicId: privacyPublicId("DEL"),
+        companyId: input.companyId,
+        userId: input.userId,
+        requestId: request.id,
+        scope: "MEMBERSHIP",
+        status: "COMPLETED",
+        cancelUntil: now,
+        scheduledFor: now,
+        completedAt: now,
+        checkpoint: {
+          phase: "SHARED_MEMBERSHIP_CLOSED",
+          membershipId: membership.id,
+          sharedTenantDataPreserved: true,
+          sessionsRevoked: true,
+        },
+      },
+    });
+    await tx.dataSubjectRequest.update({
+      where: { id: request.id },
+      data: { status: "COMPLETED", closedAt: now },
+    });
+    await tx.privacyRequestEvent.create({
+      data: {
+        requestId: request.id,
+        actorUserId: input.userId,
+        action: "SHARED_MEMBERSHIP_CLOSED",
+        fromStatus: "RECEIVED",
+        toStatus: "COMPLETED",
+        metadata: {
+          membershipId: membership.id,
+          tenantPreserved: true,
+        },
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        companyId: input.companyId,
+        userId: input.userId,
+        action: "MEMBER_DELETED_OWN_MEMBERSHIP",
+        entityType: "CompanyUser",
+        entityId: membership.id,
+        beforeState: {
+          status: membership.status,
+          lifecycleState: membership.lifecycleState,
+        },
+        afterState: {
+          status: "REMOVED",
+          lifecycleState: "DETACHED",
+          sharedTenantDataPreserved: true,
+        },
+      },
+    });
+    return job;
+  });
+}
+
 export async function cancelDeletionRequest(input: { companyId: string; userId: string; publicId: string }) {
   const job = await prisma.privacyDeletionJob.findFirst({
     where: { publicId: input.publicId, companyId: input.companyId, userId: input.userId },

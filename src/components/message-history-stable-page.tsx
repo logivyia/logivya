@@ -11,6 +11,11 @@ import { apiErrorMessage } from "@/i18n/api-error";
 type Campaign = {
   id: string;
   title: string;
+  content: string;
+  originalContent: string;
+  brandingApplied: boolean;
+  brandingLocale: string | null;
+  brandingPlanCode: string | null;
   status: string;
   totalRecipients: number;
   sentCount: number;
@@ -20,6 +25,7 @@ type Campaign = {
   contactCount?: number;
   pendingCount?: number;
   retryingCount?: number;
+  sendSafetyCode?: string | null;
   createdAt: string;
   completedAt?: string | null;
   deleteForEveryone?: DeleteForEveryoneState;
@@ -212,7 +218,12 @@ export function MessageHistoryStablePage() {
                           }
                         />
                       </td>
-                      <td className="px-5 py-4 font-medium">{campaign.title}</td>
+                      <td className="max-w-sm px-5 py-4 align-top">
+                        <span className="font-medium">{campaign.title}</span>
+                        <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-muted">
+                          {campaign.content}
+                        </p>
+                      </td>
                       <td className="px-5 py-4">{statusLabel(t, "message", campaign.status)}</td>
                       <td className="px-5 py-4">
                         {t("history.sentFailed", {
@@ -222,6 +233,7 @@ export function MessageHistoryStablePage() {
                         / {formatNumber(campaign.totalRecipients, locale)}
                         <p className="mt-1 text-xs text-muted">{t("common.groups")}: {formatNumber(campaign.groupCount ?? 0, locale)} · {t("common.contacts")}: {formatNumber(campaign.contactCount ?? 0, locale)}</p>
                         <p className="mt-1 text-xs text-muted">{t("history.pending")}: {formatNumber(campaign.pendingCount ?? 0, locale)} · {t("history.retrying")}: {formatNumber(campaign.retryingCount ?? 0, locale)}</p>
+                        {campaign.sendSafetyCode ? <p className="mt-2 text-xs text-amber-700">{t(campaign.sendSafetyCode === "WHATSAPP_SEND_PAUSED" ? "api.error.whatsappSendPaused" : "api.error.whatsappSendSafetyUnavailable")}</p> : null}
                       </td>
                       <td className="px-5 py-4 text-muted">
                         <span className="block">{t("history.created")}: {formatDateTime(campaign.createdAt, locale)}</span>

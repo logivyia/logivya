@@ -1,1 +1,1 @@
-import { AdminDashboardPage } from "@/components/operations-pages";import { requirePlatformAdmin } from "@/server/auth/platform-admin";export default async function Page(){await requirePlatformAdmin();return <AdminDashboardPage/>}
+import { AdminDashboardPage } from "@/components/operations-pages";import { requirePlatformAdmin } from "@/server/auth/platform-admin";export default async function Page(){await requirePlatformAdmin("admin.dashboard.read");return <AdminDashboardPage/>}

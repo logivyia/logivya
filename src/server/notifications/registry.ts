@@ -88,6 +88,7 @@ export const NOTIFICATION_EVENT_REGISTRY = {
   "message.delete_for_everyone_completed": event("MESSAGE", "NORMAL", inApp),
   "message.delete_for_everyone_partial": event("MESSAGE", "HIGH", operationalChannels),
   "message.delete_for_everyone_failed": event("MESSAGE", "HIGH", operationalChannels),
+  "marketplace.request_match_found": event("MARKETPLACE", "HIGH", operationalChannels),
   "system.maintenance": event("SYSTEM", "HIGH", accountChannels, ["IN_APP"]),
   "system.maintenance_scheduled": event("SYSTEM", "HIGH", accountChannels, ["IN_APP"]),
   "system.maintenance_started": event("SYSTEM", "HIGH", accountChannels, ["IN_APP"]),

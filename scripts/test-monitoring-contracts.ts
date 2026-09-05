@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   aggregateHealthState,
   evaluateLatency,
+  evaluateDeploymentReleaseEvidence,
   evaluateQueueBacklog,
   evaluateWorkerHeartbeat,
   publicHealthResponse,
@@ -24,6 +25,9 @@ assert.equal(evaluateWorkerHeartbeat({ lastHeartbeatAt: new Date(now - 10_000).t
 assert.equal(evaluateWorkerHeartbeat({ lastHeartbeatAt: new Date(now - 90_000).toISOString(), status: "HEALTHY" }, now, 60_000), "DEGRADED");
 assert.equal(evaluateWorkerHeartbeat({ lastHeartbeatAt: new Date(now - 130_000).toISOString(), status: "HEALTHY" }, now, 60_000), "UNAVAILABLE");
 assert.equal(evaluateWorkerHeartbeat(null, now, 60_000), "UNKNOWN");
+assert.equal(evaluateDeploymentReleaseEvidence("web-release-11", "worker-release-4"), "HEALTHY");
+assert.equal(evaluateDeploymentReleaseEvidence("web-release-11", ""), "UNKNOWN");
+assert.equal(evaluateDeploymentReleaseEvidence(null, "worker-release-4"), "UNKNOWN");
 
 assert.equal(evaluateQueueBacklog({ waiting: 0, active: 0, workerCount: 1, oldestWaitingAgeMs: null, throughputPerMinute: 0, stale: false }), "HEALTHY");
 assert.equal(evaluateQueueBacklog({ waiting: 1, active: 0, workerCount: 0, oldestWaitingAgeMs: 1_000, throughputPerMinute: 0, stale: false }), "UNAVAILABLE");

@@ -54,7 +54,10 @@ export function OfflineQueryProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <PersistQueryClientProvider client={queryClient} persistOptions={{ persister, maxAge: 24 * 60 * 60_000 }}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{ persister, maxAge: 24 * 60 * 60_000, buster: "logivya-query-cache-v2" }}
+    >
       {children}
     </PersistQueryClientProvider>
   );

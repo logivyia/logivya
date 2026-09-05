@@ -1,11 +1,19 @@
-import { acceptInvitationCodeRequest, acceptInvitationRequest, loginRequest, logoutRequest, meRequest, registerRequest, verifyMfaLoginRequest } from "@/api/auth-api";
-import { isAuthenticationRejection } from "@/api/api-errors";
+import { acceptInvitationCodeRequest, acceptInvitationRequest, changeTemporaryPasswordRequest, loginRequest, logoutRequest, meRequest, registerRequest, resendMfaEmailCodeRequest, selectMfaLoginMethodRequest, socialLoginRequest, verifyMfaLoginRequest } from "@/api/auth-api";
+import { ApiRequestError, isAuthenticationRejection } from "@/api/api-errors";
 import { useAuthStore } from "@/auth/auth-store";
 import { clearMobileSessionState } from "@/auth/session-cleanup";
 import { normalizeAuthTokens } from "@/auth/token-normalizer";
-import { readMfaTrustedDeviceToken, readTokens, saveMfaTrustedDeviceToken, saveTokens } from "@/storage/secure-storage";
+import {
+  clearPendingMfaChallenge,
+  readMfaTrustedDeviceToken,
+  readTokens,
+  saveMfaTrustedDeviceToken,
+  savePendingMfaChallenge,
+  saveTokens,
+} from "@/storage/secure-storage";
 import { getOrCreateDeviceId } from "@/storage/device-storage";
-import type { AuthSessionPayload, MfaLoginChallengePayload } from "@/types/api";
+import type { AuthSessionPayload, LoginResponsePayload, MfaLoginChallengePayload, PasswordChangeChallengePayload } from "@/types/api";
+import { getMobilePlatform } from "@/utils/device";
 
 type BackendAdminSession = {
   isAdmin?: boolean;
@@ -20,8 +28,12 @@ function resolveBackendAdminFlag(session: BackendAdminSession) {
   return session.isAdmin === true || session.isPlatformAdmin === true || session.user.isAdmin === true || session.user.isPlatformAdmin === true;
 }
 
-function isMfaChallenge(value: AuthSessionPayload | MfaLoginChallengePayload): value is MfaLoginChallengePayload {
+function isMfaChallenge(value: LoginResponsePayload): value is MfaLoginChallengePayload {
   return "mfaRequired" in value && value.mfaRequired === true;
+}
+
+function isPasswordChangeChallenge(value: LoginResponsePayload): value is PasswordChangeChallengePayload {
+  return "passwordChangeRequired" in value && value.passwordChangeRequired === true;
 }
 
 async function applyAuthenticatedSession(session: AuthSessionPayload, invitationToken?: string, invitationCode?: string) {
@@ -54,9 +66,54 @@ export async function login(identifier: string, password: string, invitationToke
   const deviceId = await getOrCreateDeviceId();
   const trustedDeviceToken = await readMfaTrustedDeviceToken();
   const session = await loginRequest({ identifier, password, deviceId, ...(trustedDeviceToken ? { trustedDeviceToken } : {}) });
-  if (isMfaChallenge(session)) return session;
+  if (isPasswordChangeChallenge(session)) return session;
+  if (isMfaChallenge(session)) {
+    await savePendingMfaChallenge(session);
+    return session;
+  }
+  await clearPendingMfaChallenge();
   await applyAuthenticatedSession(session, invitationToken, invitationCode);
   return null;
+}
+
+export async function loginWithSocialIdentity(
+  provider: "GOOGLE" | "APPLE",
+  identityToken: string,
+  nonce?: string,
+  invitationToken?: string,
+  invitationCode?: string,
+) {
+  const deviceId = await getOrCreateDeviceId();
+  const trustedDeviceToken = await readMfaTrustedDeviceToken();
+  const session = await socialLoginRequest({
+    provider,
+    identityToken,
+    ...(nonce ? { nonce } : {}),
+    deviceId,
+    ...(trustedDeviceToken ? { trustedDeviceToken } : {}),
+  });
+  if (isPasswordChangeChallenge(session)) return session;
+  if (isMfaChallenge(session)) {
+    await savePendingMfaChallenge(session);
+    return session;
+  }
+  await clearPendingMfaChallenge();
+  await applyAuthenticatedSession(session, invitationToken, invitationCode);
+  return null;
+}
+
+export async function completeInitialPasswordChange(
+  challenge: PasswordChangeChallengePayload,
+  temporaryPassword: string,
+  newPassword: string,
+  newPasswordConfirmation: string,
+) {
+  await changeTemporaryPasswordRequest({
+    challengeToken: challenge.challengeToken,
+    temporaryPassword,
+    newPassword,
+    newPasswordConfirmation,
+  });
 }
 
 export async function completeMfaLogin(
@@ -67,17 +124,42 @@ export async function completeMfaLogin(
   invitationCode?: string,
 ) {
   const deviceId = await getOrCreateDeviceId();
-  const session = await verifyMfaLoginRequest({
-    challengeToken: challenge.challengeToken,
-    code,
-    rememberDevice,
-    deviceId,
-    deviceName: "Android",
-    ...(challenge.setupToken ? { setupToken: challenge.setupToken } : {}),
-  });
+  let session;
+  try {
+    session = await verifyMfaLoginRequest({
+      challengeToken: challenge.challengeToken,
+      code,
+      rememberDevice,
+      deviceId,
+      deviceName: getMobilePlatform() === "IOS" ? "iPhone" : "Android",
+      ...(challenge.setupToken ? { setupToken: challenge.setupToken } : {}),
+    });
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.code === "AUTH_MFA_CHALLENGE_EXPIRED") {
+      await clearPendingMfaChallenge();
+    }
+    throw error;
+  }
+  await clearPendingMfaChallenge();
   if (session.recoveryCodes?.length) return session;
   await applyAuthenticatedSession(session, invitationToken, invitationCode);
   return null;
+}
+
+export async function chooseMfaLoginMethod(challenge: MfaLoginChallengePayload, method: "TOTP" | "EMAIL_OTP") {
+  const deviceId = await getOrCreateDeviceId();
+  const result = await selectMfaLoginMethodRequest({ challengeToken: challenge.challengeToken, method, deviceId });
+  const updated = { ...challenge, ...result, selectedMethod: method } as MfaLoginChallengePayload;
+  await savePendingMfaChallenge(updated);
+  return updated;
+}
+
+export async function resendMfaEmailCode(challenge: MfaLoginChallengePayload) {
+  const deviceId = await getOrCreateDeviceId();
+  const result = await resendMfaEmailCodeRequest({ challengeToken: challenge.challengeToken, deviceId });
+  const updated = { ...challenge, ...result } as MfaLoginChallengePayload;
+  await savePendingMfaChallenge(updated);
+  return updated;
 }
 
 export async function finishMfaSetupLogin(
@@ -85,6 +167,7 @@ export async function finishMfaSetupLogin(
   invitationToken?: string,
   invitationCode?: string,
 ) {
+  await clearPendingMfaChallenge();
   await applyAuthenticatedSession(session, invitationToken, invitationCode);
 }
 

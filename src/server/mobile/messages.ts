@@ -9,6 +9,8 @@ export async function createMobileMessageCampaign(
   input: {
     title: string;
     content: string;
+    mediaFileId?: string;
+    mediaFileIds?: string[];
     groupIds: string[];
     categoryIds: string[];
     contactIds: string[];

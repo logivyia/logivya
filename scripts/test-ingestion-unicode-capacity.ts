@@ -1,0 +1,16 @@
+import assert from "node:assert/strict";
+import { boundedDatabaseText } from "../src/server/security/database-text";
+import { evaluateDiskCapacity } from "../src/server/monitoring/disk-capacity";
+assert.equal(boundedDatabaseText("x".repeat(1999) + "🚚", 2000), "x".repeat(1999));
+assert.equal(boundedDatabaseText("x".repeat(1998) + "🚚", 2000), "x".repeat(1998) + "🚚");
+assert.equal(boundedDatabaseText("Türkçe العربية 🚚", 2000), "Türkçe العربية 🚚");
+assert.equal(boundedDatabaseText("a\0b\uD800", 10), "a�b�");
+assert.equal(boundedDatabaseText("🚚", 0), "");
+assert.throws(() => boundedDatabaseText("x", -1));
+const gb=1024**3;
+assert.equal(evaluateDiskCapacity(150, 32, gb).state, "HEALTHY");
+assert.equal(evaluateDiskCapacity(150, 15, gb).state, "DEGRADED");
+assert.equal(evaluateDiskCapacity(150, 5, gb).state, "UNAVAILABLE");
+assert.equal(evaluateDiskCapacity(4, 1, gb).state, "UNAVAILABLE");
+assert.throws(() => evaluateDiskCapacity(0, 0, 4096));
+console.log("Unicode limits preserve whole emoji; malformed derived text is safe for PostgreSQL; disk thresholds validated.");

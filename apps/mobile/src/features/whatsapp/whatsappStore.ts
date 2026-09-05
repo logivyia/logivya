@@ -40,7 +40,7 @@ type WhatsAppState = {
   load: () => Promise<void>;
   refresh: () => Promise<void>;
   generateQr: () => Promise<MobileWhatsAppAccount | null>;
-  generatePhoneCode: (phoneNumber: string) => Promise<MobileWhatsAppAccount | null>;
+  generatePhoneCode: (input: { countryIso: string; nationalNumber: string; e164: string }) => Promise<MobileWhatsAppAccount | null>;
   pollAccount: (accountId: string, mode: "qr" | "phoneCode") => Promise<MobileWhatsAppAccount | null>;
   reconnect: (id: string) => Promise<void>;
   archive: (id: string) => Promise<void>;
@@ -171,17 +171,17 @@ export const useWhatsAppStore = create<WhatsAppState>((set, get) => ({
       return null;
     }
   },
-  generatePhoneCode: async (phoneNumber) => {
-    set({ phoneCode: { ...emptyConnection, normalizedPhone: phoneNumber, phase: "generating" } });
+  generatePhoneCode: async (input) => {
+    set({ phoneCode: { ...emptyConnection, normalizedPhone: input.e164, phase: "generating" } });
     try {
-      const response = await createMobileWhatsAppPhoneCode(phoneNumber);
+      const response = await createMobileWhatsAppPhoneCode({ countryIso: input.countryIso, nationalNumber: input.nationalNumber });
       const account = response.account;
       set((state) => ({
         accounts: upsertAccount(state.accounts, account),
         selectedAccount: account,
         phoneCode: {
           account,
-          normalizedPhone: account.phoneNumber ?? phoneNumber,
+          normalizedPhone: account.phoneNumber ?? input.e164,
           phase: account.status === "CONNECTED" ? "connected" : "ready",
           error: null,
           polling: false
@@ -192,7 +192,7 @@ export const useWhatsAppStore = create<WhatsAppState>((set, get) => ({
       set({
         phoneCode: {
           ...emptyConnection,
-          normalizedPhone: phoneNumber,
+          normalizedPhone: input.e164,
           phase: "failed",
           error: getErrorMessage(error, translateCurrent("whatsappPhoneCodeCreateFailed"))
         }

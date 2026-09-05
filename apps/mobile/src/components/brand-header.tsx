@@ -12,7 +12,7 @@ export function BrandHeader() {
   return (
     <View style={styles.container}>
       <View style={[styles.logoFrame, theme.mode === "light" ? styles.logoFrameLight : null]}>
-        <Image accessibilityLabel="Logivya" alt="Logivya" source={logo} style={styles.logo} resizeMode="contain" />
+        <Image accessibilityLabel="Logivya" alt="Logivya" source={logo} style={styles.logo} resizeMode="contain" resizeMethod="resize" />
       </View>
       <Text style={[styles.slogan, { color: theme.muted }]}>{t("appTagline")}</Text>
     </View>

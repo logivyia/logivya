@@ -128,14 +128,22 @@ const ticketSummarySelect = {
   },
 } satisfies Prisma.SupportTicketSelect;
 
-type TicketBaseRow = Prisma.SupportTicketGetPayload<{ select: typeof ticketBaseSelect }>;
-type TicketSummaryRow = Prisma.SupportTicketGetPayload<{ select: typeof ticketSummarySelect }>;
-type MessageRow = Prisma.SupportTicketMessageGetPayload<{ select: typeof messageSelect }>;
+type TicketBaseRow = Prisma.SupportTicketGetPayload<{
+  select: typeof ticketBaseSelect;
+}>;
+type TicketSummaryRow = Prisma.SupportTicketGetPayload<{
+  select: typeof ticketSummarySelect;
+}>;
+type MessageRow = Prisma.SupportTicketMessageGetPayload<{
+  select: typeof messageSelect;
+}>;
 
 function requestCorrelationId(request?: Request) {
-  return request?.headers.get("x-correlation-id")?.slice(0, 128)
-    || request?.headers.get("x-request-id")?.slice(0, 128)
-    || randomUUID();
+  return (
+    request?.headers.get("x-correlation-id")?.slice(0, 128) ||
+    request?.headers.get("x-request-id")?.slice(0, 128) ||
+    randomUUID()
+  );
 }
 
 function publicTicketId() {
@@ -149,7 +157,8 @@ function normalizeLimit(value: number | undefined, fallback = 20) {
 
 function normalizeIdentifier(value: string) {
   const identifier = decodeURIComponent(value).trim();
-  if (!identifier || identifier.length > 160) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
+  if (!identifier || identifier.length > 160)
+    throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
   return identifier;
 }
 
@@ -165,7 +174,11 @@ function normalizeClientId(value?: string | null) {
 function normalizeText(value: string, field: string, min: number, max: number) {
   const normalized = value.replaceAll("\u0000", "").trim();
   if (normalized.length < min || normalized.length > max) {
-    throw new SupportDomainError("SUPPORT_VALIDATION_ERROR", 400, { field, min, max });
+    throw new SupportDomainError("SUPPORT_VALIDATION_ERROR", 400, {
+      field,
+      min,
+      max,
+    });
   }
   return normalized;
 }
@@ -182,17 +195,31 @@ function normalizeAttachmentUrl(value?: string | null) {
   }
 }
 
-function normalizeStatusFilter(value?: string | null): SupportTicketStatus | null {
+function normalizeStatusFilter(
+  value?: string | null,
+): SupportTicketStatus | null {
   if (!value || value === "ALL") return null;
   const requested = value.trim().toUpperCase();
-  const status = canonicalSupportStatus(requested === "NEW" ? "WAITING_FOR_ADMIN" : requested);
-  return canonicalSupportStatuses.includes(status as (typeof canonicalSupportStatuses)[number]) ? status : null;
+  const status = canonicalSupportStatus(
+    requested === "NEW" ? "WAITING_FOR_ADMIN" : requested,
+  );
+  return canonicalSupportStatuses.includes(
+    status as (typeof canonicalSupportStatuses)[number],
+  )
+    ? status
+    : null;
 }
 
-function normalizePriority(value?: string | null): SupportTicketPriority | null {
+function normalizePriority(
+  value?: string | null,
+): SupportTicketPriority | null {
   if (!value || value === "ALL") return null;
   const priority = canonicalSupportPriority(value.trim().toUpperCase());
-  return supportPriorities.includes(priority as (typeof supportPriorities)[number]) ? priority : null;
+  return supportPriorities.includes(
+    priority as (typeof supportPriorities)[number],
+  )
+    ? priority
+    : null;
 }
 
 function normalizeCategoryFilter(value?: string | null) {
@@ -205,16 +232,23 @@ function normalizeCategoryFilter(value?: string | null) {
 function normalizeDate(value?: string | null, endOfDay = false) {
   if (!value) return null;
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) throw new SupportDomainError("SUPPORT_INVALID_DATE_FILTER", 400);
-  if (endOfDay && /^\d{4}-\d{2}-\d{2}$/.test(value)) parsed.setUTCHours(23, 59, 59, 999);
+  if (Number.isNaN(parsed.getTime()))
+    throw new SupportDomainError("SUPPORT_INVALID_DATE_FILTER", 400);
+  if (endOfDay && /^\d{4}-\d{2}-\d{2}$/.test(value))
+    parsed.setUTCHours(23, 59, 59, 999);
   return parsed;
 }
 
-function ticketIdentifierWhere(identifier: string): Prisma.SupportTicketWhereInput {
+function ticketIdentifierWhere(
+  identifier: string,
+): Prisma.SupportTicketWhereInput {
   return { OR: [{ id: identifier }, { publicId: identifier }] };
 }
 
-function ownedTicketWhere(actor: SupportActor, identifier?: string): Prisma.SupportTicketWhereInput {
+function ownedTicketWhere(
+  actor: SupportActor,
+  identifier?: string,
+): Prisma.SupportTicketWhereInput {
   return {
     AND: [
       { companyId: actor.company.id },
@@ -290,18 +324,30 @@ function serializeTicketSummary(row: TicketSummaryRow, admin = false) {
 }
 
 function isRetryableTransactionError(error: unknown) {
-  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return true;
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2034"
+  )
+    return true;
   const message = error instanceof Error ? error.message : "";
-  return /TransactionWriteConflict|could not serialize access|deadlock detected|write conflict/i.test(message);
+  return /TransactionWriteConflict|could not serialize access|deadlock detected|write conflict/i.test(
+    message,
+  );
 }
 
-async function withSupportTransaction<T>(work: (tx: Prisma.TransactionClient) => Promise<T>) {
+async function withSupportTransaction<T>(
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+) {
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
-      return await prisma.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+      return await prisma.$transaction(work, {
+        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+      });
     } catch (error) {
       if (!isRetryableTransactionError(error) || attempt === 5) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 20 * attempt + Math.floor(Math.random() * 25)));
+      await new Promise((resolve) =>
+        setTimeout(resolve, 20 * attempt + Math.floor(Math.random() * 25)),
+      );
     }
   }
   throw new SupportDomainError("SUPPORT_CONCURRENT_UPDATE_FAILED", 409);
@@ -326,7 +372,12 @@ async function createAudit(
   return tx.supportTicketAudit.create({ data: input });
 }
 
-function adminNotificationPayload(input: { ticketId: string; publicId: string; messageId?: string; eventKind: "ticket_created" | "user_reply" }) {
+function adminNotificationPayload(input: {
+  ticketId: string;
+  publicId: string;
+  messageId?: string;
+  eventKind: "ticket_created" | "user_reply";
+}) {
   return {
     ticketId: input.ticketId,
     publicId: input.publicId,
@@ -337,7 +388,13 @@ function adminNotificationPayload(input: { ticketId: string; publicId: string; m
   };
 }
 
-function userNotificationPayload(input: { ticketId: string; publicId: string; messageId?: string; status?: SupportTicketStatus; eventKind: "admin_reply" | "status_changed" }) {
+function userNotificationPayload(input: {
+  ticketId: string;
+  publicId: string;
+  messageId?: string;
+  status?: SupportTicketStatus;
+  eventKind: "admin_reply" | "status_changed";
+}) {
   return {
     ticketId: input.ticketId,
     publicId: input.publicId,
@@ -349,7 +406,10 @@ function userNotificationPayload(input: { ticketId: string; publicId: string; me
   };
 }
 
-async function findExistingCreatedTicket(actor: SupportActor, clientRequestId: string | null) {
+async function findExistingCreatedTicket(
+  actor: SupportActor,
+  clientRequestId: string | null,
+) {
   if (!clientRequestId) return null;
   return prisma.supportTicket.findFirst({
     where: { createdById: actor.user.id, clientRequestId },
@@ -373,11 +433,21 @@ export async function createSupportTicket(input: {
   const category = normalizeSupportCategory(input.category);
   if (!category) throw new SupportDomainError("SUPPORT_INVALID_CATEGORY", 400);
   const clientMessageId = normalizeClientId(input.clientMessageId);
-  const clientRequestId = normalizeClientId(input.clientRequestId) ?? clientMessageId;
+  const clientRequestId =
+    normalizeClientId(input.clientRequestId) ?? clientMessageId;
   const attachmentUrl = normalizeAttachmentUrl(input.attachmentUrl);
-  const source = normalizeText(input.source || "WEB", "source", 2, 32).toUpperCase();
-  const duplicate = await findExistingCreatedTicket(input.actor, clientRequestId);
-  if (duplicate) return { ticket: serializeTicketSummary(duplicate), duplicate: true };
+  const source = normalizeText(
+    input.source || "WEB",
+    "source",
+    2,
+    32,
+  ).toUpperCase();
+  const duplicate = await findExistingCreatedTicket(
+    input.actor,
+    clientRequestId,
+  );
+  if (duplicate)
+    return { ticket: serializeTicketSummary(duplicate), duplicate: true };
 
   await enforceOperationRateLimit({
     scope: "support.ticket.create",
@@ -431,7 +501,11 @@ export async function createSupportTicket(input: {
           ticketId: ticket.id,
           actorUserId: input.actor.user.id,
           eventType: "SUPPORT_TICKET_CREATED",
-          newValue: { status: "WAITING_FOR_ADMIN", priority: "NORMAL", category },
+          newValue: {
+            status: "WAITING_FOR_ADMIN",
+            priority: "NORMAL",
+            category,
+          },
           metadata: { actorType: "USER", companyId: ticket.companyId, source },
           correlationId,
         });
@@ -462,13 +536,23 @@ export async function createSupportTicket(input: {
         source,
       });
       return {
-        ticket: { ...serializeTicketBase(result.ticket), messages: [serializeMessage(result.message)] },
+        ticket: {
+          ...serializeTicketBase(result.ticket),
+          messages: [serializeMessage(result.message)],
+        },
         duplicate: false,
       };
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-        const existing = await findExistingCreatedTicket(input.actor, clientRequestId);
-        if (existing) return { ticket: serializeTicketSummary(existing), duplicate: true };
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const existing = await findExistingCreatedTicket(
+          input.actor,
+          clientRequestId,
+        );
+        if (existing)
+          return { ticket: serializeTicketSummary(existing), duplicate: true };
         if (attempt < 3) continue;
       }
       throw error;
@@ -477,7 +561,10 @@ export async function createSupportTicket(input: {
   throw new SupportDomainError("SUPPORT_CREATE_FAILED", 500);
 }
 
-export async function listUserSupportTickets(actor: SupportActor, filters: TicketListFilters = {}) {
+export async function listUserSupportTickets(
+  actor: SupportActor,
+  filters: TicketListFilters = {},
+) {
   const limit = normalizeLimit(filters.limit);
   const status = normalizeStatusFilter(filters.status);
   const category = normalizeCategoryFilter(filters.category);
@@ -486,10 +573,14 @@ export async function listUserSupportTickets(actor: SupportActor, filters: Ticke
     ...ownedTicketWhere(actor),
     ...(status ? { status } : {}),
     ...(category ? { category } : {}),
-    ...(search ? { OR: [
-      { publicId: { contains: search, mode: "insensitive" } },
-      { subject: { contains: search, mode: "insensitive" } },
-    ] } : {}),
+    ...(search
+      ? {
+          OR: [
+            { publicId: { contains: search, mode: "insensitive" } },
+            { subject: { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : {}),
   };
   const rows = await prisma.supportTicket.findMany({
     where,
@@ -502,7 +593,10 @@ export async function listUserSupportTickets(actor: SupportActor, filters: Ticke
   const page = rows.slice(0, limit);
   return {
     tickets: page.map((row) => serializeTicketSummary(row)),
-    pageInfo: { hasMore, nextCursor: hasMore ? page.at(-1)?.id ?? null : null },
+    pageInfo: {
+      hasMore,
+      nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null,
+    },
   };
 }
 
@@ -527,7 +621,13 @@ async function readTicketMessages(
   const page = rows.slice(0, limit);
   return {
     messages: page.reverse().map(serializeMessage),
-    pageInfo: { hasMore, nextCursor: hasMore ? page[0]?.id ?? null : null },
+    pageInfo: {
+      hasMore,
+      // The query is newest-first, while the response is reversed for a
+      // chronological conversation. Continue from the oldest row in this
+      // page; using page[0] would overlap almost the whole previous page.
+      nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null,
+    },
   };
 }
 
@@ -543,7 +643,10 @@ export async function getUserSupportTicketDetail(
       select: ticketBaseSelect,
     });
     if (!ticket) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
-    if (options.markRead !== false && (ticket.userUnreadCount > 0 || !ticket.userLastReadAt)) {
+    if (
+      options.markRead !== false &&
+      (ticket.userUnreadCount > 0 || !ticket.userLastReadAt)
+    ) {
       await tx.supportTicket.update({
         where: { id: ticket.id },
         data: { userUnreadCount: 0, userLastReadAt: new Date() },
@@ -556,7 +659,10 @@ export async function getUserSupportTicketDetail(
       includeInternal: false,
     });
     return {
-      ticket: { ...serializeTicketBase(ticket), messages: conversation.messages },
+      ticket: {
+        ...serializeTicketBase(ticket),
+        messages: conversation.messages,
+      },
       messages: conversation.messages,
       pageInfo: conversation.pageInfo,
     };
@@ -584,20 +690,34 @@ export async function addUserSupportMessage(input: {
   const adminRecipient = await resolvePlatformSupportRecipient();
 
   return withSupportTransaction(async (tx) => {
-    const found = await tx.supportTicket.findFirst({ where: ownedTicketWhere(input.actor, identifier), select: { id: true } });
+    const found = await tx.supportTicket.findFirst({
+      where: ownedTicketWhere(input.actor, identifier),
+      select: { id: true },
+    });
     if (!found) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
     await lockTicket(tx, found.id);
-    const ticket = await tx.supportTicket.findUnique({ where: { id: found.id }, select: ticketBaseSelect });
+    const ticket = await tx.supportTicket.findUnique({
+      where: { id: found.id },
+      select: ticketBaseSelect,
+    });
     if (!ticket) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
 
     if (clientMessageId) {
       const duplicate = await tx.supportTicketMessage.findUnique({
-        where: { ticketId_clientMessageId: { ticketId: ticket.id, clientMessageId } },
+        where: {
+          ticketId_clientMessageId: { ticketId: ticket.id, clientMessageId },
+        },
         select: messageSelect,
       });
-      if (duplicate) return { message: serializeMessage(duplicate), ticket: serializeTicketBase(ticket), duplicate: true };
+      if (duplicate)
+        return {
+          message: serializeMessage(duplicate),
+          ticket: serializeTicketBase(ticket),
+          duplicate: true,
+        };
     }
-    if (!canUserReplyToSupportStatus(ticket.status)) throw new SupportDomainError("SUPPORT_TICKET_CLOSED", 409);
+    if (!canUserReplyToSupportStatus(ticket.status))
+      throw new SupportDomainError("SUPPORT_TICKET_CLOSED", 409);
 
     const now = new Date();
     const previousStatus = canonicalSupportStatus(ticket.status);
@@ -630,10 +750,17 @@ export async function addUserSupportMessage(input: {
     await createAudit(tx, {
       ticketId: ticket.id,
       actorUserId: input.actor.user.id,
-      eventType: previousStatus === "RESOLVED" ? "SUPPORT_REOPENED" : "SUPPORT_USER_REPLIED",
+      eventType:
+        previousStatus === "RESOLVED"
+          ? "SUPPORT_REOPENED"
+          : "SUPPORT_USER_REPLIED",
       oldValue: { status: previousStatus },
       newValue: { status: nextStatus, messageId: message.id },
-      metadata: { actorType: "USER", companyId: ticket.companyId, hasAttachment: Boolean(attachmentUrl) },
+      metadata: {
+        actorType: "USER",
+        companyId: ticket.companyId,
+        hasAttachment: Boolean(attachmentUrl),
+      },
       correlationId,
     });
     if (adminRecipient) {
@@ -660,59 +787,107 @@ export async function addUserSupportMessage(input: {
       correlationId,
       senderType: "USER",
     });
-    return { message: serializeMessage(message), ticket: serializeTicketBase(updated), duplicate: false };
+    return {
+      message: serializeMessage(message),
+      ticket: serializeTicketBase(updated),
+      duplicate: false,
+    };
   });
 }
 
-function adminListWhere(filters: AdminTicketListFilters): Prisma.SupportTicketWhereInput {
+function adminListWhere(
+  filters: AdminTicketListFilters,
+): Prisma.SupportTicketWhereInput {
   const status = normalizeStatusFilter(filters.status);
   const priority = normalizePriority(filters.priority);
   const category = normalizeCategoryFilter(filters.category);
-  if (filters.priority && filters.priority !== "ALL" && !priority) throw new SupportDomainError("SUPPORT_INVALID_PRIORITY", 400);
+  if (filters.priority && filters.priority !== "ALL" && !priority)
+    throw new SupportDomainError("SUPPORT_INVALID_PRIORITY", 400);
   const search = filters.search?.trim().slice(0, 160);
   const createdFrom = normalizeDate(filters.createdFrom);
   const createdTo = normalizeDate(filters.createdTo, true);
   const updatedFrom = normalizeDate(filters.updatedFrom);
   const updatedTo = normalizeDate(filters.updatedTo, true);
   const and: Prisma.SupportTicketWhereInput[] = [];
-  if (filters.userId) and.push({ OR: [{ createdById: filters.userId }, { userId: filters.userId }] });
-  if (filters.userEmail) and.push({ createdBy: { email: { equals: filters.userEmail.trim(), mode: "insensitive" } } });
+  if (filters.userId)
+    and.push({
+      OR: [{ createdById: filters.userId }, { userId: filters.userId }],
+    });
+  if (filters.userEmail)
+    and.push({
+      createdBy: {
+        email: { equals: filters.userEmail.trim(), mode: "insensitive" },
+      },
+    });
   if (search) {
-    and.push({ OR: [
-      { publicId: { contains: search, mode: "insensitive" } },
-      { subject: { contains: search, mode: "insensitive" } },
-      { title: { contains: search, mode: "insensitive" } },
-      { createdBy: { email: { contains: search, mode: "insensitive" } } },
-      { createdBy: { name: { contains: search, mode: "insensitive" } } },
-      { company: { name: { contains: search, mode: "insensitive" } } },
-      { messages: { some: { message: { contains: search, mode: "insensitive" }, isInternal: false, deletedAt: null } } },
-    ] });
+    and.push({
+      OR: [
+        { publicId: { contains: search, mode: "insensitive" } },
+        { subject: { contains: search, mode: "insensitive" } },
+        { title: { contains: search, mode: "insensitive" } },
+        { createdBy: { email: { contains: search, mode: "insensitive" } } },
+        { createdBy: { name: { contains: search, mode: "insensitive" } } },
+        { company: { name: { contains: search, mode: "insensitive" } } },
+        {
+          messages: {
+            some: {
+              message: { contains: search, mode: "insensitive" },
+              isInternal: false,
+              deletedAt: null,
+            },
+          },
+        },
+      ],
+    });
   }
   return {
     ...(status ? { status } : {}),
     ...(priority ? { priority } : {}),
     ...(category ? { category } : {}),
     ...(filters.companyId ? { companyId: filters.companyId } : {}),
-    ...(filters.assignedAdminId ? { assignedToAdminId: filters.assignedAdminId } : {}),
+    ...(filters.assignedAdminId
+      ? { assignedToAdminId: filters.assignedAdminId }
+      : {}),
     ...(filters.unassignedOnly ? { assignedToAdminId: null } : {}),
     ...(filters.unreadOnly ? { adminUnreadCount: { gt: 0 } } : {}),
     ...(filters.unansweredOnly ? { lastAdminMessageAt: null } : {}),
-    ...(createdFrom || createdTo ? { createdAt: { ...(createdFrom ? { gte: createdFrom } : {}), ...(createdTo ? { lte: createdTo } : {}) } } : {}),
-    ...(updatedFrom || updatedTo ? { updatedAt: { ...(updatedFrom ? { gte: updatedFrom } : {}), ...(updatedTo ? { lte: updatedTo } : {}) } } : {}),
+    ...(createdFrom || createdTo
+      ? {
+          createdAt: {
+            ...(createdFrom ? { gte: createdFrom } : {}),
+            ...(createdTo ? { lte: createdTo } : {}),
+          },
+        }
+      : {}),
+    ...(updatedFrom || updatedTo
+      ? {
+          updatedAt: {
+            ...(updatedFrom ? { gte: updatedFrom } : {}),
+            ...(updatedTo ? { lte: updatedTo } : {}),
+          },
+        }
+      : {}),
     ...(and.length ? { AND: and } : {}),
   };
 }
 
-export async function listAdminSupportTickets(filters: AdminTicketListFilters = {}) {
+export async function listAdminSupportTickets(
+  filters: AdminTicketListFilters = {},
+) {
   const limit = normalizeLimit(filters.limit, 30);
   const sort = filters.sort?.trim().toUpperCase();
-  const orderBy: Prisma.SupportTicketOrderByWithRelationInput[] = sort === "NEWEST"
-    ? [{ createdAt: "desc" }, { id: "desc" }]
-    : sort === "OLDEST"
-      ? [{ createdAt: "asc" }, { id: "asc" }]
-      : sort === "PRIORITY"
-        ? [{ priorityRank: "desc" }, { lastMessageAt: "desc" }, { id: "desc" }]
-        : [{ lastMessageAt: "desc" }, { id: "desc" }];
+  const orderBy: Prisma.SupportTicketOrderByWithRelationInput[] =
+    sort === "NEWEST"
+      ? [{ createdAt: "desc" }, { id: "desc" }]
+      : sort === "OLDEST"
+        ? [{ createdAt: "asc" }, { id: "asc" }]
+        : sort === "PRIORITY"
+          ? [
+              { priorityRank: "desc" },
+              { lastMessageAt: "desc" },
+              { id: "desc" },
+            ]
+          : [{ lastMessageAt: "desc" }, { id: "desc" }];
   const rows = await prisma.supportTicket.findMany({
     where: adminListWhere(filters),
     select: ticketSummarySelect,
@@ -729,7 +904,10 @@ export async function listAdminSupportTickets(filters: AdminTicketListFilters = 
   });
   return {
     tickets: page.map((row) => serializeTicketSummary(row, true)),
-    pageInfo: { hasMore, nextCursor: hasMore ? page.at(-1)?.id ?? null : null },
+    pageInfo: {
+      hasMore,
+      nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null,
+    },
   };
 }
 
@@ -741,9 +919,15 @@ export async function getAdminSupportTicketDetail(
   const identifier = normalizeIdentifier(identifierValue);
   const correlationId = randomUUID();
   return withSupportTransaction(async (tx) => {
-    const ticket = await tx.supportTicket.findFirst({ where: ticketIdentifierWhere(identifier), select: ticketBaseSelect });
+    const ticket = await tx.supportTicket.findFirst({
+      where: ticketIdentifierWhere(identifier),
+      select: ticketBaseSelect,
+    });
     if (!ticket) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
-    if (options.markRead !== false && (ticket.adminUnreadCount > 0 || !ticket.adminLastReadAt)) {
+    if (
+      options.markRead !== false &&
+      (ticket.adminUnreadCount > 0 || !ticket.adminLastReadAt)
+    ) {
       await tx.supportTicket.update({
         where: { id: ticket.id },
         data: { adminUnreadCount: 0, adminLastReadAt: new Date() },
@@ -758,7 +942,11 @@ export async function getAdminSupportTicketDetail(
       ticket.adminUnreadCount = 0;
     }
     const [conversation, audits] = await Promise.all([
-      readTicketMessages(tx, ticket.id, { cursor: options.cursor, limit: options.limit, includeInternal: true }),
+      readTicketMessages(tx, ticket.id, {
+        cursor: options.cursor,
+        limit: options.limit,
+        includeInternal: true,
+      }),
       tx.supportTicketAudit.findMany({
         where: { ticketId: ticket.id },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -776,10 +964,16 @@ export async function getAdminSupportTicketDetail(
       }),
     ]);
     return {
-      ticket: { ...serializeTicketBase(ticket), messages: conversation.messages },
+      ticket: {
+        ...serializeTicketBase(ticket),
+        messages: conversation.messages,
+      },
       messages: conversation.messages,
       pageInfo: conversation.pageInfo,
-      auditTrail: audits.map((audit) => ({ ...audit, createdAt: audit.createdAt.toISOString() })),
+      auditTrail: audits.map((audit) => ({
+        ...audit,
+        createdAt: audit.createdAt.toISOString(),
+      })),
     };
   });
 }
@@ -798,17 +992,30 @@ export async function addAdminSupportMessage(input: {
   const correlationId = requestCorrelationId(input.request);
 
   return withSupportTransaction(async (tx) => {
-    const found = await tx.supportTicket.findFirst({ where: ticketIdentifierWhere(identifier), select: { id: true } });
+    const found = await tx.supportTicket.findFirst({
+      where: ticketIdentifierWhere(identifier),
+      select: { id: true },
+    });
     if (!found) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
     await lockTicket(tx, found.id);
-    const ticket = await tx.supportTicket.findUnique({ where: { id: found.id }, select: ticketBaseSelect });
+    const ticket = await tx.supportTicket.findUnique({
+      where: { id: found.id },
+      select: ticketBaseSelect,
+    });
     if (!ticket) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
     if (clientMessageId) {
       const duplicate = await tx.supportTicketMessage.findUnique({
-        where: { ticketId_clientMessageId: { ticketId: ticket.id, clientMessageId } },
+        where: {
+          ticketId_clientMessageId: { ticketId: ticket.id, clientMessageId },
+        },
         select: messageSelect,
       });
-      if (duplicate) return { message: serializeMessage(duplicate), ticket: serializeTicketBase(ticket), duplicate: true };
+      if (duplicate)
+        return {
+          message: serializeMessage(duplicate),
+          ticket: serializeTicketBase(ticket),
+          duplicate: true,
+        };
     }
     if (canonicalSupportStatus(ticket.status) === "CLOSED" && !isInternal) {
       throw new SupportDomainError("SUPPORT_TICKET_CLOSED", 409);
@@ -833,26 +1040,34 @@ export async function addAdminSupportMessage(input: {
       data: {
         assignedToAdminId: input.actor.user.id,
         status: nextStatus,
-        ...(isInternal ? {} : {
-          lastMessageAt: now,
-          lastAdminMessageAt: now,
-          firstAdminReplyAt: ticket.firstAdminReplyAt ?? now,
-          adminLastReadAt: now,
-          adminUnreadCount: 0,
-          userUnreadCount: { increment: 1 },
-          resolvedAt: null,
-          closedAt: null,
-        }),
+        ...(isInternal
+          ? {}
+          : {
+              lastMessageAt: now,
+              lastAdminMessageAt: now,
+              firstAdminReplyAt: ticket.firstAdminReplyAt ?? now,
+              adminLastReadAt: now,
+              adminUnreadCount: 0,
+              userUnreadCount: { increment: 1 },
+              resolvedAt: null,
+              closedAt: null,
+            }),
       },
       select: ticketBaseSelect,
     });
     await createAudit(tx, {
       ticketId: ticket.id,
       actorUserId: input.actor.user.id,
-      eventType: isInternal ? "SUPPORT_INTERNAL_NOTE_ADDED" : "SUPPORT_ADMIN_REPLIED",
+      eventType: isInternal
+        ? "SUPPORT_INTERNAL_NOTE_ADDED"
+        : "SUPPORT_ADMIN_REPLIED",
       oldValue: { status: previousStatus },
       newValue: { status: nextStatus, messageId: message.id },
-      metadata: { actorType: "ADMIN", companyId: ticket.companyId, hasAttachment: Boolean(attachmentUrl) },
+      metadata: {
+        actorType: "ADMIN",
+        companyId: ticket.companyId,
+        hasAttachment: Boolean(attachmentUrl),
+      },
       correlationId,
     });
     if (!isInternal) {
@@ -884,7 +1099,11 @@ export async function addAdminSupportMessage(input: {
       correlationId,
       senderType: isInternal ? "ADMIN_INTERNAL" : "ADMIN",
     });
-    return { message: serializeMessage(message), ticket: serializeTicketBase(updated), duplicate: false };
+    return {
+      message: serializeMessage(message),
+      ticket: serializeTicketBase(updated),
+      duplicate: false,
+    };
   });
 }
 
@@ -898,19 +1117,31 @@ export async function changeAdminSupportStatus(input: {
   const identifier = normalizeIdentifier(input.identifier);
   const nextStatus = normalizeStatusFilter(input.status);
   if (!nextStatus) throw new SupportDomainError("SUPPORT_INVALID_STATUS", 400);
-  const reason = input.reason ? normalizeText(input.reason, "reason", 3, 500) : null;
+  const reason = input.reason
+    ? normalizeText(input.reason, "reason", 3, 500)
+    : null;
   const correlationId = requestCorrelationId(input.request);
   return withSupportTransaction(async (tx) => {
-    const found = await tx.supportTicket.findFirst({ where: ticketIdentifierWhere(identifier), select: { id: true } });
+    const found = await tx.supportTicket.findFirst({
+      where: ticketIdentifierWhere(identifier),
+      select: { id: true },
+    });
     if (!found) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
     await lockTicket(tx, found.id);
-    const ticket = await tx.supportTicket.findUnique({ where: { id: found.id }, select: ticketBaseSelect });
+    const ticket = await tx.supportTicket.findUnique({
+      where: { id: found.id },
+      select: ticketBaseSelect,
+    });
     if (!ticket) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
     const previousStatus = canonicalSupportStatus(ticket.status);
     if (!canAdminTransitionSupportStatus(previousStatus, nextStatus)) {
-      throw new SupportDomainError("SUPPORT_INVALID_STATUS_TRANSITION", 409, { from: previousStatus, to: nextStatus });
+      throw new SupportDomainError("SUPPORT_INVALID_STATUS_TRANSITION", 409, {
+        from: previousStatus,
+        to: nextStatus,
+      });
     }
-    if (previousStatus === nextStatus) return { ticket: serializeTicketBase(ticket), unchanged: true };
+    if (previousStatus === nextStatus)
+      return { ticket: serializeTicketBase(ticket), unchanged: true };
     const now = new Date();
     const updated = await tx.supportTicket.update({
       where: { id: ticket.id },
@@ -922,31 +1153,41 @@ export async function changeAdminSupportStatus(input: {
       },
       select: ticketBaseSelect,
     });
-    const eventType = nextStatus === "RESOLVED"
-      ? "SUPPORT_RESOLVED"
-      : nextStatus === "CLOSED"
-        ? "SUPPORT_CLOSED"
-        : previousStatus === "CLOSED"
-          ? "SUPPORT_REOPENED"
-          : "SUPPORT_STATUS_CHANGED";
+    const eventType =
+      nextStatus === "RESOLVED"
+        ? "SUPPORT_RESOLVED"
+        : nextStatus === "CLOSED"
+          ? "SUPPORT_CLOSED"
+          : previousStatus === "CLOSED"
+            ? "SUPPORT_REOPENED"
+            : "SUPPORT_STATUS_CHANGED";
     await createAudit(tx, {
       ticketId: ticket.id,
       actorUserId: input.actor.user.id,
       eventType,
       oldValue: { status: previousStatus },
       newValue: { status: nextStatus },
-      metadata: { actorType: "ADMIN", companyId: ticket.companyId, ...(reason ? { reason } : {}) },
+      metadata: {
+        actorType: "ADMIN",
+        companyId: ticket.companyId,
+        ...(reason ? { reason } : {}),
+      },
       correlationId,
     });
     if (["RESOLVED", "CLOSED", "OPEN"].includes(nextStatus)) {
-      const notificationType = nextStatus === "CLOSED"
-        ? NOTIFICATION_TYPES.SUPPORT_TICKET_CLOSED
-        : previousStatus === "CLOSED"
-          ? NOTIFICATION_TYPES.SUPPORT_TICKET_REOPENED
-          : NOTIFICATION_TYPES.SUPPORT_STATUS_CHANGED;
+      const notificationType =
+        nextStatus === "CLOSED"
+          ? NOTIFICATION_TYPES.SUPPORT_TICKET_CLOSED
+          : previousStatus === "CLOSED"
+            ? NOTIFICATION_TYPES.SUPPORT_TICKET_REOPENED
+            : NOTIFICATION_TYPES.SUPPORT_STATUS_CHANGED;
       await enqueueSupportNotification(tx, {
         ticketId: ticket.id,
-        recipient: { userId: ticket.createdById, companyId: ticket.companyId, email: ticket.createdBy.email },
+        recipient: {
+          userId: ticket.createdById,
+          companyId: ticket.companyId,
+          email: ticket.createdBy.email,
+        },
         eventKey: `support-status:${ticket.id}:${correlationId}`,
         type: notificationType,
         title: "Support request updated",
@@ -975,16 +1216,27 @@ export async function changeAdminSupportPriority(input: {
   if (!priority) throw new SupportDomainError("SUPPORT_INVALID_PRIORITY", 400);
   const correlationId = requestCorrelationId(input.request);
   return withSupportTransaction(async (tx) => {
-    const found = await tx.supportTicket.findFirst({ where: ticketIdentifierWhere(identifier), select: { id: true } });
+    const found = await tx.supportTicket.findFirst({
+      where: ticketIdentifierWhere(identifier),
+      select: { id: true },
+    });
     if (!found) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
     await lockTicket(tx, found.id);
-    const ticket = await tx.supportTicket.findUnique({ where: { id: found.id }, select: ticketBaseSelect });
+    const ticket = await tx.supportTicket.findUnique({
+      where: { id: found.id },
+      select: ticketBaseSelect,
+    });
     if (!ticket) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
     const previousPriority = canonicalSupportPriority(ticket.priority);
-    if (previousPriority === priority) return { ticket: serializeTicketBase(ticket), unchanged: true };
+    if (previousPriority === priority)
+      return { ticket: serializeTicketBase(ticket), unchanged: true };
     const updated = await tx.supportTicket.update({
       where: { id: ticket.id },
-      data: { priority, priorityRank: supportPriorityRank(priority), assignedToAdminId: input.actor.user.id },
+      data: {
+        priority,
+        priorityRank: supportPriorityRank(priority),
+        assignedToAdminId: input.actor.user.id,
+      },
       select: ticketBaseSelect,
     });
     await createAudit(tx, {
@@ -1009,14 +1261,29 @@ export async function assignAdminSupportTicket(input: {
   const identifier = normalizeIdentifier(input.identifier);
   const owner = await resolvePlatformSupportRecipient();
   const requestedAdminUserId = input.assignedAdminUserId?.trim() || null;
-  const assignedAdminUserId = requestedAdminUserId === "SELF" ? input.actor.user.id : requestedAdminUserId;
+  const assignedAdminUserId =
+    requestedAdminUserId === "SELF"
+      ? input.actor.user.id
+      : requestedAdminUserId;
   if (assignedAdminUserId && assignedAdminUserId !== owner?.userId) {
     throw new SupportDomainError("SUPPORT_INVALID_ASSIGNEE", 400);
   }
   const correlationId = requestCorrelationId(input.request);
   return withSupportTransaction(async (tx) => {
-    const ticket = await tx.supportTicket.findFirst({ where: ticketIdentifierWhere(identifier), select: ticketBaseSelect });
+    const found = await tx.supportTicket.findFirst({
+      where: ticketIdentifierWhere(identifier),
+      select: { id: true },
+    });
+    if (!found) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
+    await lockTicket(tx, found.id);
+    const ticket = await tx.supportTicket.findUnique({
+      where: { id: found.id },
+      select: ticketBaseSelect,
+    });
     if (!ticket) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
+    if (ticket.assignedToAdminId === assignedAdminUserId) {
+      return { ticket: serializeTicketBase(ticket), unchanged: true };
+    }
     const updated = await tx.supportTicket.update({
       where: { id: ticket.id },
       data: { assignedToAdminId: assignedAdminUserId },
@@ -1031,7 +1298,7 @@ export async function assignAdminSupportTicket(input: {
       metadata: { actorType: "ADMIN", companyId: ticket.companyId },
       correlationId,
     });
-    return { ticket: serializeTicketBase(updated) };
+    return { ticket: serializeTicketBase(updated), unchanged: false };
   });
 }
 
@@ -1043,10 +1310,14 @@ export async function closeOwnedSupportTicket(input: {
   const identifier = normalizeIdentifier(input.identifier);
   const correlationId = requestCorrelationId(input.request);
   return withSupportTransaction(async (tx) => {
-    const ticket = await tx.supportTicket.findFirst({ where: ownedTicketWhere(input.actor, identifier), select: ticketBaseSelect });
+    const ticket = await tx.supportTicket.findFirst({
+      where: ownedTicketWhere(input.actor, identifier),
+      select: ticketBaseSelect,
+    });
     if (!ticket) throw new SupportDomainError("SUPPORT_TICKET_NOT_FOUND", 404);
     await lockTicket(tx, ticket.id);
-    if (canonicalSupportStatus(ticket.status) === "CLOSED") return { ticket: serializeTicketBase(ticket), unchanged: true };
+    if (canonicalSupportStatus(ticket.status) === "CLOSED")
+      return { ticket: serializeTicketBase(ticket), unchanged: true };
     const updated = await tx.supportTicket.update({
       where: { id: ticket.id },
       data: { status: "CLOSED", closedAt: new Date() },
@@ -1068,22 +1339,45 @@ export async function closeOwnedSupportTicket(input: {
 export async function getAdminSupportMetrics() {
   const startOfToday = new Date();
   startOfToday.setUTCHours(0, 0, 0, 0);
-  const [byStatus, urgent, unread, resolvedToday, failedNotifications, failedEmails, responseTimes] = await Promise.all([
+  const [
+    byStatus,
+    urgent,
+    unread,
+    resolvedToday,
+    failedNotifications,
+    failedEmails,
+    responseTimes,
+  ] = await Promise.all([
     prisma.supportTicket.groupBy({ by: ["status"], _count: { _all: true } }),
-    prisma.supportTicket.count({ where: { priority: "URGENT", status: { notIn: ["RESOLVED", "CLOSED"] } } }),
+    prisma.supportTicket.count({
+      where: { priority: "URGENT", status: { notIn: ["RESOLVED", "CLOSED"] } },
+    }),
     prisma.supportTicket.count({ where: { adminUnreadCount: { gt: 0 } } }),
-    prisma.supportTicket.count({ where: { resolvedAt: { gte: startOfToday } } }),
+    prisma.supportTicket.count({
+      where: { resolvedAt: { gte: startOfToday } },
+    }),
     prisma.supportNotificationOutbox.count({ where: { status: "FAILED" } }),
-    prisma.supportNotificationOutbox.count({ where: { status: "FAILED", template: { endsWith: ".email" } } }),
+    prisma.supportNotificationOutbox.count({
+      where: { status: "FAILED", template: { endsWith: ".email" } },
+    }),
     prisma.$queryRaw<Array<{ average_first_response_seconds: number | null }>>`
       SELECT AVG(EXTRACT(EPOCH FROM ("firstAdminReplyAt" - "createdAt")))::float8 AS "average_first_response_seconds"
       FROM "SupportTicket"
       WHERE "firstAdminReplyAt" IS NOT NULL
     `,
   ]);
-  const counts = Object.fromEntries(byStatus.map((entry) => [canonicalSupportStatus(entry.status), entry._count._all]));
+  const counts = Object.fromEntries(
+    byStatus.map((entry) => [
+      canonicalSupportStatus(entry.status),
+      entry._count._all,
+    ]),
+  );
   return {
-    totalOpen: (counts.OPEN ?? 0) + (counts.IN_PROGRESS ?? 0) + (counts.WAITING_FOR_USER ?? 0) + (counts.WAITING_FOR_ADMIN ?? 0),
+    totalOpen:
+      (counts.OPEN ?? 0) +
+      (counts.IN_PROGRESS ?? 0) +
+      (counts.WAITING_FOR_USER ?? 0) +
+      (counts.WAITING_FOR_ADMIN ?? 0),
     open: counts.OPEN ?? 0,
     inProgress: counts.IN_PROGRESS ?? 0,
     waitingForUser: counts.WAITING_FOR_USER ?? 0,
@@ -1093,6 +1387,7 @@ export async function getAdminSupportMetrics() {
     unread,
     failedNotifications,
     failedEmails,
-    averageFirstResponseSeconds: responseTimes[0]?.average_first_response_seconds ?? null,
+    averageFirstResponseSeconds:
+      responseTimes[0]?.average_first_response_seconds ?? null,
   };
 }

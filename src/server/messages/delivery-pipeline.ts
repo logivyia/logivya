@@ -10,10 +10,15 @@ import { nextRecurringRunAt, recurringJobId, type RecurringRule } from "@/server
 import { writeAuditLog } from "@/server/security/audit";
 import { requestGroupSyncIfStale, resolveCurrentWhatsAppAccount } from "@/server/whatsapp/account-scope";
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
+import { uniqueSelectedGroupIds, uniqueGroupDeliveryTargets } from "./unique-targets";
+import { assertWhatsAppSendingAvailable } from "@/server/whatsapp/send-safety";
 import { createMessageCorrelationId, withCampaignMetadata } from "@/server/messages/correlation";
+import { assertMessageDeliveryQueueReady, isMessageDeliveryReadinessError } from "@/server/messages/delivery-readiness";
 import { traceMessageStage } from "@/server/messages/delivery-tracing";
 import { resolveOwnedWhatsAppContacts } from "@/server/whatsapp/contacts";
 import { resolveCategoryContactsForSend } from "@/server/categories/category-targets";
+import { mediaFileReference, resolveOwnedMediaFiles } from "@/server/media/message-attachments";
+import { MAX_MESSAGE_ATTACHMENTS, WHATSAPP_MAX_UPLOAD_BYTES } from "@/server/security/uploads";
 
 type MessageScheduleType = "SEND_NOW" | "SCHEDULED" | "RECURRING";
 type MessageDeliverySource = "web" | "mobile" | "recurring";
@@ -154,6 +159,8 @@ export async function createMessageDeliveryCampaign(
   input: {
     title: string;
     content: string;
+    mediaFileId?: string;
+    mediaFileIds?: string[];
     groupIds: string[];
     categoryIds: string[];
     contactIds: string[];
@@ -192,6 +199,53 @@ export async function createMessageDeliveryCampaign(
     }
   });
 
+  const requestedMediaFileIds = [...new Set([...(input.mediaFileIds ?? []), ...(input.mediaFileId ? [input.mediaFileId] : [])])];
+  if (requestedMediaFileIds.length > MAX_MESSAGE_ATTACHMENTS) {
+    throw new MessageDeliveryError("MEDIA_FILE_COUNT_LIMIT", `Tek gönderimde en fazla ${MAX_MESSAGE_ATTACHMENTS} dosya ekleyebilirsiniz.`, 400, undefined, correlationId);
+  }
+  const attachments = requestedMediaFileIds.length
+    ? await traceMessageStage("request.media.resolve", traceContext, async () => {
+        try {
+          const files = await resolveOwnedMediaFiles(requestedMediaFileIds, actor.companyId, actor.userId);
+          if (files.some((file) => file.size > WHATSAPP_MAX_UPLOAD_BYTES)) {
+            throw new MessageDeliveryError("MEDIA_FILE_TOO_LARGE", "WhatsApp için her dosya en fazla 100 MB olabilir.", 400, undefined, correlationId);
+          }
+          return files.map(mediaFileReference);
+        } catch (error) {
+          if (error instanceof Error && error.message === "MEDIA_FILE_NOT_FOUND") {
+            throw new MessageDeliveryError("MEDIA_FILE_NOT_FOUND", "Yüklenen dosya bulunamadı veya bu hesaba ait değil.", 400, undefined, correlationId);
+          }
+          throw error;
+        }
+      })
+    : [];
+  if (!input.content.trim() && !attachments.length) {
+    throw new MessageDeliveryError("MESSAGE_CONTENT_REQUIRED", "Mesaj yazın veya bir dosya ekleyin.", 400, undefined, correlationId);
+  }
+
+  await traceMessageStage("queue.delivery_readiness", traceContext, async () => {
+    try {
+      await assertMessageDeliveryQueueReady({
+        companyId: actor.companyId,
+        userId: actor.userId,
+        source: input.source,
+        scheduleType,
+        correlationId,
+      });
+    } catch (error) {
+      if (isMessageDeliveryReadinessError(error)) {
+        throw new MessageDeliveryError(
+          error.code,
+          "Mesaj teslim sistemi su anda hazir degil. Lutfen birkac dakika sonra tekrar deneyin.",
+          503,
+          error.details,
+          correlationId,
+        );
+      }
+      throw error;
+    }
+  });
+
   if (input.contactIds.length) {
     const contactAccess = await traceMessageStage("subscription.contact_access", traceContext, async () =>
       subscriptionAccess.canSendTargets(actor.companyId, { groupCount: 0, contactCount: 1 }),
@@ -200,7 +254,7 @@ export async function createMessageDeliveryCampaign(
       const contactLocked = contactAccess.reason === "entitlement.contactMessaging";
       throw new MessageDeliveryError(
         contactLocked ? "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL" : "SUBSCRIPTION_LOCKED",
-        contactLocked ? "Kişilere mesaj gönderimi Profesyonel paketinde kullanılabilir." : "Aboneliğiniz aktif değil. Mesaj göndermek için paketinizi yenileyin.",
+        contactLocked ? "Kişilere mesaj göndermek için aktif bir abonelik gerekir." : "Aboneliğiniz aktif değil. Mesaj göndermek için paketinizi yenileyin.",
         403,
         { reason: contactAccess.reason },
         correlationId,
@@ -223,6 +277,17 @@ export async function createMessageDeliveryCampaign(
     return account;
   });
 
+  try {
+    await assertWhatsAppSendingAvailable(currentAccount.id);
+  } catch (error) {
+    const paused = error instanceof Error && error.message === "WHATSAPP_SEND_PAUSED";
+    throw new MessageDeliveryError(
+      paused ? "WHATSAPP_SEND_PAUSED" : "WHATSAPP_SEND_SAFETY_UNAVAILABLE",
+      paused ? "WhatsApp kısıtlama sinyali nedeniyle bu hesabın gönderimleri 24 saat durduruldu. WhatsApp hesabınızın durumunu kontrol edin; süre dolduktan sonra yeniden deneyin." : "Gönderim güvenlik kontrolüne ulaşılamadı. Hiçbir yeni mesaj gönderilmedi; lütfen daha sonra yeniden deneyin.",
+      paused ? 409 : 503, undefined, correlationId,
+    );
+  }
+
   const categoryGroups = await traceMessageStage("audience.category_groups.resolve", {
     ...traceContext,
     whatsappAccountId: currentAccount.id,
@@ -237,7 +302,7 @@ export async function createMessageDeliveryCampaign(
         select: { groupId: true },
       })
     : []);
-  const requestedIds = [...new Set([...input.groupIds, ...categoryGroups.map((item) => item.groupId)])];
+  const requestedIds = uniqueSelectedGroupIds(input.groupIds, categoryGroups);
   const groups = await traceMessageStage("audience.sendable_groups.resolve", {
     ...traceContext,
     requestedGroupCount: input.groupIds.length,
@@ -246,7 +311,7 @@ export async function createMessageDeliveryCampaign(
     whatsappAccountId: currentAccount.id,
   }, async () => {
     try {
-      return await resolveSendableWhatsAppGroups(actor.companyId, requestedIds, { userId: actor.userId, accountId: currentAccount.id });
+      return uniqueGroupDeliveryTargets(await resolveSendableWhatsAppGroups(actor.companyId, requestedIds, { userId: actor.userId, accountId: currentAccount.id }));
     } catch (error) {
       if (error instanceof Error && error.message === "WHATSAPP_GROUP_OWNERSHIP_MISMATCH") {
         throw new MessageDeliveryError(
@@ -272,7 +337,7 @@ export async function createMessageDeliveryCampaign(
   if (categoryContactResolution.assignedCount && !(await subscriptionAccess.canUseContactMessaging(actor.companyId))) {
     throw new MessageDeliveryError(
       "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL",
-      "Kişilere mesaj gönderimi Profesyonel paketinde kullanılabilir.",
+      "Kişilere mesaj göndermek için aktif bir abonelik gerekir.",
       403,
       { assignedContactCount: categoryContactResolution.assignedCount },
       correlationId,
@@ -337,7 +402,7 @@ export async function createMessageDeliveryCampaign(
     const contactLocked = access.reason === "entitlement.contactMessaging";
     throw new MessageDeliveryError(
       contactLocked ? "CONTACT_MESSAGING_REQUIRES_PROFESSIONAL" : "SUBSCRIPTION_LOCKED",
-      contactLocked ? "Kisilere mesaj gonderimi Profesyonel paketinde kullanilabilir." : "Aboneliginiz aktif degil. Mesaj gondermek icin paketinizi yenileyin.",
+      contactLocked ? "Kisilere mesaj gondermek icin aktif bir abonelik gerekir." : "Aboneliginiz aktif degil. Mesaj gondermek icin paketinizi yenileyin.",
       403,
       { reason: access.reason, limit: access.limit, used: access.used },
       correlationId,
@@ -384,6 +449,8 @@ export async function createMessageDeliveryCampaign(
         skippedStaleCategoryContactCount: categoryContactResolution.skippedStaleCount,
         resolvedGroupCount: groups.length,
         resolvedContactCount: contacts.length,
+        attachment: attachments[0] ?? undefined,
+        attachments: attachments.length ? attachments : undefined,
       }),
       recipients: {
         create: [

@@ -74,6 +74,7 @@ const permissions = [...manifest.matchAll(/<uses-permission(?:-sdk-\d+)?[^>]+and
 const uniquePermissions = [...new Set(permissions)].sort();
 
 const forbiddenPermissions = [
+  "android.permission.CAMERA",
   "android.permission.READ_EXTERNAL_STORAGE",
   "android.permission.READ_MEDIA_IMAGES",
   "android.permission.WRITE_EXTERNAL_STORAGE",
@@ -87,8 +88,13 @@ check("Package identifier", packageName === expectedPackage && packageName === "
 check("Version code", versionCode === expectedVersionCode, `${versionCode} / source ${expectedVersionCode}`);
 check("Version name", versionName === expectedVersionName, `${versionName} / source ${expectedVersionName}`);
 check("Minimum SDK", minSdk === 24, String(minSdk));
-check("Target SDK", targetSdk >= 35, String(targetSdk));
+check("Target SDK", targetSdk >= 36, String(targetSdk));
 check("Compile SDK", compileSdk >= targetSdk, String(compileSdk));
+check(
+  "No fixed activity orientation",
+  !/android:screenOrientation="(?:portrait|landscape|reversePortrait|reverseLandscape|sensorPortrait|sensorLandscape|userPortrait|userLandscape)"/.test(manifest),
+  "merged manifest",
+);
 check("Cleartext traffic disabled", /android:usesCleartextTraffic="false"/.test(manifest), "merged manifest");
 check("Application backup disabled", /android:allowBackup="false"/.test(manifest), "merged manifest");
 check("Release is not debuggable", !/android:debuggable="true"/.test(manifest), "merged manifest");
@@ -105,6 +111,11 @@ const jarEntries = run("jar", ["tf", aabPath]).split(/\r?\n/).filter(Boolean);
 const abis = [...new Set(jarEntries.map((entry) => entry.match(/^base\/lib\/([^/]+)\//)?.[1]).filter(Boolean))].sort();
 const requiredAbis = ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"];
 check("Required Android ABIs", requiredAbis.every((abi) => abis.includes(abi)), abis.join(", "));
+for (const abi of requiredAbis) {
+  for (const library of ["librnscreens.so", "libreact_codegen_rnscreens.so", "libappmodules.so"]) {
+    check(`Navigation runtime ${abi}/${library}`, jarEntries.includes(`base/lib/${abi}/${library}`), `base/lib/${abi}/${library}`);
+  }
+}
 
 const signerOutput = run("jarsigner", ["-verify", "-verbose", "-certs", aabPath]);
 check("JAR signature", /jar verified\./i.test(signerOutput), "jarsigner verified");
@@ -117,8 +128,18 @@ const extractionDir = mkdtempSync(path.join(tmpdir(), "logivya-aab-verify-"));
 const scanFindings = [];
 const localEndpointFiles = new Set();
 let productionEndpointEmbedded = false;
+let runtimeConfig = null;
 try {
   run("jar", ["xf", aabPath], { cwd: extractionDir });
+  const mappingPath = path.join(extractionDir, "BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map");
+  const mapping = existsSync(mappingPath) ? readFileSync(mappingPath, "utf8") : "";
+  // R8 merges/inlines the package class even in the working v216 release.
+  // Require its registration evidence AND the actual retained native module.
+  check("Navigation Android package retained", mapping.includes("com.swmansion.rnscreens.RNScreensPackage.") && /^com\.swmansion\.rnscreens\.ScreensModule -> /m.test(mapping), "Screens registration and native module in optimized artifact mapping");
+  const runtimeConfigPath = path.join(extractionDir, "base/assets/app.config");
+  if (existsSync(runtimeConfigPath)) {
+    runtimeConfig = JSON.parse(readFileSync(runtimeConfigPath, "utf8"));
+  }
   const patterns = [
     { name: "Private key", expression: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g },
     { name: "GitHub token", expression: /\b(?:gh[opsu]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{60,255})\b/g },
@@ -153,6 +174,51 @@ try {
   rmSync(extractionDir, { recursive: true, force: true });
 }
 check("Production API endpoint embedded", productionEndpointEmbedded, "https://www.logivya.com");
+check(
+  "Runtime environment is production",
+  runtimeConfig?.extra?.environment === "production",
+  String(runtimeConfig?.extra?.environment || "missing"),
+);
+check(
+  "Runtime primary API is production",
+  runtimeConfig?.extra?.apiBaseUrl === "https://www.logivya.com",
+  String(runtimeConfig?.extra?.apiBaseUrl || "missing"),
+);
+const googleWebClientId = String(runtimeConfig?.extra?.socialSignIn?.googleWebClientId || "").trim();
+const googleAndroidClientId = String(runtimeConfig?.extra?.socialSignIn?.googleAndroidClientId || "").trim();
+const googleClientIdPattern = /^(\d+)-[a-z0-9]+\.apps\.googleusercontent\.com$/u;
+const googleWebProject = googleWebClientId.match(googleClientIdPattern)?.[1] || null;
+const googleAndroidProject = googleAndroidClientId.match(googleClientIdPattern)?.[1] || null;
+check(
+  "Google Web OAuth client embedded",
+  Boolean(googleWebProject),
+  googleWebClientId || "missing",
+);
+check(
+  "Google Android OAuth client embedded",
+  Boolean(googleAndroidProject),
+  googleAndroidClientId || "missing",
+);
+check(
+  "Google OAuth clients share one project",
+  Boolean(googleWebProject && googleAndroidProject && googleWebProject === googleAndroidProject),
+  googleWebProject && googleAndroidProject ? `${googleWebProject} / ${googleAndroidProject}` : "missing",
+);
+check(
+  "Runtime fallback APIs are absent or production HTTPS",
+  Array.isArray(runtimeConfig?.extra?.apiFallbackBaseUrls) &&
+    runtimeConfig.extra.apiFallbackBaseUrls.every((url) => {
+      try {
+        const parsed = new URL(String(url));
+        return parsed.protocol === "https:" && !["localhost", "127.0.0.1", "0.0.0.0", "10.0.2.2"].includes(parsed.hostname);
+      } catch {
+        return false;
+      }
+    }),
+  Array.isArray(runtimeConfig?.extra?.apiFallbackBaseUrls)
+    ? runtimeConfig.extra.apiFallbackBaseUrls.join(", ") || "none (single Hetzner production endpoint)"
+    : "missing",
+);
 check("AAB embedded secret scan", scanFindings.length === 0, scanFindings.length === 0 ? "no findings" : scanFindings.map((item) => `${item.detector}:${item.file}`).join(", "));
 
 const failed = checks.filter((item) => item.status === "FAILED");
@@ -194,7 +260,10 @@ const report = {
   },
   observations: {
     localDevelopmentEndpointStrings: [...localEndpointFiles].sort(),
-    note: "Compiled framework code can contain inactive development URL strings; runtime production URL is enforced by preflight and the embedded production endpoint check.",
+    runtimeEnvironment: runtimeConfig?.extra?.environment || null,
+    runtimeApiBaseUrl: runtimeConfig?.extra?.apiBaseUrl || null,
+    runtimeApiFallbackBaseUrls: runtimeConfig?.extra?.apiFallbackBaseUrls || [],
+    note: "Compiled framework code can contain inactive development URL strings; the extracted runtime app.config must still point exclusively to production.",
   },
   checks,
 };

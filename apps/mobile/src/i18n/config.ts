@@ -1,4 +1,4 @@
-export const locales = ["tr", "en", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"] as const;
+export const locales = ["tr", "en", "ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"] as const;
 
 export type Locale = (typeof locales)[number];
 
@@ -7,6 +7,7 @@ export const fallbackLocale: Locale = "en";
 export const localeMetadata: Record<Locale, { nativeName: string; intlLocale: string; direction: "ltr" | "rtl" }> = {
   tr: { nativeName: "Türkçe", intlLocale: "tr-TR", direction: "ltr" },
   en: { nativeName: "English", intlLocale: "en-US", direction: "ltr" },
+  ar: { nativeName: "العربية", intlLocale: "ar-SA", direction: "rtl" },
   ro: { nativeName: "Română", intlLocale: "ro-RO", direction: "ltr" },
   ru: { nativeName: "Русский", intlLocale: "ru-RU", direction: "ltr" },
   az: { nativeName: "Azərbaycan dili", intlLocale: "az-AZ", direction: "ltr" },
@@ -25,7 +26,26 @@ export function normalizeLocale(value: string | null | undefined): Locale | null
 
 export function detectDeviceLocale(): Locale {
   try {
-    return normalizeLocale(Intl.DateTimeFormat().resolvedOptions().locale) ?? fallbackLocale;
+    const options = Intl.DateTimeFormat().resolvedOptions();
+    const deviceLocale = options.locale ?? "";
+    const normalizedLocale = normalizeLocale(deviceLocale);
+    const regionCode = (() => {
+      try {
+        return new Intl.Locale(deviceLocale).region ?? "";
+      } catch {
+        return deviceLocale.match(/(?:-|_)([A-Za-z]{2})(?:-|$)/u)?.[1]?.toUpperCase() ?? "";
+      }
+    })();
+
+    if (
+      normalizedLocale === "tr" ||
+      regionCode === "TR" ||
+      options.timeZone === "Europe/Istanbul"
+    ) {
+      return "tr";
+    }
+
+    return normalizedLocale ?? fallbackLocale;
   } catch {
     return fallbackLocale;
   }

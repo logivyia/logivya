@@ -1,0 +1,62 @@
+{
+  "locale": "tr-TR",
+  "generatedAt": "2026-08-23T10:42:29.663Z",
+  "outputs": [
+    {
+      "file": "packages/docs/google-play/store-assets-v178/phone-01-dashboard.png",
+      "source": "applescreen1.jpeg",
+      "width": 1080,
+      "height": 1920,
+      "title": "İletişiminizi tek yerden yönetin"
+    },
+    {
+      "file": "packages/docs/google-play/store-assets-v178/phone-02-categories.png",
+      "source": "applescreen2.jpeg",
+      "width": 1080,
+      "height": 1920,
+      "title": "Grupları kategorilerle düzenleyin"
+    },
+    {
+      "file": "packages/docs/google-play/store-assets-v178/phone-03-messaging.png",
+      "source": "applescreen3.jpeg",
+      "width": 1080,
+      "height": 1920,
+      "title": "Mesaj akışınızı planlayın"
+    },
+    {
+      "file": "packages/docs/google-play/store-assets-v178/phone-04-compose.png",
+      "source": "screenap6.jpeg",
+      "width": 1080,
+      "height": 1920,
+      "title": "Şimdi gönderin, zamanlayın veya tekrarlayın"
+    },
+    {
+      "file": "packages/docs/google-play/store-assets-v178/phone-05-support.png",
+      "source": "applescreen4.jpeg",
+      "width": 1080,
+      "height": 1920,
+      "title": "Destek uygulamanın hemen içinde"
+    },
+    {
+      "file": "packages/docs/google-play/store-assets-v178/phone-06-subscription.png",
+      "source": "applescreen5.jpeg",
+      "width": 1080,
+      "height": 1920,
+      "title": "Paketinizi ve kullanımınızı takip edin"
+    },
+    {
+      "file": "packages/docs/google-play/store-assets-v178/phone-07-notifications.png",
+      "source": "marketing-feature-card",
+      "width": 1080,
+      "height": 1920,
+      "title": "Bildirimleri size göre ayarlayın"
+    },
+    {
+      "file": "packages/docs/google-play/store-assets-v178/phone-08-security.png",
+      "source": "marketing-feature-card",
+      "width": 1080,
+      "height": 1920,
+      "title": "Hesabınız için çok katmanlı koruma"
+    }
+  ]
+}

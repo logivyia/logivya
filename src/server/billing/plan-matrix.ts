@@ -1,11 +1,20 @@
-export const CORE_PLAN_CODES = ["trial", "starter", "professional"] as const;
-export const PURCHASABLE_PLAN_CODES = ["starter", "professional"] as const;
+import {
+  CANONICAL_SUBSCRIPTION_PLANS,
+  PURCHASABLE_SUBSCRIPTION_PLAN_CODES,
+  SUBSCRIPTION_PLAN_CODES,
+  canonicalSubscriptionPlanCode,
+} from "@/config/subscription-plans";
+
+export const CORE_PLAN_CODES = SUBSCRIPTION_PLAN_CODES;
+export const PURCHASABLE_PLAN_CODES = PURCHASABLE_SUBSCRIPTION_PLAN_CODES;
 
 export type CorePlanCode = (typeof CORE_PLAN_CODES)[number];
 export type PurchasablePlanCode = (typeof PURCHASABLE_PLAN_CODES)[number];
 
 export type CorePlanRule = {
   monthlyPriceTry: number;
+  yearlyPriceTry: number;
+  yearlyMonthlyEquivalentTry: number;
   totalUserSeats: number;
   whatsappConnections: number;
   groupMessaging: boolean;
@@ -15,51 +24,38 @@ export type CorePlanRule = {
   deleteForEveryone: boolean;
   advancedSupport: boolean;
   advertisingEnabled: boolean;
+  messageBrandingRequired: boolean;
 };
 
-export const CORE_PLAN_MATRIX: Record<CorePlanCode, CorePlanRule> = {
-  trial: {
-    monthlyPriceTry: 0,
-    totalUserSeats: 1,
-    whatsappConnections: 1,
-    groupMessaging: true,
-    contactMessaging: true,
-    scheduledMessaging: true,
-    recurringMessaging: true,
-    deleteForEveryone: true,
-    advancedSupport: true,
-    advertisingEnabled: true,
-  },
-  starter: {
-    monthlyPriceTry: 280,
-    totalUserSeats: 2,
-    whatsappConnections: 2,
-    groupMessaging: true,
-    contactMessaging: false,
-    scheduledMessaging: true,
-    recurringMessaging: true,
-    deleteForEveryone: true,
-    advancedSupport: true,
-    advertisingEnabled: true,
-  },
-  professional: {
-    monthlyPriceTry: 380,
-    totalUserSeats: 3,
-    whatsappConnections: 3,
-    groupMessaging: true,
-    contactMessaging: true,
-    scheduledMessaging: true,
-    recurringMessaging: true,
-    deleteForEveryone: true,
-    advancedSupport: true,
-    advertisingEnabled: false,
-  },
-};
+export const CORE_PLAN_MATRIX = Object.fromEntries(CORE_PLAN_CODES.map((code) => {
+  const plan = CANONICAL_SUBSCRIPTION_PLANS[code];
+  const rule: CorePlanRule = {
+    monthlyPriceTry: plan.monthlyPriceMinor / 100,
+    yearlyPriceTry: plan.yearlyPriceMinor / 100,
+    yearlyMonthlyEquivalentTry: plan.yearlyMonthlyEquivalentMinor / 100,
+    totalUserSeats: plan.accountLimit,
+    whatsappConnections: plan.whatsappConnectionLimit,
+    groupMessaging: plan.features.groupMessaging,
+    contactMessaging: plan.features.contactMessaging,
+    scheduledMessaging: plan.features.scheduledMessaging,
+    recurringMessaging: plan.features.recurringMessaging,
+    deleteForEveryone: plan.features.deleteForEveryone,
+    advancedSupport: plan.features.advancedSupport,
+    advertisingEnabled: plan.features.advertisingEnabled,
+    messageBrandingRequired: plan.features.brandingFooter,
+  };
+  return [code, rule];
+})) as Record<CorePlanCode, CorePlanRule>;
 
 export function isCorePlanCode(slug?: string | null): slug is CorePlanCode {
   return Boolean(slug && (CORE_PLAN_CODES as readonly string[]).includes(slug));
 }
 
+export function canonicalCorePlanCode(slug?: string | null): CorePlanCode | null {
+  return canonicalSubscriptionPlanCode(slug);
+}
+
 export function corePlanRule(slug?: string | null) {
-  return isCorePlanCode(slug) ? CORE_PLAN_MATRIX[slug] : null;
+  const code = canonicalCorePlanCode(slug);
+  return code ? CORE_PLAN_MATRIX[code] : null;
 }

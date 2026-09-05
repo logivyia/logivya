@@ -4,7 +4,7 @@ import { prisma } from "@/server/db";
 
 export const NOTIFICATION_CATEGORIES = [
   "ACCOUNT", "SECURITY", "SUPPORT", "SUBSCRIPTION", "BILLING", "INVITATION", "WHATSAPP", "MESSAGE",
-  "SYSTEM", "MARKETING", "COMPLIANCE", "ADMINISTRATION", "BACKUP", "INCIDENT",
+  "MARKETPLACE", "SYSTEM", "MARKETING", "COMPLIANCE", "ADMINISTRATION", "BACKUP", "INCIDENT",
 ] as const satisfies readonly NotificationCategory[];
 
 export const USER_NOTIFICATION_CHANNELS = ["IN_APP", "EMAIL", "ANDROID_PUSH", "IOS_PUSH", "WEB_PUSH"] as const satisfies readonly NotificationChannel[];

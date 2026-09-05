@@ -3,8 +3,10 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/server/db";
 import { hashOpaqueToken } from "@/server/security/authentication";
+import { resolveMfaLoginDecision } from "@/server/security/mfa-policy";
+import { SESSION_COOKIE } from "@/server/auth/session-cookie";
 
-export const SESSION_COOKIE = "logivya_session";
+export { SESSION_COOKIE } from "@/server/auth/session-cookie";
 const SESSION_DAYS = 30;
 
 export async function createSession(
@@ -18,6 +20,13 @@ export async function createSession(
   const cookieStore = await cookies();
   const previousToken = cookieStore.get(SESSION_COOKIE)?.value;
   const session = await prisma.$transaction(async (tx) => {
+    const [user, membership] = await Promise.all([
+      tx.user.findUnique({ where: { id: userId }, select: { status: true, mustChangePassword: true } }),
+      tx.companyUser.findUnique({ where: { companyId_userId: { companyId, userId } }, select: { status: true } }),
+    ]);
+    if (!user || user.status !== "ACTIVE" || user.mustChangePassword || membership?.status !== "ACTIVE") {
+      throw new Error("FORBIDDEN");
+    }
     if (previousToken) {
       await tx.userSession.updateMany({
         where: { sessionTokenHash: hashOpaqueToken(previousToken), revokedAt: null },
@@ -68,13 +77,27 @@ export async function getSessionContext() {
     where: { sessionTokenHash: hashOpaqueToken(token) },
     include: { user: true },
   });
-  if (!session || session.revokedAt || session.expiresAt <= new Date() || !session.companyId) return null;
-  if (session.user.mfaRequired && !session.mfaVerifiedAt) return null;
+  if (
+    !session
+    || session.revokedAt
+    || session.expiresAt <= new Date()
+    || !session.companyId
+    || session.user.status !== "ACTIVE"
+    || session.user.mustChangePassword
+  ) return null;
   const membership = await prisma.companyUser.findUnique({
     where: { companyId_userId: { companyId: session.companyId, userId: session.userId } },
     include: { company: true },
   });
   if (!membership || membership.status !== "ACTIVE") return null;
+  const mfa = await resolveMfaLoginDecision({
+    userId: session.userId,
+    companyPolicy: membership.company.mfaPolicy,
+    role: membership.role,
+    legacyRequired: session.user.mfaRequired,
+    preferredMethod: session.user.preferredMfaMethod,
+  });
+  if (mfa.mfaRequired && (!session.mfaVerifiedAt || !mfa.policySatisfied)) return null;
   if (session.lastActiveAt.getTime() < Date.now() - 5 * 60_000) {
     await prisma.userSession.updateMany({
       where: { id: session.id, revokedAt: null },

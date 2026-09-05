@@ -1,0 +1,10 @@
+{
+  "locale": "en-US",
+  "appName": "Logivya",
+  "shortDescription": "Live load, vehicle, and driver listings and logistics management.",
+  "fullDescription": "Logivya is a digital logistics platform that connects loads, vehicles, and drivers with the right opportunities. Create load, vehicle, and driver listings, follow opportunities in the live logistics marketplace, and manage your listings in one place.\n\nUse the logistics marketplace\n\n• Create or search load, vehicle, and driver listings.\n• Narrow results by route, date, trailer type, capacity, and other business criteria.\n• Create a demand for the opportunity you need and manage your listings in the app.\n• Follow the status, details, and updates of listings you own.\n\nCommunication and operations\n\n• Connect authorized WhatsApp accounts and refresh contacts and groups.\n• Send text, photos, videos, or documents to authorized contacts and groups.\n• Use text and a media attachment in the same send.\n• Schedule or repeat delivery and review message history and delivery status.\n\nControl and security\n\n• Manage notification preferences and quiet hours.\n• Send support requests or product feedback from the app.\n• Use Google or Apple to sign in to an existing Logivya account.\n• Enable two-step verification with an authenticator app or email.\n• Use a mobile app lock, PIN, and supported device biometrics.\n\nLogivya works only with accounts, contacts, and groups that the user is authorized to access. Logivya is not offered or endorsed by WhatsApp or Meta.",
+  "releaseNotes": "Improved the logistics marketplace and listing management. Unified load, vehicle, and driver workflows; improved sending text together with a photo, video, or document; and increased overall reliability.",
+  "contactEmail": "support@logivya.com",
+  "website": "https://www.logivya.com",
+  "privacyPolicy": "https://www.logivya.com/privacy-policy"
+}

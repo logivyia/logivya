@@ -44,6 +44,81 @@ export type AdminModuleDefinition = {
   pagination?: "page" | "cursor" | "none";
 };
 
+export const adminModuleAccess: Record<
+  AdminModuleKey,
+  { read: string; manage?: string }
+> = {
+  dashboard: { read: "admin.dashboard.read" },
+  companies: { read: "admin.companies.read", manage: "admin.companies.update" },
+  users: { read: "admin.users.read", manage: "admin.users.update" },
+  roles: { read: "admin.users.read" },
+  billing: { read: "admin.billing.read" },
+  subscriptions: {
+    read: "admin.billing.read",
+    manage: "admin.subscriptions.approve",
+  },
+  invoices: { read: "admin.billing.read" },
+  payments: { read: "admin.payments.read", manage: "admin.payments.confirm" },
+  whatsappAccounts: {
+    read: "admin.whatsapp.read",
+    manage: "admin.whatsapp.disconnect",
+  },
+  campaigns: { read: "admin.campaignMetrics.read" },
+  support: { read: "admin.support.read", manage: "admin.support.update" },
+  security: { read: "admin.security.read", manage: "admin.security.update" },
+  trialRisk: { read: "admin.security.read", manage: "admin.security.update" },
+  compliance: { read: "admin.audit.read" },
+  privacy: { read: "admin.privacy.read", manage: "admin.privacy.update" },
+  audit: { read: "admin.audit.read" },
+  activity: { read: "admin.audit.read" },
+  notifications: {
+    read: "admin.notifications.read",
+    manage: "admin.notifications.update",
+  },
+  dataRequests: { read: "admin.privacy.read", manage: "admin.privacy.update" },
+  metrics: { read: "admin.metrics.read" },
+  systemHealth: {
+    read: "admin.systemHealth.read",
+    manage: "admin.incidents.update",
+  },
+  backups: { read: "admin.backups.read", manage: "admin.backups.execute" },
+  disasterRecovery: {
+    read: "admin.backups.read",
+    manage: "admin.disasterRecovery.execute",
+  },
+  releases: { read: "admin.releases.read" },
+  settings: { read: "admin.settings.read", manage: "admin.settings.update" },
+  featureFlags: {
+    read: "admin.settings.read",
+    manage: "admin.featureFlags.update",
+  },
+  announcements: {
+    read: "admin.notifications.read",
+    manage: "admin.notifications.update",
+  },
+  apiUsage: { read: "admin.apiUsage.read" },
+  webhooks: { read: "admin.settings.read", manage: "admin.webhooks.update" },
+  platformSettings: {
+    read: "admin.settings.read",
+    manage: "admin.settings.update",
+  },
+};
+
+export function canReadAdminModule(
+  key: AdminModuleKey,
+  permissions: readonly string[],
+) {
+  return permissions.includes(adminModuleAccess[key].read);
+}
+
+export function canManageAdminModule(
+  key: AdminModuleKey,
+  permissions: readonly string[],
+) {
+  const permission = adminModuleAccess[key].manage;
+  return Boolean(permission && permissions.includes(permission));
+}
+
 export type AdminModuleItem = {
   id: string;
   title: string;
@@ -59,8 +134,20 @@ export type AdminModuleViewData = {
   generatedAt: string;
   metrics: Record<string, string | number | boolean | null>;
   items: AdminModuleItem[];
-  pagination: { page: number; limit: number; total: number; pages: number; nextPage: number | null };
-  capabilities: { search: boolean; filters: string[]; actions: string[]; readOnly: boolean; readOnlyReason?: string };
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+    nextPage: number | null;
+  };
+  capabilities: {
+    search: boolean;
+    filters: string[];
+    actions: string[];
+    readOnly: boolean;
+    readOnlyReason?: string;
+  };
 };
 
 export type AdminModuleQuery = {
@@ -69,7 +156,11 @@ export type AdminModuleQuery = {
   status?: string;
 };
 
-export type AdminCompanyOption = { id: string; name: string; email?: string | undefined };
+export type AdminCompanyOption = {
+  id: string;
+  name: string;
+  email?: string | undefined;
+};
 
 export type ManualAdminSubscriptionInput = {
   companyId: string;
@@ -80,6 +171,37 @@ export type ManualAdminSubscriptionInput = {
   currency: "TRY";
   paymentMethod: "MANUAL_BANK_TRANSFER" | "MANUAL" | "FREE_PROMO" | "OTHER";
   note: string;
+};
+
+export type AdminSubscriptionRequest = {
+  id: string;
+  publicId: string;
+  status: string;
+  workflowStatus?: string;
+  billingPeriod: "MONTHLY" | "YEARLY";
+  amount: string;
+  currency: string;
+  planName: string;
+  paymentReference: string;
+  transferDescription: string;
+  adminCustomerNote?: string | null;
+  createdAt: string;
+  requestedBy?: {
+    name: string;
+    email: string;
+    phone?: string | null;
+  } | null;
+  company?: {
+    name: string;
+    phone?: string | null;
+    subscriptions?: Array<{ plan: { name: string } }>;
+  } | null;
+};
+
+export type AdminSubscriptionRequestPage = {
+  requests: AdminSubscriptionRequest[];
+  pagination: { page: number; total: number; totalPages: number };
+  metrics: Record<string, number>;
 };
 
 export type AdminSupportMessage = {
@@ -113,26 +235,30 @@ export type AdminSupportTicket = {
   messages?: AdminSupportMessage[];
 };
 
-export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinition> = {
+export const adminModuleDefinitions: Record<
+  AdminModuleKey,
+  AdminModuleDefinition
+> = {
   dashboard: {
     key: "dashboard",
     title: "Yonetici Paneli",
     eyebrow: "Yonetici",
-    description: "Web yonetici panelindeki operasyon, abonelik ve platform ozeti.",
+    description:
+      "Web yonetici panelindeki operasyon, abonelik ve platform ozeti.",
     endpoint: "/api/admin/dashboard",
     coverage: "live",
-    pagination: "none"
+    pagination: "none",
   },
   companies: {
     key: "companies",
-    title: "Sirketler",
+    title: "Calisma Alanlari",
     eyebrow: "Yonetici",
-    description: "Platform sirketleri, sahipleri ve abonelik durumlari.",
+    description: "Platform calisma alanlari, sahipleri ve abonelik durumlari.",
     endpoint: "/api/admin/companies",
     coverage: "live",
     searchable: true,
     statusOptions: ["ACTIVE", "UNDER_INVESTIGATION", "DISABLED"],
-    pagination: "none"
+    pagination: "page",
   },
   users: {
     key: "users",
@@ -143,17 +269,18 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     coverage: "live",
     searchable: true,
     statusOptions: ["ACTIVE", "SUSPENDED", "INVITED"],
-    pagination: "page"
+    pagination: "page",
   },
   roles: {
     key: "roles",
     title: "Roller",
     eyebrow: "Erisim",
-    description: "Owner, admin, manager, operator ve support rollerinin operasyon ozeti.",
+    description:
+      "Owner, admin, manager, operator ve support rollerinin operasyon ozeti.",
     endpoint: "/api/admin/users",
     coverage: "read-only",
     searchable: true,
-    pagination: "page"
+    pagination: "page",
   },
   billing: {
     key: "billing",
@@ -164,7 +291,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     coverage: "read-only",
     searchable: true,
     statusOptions: ["PENDING", "PAID", "SUCCEEDED", "FAILED", "REFUNDED"],
-    pagination: "page"
+    pagination: "page",
   },
   subscriptions: {
     key: "subscriptions",
@@ -174,8 +301,15 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     endpoint: "/api/admin/subscriptions",
     coverage: "live",
     searchable: true,
-    statusOptions: ["ACTIVE", "TRIALING", "EXPIRED", "CANCELED", "SUSPENDED", "MANUAL_PENDING"],
-    pagination: "none"
+    statusOptions: [
+      "ACTIVE",
+      "TRIALING",
+      "EXPIRED",
+      "CANCELED",
+      "SUSPENDED",
+      "MANUAL_PENDING",
+    ],
+    pagination: "page",
   },
   invoices: {
     key: "invoices",
@@ -186,7 +320,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     coverage: "live",
     searchable: true,
     statusOptions: ["DRAFT", "ISSUED", "PAID", "CANCELED", "FAILED"],
-    pagination: "page"
+    pagination: "page",
   },
   payments: {
     key: "payments",
@@ -197,7 +331,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     coverage: "live",
     searchable: true,
     statusOptions: ["PENDING", "PAID", "SUCCEEDED", "FAILED", "REFUNDED"],
-    pagination: "page"
+    pagination: "page",
   },
   whatsappAccounts: {
     key: "whatsappAccounts",
@@ -207,8 +341,15 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     endpoint: "/api/admin/modules/whatsapp-accounts",
     coverage: "read-only",
     searchable: true,
-    statusOptions: ["CONNECTED", "CONNECTING", "DISCONNECTED", "RECONNECT_REQUIRED", "FAILED", "ARCHIVED"],
-    pagination: "page"
+    statusOptions: [
+      "CONNECTED",
+      "CONNECTING",
+      "DISCONNECTED",
+      "RECONNECT_REQUIRED",
+      "FAILED",
+      "ARCHIVED",
+    ],
+    pagination: "page",
   },
   campaigns: {
     key: "campaigns",
@@ -218,8 +359,15 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     endpoint: "/api/admin/modules/campaigns",
     coverage: "read-only",
     searchable: true,
-    statusOptions: ["QUEUED", "SCHEDULED", "SENDING", "COMPLETED", "FAILED", "CANCELED"],
-    pagination: "page"
+    statusOptions: [
+      "QUEUED",
+      "SCHEDULED",
+      "SENDING",
+      "COMPLETED",
+      "FAILED",
+      "CANCELED",
+    ],
+    pagination: "page",
   },
   support: {
     key: "support",
@@ -229,7 +377,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     endpoint: "/api/admin/support/tickets",
     coverage: "live",
     searchable: true,
-    pagination: "cursor"
+    pagination: "cursor",
   },
   security: {
     key: "security",
@@ -239,18 +387,35 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     endpoint: "/api/admin/security/events",
     coverage: "live",
     searchable: true,
-    statusOptions: ["OPEN", "ACKNOWLEDGED", "RESOLVED", "DISMISSED", "CRITICAL", "HIGH", "MEDIUM", "LOW"],
-    pagination: "page"
+    statusOptions: [
+      "OPEN",
+      "ACKNOWLEDGED",
+      "RESOLVED",
+      "DISMISSED",
+      "CRITICAL",
+      "HIGH",
+      "MEDIUM",
+      "LOW",
+    ],
+    pagination: "page",
   },
   trialRisk: {
     key: "trialRisk",
     title: "Deneme Riski",
     eyebrow: "Guvenlik",
-    description: "Deneme uygunlugu, kimlik tekrar kullanimi ve manuel inceleme kararlari.",
+    description:
+      "Deneme uygunlugu, kimlik tekrar kullanimi ve manuel inceleme kararlari.",
     endpoint: "/api/admin/trial-entitlements",
     coverage: "live",
-    statusOptions: ["PENDING_IDENTITY", "ACTIVE", "CONSUMED", "INELIGIBLE", "BLOCKED", "PAID_USAGE"],
-    pagination: "page"
+    statusOptions: [
+      "PENDING_IDENTITY",
+      "ACTIVE",
+      "CONSUMED",
+      "INELIGIBLE",
+      "BLOCKED",
+      "PAID_USAGE",
+    ],
+    pagination: "page",
   },
   compliance: {
     key: "compliance",
@@ -260,16 +425,17 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     endpoint: "/api/admin/modules/compliance",
     coverage: "read-only",
     searchable: true,
-    pagination: "page"
+    pagination: "page",
   },
   privacy: {
     key: "privacy",
     title: "Gizlilik Merkezi",
     eyebrow: "Uyumluluk",
-    description: "Veri talepleri, dışa aktarma, silme, saklama ve olay süreçlerinin merkezi görünümü.",
+    description:
+      "Veri talepleri, dışa aktarma, silme, saklama ve olay süreçlerinin merkezi görünümü.",
     endpoint: "/api/admin/privacy/overview",
     coverage: "live",
-    pagination: "none"
+    pagination: "none",
   },
   audit: {
     key: "audit",
@@ -279,7 +445,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     endpoint: "/api/admin/modules/audit",
     coverage: "read-only",
     searchable: true,
-    pagination: "page"
+    pagination: "page",
   },
   activity: {
     key: "activity",
@@ -288,7 +454,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     description: "Platform aktivite akisi.",
     endpoint: "/api/admin/activity",
     coverage: "read-only",
-    pagination: "page"
+    pagination: "page",
   },
   notifications: {
     key: "notifications",
@@ -299,7 +465,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     coverage: "read-only",
     searchable: true,
     statusOptions: ["READ", "UNREAD"],
-    pagination: "page"
+    pagination: "page",
   },
   dataRequests: {
     key: "dataRequests",
@@ -309,8 +475,22 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     endpoint: "/api/admin/modules/data-requests",
     coverage: "read-only",
     searchable: true,
-    statusOptions: ["REQUESTED", "VERIFYING", "PROCESSING", "COMPLETED", "REJECTED"],
-    pagination: "page"
+    statusOptions: [
+      "REQUESTED",
+      "RECEIVED",
+      "VERIFYING",
+      "IDENTITY_VERIFICATION_REQUIRED",
+      "IN_REVIEW",
+      "WAITING_FOR_USER",
+      "PROCESSING",
+      "APPROVED",
+      "PARTIALLY_APPROVED",
+      "COMPLETED",
+      "REJECTED",
+      "CANCELED",
+      "CLOSED",
+    ],
+    pagination: "page",
   },
   metrics: {
     key: "metrics",
@@ -319,7 +499,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     description: "Platform metrikleri ve kullanim gostergeleri.",
     endpoint: "/api/admin/metrics",
     coverage: "read-only",
-    pagination: "none"
+    pagination: "none",
   },
   systemHealth: {
     key: "systemHealth",
@@ -328,7 +508,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     description: "API, Redis, worker ve WhatsApp saglik kontrolleri.",
     endpoint: "/api/admin/system/health",
     coverage: "live",
-    pagination: "none"
+    pagination: "none",
   },
   backups: {
     key: "backups",
@@ -337,7 +517,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     description: "Yedekleme ve geri yukleme operasyonlarinin izlenmesi.",
     endpoint: "/api/admin/modules/backups",
     coverage: "read-only",
-    pagination: "none"
+    pagination: "none",
   },
   disasterRecovery: {
     key: "disasterRecovery",
@@ -346,18 +526,29 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     description: "Kurtarma plani ve operasyonel sureklilik sinyalleri.",
     endpoint: "/api/admin/modules/disaster-recovery",
     coverage: "read-only",
-    pagination: "none"
+    pagination: "none",
   },
   releases: {
     key: "releases",
     title: "Surum Merkezi",
     eyebrow: "Yayin Yonetimi",
-    description: "Imzali artifact, kontrol, test, onay ve magaza rollout kanitlari.",
+    description:
+      "Imzali artifact, kontrol, test, onay ve magaza rollout kanitlari.",
     endpoint: "/api/admin/modules/releases",
     coverage: "read-only",
     searchable: true,
-    statusOptions: ["DRAFT", "VALIDATING", "BLOCKED", "APPROVED", "BUILT", "SUBMITTED", "ROLLING_OUT", "COMPLETED", "ROLLED_BACK"],
-    pagination: "page"
+    statusOptions: [
+      "DRAFT",
+      "VALIDATING",
+      "BLOCKED",
+      "APPROVED",
+      "BUILT",
+      "SUBMITTED",
+      "ROLLING_OUT",
+      "COMPLETED",
+      "ROLLED_BACK",
+    ],
+    pagination: "page",
   },
   settings: {
     key: "settings",
@@ -366,7 +557,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     description: "Yonetici ayarlari ve operasyonel yapilandirma.",
     endpoint: "/api/admin/modules/settings",
     coverage: "read-only",
-    pagination: "none"
+    pagination: "none",
   },
   featureFlags: {
     key: "featureFlags",
@@ -376,7 +567,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     endpoint: "/api/admin/modules/feature-flags",
     coverage: "read-only",
     searchable: true,
-    pagination: "page"
+    pagination: "page",
   },
   announcements: {
     key: "announcements",
@@ -387,7 +578,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     coverage: "read-only",
     searchable: true,
     statusOptions: ["ACTIVE", "INACTIVE"],
-    pagination: "page"
+    pagination: "page",
   },
   apiUsage: {
     key: "apiUsage",
@@ -397,7 +588,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     endpoint: "/api/admin/modules/api-usage",
     coverage: "read-only",
     searchable: true,
-    pagination: "page"
+    pagination: "page",
   },
   webhooks: {
     key: "webhooks",
@@ -408,7 +599,7 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     coverage: "read-only",
     searchable: true,
     statusOptions: ["ACTIVE", "INACTIVE"],
-    pagination: "page"
+    pagination: "page",
   },
   platformSettings: {
     key: "platformSettings",
@@ -417,120 +608,282 @@ export const adminModuleDefinitions: Record<AdminModuleKey, AdminModuleDefinitio
     description: "Genel platform yapilandirmasi ve sistem sinyalleri.",
     endpoint: "/api/admin/modules/platform-settings",
     coverage: "read-only",
-    pagination: "none"
-  }
+    pagination: "none",
+  },
 };
 
 export function getAdminModuleDefinition(key: AdminModuleKey) {
   return adminModuleDefinitions[key];
 }
 
-export async function getAdminModuleData(definition: AdminModuleDefinition, query?: AdminModuleQuery): Promise<AdminModuleViewData> {
-  const params = new URLSearchParams();
+export async function getAdminModuleData(
+  definition: AdminModuleDefinition,
+  query?: AdminModuleQuery,
+): Promise<AdminModuleViewData> {
+  const params = new URLSearchParams({ limit: "30", pageSize: "30" });
   if (query?.page && query.page > 1) params.set("page", String(query.page));
   if (query?.search?.trim()) params.set("q", query.search.trim());
-  if (query?.status && query.status !== "ALL") params.set("status", query.status);
+  if (query?.status && query.status !== "ALL")
+    params.set("status", query.status);
   const endpoint = `${definition.endpoint}${params.size ? `?${params}` : ""}`;
   const raw = await apiClient.requestRaw<Record<string, unknown>>(endpoint);
-  if (definition.endpoint.startsWith("/api/admin/modules/")) return raw as AdminModuleViewData;
+  if (definition.endpoint.startsWith("/api/admin/modules/"))
+    return raw as AdminModuleViewData;
   return adaptLegacyAdminResponse(definition, raw, query?.page ?? 1);
 }
 
-export function runAdminCompanyAction(id: string, action: "suspend" | "reactivate", reason: string) {
-  return apiClient.requestRaw<{ company: Record<string, unknown> }>(`/api/admin/companies/${id}/${action}`, {
-    method: "POST",
-    body: JSON.stringify({ reason })
-  });
+export function runAdminCompanyAction(
+  id: string,
+  action: "suspend" | "reactivate",
+  reason: string,
+) {
+  return apiClient.requestRaw<{ company: Record<string, unknown> }>(
+    `/api/admin/companies/${id}/${action}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+  );
 }
 
-export function runAdminUserAction(id: string, action: "SUSPEND" | "REACTIVATE" | "FORCE_LOGOUT" | "RESET_MFA" | "REQUIRE_MFA", reason: string) {
+export function runAdminUserAction(
+  id: string,
+  action:
+    "SUSPEND" | "REACTIVATE" | "FORCE_LOGOUT" | "RESET_MFA" | "REQUIRE_MFA",
+  reason: string,
+) {
   return apiClient.requestRaw<{ ok: true }>(`/api/admin/users/${id}/action`, {
-    method: "POST",
-    body: JSON.stringify({ action, reason })
-  });
-}
-
-export function runAdminSubscriptionAction(id: string, action: "ACTIVATE" | "SUSPEND" | "CANCEL", reason: string) {
-  return apiClient.requestRaw<{ ok: true; subscription?: Record<string, unknown> }>(`/api/admin/subscriptions/${id}/action`, {
-    method: "POST",
-    body: JSON.stringify({ action, reason })
-  });
-}
-
-export function reactivateAdminSubscription(id: string) {
-  return apiClient.requestRaw<{ ok: true }>(`/api/admin/subscriptions/${id}/reactivate`, { method: "POST" });
-}
-
-export function confirmAdminPayment(paymentId: string, note?: string) {
-  return apiClient.requestRaw<Record<string, unknown>>("/api/admin/payments/mark-paid", {
-    method: "POST",
-    body: JSON.stringify({ paymentId, note })
-  });
-}
-
-export function rejectAdminPayment(paymentId: string, reason: string) {
-  return apiClient.requestRaw<Record<string, unknown>>("/api/admin/payments/reject", {
-    method: "POST",
-    body: JSON.stringify({ paymentId, reason })
-  });
-}
-
-export function reauthenticatePlatformAdmin(password: string) {
-  return apiClient.requestRaw<{ ok: true; requestId: string }>("/api/admin/security/re-auth", {
-    method: "POST",
-    body: JSON.stringify({ password })
-  });
-}
-
-export function updateAdminSecurityEvent(id: string, status: "ACKNOWLEDGED" | "RESOLVED" | "DISMISSED", investigationNote: string) {
-  return apiClient.requestRaw<{ event: Record<string, unknown> }>(`/api/admin/security/events/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ status, investigationNote }),
-  });
-}
-
-export function updateAdminIncident(id: string, status: "ACKNOWLEDGED" | "INVESTIGATING" | "MITIGATED" | "RESOLVED", note: string) {
-  return apiClient.requestRaw<{ incident: Record<string, unknown> }>(`/api/admin/incidents/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ status, note }),
-  });
-}
-
-export function runAdminTrialDecision(id: string, action: "APPROVE_REVIEW" | "BLOCK", reason: string) {
-  return apiClient.requestRaw<{ entitlement: Record<string, unknown> }>(`/api/admin/trial-entitlements/${id}/decision`, {
     method: "POST",
     body: JSON.stringify({ action, reason }),
   });
 }
 
-export async function getAdminCompanyOptions(): Promise<AdminCompanyOption[]> {
-  const raw = await apiClient.requestRaw<{ companies: Array<Record<string, unknown>> }>("/api/admin/companies");
-  return records(raw.companies).map((company) => ({
-    id: readText(company, "id") ?? "",
-    name: readText(company, "name") ?? "-",
-    ...(readText(company, "email") ? { email: readText(company, "email") } : {}),
-  })).filter((company) => company.id);
-}
-
-export function activateAdminSubscriptionManually(input: ManualAdminSubscriptionInput) {
-  return apiClient.requestRaw<Record<string, unknown>>("/api/admin/subscriptions/manual-activate", {
+export function runAdminSubscriptionAction(
+  id: string,
+  action: "ACTIVATE" | "SUSPEND" | "CANCEL",
+  reason: string,
+) {
+  return apiClient.requestRaw<{
+    ok: true;
+    subscription?: Record<string, unknown>;
+  }>(`/api/admin/subscriptions/${id}/action`, {
     method: "POST",
-    headers: { "Idempotency-Key": `mobile-admin:${input.companyId}:${input.planSlug}:${input.startsAt}:${input.endsAt}` },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ action, reason }),
   });
 }
 
-function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record<string, unknown>, requestedPage: number): AdminModuleViewData {
+export function getAdminSubscriptionRequests(input?: {
+  page?: number;
+  pageSize?: number;
+  query?: string;
+  status?: string;
+}) {
+  const params = new URLSearchParams();
+  if (input?.page) params.set("page", String(input.page));
+  if (input?.pageSize) params.set("pageSize", String(input.pageSize));
+  if (input?.query?.trim()) params.set("q", input.query.trim());
+  if (input?.status && input.status !== "ALL")
+    params.set("status", input.status);
+  return apiClient.requestRaw<AdminSubscriptionRequestPage>(
+    `/api/admin/subscription-requests${params.size ? `?${params}` : ""}`,
+  );
+}
+
+export function transitionAdminSubscriptionRequest(
+  id: string,
+  input: {
+    action:
+      "UNDER_REVIEW" | "CLARIFICATION_REQUIRED" | "REJECTED" | "CANCELLED";
+    customerNote?: string;
+    internalNote: string;
+  },
+) {
+  return apiClient.requestRaw<{ ok: true; status: string }>(
+    `/api/admin/subscription-requests/${id}/status`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+export function approveAdminSubscriptionRequest(
+  id: string,
+  internalNote: string,
+) {
+  return apiClient.requestRaw<{
+    ok: true;
+    idempotent: boolean;
+    subscriptionId: string;
+  }>(`/api/admin/subscription-requests/${id}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ bankChecked: true, internalNote }),
+  });
+}
+
+export function confirmAdminPayment(paymentId: string, note?: string) {
+  return apiClient.requestRaw<Record<string, unknown>>(
+    "/api/admin/payments/mark-paid",
+    {
+      method: "POST",
+      body: JSON.stringify({ paymentId, note }),
+    },
+  );
+}
+
+export function rejectAdminPayment(paymentId: string, reason: string) {
+  return apiClient.requestRaw<Record<string, unknown>>(
+    "/api/admin/payments/reject",
+    {
+      method: "POST",
+      body: JSON.stringify({ paymentId, reason }),
+    },
+  );
+}
+
+export type PlatformAdminReauthentication = {
+  ok: true;
+  requestId: string;
+  elevatedAt: string;
+  expiresAt: string;
+};
+
+export function reauthenticatePlatformAdmin(password: string) {
+  return apiClient.requestRaw<PlatformAdminReauthentication>(
+    "/api/admin/security/re-auth",
+    {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    },
+  );
+}
+
+export function updateAdminSecurityEvent(
+  id: string,
+  status: "ACKNOWLEDGED" | "RESOLVED" | "DISMISSED",
+  investigationNote: string,
+) {
+  return apiClient.requestRaw<{ event: Record<string, unknown> }>(
+    `/api/admin/security/events/${id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status, investigationNote }),
+    },
+  );
+}
+
+export function updateAdminIncident(
+  id: string,
+  status: "ACKNOWLEDGED" | "INVESTIGATING" | "MITIGATED" | "RESOLVED",
+  note: string,
+) {
+  return apiClient.requestRaw<{ incident: Record<string, unknown> }>(
+    `/api/admin/incidents/${id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status, note }),
+    },
+  );
+}
+
+export function runAdminTrialDecision(
+  id: string,
+  action: "APPROVE_REVIEW" | "BLOCK",
+  reason: string,
+) {
+  return apiClient.requestRaw<{ entitlement: Record<string, unknown> }>(
+    `/api/admin/trial-entitlements/${id}/decision`,
+    {
+      method: "POST",
+      body: JSON.stringify({ action, reason }),
+    },
+  );
+}
+
+export async function getAdminCompanyOptions(): Promise<AdminCompanyOption[]> {
+  const companies: Array<Record<string, unknown>> = [];
+  let page = 1;
+  let totalPages = 1;
+  do {
+    const raw = await apiClient.requestRaw<{
+      companies: Array<Record<string, unknown>>;
+      pagination?: { totalPages?: number };
+    }>(`/api/admin/companies?page=${page}&pageSize=100`);
+    companies.push(...records(raw.companies));
+    totalPages = Math.max(1, Number(raw.pagination?.totalPages || 1));
+    page += 1;
+  } while (page <= totalPages && page <= 100);
+
+  return companies
+    .map((company) => ({
+      id: readText(company, "id") ?? "",
+      name: readText(company, "name") ?? "-",
+      ...(readText(company, "email")
+        ? { email: readText(company, "email") }
+        : {}),
+    }))
+    .filter((company) => company.id);
+}
+
+export function activateAdminSubscriptionManually(
+  input: ManualAdminSubscriptionInput,
+) {
+  return apiClient.requestRaw<Record<string, unknown>>(
+    "/api/admin/subscriptions/manual-activate",
+    {
+      method: "POST",
+      headers: {
+        "Idempotency-Key": `mobile-admin:${input.companyId}:${input.planSlug}:${input.startsAt}:${input.endsAt}`,
+      },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+function adaptLegacyAdminResponse(
+  definition: AdminModuleDefinition,
+  raw: Record<string, unknown>,
+  requestedPage: number,
+): AdminModuleViewData {
   const generatedAt = readText(raw, "generatedAt") ?? new Date().toISOString();
   let metrics = primitiveRecord(raw.metrics);
   let items: AdminModuleItem[] = [];
 
   if (definition.key === "dashboard") {
     items = [
-      ...records(raw.securityEvents).map((item, index) => adminItem(item, `security-${index}`, ["message", "type"], ["severity", "status"], ["companyId"])),
-      ...records(raw.tickets).map((item, index) => adminItem(item, `ticket-${index}`, ["title", "subject"], ["status", "priority"], ["category", "lastMessageAt"])),
-      ...records(raw.billingEvents).map((item, index) => adminItem(item, `billing-${index}`, ["message", "type"], ["type", "status"], ["createdAt"])),
-      ...records(raw.recentAdminActions).map((item, index) => adminItem(item, `admin-${index}`, ["permission", "path"], ["method"], ["path", "permission", "createdAt"])),
+      ...records(raw.securityEvents).map((item, index) =>
+        adminItem(
+          item,
+          `security-${index}`,
+          ["message", "type"],
+          ["severity", "status"],
+          ["companyId"],
+        ),
+      ),
+      ...records(raw.tickets).map((item, index) =>
+        adminItem(
+          item,
+          `ticket-${index}`,
+          ["title", "subject"],
+          ["status", "priority"],
+          ["category", "lastMessageAt"],
+        ),
+      ),
+      ...records(raw.billingEvents).map((item, index) =>
+        adminItem(
+          item,
+          `billing-${index}`,
+          ["message", "type"],
+          ["type", "status"],
+          ["createdAt"],
+        ),
+      ),
+      ...records(raw.recentAdminActions).map((item, index) =>
+        adminItem(
+          item,
+          `admin-${index}`,
+          ["permission", "path"],
+          ["method"],
+          ["path", "permission", "createdAt"],
+        ),
+      ),
     ];
   } else if (definition.key === "companies") {
     const companies = records(raw.companies);
@@ -543,7 +896,9 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
       return {
         id: readText(company, "id") ?? `company-${index}`,
         title: readText(company, "name") ?? "-",
-        subtitle: readText(owner, "email") ?? readText(company, "email"),
+        subtitle: maskEmailForSummary(
+          readText(owner, "email") ?? readText(company, "email"),
+        ),
         status: readText(company, "securityStatus"),
         createdAt: readText(company, "createdAt"),
         updatedAt: readText(company, "updatedAt"),
@@ -569,7 +924,11 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
         }),
       };
     });
-    metrics = { companies: companies.length };
+    metrics = {
+      ...primitiveRecord(raw.metrics),
+      companies:
+        readNumber(record(raw.pagination), "total") ?? companies.length,
+    };
   } else if (definition.key === "users" || definition.key === "roles") {
     const users = records(raw.users);
     items = users.map((user, index) => {
@@ -579,11 +938,15 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
       const admin = record(user.platformAdmin);
       return {
         id: readText(user, "id") ?? `user-${index}`,
-        title: readText(user, "name") ?? readText(user, "email") ?? "-",
-        subtitle: readText(user, "email"),
+        title:
+          readText(user, "name")
+          ?? maskEmailForSummary(readText(user, "email"))
+          ?? "-",
+        subtitle: maskEmailForSummary(readText(user, "email")),
         status: readText(user, "status"),
         createdAt: readText(user, "createdAt"),
         fields: compactFields({
+          email: readText(user, "email"),
           phone: readText(user, "phone"),
           company: readText(company, "name"),
           role: readText(membership, "role"),
@@ -592,12 +955,15 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
           locale: readText(user, "locale"),
           timezone: readText(user, "timezone"),
           lastActiveAt: readText(session, "lastActiveAt"),
-          activeSessions: records(user.sessions).length,
-          trustedDevices: records(user.trustedDevices).length,
+          activeSessions: readNumber(user, "activeSessionCount") ?? records(user.sessions).length,
+          trustedDevices: readNumber(user, "trustedDeviceCount") ?? records(user.trustedDevices).length,
         }),
       };
     });
-    metrics = { users: readNumber(record(raw.pagination), "total") ?? users.length };
+    metrics = {
+      ...primitiveRecord(raw.metrics),
+      users: readNumber(record(raw.pagination), "total") ?? users.length,
+    };
   } else if (definition.key === "subscriptions") {
     const subscriptions = records(raw.subscriptions);
     items = subscriptions.map((subscription, index) => {
@@ -625,21 +991,35 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
           endsAt: readText(subscription, "endsAt"),
           currentPeriodEndsAt: readText(subscription, "currentPeriodEndsAt"),
           cancelAtPeriodEnd: readBoolean(subscription, "cancelAtPeriodEnd"),
-          createdBy: readText(activatedBy, "email") ?? readText(activatedBy, "name"),
+          createdBy:
+            readText(activatedBy, "email") ?? readText(activatedBy, "name"),
           payments: records(subscription.payments).length,
           invoices: records(subscription.invoices).length,
           historyEvents: records(subscription.events).length,
         }),
       };
     });
-    metrics = statusMetrics(subscriptions, "status", "subscriptions");
+    const serverMetrics = primitiveRecord(raw.metrics);
+    const serverTotal = readNumber(serverMetrics, "total");
+    const serverMetricCounts = { ...serverMetrics };
+    delete serverMetricCounts.total;
+    metrics = {
+      ...serverMetricCounts,
+      subscriptions:
+        serverTotal ??
+        readNumber(record(raw.pagination), "total") ??
+        subscriptions.length,
+    };
   } else if (definition.key === "invoices") {
     const invoices = records(raw.invoices);
     items = invoices.map((invoice, index) => {
       const company = record(invoice.company);
       return {
         id: readText(invoice, "id") ?? `invoice-${index}`,
-        title: readText(invoice, "invoiceNumber") ?? readText(company, "name") ?? "-",
+        title:
+          readText(invoice, "invoiceNumber") ??
+          readText(company, "name") ??
+          "-",
         subtitle: readText(company, "name"),
         status: readText(invoice, "status"),
         createdAt: readText(invoice, "createdAt"),
@@ -657,7 +1037,9 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
         }),
       };
     });
-    metrics = { invoices: readNumber(record(raw.pagination), "total") ?? invoices.length };
+    metrics = {
+      invoices: readNumber(record(raw.pagination), "total") ?? invoices.length,
+    };
   } else if (definition.key === "payments") {
     const payments = records(raw.payments);
     items = payments.map((payment, index) => {
@@ -680,7 +1062,9 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
         }),
       };
     });
-    metrics = { payments: readNumber(record(raw.pagination), "total") ?? payments.length };
+    metrics = {
+      payments: readNumber(record(raw.pagination), "total") ?? payments.length,
+    };
   } else if (definition.key === "security") {
     const events = records(raw.events);
     items = events.map((event, index) => {
@@ -689,7 +1073,9 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
       return {
         id: readText(event, "id") ?? `security-${index}`,
         title: readText(event, "type") ?? readText(event, "message") ?? "-",
-        subtitle: [readText(company, "name"), readText(user, "emailMasked")].filter(Boolean).join(" · "),
+        subtitle: [readText(company, "name"), readText(user, "emailMasked")]
+          .filter(Boolean)
+          .join(" · "),
         status: readText(event, "status") ?? readText(event, "severity"),
         createdAt: readText(event, "createdAt"),
         fields: compactFields({
@@ -708,7 +1094,17 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
         }),
       };
     });
-    metrics = statusMetrics(events, "severity", "events");
+    const serverMetrics = primitiveRecord(raw.metrics);
+    const serverTotal = readNumber(serverMetrics, "total");
+    const serverMetricCounts = { ...serverMetrics };
+    delete serverMetricCounts.total;
+    metrics = {
+      ...serverMetricCounts,
+      events:
+        serverTotal ??
+        readNumber(record(raw.pagination), "total") ??
+        events.length,
+    };
   } else if (definition.key === "trialRisk") {
     const entitlements = records(raw.items);
     items = entitlements.map((entitlement, index) => {
@@ -717,13 +1113,17 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
       const account = record(entitlement.whatsappAccount);
       return {
         id: readText(entitlement, "id") ?? `trial-risk-${index}`,
-        title: readText(company, "name") ?? readText(user, "email") ?? "-",
-        subtitle: readText(user, "email"),
+        title:
+          readText(company, "name")
+          ?? maskEmailForSummary(readText(user, "email"))
+          ?? "-",
+        subtitle: maskEmailForSummary(readText(user, "email")),
         status: readText(entitlement, "status"),
         createdAt: readText(entitlement, "createdAt"),
         updatedAt: readText(entitlement, "updatedAt"),
         fields: compactFields({
           user: readText(user, "name"),
+          email: readText(user, "email"),
           whatsappAccount: readText(account, "displayName"),
           whatsappStatus: readText(account, "status"),
           riskScore: readNumber(entitlement, "riskScore"),
@@ -735,7 +1135,17 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
         }),
       };
     });
-    metrics = statusMetrics(entitlements, "status", "trialEntitlements");
+    const serverMetrics = primitiveRecord(raw.metrics);
+    const serverTotal = readNumber(serverMetrics, "total");
+    const serverMetricCounts = { ...serverMetrics };
+    delete serverMetricCounts.total;
+    metrics = {
+      ...serverMetricCounts,
+      trialEntitlements:
+        serverTotal ??
+        readNumber(record(raw.pagination), "total") ??
+        entitlements.length,
+    };
   } else if (definition.key === "privacy") {
     const requestGroups = records(raw.requests);
     const exportGroups = records(raw.exports);
@@ -764,8 +1174,18 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
     }));
   } else if (definition.key === "activity") {
     const logs = records(raw.logs);
-    items = logs.map((event, index) => adminItem(event, `activity-${index}`, ["action", "entityType"], ["entityType"], ["company", "user", "entityId", "createdAt"]));
-    metrics = { activity: readNumber(record(raw.pagination), "total") ?? logs.length };
+    items = logs.map((event, index) =>
+      adminItem(
+        event,
+        `activity-${index}`,
+        ["action", "entityType"],
+        ["entityType"],
+        ["company", "user", "entityId", "createdAt"],
+      ),
+    );
+    metrics = {
+      activity: readNumber(record(raw.pagination), "total") ?? logs.length,
+    };
   } else if (definition.key === "metrics") {
     metrics = primitiveRecord(raw.metrics);
   } else if (definition.key === "systemHealth") {
@@ -779,93 +1199,132 @@ function adaptLegacyAdminResponse(definition: AdminModuleDefinition, raw: Record
       capacityWarnings: records(raw.capacityWarnings).length,
     });
     items = [
-      ...services.map((entry, index) => ({
-        id: readText(entry, "id") ?? `service-${index}`,
-        title: readText(entry, "name") ?? "-",
-        subtitle: readText(entry, "summary"),
-        status: readText(entry, "state"),
-        updatedAt: readText(entry, "checkedAt"),
-        fields: compactFields({
-          recordType: "SERVICE",
-          tier: readNumber(entry, "tier"),
-          latencyMs: readNumber(entry, "latencyMs"),
-          lastSuccessfulCheckAt: readText(entry, "lastSuccessfulCheckAt"),
-          lastFailureAt: readText(entry, "lastFailureAt"),
-          trend: readText(entry, "trend"),
-          release: readText(entry, "release"),
-          safeErrorCode: readText(entry, "safeErrorCode"),
-          runbook: readText(entry, "runbook"),
-          ...primitiveRecord(record(entry.metrics)),
-        }),
-        actions: [],
-      } satisfies AdminModuleItem)),
-      ...incidents.map((event, index) => ({
-        ...adminItem(event, `incident-${index}`, ["title", "description"], ["status", "severity"], ["description", "startedAt", "resolvedAt"]),
-        fields: compactFields({
-          recordType: "INCIDENT",
-          severity: readText(event, "severity"),
-          description: readText(event, "description"),
-          startedAt: readText(event, "startedAt"),
-          resolvedAt: readText(event, "resolvedAt"),
-          metadata: displayPrimitive(event.metadata),
-        }),
-        actions: ["ACKNOWLEDGED", "INVESTIGATING", "MITIGATED", "RESOLVED"],
-      } satisfies AdminModuleItem)),
+      ...services.map(
+        (entry, index) =>
+          ({
+            id: readText(entry, "id") ?? `service-${index}`,
+            title: readText(entry, "name") ?? "-",
+            subtitle: readText(entry, "summary"),
+            status: readText(entry, "state"),
+            updatedAt: readText(entry, "checkedAt"),
+            fields: compactFields({
+              recordType: "SERVICE",
+              tier: readNumber(entry, "tier"),
+              latencyMs: readNumber(entry, "latencyMs"),
+              lastSuccessfulCheckAt: readText(entry, "lastSuccessfulCheckAt"),
+              lastFailureAt: readText(entry, "lastFailureAt"),
+              trend: readText(entry, "trend"),
+              release: readText(entry, "release"),
+              safeErrorCode: readText(entry, "safeErrorCode"),
+              runbook: readText(entry, "runbook"),
+              ...primitiveRecord(record(entry.metrics)),
+            }),
+            actions: [],
+          }) satisfies AdminModuleItem,
+      ),
+      ...incidents.map(
+        (event, index) =>
+          ({
+            ...adminItem(
+              event,
+              `incident-${index}`,
+              ["title", "description"],
+              ["status", "severity"],
+              ["description", "startedAt", "resolvedAt"],
+            ),
+            fields: compactFields({
+              recordType: "INCIDENT",
+              severity: readText(event, "severity"),
+              description: readText(event, "description"),
+              startedAt: readText(event, "startedAt"),
+              resolvedAt: readText(event, "resolvedAt"),
+              metadata: displayPrimitive(event.metadata),
+            }),
+            actions: ["ACKNOWLEDGED", "INVESTIGATING", "MITIGATED", "RESOLVED"],
+          }) satisfies AdminModuleItem,
+      ),
     ];
   }
 
   const sourcePagination = record(raw.pagination);
   const page = readNumber(sourcePagination, "page") ?? requestedPage;
   const total = readNumber(sourcePagination, "total") ?? items.length;
-  const pages = readNumber(sourcePagination, "pages") ?? 1;
+  const pages =
+    readNumber(sourcePagination, "pages") ??
+    readNumber(sourcePagination, "totalPages") ??
+    1;
   return {
     generatedAt,
     metrics,
     items,
-    pagination: { page, limit: 30, total, pages, nextPage: page < pages ? page + 1 : null },
+    pagination: {
+      page,
+      limit: 30,
+      total,
+      pages,
+      nextPage: page < pages ? page + 1 : null,
+    },
     capabilities: {
       search: definition.searchable === true,
       filters: definition.statusOptions?.length ? ["status"] : [],
       actions: supportedActions(definition.key),
       readOnly: definition.coverage === "read-only",
-      ...(definition.coverage === "read-only" ? { readOnlyReason: "This module has no safe administrator mutation in the current backend." } : {}),
+      ...(definition.coverage === "read-only"
+        ? {
+            readOnlyReason:
+              "This module has no safe administrator mutation in the current backend.",
+          }
+        : {}),
     },
   };
 }
 
-function adminItem(source: Record<string, unknown>, fallbackId: string, titleKeys: string[], statusKeys: string[], fieldKeys: string[]): AdminModuleItem {
+function adminItem(
+  source: Record<string, unknown>,
+  fallbackId: string,
+  titleKeys: string[],
+  statusKeys: string[],
+  fieldKeys: string[],
+): AdminModuleItem {
   return {
     id: readText(source, "id") ?? fallbackId,
     title: firstText(source, titleKeys) ?? "-",
     subtitle: nestedLabel(source.company) ?? nestedLabel(source.user) ?? null,
     status: firstText(source, statusKeys),
     createdAt: readText(source, "createdAt") ?? readText(source, "startedAt"),
-    fields: compactFields(Object.fromEntries(fieldKeys.map((key) => [key, displayPrimitive(source[key])]))),
+    fields: compactFields(
+      Object.fromEntries(
+        fieldKeys.map((key) => [key, displayPrimitive(source[key])]),
+      ),
+    ),
   };
 }
 
 function supportedActions(key: AdminModuleKey) {
   if (key === "companies") return ["SUSPEND", "REACTIVATE"];
-  if (key === "users") return ["SUSPEND", "REACTIVATE", "FORCE_LOGOUT", "RESET_MFA", "REQUIRE_MFA"];
-  if (key === "subscriptions") return ["ACTIVATE", "SUSPEND", "CANCEL", "REACTIVATE"];
+  if (key === "users")
+    return [
+      "SUSPEND",
+      "REACTIVATE",
+      "FORCE_LOGOUT",
+      "RESET_MFA",
+      "REQUIRE_MFA",
+    ];
+  if (key === "subscriptions")
+    return ["ACTIVATE", "SUSPEND", "CANCEL", "REACTIVATE"];
   if (key === "payments") return ["MARK_PAID", "REJECT"];
   if (key === "trialRisk") return ["APPROVE_REVIEW", "BLOCK"];
   if (key === "security") return ["ACKNOWLEDGED", "RESOLVED", "DISMISSED"];
-  if (key === "systemHealth") return ["ACKNOWLEDGED", "INVESTIGATING", "MITIGATED", "RESOLVED"];
+  if (key === "systemHealth")
+    return ["ACKNOWLEDGED", "INVESTIGATING", "MITIGATED", "RESOLVED"];
   return [];
 }
 
-function statusMetrics(items: Record<string, unknown>[], key: string, totalKey: string) {
-  const result: Record<string, string | number | boolean | null> = { [totalKey]: items.length };
-  for (const item of items) {
-    const status = readText(item, key);
-    if (status) result[`status_${status}`] = Number(result[`status_${status}`] ?? 0) + 1;
-  }
-  return result;
-}
-
 function groupedTotal(items: Record<string, unknown>[]) {
-  return items.reduce((sum, item) => sum + (readNumber(record(item._count), "_all") ?? 0), 0);
+  return items.reduce(
+    (sum, item) => sum + (readNumber(record(item._count), "_all") ?? 0),
+    0,
+  );
 }
 
 function records(value: unknown): Record<string, unknown>[] {
@@ -885,15 +1344,34 @@ function readText(source: Record<string, unknown>, key: string) {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+function maskEmailForSummary(value: string | undefined) {
+  if (!value) return undefined;
+  const separator = value.lastIndexOf("@");
+  if (separator <= 0 || separator >= value.length - 1) return "•••";
+  const local = value.slice(0, separator);
+  const domain = value.slice(separator + 1);
+  const dot = domain.lastIndexOf(".");
+  const domainName = dot > 0 ? domain.slice(0, dot) : domain;
+  const suffix = dot > 0 ? domain.slice(dot) : "";
+  return `${local.slice(0, 1)}•••@${domainName.slice(0, 1)}•••${suffix}`;
+}
+
 function readNumber(source: Record<string, unknown>, key: string) {
   const value = source[key];
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) return Number(value);
+  if (
+    typeof value === "string" &&
+    value.trim() &&
+    Number.isFinite(Number(value))
+  )
+    return Number(value);
   return undefined;
 }
 
 function readBoolean(source: Record<string, unknown>, key: string) {
-  return typeof source[key] === "boolean" ? source[key] as boolean : undefined;
+  return typeof source[key] === "boolean"
+    ? (source[key] as boolean)
+    : undefined;
 }
 
 function firstText(source: Record<string, unknown>, keys: string[]) {
@@ -910,7 +1388,11 @@ function nestedLabel(value: unknown) {
 }
 
 function primitive(value: unknown): string | number | boolean | null {
-  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? value : null;
+  return typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+    ? value
+    : null;
 }
 
 function displayPrimitive(value: unknown): string | number | boolean | null {
@@ -922,14 +1404,32 @@ function displayPrimitive(value: unknown): string | number | boolean | null {
 
 function primitiveRecord(value: unknown) {
   const source = record(value);
-  return compactFields(Object.fromEntries(Object.entries(source).map(([key, item]) => [key, primitive(item)])));
+  return compactFields(
+    Object.fromEntries(
+      Object.entries(source).map(([key, item]) => [key, primitive(item)]),
+    ),
+  );
 }
 
-function compactFields(source: Record<string, string | number | boolean | null | undefined>) {
-  return Object.fromEntries(Object.entries(source).filter((entry): entry is [string, string | number | boolean | null] => entry[1] !== undefined));
+function compactFields(
+  source: Record<string, string | number | boolean | null | undefined>,
+) {
+  return Object.fromEntries(
+    Object.entries(source).filter(
+      (entry): entry is [string, string | number | boolean | null] =>
+        entry[1] !== undefined,
+    ),
+  );
 }
 
-export function getAdminSupportTickets(params?: { cursor?: string; search?: string; status?: string; priority?: string; unreadOnly?: boolean; assignment?: "ALL" | "ME" | "UNASSIGNED" }) {
+export function getAdminSupportTickets(params?: {
+  cursor?: string;
+  search?: string;
+  status?: string;
+  priority?: string;
+  unreadOnly?: boolean;
+  assignment?: "ALL" | "ME" | "UNASSIGNED";
+}) {
   const query = new URLSearchParams({ limit: "30" });
   if (params?.cursor) query.set("cursor", params.cursor);
   if (params?.search) query.set("search", params.search);
@@ -946,7 +1446,9 @@ export function getAdminSupportTickets(params?: { cursor?: string; search?: stri
 }
 
 export function getAdminSupportTicket(id: string, cursor?: string) {
-  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}&limit=50` : "?limit=50";
+  const query = cursor
+    ? `?cursor=${encodeURIComponent(cursor)}&limit=50`
+    : "?limit=50";
   return apiClient.requestRaw<{
     ticket: AdminSupportTicket;
     messages: AdminSupportMessage[];
@@ -954,33 +1456,42 @@ export function getAdminSupportTicket(id: string, cursor?: string) {
   }>(`/api/admin/support/tickets/${id}${query}`);
 }
 
-export function replyAdminSupportTicket(id: string, input: { message: string; clientMessageId: string; internalNote?: boolean }) {
-  return apiClient.requestRaw<{ message: AdminSupportMessage; ticket: Pick<AdminSupportTicket, "id" | "status" | "lastMessageAt"> }>(
-    `/api/admin/support/tickets/${id}/messages`,
-    {
-      method: "POST",
-      body: JSON.stringify(input)
-    }
-  );
+export function replyAdminSupportTicket(
+  id: string,
+  input: { message: string; clientMessageId: string; internalNote?: boolean },
+) {
+  return apiClient.requestRaw<{
+    message: AdminSupportMessage;
+    ticket: Pick<AdminSupportTicket, "id" | "status" | "lastMessageAt">;
+  }>(`/api/admin/support/tickets/${id}/messages`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export function updateAdminSupportTicketPriority(id: string, priority: string) {
-  return apiClient.requestRaw<{ ticket: Pick<AdminSupportTicket, "id" | "priority"> }>(`/api/admin/support/tickets/${id}/priority`, {
+  return apiClient.requestRaw<{
+    ticket: Pick<AdminSupportTicket, "id" | "priority">;
+  }>(`/api/admin/support/tickets/${id}/priority`, {
     method: "PATCH",
-    body: JSON.stringify({ priority })
+    body: JSON.stringify({ priority }),
   });
 }
 
 export function updateAdminSupportTicketStatus(id: string, status: string) {
-  return apiClient.requestRaw<{ ticket: Pick<AdminSupportTicket, "id" | "status"> }>(`/api/admin/support/tickets/${id}/status`, {
+  return apiClient.requestRaw<{
+    ticket: Pick<AdminSupportTicket, "id" | "status">;
+  }>(`/api/admin/support/tickets/${id}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ status })
+    body: JSON.stringify({ status }),
   });
 }
 
 export function assignAdminSupportTicket(id: string, assigned: boolean) {
-  return apiClient.requestRaw<{ ticket: Pick<AdminSupportTicket, "id" | "assignedToAdmin"> }>(`/api/admin/support/tickets/${id}/assignment`, {
+  return apiClient.requestRaw<{
+    ticket: Pick<AdminSupportTicket, "id" | "assignedToAdmin">;
+  }>(`/api/admin/support/tickets/${id}/assignment`, {
     method: "PATCH",
-    body: JSON.stringify({ assignedAdminUserId: assigned ? "SELF" : null })
+    body: JSON.stringify({ assignedAdminUserId: assigned ? "SELF" : null }),
   });
 }

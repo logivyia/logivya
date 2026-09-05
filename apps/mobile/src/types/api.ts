@@ -40,6 +40,9 @@ export type MobileUser = {
 export type MobileCompany = {
   id: string;
   name: string;
+  defaultLanguage?: string | null;
+  defaultTimezone?: string | null;
+  defaultCurrency?: string | null;
   email?: string | null;
   phone?: string | null;
   address?: string | null;
@@ -58,6 +61,8 @@ export type AuthSessionPayload = {
   permissions: string[];
   isAdmin?: boolean;
   isPlatformAdmin?: boolean;
+  platformAdminRole?: string | null;
+  adminPermissions?: string[];
   trustedDeviceToken?: string;
   recoveryCodes?: string[];
 };
@@ -73,6 +78,20 @@ export type MfaLoginChallengePayload = {
   otpauthUrl?: string;
   qrCodeDataUrl?: string;
   recoveryCodes?: string[];
+  availableMethods: Array<"TOTP" | "EMAIL_OTP">;
+  selectedMethod?: "TOTP" | "EMAIL_OTP" | null;
+  preferredMethod?: "TOTP" | "EMAIL_OTP" | null;
+  emailMasked?: string;
+  recoveryAvailable?: boolean;
 };
 
-export type LoginResponsePayload = AuthSessionPayload | MfaLoginChallengePayload;
+export type PasswordChangeChallengePayload = {
+  passwordChangeRequired: true;
+  challengeToken: string;
+  expiresAt: string;
+};
+
+export type LoginResponsePayload =
+  | AuthSessionPayload
+  | MfaLoginChallengePayload
+  | PasswordChangeChallengePayload;

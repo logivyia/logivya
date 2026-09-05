@@ -21,7 +21,7 @@ export async function POST(request: Request) {
         userId: context.user.id,
         companyId: context.company.id,
         type: "MFA_ENROLLMENT_FAILED",
-        message: "Iki adimli dogrulama kurulum kodu reddedildi.",
+        message: "İki adımlı doğrulama kurulum kodu reddedildi.",
         severity: "MEDIUM",
         metadata: { reason: verification.reason },
       });
@@ -34,9 +34,9 @@ export async function POST(request: Request) {
       userId: context.user.id,
       companyId: context.company.id,
       type: "MFA_ENABLED",
-      message: "Iki adimli dogrulama etkinlestirildi.",
+      message: "İki adımlı doğrulama etkinleştirildi.",
     });
-    await notifyMfaSecurityChange({ userId: context.user.id, companyId: context.company.id, type: "security.mfa_enabled", title: "Iki adimli dogrulama etkin", message: "Authenticator dogrulamasi hesabinizi korumak icin etkinlestirildi." });
+    await notifyMfaSecurityChange({ userId: context.user.id, companyId: context.company.id, type: "security.mfa_enabled", title: "İki adımlı doğrulama etkin", message: "Authenticator doğrulaması hesabınızı korumak için etkinleştirildi." });
     return NextResponse.json(
       { ok: true, recoveryCodes: verification.recoveryCodes },
       { headers: { "Cache-Control": "no-store, private", Pragma: "no-cache" } },

@@ -1,3 +1,5 @@
+import { getRecoveryEvidence, recoveryState } from "@/server/monitoring/recovery-evidence";
+import { readDiskCapacity } from "@/server/monitoring/disk-capacity";
 import Redis from "ioredis";
 
 import { getEmailProviderStatus } from "@/lib/email/email-provider";
@@ -6,6 +8,7 @@ import {
   aggregateHealthState,
   evaluateLatency,
   evaluateWorkerHeartbeat,
+  evaluateDeploymentReleaseEvidence,
   type HealthMetricValue,
   type HealthState,
   type ServiceHealth,
@@ -294,18 +297,14 @@ async function checkWhatsAppHealth(workerState: HealthState): Promise<ServiceHea
         ? "DEGRADED"
         : totalAccounts > 0 && connectedAccounts === 0
           ? "UNAVAILABLE"
-          : accountsRequiringAttention > 0
-            ? "DEGRADED"
-        : totalDeliveries >= 10 && failureRate >= 20
+          : totalDeliveries >= 10 && failureRate >= 20
           ? "DEGRADED"
           : "HEALTHY";
     const whatsappErrorCode = workerState !== "HEALTHY"
       ? "WHATSAPP_WORKER_NOT_HEALTHY"
       : totalAccounts > 0 && connectedAccounts === 0
         ? "WHATSAPP_NO_CONNECTED_ACCOUNTS"
-        : accountsRequiringAttention > 0
-          ? "WHATSAPP_ACCOUNTS_REQUIRE_ATTENTION"
-          : totalDeliveries >= 10 && failureRate >= 20
+        : totalDeliveries >= 10 && failureRate >= 20
             ? "WHATSAPP_DELIVERY_FAILURE_RATE_HIGH"
             : null;
     return service({
@@ -322,6 +321,7 @@ async function checkWhatsAppHealth(workerState: HealthState): Promise<ServiceHea
         reconnectRequiredAccounts,
         failedAccounts,
         disconnectedAccounts,
+        accountsRequiringAttention,
         restoredLast24h: restored,
         sentLast24h: sent,
         failedLast24h: failed,
@@ -518,59 +518,31 @@ async function checkAuthAndSubscriptionHealth(): Promise<ServiceHealth[]> {
   }
 }
 
-type GitHubRun = { status?: string; conclusion?: string | null; updated_at?: string; html_url?: string; head_sha?: string };
-let backupRunCache: { expiresAt: number; value: GitHubRun | null } | null = null;
-
-async function latestBackupRun(): Promise<GitHubRun | null> {
-  if (backupRunCache && backupRunCache.expiresAt > Date.now()) return backupRunCache.value;
-  const repository = process.env.MONITORING_GITHUB_REPOSITORY || "logivyia/logivya";
-  const headers: Record<string, string> = { accept: "application/vnd.github+json", "user-agent": "logivya-monitoring" };
-  if (process.env.GITHUB_MONITORING_TOKEN) headers.authorization = `Bearer ${process.env.GITHUB_MONITORING_TOKEN}`;
-  const response = await fetch(`https://api.github.com/repos/${repository}/actions/workflows/database-backup.yml/runs?per_page=1`, {
-    headers,
-    signal: AbortSignal.timeout(2_500),
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error("BACKUP_PROVIDER_UNAVAILABLE");
-  const body = await response.json() as { workflow_runs?: GitHubRun[] };
-  const value = body.workflow_runs?.[0] ?? null;
-  backupRunCache = { expiresAt: Date.now() + 10 * 60_000, value };
-  return value;
-}
-
 async function checkBackupAndDeploymentHealth(workerRelease: string | null): Promise<ServiceHealth[]> {
-  let backup = service({ id: "backups", name: "Database backups", state: "UNKNOWN", tier: 1, summary: "Backup freshness has not been verified.", safeErrorCode: "BACKUP_STATUS_UNKNOWN", runbook: "/docs/runbooks/backup-verification-failure.md", release: null });
-  try {
-    const run = await latestBackupRun();
-    const updatedAt = run?.updated_at ? new Date(run.updated_at) : null;
-    const ageMs = updatedAt && Number.isFinite(updatedAt.getTime()) ? Date.now() - updatedAt.getTime() : null;
-    const state: HealthState = !run || !updatedAt
-      ? "UNKNOWN"
-      : run.status !== "completed"
-        ? "DEGRADED"
-        : run.conclusion !== "success" || (ageMs ?? Infinity) > 36 * 60 * 60_000
-          ? "UNAVAILABLE"
-          : "HEALTHY";
-    backup = service({ id: "backups", name: "Database backups", state, tier: 1, summary: state === "HEALTHY" ? "The latest scheduled backup workflow completed successfully within the freshness window." : "The latest backup workflow is missing, stale, running or failed.", checkedAt: new Date().toISOString(), safeErrorCode: state === "HEALTHY" ? null : run?.conclusion === "failure" ? "BACKUP_WORKFLOW_FAILED" : "BACKUP_NOT_FRESH", runbook: "/docs/runbooks/backup-verification-failure.md", release: run?.head_sha ?? null, metrics: { workflowStatus: run?.status ?? null, conclusion: run?.conclusion ?? null, ageMs } });
-  } catch {
-    // Keep UNKNOWN; provider monitoring failure must not become false healthy.
-  }
+  const evidence = await getRecoveryEvidence();
+  const state = recoveryState(evidence, "database");
+  const backup = service({
+    id: "backups", name: "Database backups", tier: 1,
+    state: state === "VERIFIED" ? "HEALTHY" : state === "UNKNOWN" ? "UNKNOWN" : "UNAVAILABLE",
+    summary: state === "VERIFIED" ? "A current encrypted database backup was read back from both remote stores." : "Signed backup evidence is unavailable, stale, or the latest job failed.",
+    safeErrorCode: state === "VERIFIED" ? null : `BACKUP_${state}`,
+    runbook: "/docs/runbooks/backup-verification-failure.md",
+    release: null,
+    metrics: { lastVerifiedAt: evidence.report?.database?.verifiedAt ?? null, signedEvidenceValid: evidence.available, fileBackupState: recoveryState(evidence, "files"), restoreDrillState: recoveryState(evidence, "drill") },
+  });
 
   const apiRelease = release();
-  const deploymentState: HealthState = !apiRelease || !workerRelease
-    ? "UNKNOWN"
-    : apiRelease !== workerRelease
-      ? "DEGRADED"
-      : "HEALTHY";
+  const deploymentState = evaluateDeploymentReleaseEvidence(apiRelease, workerRelease);
+  const versionsAligned = Boolean(apiRelease && workerRelease && apiRelease === workerRelease);
   const deployment = service({
     id: "deployments",
     name: "Production deployment",
     state: deploymentState,
     tier: 1,
-    summary: deploymentState === "HEALTHY" ? "API and worker report the same release." : deploymentState === "DEGRADED" ? "API and worker releases differ." : "Release evidence is incomplete.",
-    safeErrorCode: deploymentState === "HEALTHY" ? null : deploymentState === "DEGRADED" ? "DEPLOYMENT_RELEASE_MISMATCH" : "DEPLOYMENT_RELEASE_UNKNOWN",
+    summary: deploymentState === "HEALTHY" ? "API and worker independently report active releases." : "Release evidence is incomplete.",
+    safeErrorCode: deploymentState === "HEALTHY" ? null : "DEPLOYMENT_RELEASE_UNKNOWN",
     runbook: "/docs/runbooks/bad-deployment.md",
-    metrics: { apiRelease, workerRelease },
+    metrics: { apiRelease, workerRelease, versionsAligned },
   });
   return [backup, deployment];
 }
@@ -627,11 +599,17 @@ export async function getSystemHealthSnapshot(): Promise<SystemHealthSnapshot> {
     bounded(checkAuthAndSubscriptionHealth, [unknown("authentication", "Authentication", 0, "AUTH_PROBE_TIMEOUT", "/docs/runbooks/security-incident.md"), unknown("subscriptions", "Subscription entitlements", 0, "SUBSCRIPTION_PROBE_TIMEOUT")]),
     bounded(checkStorageAndPushHealth, [unknown("storage", "Session and object storage", 1, "STORAGE_PROBE_TIMEOUT"), unknown("push", "Push notifications", 1, "PUSH_PROBE_TIMEOUT")]),
   ]);
-  const [whatsapp, backupDeployment, incidents, alerts] = await Promise.all([
+  const [whatsapp, backupDeployment, incidents, alerts, disk] = await Promise.all([
     bounded(() => checkWhatsAppHealth(workerResult.service.state), unknown("whatsapp", "WhatsApp operations", 0, "WHATSAPP_PROBE_TIMEOUT", "/docs/runbooks/whatsapp-reconnect-failure.md")),
     bounded(() => checkBackupAndDeploymentHealth(workerResult.heartbeat?.release ?? null), [unknown("backups", "Database backups", 1, "BACKUP_PROBE_TIMEOUT", "/docs/runbooks/backup-verification-failure.md"), unknown("deployments", "Production deployment", 1, "DEPLOYMENT_PROBE_TIMEOUT", "/docs/runbooks/bad-deployment.md")], 10_000),
     bounded(() => prisma.incidentLog.findMany({ where: { resolvedAt: null }, orderBy: { startedAt: "desc" }, take: 30 }), []),
     bounded(() => prisma.operationalAlert.findMany({ where: { status: { in: ["OPEN", "ACKNOWLEDGED"] } }, orderBy: { lastSeenAt: "desc" }, take: 30 }), []),
+    bounded(async () => {
+      const { state, ...metrics } = await readDiskCapacity();
+      return service({ id: "host-disk", name: "Sunucu disk alanı", state, tier: 0,
+        summary: state === "HEALTHY" ? "Uygulamanın bulunduğu dosya sisteminde yeterli alan var." : "Disk alanı azalıyor; kapasite ve eski derleme önbelleği incelenmeli.",
+        metrics, safeErrorCode: state === "HEALTHY" ? null : "HOST_DISK_SPACE_LOW" });
+    }, unknown("host-disk", "Sunucu disk alanı", 0, "HOST_DISK_PROBE_FAILED")),
   ]);
   const services = [
     service({ id: "api", name: "Backend API", state: "HEALTHY", tier: 0, summary: "The API process is live and completed this health aggregation." }),
@@ -647,6 +625,7 @@ export async function getSystemHealthSnapshot(): Promise<SystemHealthSnapshot> {
     ...authSubscriptions,
     ...storagePush,
     ...backupDeployment,
+    disk,
   ];
   const incidentByService = new Map<string, string>();
   for (const incident of incidents) {
@@ -656,6 +635,7 @@ export async function getSystemHealthSnapshot(): Promise<SystemHealthSnapshot> {
   for (const item of services) item.incidentId = incidentByService.get(item.id) ?? null;
 
   const capacityWarnings: SystemHealthSnapshot["capacityWarnings"] = [];
+  if (disk.state === "DEGRADED" || disk.state === "UNAVAILABLE") capacityWarnings.push({ code: "HOST_DISK_SPACE_LOW", severity: disk.state === "UNAVAILABLE" ? "CRITICAL" : "HIGH", message: disk.summary, service: "host-disk" });
   for (const queue of queueResult.queues) {
     if ((queue.oldestWaitingAgeMs ?? 0) >= 5 * 60_000) capacityWarnings.push({ code: "QUEUE_JOB_AGE_HIGH", severity: queue.state === "UNAVAILABLE" ? "CRITICAL" : "HIGH", message: `${queue.name} has aged waiting work.`, service: "queues" });
   }

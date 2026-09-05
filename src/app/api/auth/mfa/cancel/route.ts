@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       userId: context.user.id,
       companyId: context.company.id,
       type: "MFA_ENROLLMENT_CANCELLED",
-      message: "Iki adimli dogrulama kurulumu iptal edildi.",
+      message: "İki adımlı doğrulama kurulumu iptal edildi.",
     });
     return NextResponse.json({ ok: true });
   } catch (error) {

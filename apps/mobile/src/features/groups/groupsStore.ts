@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { getMobileGroups, syncCurrentMobileGroups, type MobileGroup } from "@/api/mobileGroups";
+import { getAllMobileGroups, syncCurrentMobileGroups, type MobileGroup } from "@/api/mobileGroups";
 import { translateCurrent } from "@/i18n/runtime";
 
 type GroupFilters = {
@@ -44,7 +44,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     const search = get().filters.search.trim();
     set({ loading: true, error: null });
     try {
-      const response = await getMobileGroups(search ? { q: search, limit: 100 } : { limit: 100 });
+      const response = await getAllMobileGroups(search ? { q: search } : undefined);
       set({ groups: response.groups, loading: false, refreshing: false });
     } catch (error) {
       set({
@@ -55,13 +55,32 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     }
   },
   refresh: async () => {
-    set({ refreshing: true });
+    set({ refreshing: true, error: null, filters: defaultFilters });
+    let syncWarning: string | null = null;
     try {
       await syncCurrentMobileGroups();
-    } catch {
-      // A stale or disconnected account should not block loading the scoped DB list.
+    } catch (error) {
+      syncWarning = getErrorMessage(
+        error,
+        translateCurrent("whatsappGroupsRefreshFailed"),
+      );
     }
-    await get().load();
+
+    try {
+      const response = await getAllMobileGroups();
+      set({
+        groups: response.groups,
+        error: syncWarning,
+        loading: false,
+        refreshing: false,
+      });
+    } catch (error) {
+      set({
+        error: getErrorMessage(error, translateCurrent("groupsLoadFailed")),
+        loading: false,
+        refreshing: false,
+      });
+    }
   },
   setSearch: (search) => set((state) => ({ filters: { ...state.filters, search } })),
   setAccountFilter: (accountId) => set((state) => ({ filters: { ...state.filters, accountId } })),

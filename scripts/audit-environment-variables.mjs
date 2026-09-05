@@ -4,6 +4,7 @@ import path from "node:path";
 
 const tracked = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]).toString("utf8").split("\0").filter(Boolean);
 const sourceFiles = tracked.filter((file) => /\.(?:ts|tsx|js|mjs|cjs)$/.test(file));
+const operatingSystemVariables = new Set(["ComSpec", "USERPROFILE"]);
 const references = new Map();
 for (const file of sourceFiles) {
   const source = await readFile(file, "utf8");
@@ -11,7 +12,10 @@ for (const file of sourceFiles) {
     ...[...source.matchAll(/process\.env\.([A-Za-z_][A-Za-z0-9_]*)/g)].map((match) => match[1]),
     ...[...source.matchAll(/process\.env\[['"]([A-Za-z_][A-Za-z0-9_]*)['"]\]/g)].map((match) => match[1]),
   ]);
-  for (const name of names) references.set(name, [...(references.get(name) || []), file]);
+  for (const name of names) {
+    if (operatingSystemVariables.has(name)) continue;
+    references.set(name, [...(references.get(name) || []), file]);
+  }
 }
 const exampleSource = await readFile(".env.example", "utf8");
 const documented = new Set([...exampleSource.matchAll(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/gm)].map((match) => match[1]));

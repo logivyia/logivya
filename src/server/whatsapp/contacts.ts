@@ -199,6 +199,7 @@ export async function listOwnedWhatsAppContacts(input: ContactScope & {
   limit?: number;
   search?: string;
   active?: boolean;
+  includePhoneFallback?: boolean;
   sort?: "name_asc" | "name_desc" | "updated_desc";
 }) {
   const account = await resolveCurrentWhatsAppAccount(
@@ -220,6 +221,7 @@ export async function listOwnedWhatsAppContacts(input: ContactScope & {
     ...ownedWhatsAppContactWhere({ companyId: input.companyId, userId: input.userId, accountId: account.id }),
     isActive: input.active ?? true,
     AND: [
+      ...(input.includePhoneFallback ? [] : [{ NOT: { displayNameSource: "PHONE_FALLBACK" as const } }]),
       ...(search ? [{
         OR: [
           { displayName: { contains: search, mode: "insensitive" as const } },

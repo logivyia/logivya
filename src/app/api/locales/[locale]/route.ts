@@ -7,8 +7,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ loc
   const { locale } = await params;
   const safeLocale = locales.includes(locale as never) ? locale : fallbackLocale;
   const [fallbackSource, localeSource] = await Promise.all([
-    readFile(path.join(process.cwd(), "locales", `${fallbackLocale}.json`), "utf8"),
-    readFile(path.join(process.cwd(), "locales", `${safeLocale}.json`), "utf8"),
+    readFile(path.join(process.cwd(), "packages", "locales", `${fallbackLocale}.json`), "utf8"),
+    readFile(path.join(process.cwd(), "packages", "locales", `${safeLocale}.json`), "utf8"),
   ]);
   const dictionary = { ...JSON.parse(fallbackSource), ...JSON.parse(localeSource) };
   return NextResponse.json(dictionary, {

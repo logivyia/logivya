@@ -7,6 +7,7 @@ import { canExposePhonePairingCode } from "@/server/whatsapp/pairing-code-state"
 
 const PAIRING_CODE_STABILITY_MS = Number(process.env.WHATSAPP_PAIRING_CODE_STABILITY_MS || 3_500);
 const PAIRING_CODE_MIN_TTL_MS = Number(process.env.WHATSAPP_PAIRING_CODE_MIN_TTL_MS || 120_000);
+const QR_CODE_STABILITY_MS = Number(process.env.WHATSAPP_QR_CODE_STABILITY_MS || 750);
 
 function isRedisQuotaOrTransientHeartbeatError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -65,15 +66,59 @@ export async function assertWhatsAppWorkerReachable() {
   throw new Error(WORKER_UNREACHABLE_MESSAGE);
 }
 
-export async function waitForAccountQr(accountId: string) {
+export async function waitForAccountQr(accountId: string, options: { updatedAfter?: Date; correlationId?: string } = {}) {
   const { prisma } = await import("@/server/db");
   const attempts = Number(process.env.WHATSAPP_QR_WAIT_ATTEMPTS || 60);
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const account = await prisma.whatsAppAccount.findUnique({ where: { id: accountId } });
     if (!account) throw new Error("NOT_FOUND");
-    if (account.qrCode && account.qrExpiresAt && account.qrExpiresAt > new Date()) return account;
+    const generatedForRequest = !options.correlationId || Boolean(await prisma.auditLog.findFirst({
+      where: {
+        entityType: "WhatsAppAccount",
+        entityId: accountId,
+        action: "WHATSAPP_QR_GENERATED",
+        correlationId: options.correlationId,
+        ...(options.updatedAfter ? { createdAt: { gt: options.updatedAfter } } : {}),
+      },
+      select: { id: true },
+    }));
+    const accountIsCurrent = !options.updatedAfter || account.updatedAt > options.updatedAfter;
+    if (generatedForRequest && accountIsCurrent && account.qrCode && account.qrExpiresAt && account.qrExpiresAt > new Date()) {
+      if (QR_CODE_STABILITY_MS <= 0) return account;
+      const firstQr = account.qrCode;
+      const firstUpdatedAt = account.updatedAt.getTime();
+      await new Promise((resolve) => setTimeout(resolve, QR_CODE_STABILITY_MS));
+      const stableAccount = await prisma.whatsAppAccount.findUnique({ where: { id: accountId } });
+      if (
+        stableAccount?.qrCode === firstQr &&
+        stableAccount.updatedAt.getTime() === firstUpdatedAt &&
+        (!options.updatedAfter || stableAccount.updatedAt > options.updatedAfter) &&
+        stableAccount.qrExpiresAt &&
+        stableAccount.qrExpiresAt > new Date()
+      ) {
+        return stableAccount;
+      }
+      continue;
+    }
     const session = await prisma.whatsAppSession.findUnique({ where: { accountId } });
-    if (session?.qrCode && session.expiresAt && session.expiresAt > new Date()) {
+    const sessionIsCurrent = !options.updatedAfter || Boolean(session && session.updatedAt > options.updatedAfter);
+    if (generatedForRequest && sessionIsCurrent && session?.qrCode && session.expiresAt && session.expiresAt > new Date()) {
+      if (QR_CODE_STABILITY_MS > 0) {
+        const firstQr = session.qrCode;
+        const firstUpdatedAt = session.updatedAt.getTime();
+        await new Promise((resolve) => setTimeout(resolve, QR_CODE_STABILITY_MS));
+        const stableSession = await prisma.whatsAppSession.findUnique({ where: { accountId } });
+        if (
+          !stableSession ||
+          stableSession.qrCode !== firstQr ||
+          stableSession.updatedAt.getTime() !== firstUpdatedAt ||
+          (options.updatedAfter && stableSession.updatedAt <= options.updatedAfter) ||
+          !stableSession.expiresAt ||
+          stableSession.expiresAt <= new Date()
+        ) {
+          continue;
+        }
+      }
       return {
         ...account,
         status: "QR_READY" as typeof account.status,

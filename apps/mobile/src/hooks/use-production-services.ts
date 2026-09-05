@@ -38,6 +38,14 @@ export function useProductionServices() {
   }, []);
 
   useEffect(() => {
+    import("@/services/play-integrity")
+      .then(({ initializePlayIntegrity }) => initializePlayIntegrity())
+      .catch((error) => {
+        captureAppError(error, { source: "play-integrity-runtime-load" });
+      });
+  }, []);
+
+  useEffect(() => {
     if (status !== "authenticated") return;
     import("@/services/notifications")
       .then(({ registerNotificationDeviceIfPermissionGranted }) => registerNotificationDeviceIfPermissionGranted())

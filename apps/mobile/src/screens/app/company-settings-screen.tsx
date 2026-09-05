@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { getMobileCompanyProfile, updateMobileCompanyProfile, type MobileCompanyProfile } from "@/api/mobileCompany";
 import { useAuthStore } from "@/auth/auth-store";
@@ -10,20 +10,13 @@ import { PageHeader, SurfaceCard } from "@/components/ui";
 import { useTranslation } from "@/i18n/use-translation";
 import { useTheme } from "@/theme/theme-provider";
 
-type CompanyForm = Omit<MobileCompanyProfile, "id">;
+type CompanyForm = Pick<MobileCompanyProfile, "name" | "email" | "phone">;
 type FormKey = keyof CompanyForm;
 
 const emptyForm: CompanyForm = {
   name: "",
   email: "",
   phone: "",
-  address: "",
-  taxOffice: "",
-  taxNumber: "",
-  city: "",
-  district: "",
-  country: "TR",
-  postalCode: "",
 };
 
 function toForm(company: MobileCompanyProfile): CompanyForm {
@@ -31,13 +24,6 @@ function toForm(company: MobileCompanyProfile): CompanyForm {
     name: company.name || "",
     email: company.email || "",
     phone: company.phone || "",
-    address: company.address || "",
-    taxOffice: company.taxOffice || "",
-    taxNumber: company.taxNumber || "",
-    city: company.city || "",
-    district: company.district || "",
-    country: company.country || "TR",
-    postalCode: company.postalCode || "",
   };
 }
 
@@ -50,25 +36,20 @@ export function CompanySettingsScreen() {
   const { t } = useTranslation();
   const loadFailedText = t("companyProfileLoadFailed");
   const setCompany = useAuthStore((state) => state.setCompany);
+  const canEdit = useAuthStore((state) => state.permissions.includes("manage_company_settings"));
   const fallbackCompany = useAuthStore((state) => state.company);
   const [form, setForm] = useState<CompanyForm>(() => ({ ...emptyForm, name: fallbackCompany?.name || "" }));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const phoneInputRef = useRef<TextInput>(null);
 
   const fields = useMemo(
     () =>
       [
         { key: "name", label: t("companyName"), placeholder: t("companyNamePlaceholder"), required: true },
-        { key: "email", label: t("email"), placeholder: t("companyEmailPlaceholder"), keyboardType: "email-address", autoCapitalize: "none" },
+        { key: "email", label: t("email"), placeholder: t("companyEmailPlaceholder"), keyboardType: "email-address", autoCapitalize: "none", editable: false },
         { key: "phone", label: t("phone"), placeholder: t("companyPhonePlaceholder"), keyboardType: "phone-pad" },
-        { key: "address", label: t("address"), placeholder: t("companyAddressPlaceholder"), multiline: true },
-        { key: "taxOffice", label: t("taxOffice"), placeholder: t("taxOfficePlaceholder") },
-        { key: "taxNumber", label: t("taxNumber"), placeholder: t("taxNumberPlaceholder") },
-        { key: "city", label: t("city"), placeholder: t("cityPlaceholder") },
-        { key: "district", label: t("district"), placeholder: t("districtPlaceholder") },
-        { key: "country", label: t("country"), placeholder: t("countryPlaceholder"), autoCapitalize: "characters" },
-        { key: "postalCode", label: t("postalCode"), placeholder: t("postalCodePlaceholder") },
       ] satisfies Array<{
         key: FormKey;
         label: string;
@@ -76,7 +57,7 @@ export function CompanySettingsScreen() {
         required?: boolean;
         keyboardType?: "default" | "email-address" | "phone-pad";
         autoCapitalize?: "none" | "sentences" | "words" | "characters";
-        multiline?: boolean;
+        editable?: boolean;
       }>,
     [t],
   );
@@ -113,14 +94,9 @@ export function CompanySettingsScreen() {
       setMessage({ type: "error", text: t("requiredField") });
       return;
     }
-    if (normalized.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.email)) {
-      setMessage({ type: "error", text: t("invalidEmail") });
-      return;
-    }
-
     setSaving(true);
     try {
-      const { company } = await updateMobileCompanyProfile(normalized);
+      const { company } = await updateMobileCompanyProfile({ name: normalized.name, phone: normalized.phone });
       setForm(toForm(company));
       setCompany(company);
       setMessage({ type: "success", text: t("savedSuccessfully") });
@@ -134,8 +110,14 @@ export function CompanySettingsScreen() {
   return (
     <Screen style={styles.screen}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.keyboard}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <PageHeader eyebrow={t("company")} title={t("companySettings")} description={t("companySettingsDescription")} />
+        <ScrollView
+          automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+          contentContainerStyle={styles.content}
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <PageHeader eyebrow={t("accountSection")} title={t("companySettings")} description={t("companySettingsDescription")} />
 
           <SurfaceCard style={styles.card}>
             {loading ? (
@@ -160,24 +142,31 @@ export function CompanySettingsScreen() {
                 ) : null}
 
                 <View style={styles.formGrid}>
-                  {fields.map((field) => (
-                    <TextField
-                      key={field.key}
-                      label={field.required ? `${field.label} *` : field.label}
-                      value={form[field.key] || ""}
-                      placeholder={field.placeholder}
-                      keyboardType={field.keyboardType}
-                      autoCapitalize={field.autoCapitalize}
-                      multiline={field.multiline}
-                      numberOfLines={field.multiline ? 4 : 1}
-                      returnKeyType="next"
-                      style={field.multiline ? styles.multilineInput : undefined}
-                      onChangeText={(value) => updateField(field.key, value)}
-                    />
-                  ))}
+                  {fields.map((field) => {
+                    const isName = field.key === "name";
+                    const isPhone = field.key === "phone";
+                    return (
+                      <TextField
+                        key={field.key}
+                        ref={isPhone ? phoneInputRef : undefined}
+                        label={field.required ? `${field.label} *` : field.label}
+                        value={form[field.key] || ""}
+                        editable={canEdit && field.editable !== false}
+                        placeholder={field.placeholder}
+                        keyboardType={field.keyboardType}
+                        autoCapitalize={field.autoCapitalize}
+                        blurOnSubmit={!isName}
+                        returnKeyType={isName ? "next" : isPhone ? "done" : undefined}
+                        onSubmitEditing={isName ? () => phoneInputRef.current?.focus() : isPhone ? Keyboard.dismiss : undefined}
+                        onChangeText={(value) => updateField(field.key, value)}
+                      />
+                    );
+                  })}
                 </View>
 
-                <PrimaryButton title={saving ? t("saving") : t("save")} icon="save-outline" loading={saving} disabled={saving} onPress={save} />
+                {canEdit ? (
+                  <PrimaryButton title={saving ? t("saving") : t("save")} icon="save-outline" loading={saving} disabled={saving} onPress={() => { Keyboard.dismiss(); void save(); }} />
+                ) : null}
               </>
             )}
           </SurfaceCard>
@@ -197,5 +186,4 @@ const styles = StyleSheet.create({
   banner: { borderRadius: 16, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12 },
   bannerText: { fontSize: 14, fontWeight: "800", lineHeight: 20 },
   formGrid: { gap: 14 },
-  multilineInput: { minHeight: 104, paddingTop: 14, textAlignVertical: "top" },
 });

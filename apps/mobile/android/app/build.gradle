@@ -1,6 +1,7 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: "com.google.firebase.firebase-perf"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
@@ -79,6 +80,8 @@ def logivyaUploadStorePassword = logivyaUploadKeystoreProperties["LOGIVYA_UPLOAD
 def logivyaUploadKeyAlias = logivyaUploadKeystoreProperties["LOGIVYA_UPLOAD_KEY_ALIAS"] ?: findProperty("LOGIVYA_UPLOAD_KEY_ALIAS") ?: System.getenv("LOGIVYA_UPLOAD_KEY_ALIAS")
 def logivyaUploadKeyPassword = logivyaUploadKeystoreProperties["LOGIVYA_UPLOAD_KEY_PASSWORD"] ?: findProperty("LOGIVYA_UPLOAD_KEY_PASSWORD") ?: System.getenv("LOGIVYA_UPLOAD_KEY_PASSWORD")
 def hasLogivyaUploadSigning = logivyaUploadStoreFile && logivyaUploadStorePassword && logivyaUploadKeyAlias && logivyaUploadKeyPassword
+def isEasBuild = System.getenv("EAS_BUILD") == "true"
+def logivyaNativeBuildStagingDir = System.getenv("LOGIVYA_NATIVE_BUILD_STAGING_DIR")
 def logivyaUploadStoreFilePath = null
 if (hasLogivyaUploadSigning) {
     logivyaUploadStoreFilePath = new File(logivyaUploadStoreFile).isAbsolute()
@@ -118,15 +121,24 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
+    if (logivyaNativeBuildStagingDir) {
+        externalNativeBuild {
+            cmake {
+                buildStagingDirectory file(logivyaNativeBuildStagingDir)
+            }
+        }
+    }
+
     namespace 'com.logivya.mobile'
     defaultConfig {
         applicationId 'com.logivya.mobile'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 136
-        versionName "1.0.106"
+        versionCode 223
+        versionName "1.0.208"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
+        buildConfigField "long", "PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER", "${findProperty('playIntegrityCloudProjectNumber') ?: System.getenv('PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER') ?: '842461920651'}L"
     }
     signingConfigs {
         debug {
@@ -135,12 +147,14 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
-        if (hasLogivyaUploadSigning) {
+        if (hasLogivyaUploadSigning || isEasBuild) {
             release {
-                storeFile logivyaUploadStoreFilePath
-                storePassword logivyaUploadStorePassword
-                keyAlias logivyaUploadKeyAlias
-                keyPassword logivyaUploadKeyPassword
+                if (hasLogivyaUploadSigning) {
+                    storeFile logivyaUploadStoreFilePath
+                    storePassword logivyaUploadStorePassword
+                    keyAlias logivyaUploadKeyAlias
+                    keyPassword logivyaUploadKeyPassword
+                }
             }
         }
     }
@@ -149,14 +163,14 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            if (!hasLogivyaUploadSigning) {
+            if (!hasLogivyaUploadSigning && !isEasBuild) {
                 throw new GradleException("Release signing is missing. Provide .local-android/credentials/logivya-eas-upload-keystore.properties or LOGIVYA_UPLOAD_* environment variables.")
             }
             signingConfig signingConfigs.release
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
             crunchPngs enablePngCrunchInRelease.toBoolean()
         }
@@ -196,6 +210,7 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    implementation("com.google.android.play:integrity:1.6.0")
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";

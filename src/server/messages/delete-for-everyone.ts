@@ -22,7 +22,7 @@ export function isDeleteWindowOpen(sentAt: Date | null | undefined, now = new Da
   return Boolean(expiresAt && expiresAt.getTime() > now.getTime());
 }
 
-export function parseStoredMessageKey(value: Prisma.JsonValue | null | undefined): WAMessageKey | null {
+function parseMessageKey(value: unknown): WAMessageKey | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const source = value as Record<string, unknown>;
   if (typeof source.id !== "string" || !source.id) return null;
@@ -39,13 +39,42 @@ export function parseStoredMessageKey(value: Prisma.JsonValue | null | undefined
   };
 }
 
+export function parseStoredMessageKeys(value: Prisma.JsonValue | null | undefined): WAMessageKey[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const source = value as Record<string, unknown>;
+  const values = Array.isArray(source.keys) ? source.keys : [value];
+  const seen = new Set<string>();
+  const keys: WAMessageKey[] = [];
+  for (const candidate of values) {
+    const key = parseMessageKey(candidate);
+    if (!key?.id || seen.has(key.id)) continue;
+    seen.add(key.id);
+    keys.push(key);
+  }
+  return keys;
+}
+
+export function parseStoredDeletedMessageKeyIds(value: Prisma.JsonValue | null | undefined) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return new Set<string>();
+  const source = value as Record<string, unknown>;
+  return new Set(Array.isArray(source.deletedKeyIds) ? source.deletedKeyIds.filter((id): id is string => typeof id === "string" && Boolean(id)) : []);
+}
+
+export function serializeStoredMessageKeys(keys: WAMessageKey[], deletedKeyIds: Iterable<string> = []): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify({ version: 2, keys, deletedKeyIds: [...deletedKeyIds] })) as Prisma.InputJsonValue;
+}
+
+export function parseStoredMessageKey(value: Prisma.JsonValue | null | undefined): WAMessageKey | null {
+  return parseStoredMessageKeys(value)[0] ?? null;
+}
+
 export async function getCampaignDeleteState(campaignId: string) {
   const campaign = await prisma.messageCampaign.findUnique({
     where: { id: campaignId },
     select: { id: true, deleteForEveryoneStatus: true, deleteForEveryoneRequestedAt: true, deleteForEveryoneCompletedAt: true, deleteForEveryoneError: true },
   });
   const recipients = await prisma.messageRecipient.findMany({
-    where: { campaignId, status: "SENT", platformDeletedAt: null },
+    where: { campaignId, status: { in: ["SENT", "DELIVERED"] }, platformDeletedAt: null },
     select: { id: true, sentAt: true, messageKeyJson: true, deleteForEveryoneStatus: true },
   });
   const now = new Date();
@@ -74,7 +103,7 @@ export async function getCampaignDeleteState(campaignId: string) {
 
 export async function updateCampaignDeleteAggregate(campaignId: string) {
   const recipients = await prisma.messageRecipient.findMany({
-    where: { campaignId, status: "SENT", platformDeletedAt: null },
+    where: { campaignId, status: { in: ["SENT", "DELIVERED"] }, platformDeletedAt: null },
     select: { deleteForEveryoneStatus: true, messageKeyJson: true },
   });
   const targetRecipients = recipients.filter((recipient) => parseStoredMessageKey(recipient.messageKeyJson));
@@ -123,7 +152,7 @@ export async function requestCampaignDeleteForEveryone(input: { campaignId: stri
     select: {
       id: true,
       recipients: {
-        where: { status: "SENT", platformDeletedAt: null },
+        where: { status: { in: ["SENT", "DELIVERED"] }, platformDeletedAt: null },
         select: {
           id: true,
           accountId: true,

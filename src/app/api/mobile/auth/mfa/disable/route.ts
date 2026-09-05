@@ -1,15 +1,21 @@
 import { z } from "zod";
 
-import { notifyMfaSecurityChange, recordMfaSecurityEvent } from "@/server/auth/mfa-challenge";
+import { notifyMfaSecurityChange, recordMfaSecurityEvent, revokeUserSecuritySessions } from "@/server/auth/mfa-challenge";
 import { prisma } from "@/server/db";
 import { requireMobileAuth } from "@/server/mobile/auth";
 import { readMobileJson } from "@/server/mobile/request-json";
-import { mobileError, mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
-import { verifyAndConsumeMfaCode } from "@/server/security/mfa";
-import { verifyPassword } from "@/server/security/passwords";
+import { mobileSafeError, mobileSuccess, mobileValidationError } from "@/server/mobile/response";
+import { disableMfaMethod, enabledMfaMethods } from "@/server/security/mfa-policy";
+import { verifyEmailStepUp, verifySettingsPassword, verifyTotpSettingsFactor } from "@/server/security/mfa-settings";
 import { enforceOperationRateLimit } from "@/server/security/operation-rate-limit";
 
-const schema = z.object({ password: z.string().min(1), code: z.string().trim().min(6).max(64) });
+const schema = z.object({
+  method: z.enum(["TOTP", "EMAIL_OTP"]).optional().default("TOTP"),
+  verificationMethod: z.enum(["TOTP", "EMAIL_OTP"]).optional(),
+  password: z.string().min(1),
+  code: z.string().trim().min(6).max(64),
+  stepUpToken: z.string().min(32).max(256).optional(),
+});
 
 export async function POST(request: Request) {
   try {
@@ -19,21 +25,30 @@ export async function POST(request: Request) {
     const parsed = schema.safeParse(body.data);
     if (!parsed.success) return mobileValidationError(parsed.error);
     await enforceOperationRateLimit({ scope: "mobile-mfa-disable", subject: context.user.id, maxAttempts: 5, windowMs: 30 * 60_000, request });
-    const passwordValid = await verifyPassword(context.user.passwordHash, parsed.data.password, process.env.PASSWORD_PEPPER ?? "");
-    const verification = passwordValid ? await verifyAndConsumeMfaCode({ userId: context.user.id, code: parsed.data.code }) : null;
-    if (!passwordValid || !verification?.ok) return mobileError("MFA_CONFIRMATION_INVALID", "Parola veya dogrulama kodu gecersiz.", { status: 401 });
-    const now = new Date();
-    await prisma.$transaction([
-      prisma.user.update({ where: { id: context.user.id }, data: { mfaRequired: false, mfaRequiredAt: null } }),
-      prisma.mfaCredential.updateMany({ where: { userId: context.user.id, revokedAt: null }, data: { revokedAt: now, setupKey: null, setupTokenHash: null } }),
-      prisma.trustedDevice.updateMany({ where: { userId: context.user.id, revokedAt: null }, data: { revokedAt: now } }),
-      prisma.userSession.updateMany({ where: { userId: context.user.id, revokedAt: null }, data: { revokedAt: now } }),
-      prisma.mobileDeviceSession.updateMany({ where: { userId: context.user.id, revokedAt: null }, data: { revokedAt: now } }),
-      prisma.mfaLoginChallenge.updateMany({ where: { userId: context.user.id, consumedAt: null }, data: { consumedAt: now } }),
+    await verifySettingsPassword(context.user.id, context.user.passwordHash, parsed.data.password);
+    const methods = await enabledMfaMethods(context.user.id);
+    const totpEnabled = methods.some((method) => method.type === "TOTP");
+    const emailEnabled = methods.some((method) => method.type === "EMAIL_OTP");
+    const verificationMethod = parsed.data.verificationMethod
+      ?? (parsed.data.stepUpToken || (parsed.data.method === "EMAIL_OTP" && !totpEnabled)
+        ? "EMAIL_OTP"
+        : "TOTP");
+    if (verificationMethod === "EMAIL_OTP") {
+      if (!emailEnabled) throw new Error("MFA_METHOD_NOT_ENABLED");
+      if (!parsed.data.stepUpToken) throw new Error("RECENT_AUTHENTICATION_REQUIRED");
+      await verifyEmailStepUp({ userId: context.user.id, token: parsed.data.stepUpToken, code: parsed.data.code, channel: "MOBILE", deviceId: context.deviceId });
+    } else {
+      if (!totpEnabled) throw new Error("MFA_METHOD_NOT_ENABLED");
+      await verifyTotpSettingsFactor(context.user.id, parsed.data.code);
+    }
+    const result = await disableMfaMethod({ userId: context.user.id, method: parsed.data.method, companyPolicy: context.company.mfaPolicy, role: context.membership.role });
+    await Promise.all([
+      prisma.trustedDevice.updateMany({ where: { userId: context.user.id, revokedAt: null }, data: { revokedAt: new Date() } }),
+      revokeUserSecuritySessions(context.user.id, { mobileSessionId: context.sessionId }),
     ]);
-    await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_DISABLED", message: "Iki adimli dogrulama mobil uygulamadan kapatildi.", severity: "HIGH" });
-    await notifyMfaSecurityChange({ userId: context.user.id, companyId: context.company.id, type: "security.mfa_disabled", title: "Iki adimli dogrulama kapatildi", message: "Bu islemi siz yapmadiysaniz hemen parolanizi degistirin." });
-    return mobileSuccess({ ok: true, signedOut: true });
+    await recordMfaSecurityEvent({ request, userId: context.user.id, companyId: context.company.id, type: "MFA_METHOD_DISABLED", message: `${parsed.data.method} doğrulama yöntemi mobil uygulamadan kapatıldı.`, severity: "HIGH", metadata: { method: parsed.data.method } });
+    await notifyMfaSecurityChange({ userId: context.user.id, companyId: context.company.id, type: "security.mfa_method_disabled", title: "Güvenlik yöntemi kapatıldı", message: `${parsed.data.method === "TOTP" ? "Authenticator" : "E-posta"} doğrulaması hesabınızda kapatıldı.` });
+    return mobileSuccess({ ok: true, signedOut: false, ...result });
   } catch (error) {
     return mobileSafeError(error);
   }

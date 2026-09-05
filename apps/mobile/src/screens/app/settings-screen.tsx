@@ -17,7 +17,7 @@ export function SettingsScreen() {
   const theme = useTheme();
   const { t, locale } = useTranslation();
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
-  const { theme: selectedTheme, setTheme, setLocale, notificationsEnabled, setNotificationsEnabled, biometricEnabled, setBiometricEnabled } = useSettingsStore();
+  const { theme: selectedTheme, setTheme, setLocale, notificationsEnabled, setNotificationsEnabled, restartOnboarding } = useSettingsStore();
   const release = getCurrentReleaseMetadata();
 
   async function handleLogout() {
@@ -53,11 +53,12 @@ export function SettingsScreen() {
         </SettingsSection>
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <ToggleRow title={t("notifications")} value={notificationsEnabled} onValueChange={setNotificationsEnabled} />
-          <ToggleRow title={t("biometricReady")} value={biometricEnabled} onValueChange={setBiometricEnabled} />
         </View>
         <SettingsSection title={t("accountSection")}>
+          <MenuButton title={t("notificationPreferences")} description={t("notificationPreferencesDescription")} onPress={() => navigation.navigate("NotificationPreferences")} />
           <MenuButton title={t("security")} description={t("mfaSecurityDescription")} onPress={() => navigation.navigate("Security")} />
           <MenuButton title={t("privacyData")} description={t("privacyDataDescription")} onPress={() => navigation.navigate("PrivacyData")} />
+          <MenuButton title={t("onboardingReplay")} description={t("onboardingReplayDescription")} onPress={restartOnboarding} />
           <MenuButton title={t("deleteAccount")} description={t("deleteAccountDescription")} onPress={() => navigation.navigate("AccountDeletion")} tone="danger" />
         </SettingsSection>
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>

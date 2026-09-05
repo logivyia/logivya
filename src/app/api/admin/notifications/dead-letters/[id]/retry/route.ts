@@ -1,18 +1,37 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requirePlatformAdmin } from "@/server/auth/platform-admin";
-import { processNotificationOutbox, retryNotificationDeadLetter } from "@/server/notifications/engine";
+import { requireCriticalAdminAction } from "@/server/auth/platform-admin";
+import {
+  processNotificationOutbox,
+  retryNotificationDeadLetter,
+} from "@/server/notifications/engine";
 import { writeAuditLog } from "@/server/security/audit";
+import { requestId, safeAdminError } from "@/server/security/admin-request";
 
 const schema = z.object({ resolution: z.string().min(5).max(500) });
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
-    const admin = await requirePlatformAdmin("operations:manage", request);
     const parsed = schema.safeParse(await request.json());
-    if (!parsed.success) return NextResponse.json({ error: "NOTIFICATION_RETRY_REASON_REQUIRED" }, { status: 400 });
+    if (!parsed.success)
+      return NextResponse.json(
+        { error: "NOTIFICATION_RETRY_REASON_REQUIRED" },
+        { status: 400 },
+      );
+    const admin = await requireCriticalAdminAction(
+      request,
+      "admin.notifications.update",
+      parsed.data.resolution,
+    );
     const { id } = await params;
-    const result = await retryNotificationDeadLetter({ deadLetterId: id, resolvedById: admin.user.id, resolution: parsed.data.resolution });
+    const result = await retryNotificationDeadLetter({
+      deadLetterId: id,
+      resolvedById: admin.user.id,
+      resolution: parsed.data.resolution,
+    });
     await writeAuditLog(request, {
       companyId: admin.company.id,
       userId: admin.user.id,
@@ -26,7 +45,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const processed = await processNotificationOutbox(25);
     return NextResponse.json({ ok: true, ...result, processed });
   } catch (error) {
-    const code = error instanceof Error ? error.message : "NOTIFICATION_RETRY_FAILED";
-    return NextResponse.json({ error: code }, { status: code === "FORBIDDEN" ? 403 : code === "UNAUTHORIZED" ? 401 : 500 });
+    const safe = safeAdminError(error, requestId(request));
+    return NextResponse.json(safe.body, { status: safe.status });
   }
 }

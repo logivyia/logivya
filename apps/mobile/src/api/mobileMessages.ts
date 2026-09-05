@@ -1,9 +1,12 @@
 import { apiClient } from "@/api/client";
+import type { MobileMessageAttachment } from "@/api/mobileMedia";
 
 export type MobileMessageCampaign = {
   id: string;
   title?: string;
   content?: string | null;
+  attachment?: MobileMessageAttachment | null;
+  attachments?: MobileMessageAttachment[];
   status: string;
   scheduleType?: string;
   sentCount?: number;
@@ -13,6 +16,7 @@ export type MobileMessageCampaign = {
   contactCount?: number;
   pendingCount?: number;
   retryingCount?: number;
+  sendSafetyCode?: string | null;
   totalRecipients: number;
   scheduledAt?: string | null;
   createdAt?: string;
@@ -39,6 +43,8 @@ export type MobileDeleteForEveryoneState = {
 export type MobileMessagePayload = {
   title: string;
   content: string;
+  mediaFileId?: string;
+  mediaFileIds?: string[];
   groupIds: string[];
   categoryIds: string[];
   contactIds: string[];

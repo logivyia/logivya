@@ -140,7 +140,7 @@ const requiredMobileKeys = [
 ];
 
 for (const locale of localeNames) {
-  const web = JSON.parse(await readFile(join(root, "locales", `${locale}.json`), "utf8")) as Record<string, string>;
+  const web = JSON.parse(await readFile(join(root, "packages", "locales", `${locale}.json`), "utf8")) as Record<string, string>;
   for (const key of requiredWebKeys) assert.ok(web[key]?.trim(), `${locale} web locale is missing ${key}`);
   if (locale !== "tr" && locale !== "en") {
     const mobile = JSON.parse(await readFile(join(root, "apps", "mobile", "src", "i18n", "locales", `${locale}.json`), "utf8")) as Record<string, string>;

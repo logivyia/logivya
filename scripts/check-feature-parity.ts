@@ -44,7 +44,7 @@ for (const feature of registry) {
   }
 
   if (featureStatus === "implemented") {
-    for (const platform of ["desktopWeb", "mobileWeb", "android"] as const) {
+    for (const platform of supportedPlatforms) {
       if (feature.platforms[platform] !== "implemented") {
         issues.push({
           featureId: feature.id,

@@ -8,6 +8,7 @@ export type VerifiedPaymentWebhook = {
   eventType: string;
   providerPaymentId: string;
   externalPaymentId?: string;
+  checkoutToken?: string;
   status: "SUCCEEDED" | "FAILED" | "REFUNDED" | "CHARGEBACK" | "IGNORED";
   observedAmount?: number;
   observedCurrency?: string;
@@ -158,6 +159,7 @@ export function verifyIyzicoWebhook(payload: string, signatureHeader: string | n
     eventType,
     providerPaymentId: conversationId,
     externalPaymentId,
+    checkoutToken: hppPaymentId ? requiredString(event.token) : undefined,
     status: normalizedEventType.includes("CHARGEBACK")
       ? "CHARGEBACK"
       : normalizedEventType.includes("REFUND") && status === "SUCCESS"

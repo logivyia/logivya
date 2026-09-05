@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Archive, Bell, CheckCheck, LoaderCircle } from "lucide-react";
 import { formatDateTime } from "@/i18n/format";
 import { useI18n } from "@/i18n/provider";
+import { notificationDeepLinkToWebHref } from "@/lib/notifications/deep-link";
 
 type NotificationItem = {
   id: string;
@@ -18,7 +19,7 @@ type NotificationItem = {
   createdAt: string;
 };
 
-const categories = ["ALL", "ACCOUNT", "SECURITY", "SUPPORT", "SUBSCRIPTION", "BILLING", "INVITATION", "WHATSAPP", "MESSAGE", "SYSTEM", "COMPLIANCE", "INCIDENT"];
+const categories = ["ALL", "MARKETPLACE", "ACCOUNT", "SECURITY", "SUPPORT", "SUBSCRIPTION", "BILLING", "INVITATION", "WHATSAPP", "MESSAGE", "SYSTEM", "COMPLIANCE", "INCIDENT"];
 
 export function NotificationCenterPage() {
   const { locale, t } = useI18n();
@@ -98,7 +99,7 @@ export function NotificationCenterPage() {
               </div>
               <p className="mt-2 text-sm leading-6 text-muted">{item.message}</p>
               <div className="mt-4 flex flex-wrap gap-2">
-                {safeNotificationHref(item.deepLink) ? <Link href={safeNotificationHref(item.deepLink)!} onClick={() => void mutate(item.id, "read")} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">{t("notifications.open")}</Link> : null}
+                {notificationDeepLinkToWebHref(item.deepLink) ? <Link href={notificationDeepLinkToWebHref(item.deepLink)!} onClick={() => void mutate(item.id, "read")} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">{t("notifications.open")}</Link> : null}
                 {!item.isRead ? <button type="button" onClick={() => void mutate(item.id, "read")} className="rounded-lg border px-3 py-2 text-xs font-semibold">{t("notifications.markRead")}</button> : null}
                 <button type="button" onClick={() => void mutate(item.id, "archive")} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold"><Archive className="size-3.5" />{t("notifications.archive")}</button>
               </div>
@@ -108,11 +109,4 @@ export function NotificationCenterPage() {
       </section>
     </div>
   );
-}
-
-function safeNotificationHref(value?: string | null) {
-  if (!value) return null;
-  if (value.startsWith("/")) return value;
-  if (/^https:\/\/(www\.)?logivya\.com(\/|$)/i.test(value)) return value;
-  return null;
 }

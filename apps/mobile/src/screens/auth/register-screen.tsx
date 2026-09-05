@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Keyboard, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -30,10 +30,15 @@ export function RegisterScreen() {
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [acceptKvkk, setAcceptKvkk] = useState(false);
   const [loading, setLoading] = useState(false);
+  const emailInputRef = useRef<TextInput>(null);
+  const phoneInputRef = useRef<TextInput>(null);
+  const passwordInputRef = useRef<TextInput>(null);
+  const passwordConfirmationInputRef = useRef<TextInput>(null);
   const [invitationToken, setInvitationToken] = useState<string | undefined>(route.params?.invitationToken);
   const passwordPolicy = validatePasswordPolicy(password);
   const passwordsMatch = password === passwordConfirmation;
-  const canSubmit = Boolean(fullName && email && phone && passwordPolicy.valid && passwordsMatch && acceptTerms && acceptPrivacy && acceptKvkk);
+  const phoneRequired = Platform.OS !== "ios";
+  const canSubmit = Boolean(fullName && email && (!phoneRequired || phone.trim()) && passwordPolicy.valid && passwordsMatch && acceptTerms && acceptPrivacy && acceptKvkk);
 
   function openLegalUrl(path: string) {
     void Linking.openURL(`https://www.logivya.com${path}`);
@@ -92,17 +97,66 @@ export function RegisterScreen() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <BrandHeader />
-        <View style={styles.form}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.keyboard}>
+        <ScrollView
+          automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+          contentContainerStyle={styles.scroll}
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          keyboardShouldPersistTaps="handled"
+        >
+          <BrandHeader />
+          <View style={styles.form}>
           <Text style={[styles.title, { color: theme.text }]}>{t("registerTitle")}</Text>
           {invitationToken ? <Text style={[styles.invitationNotice, { color: theme.primary }]}>{t("invitationRegistration")}</Text> : null}
-          <TextField label={t("fullName")} value={fullName} onChangeText={setFullName} />
-          <TextField label={t("email")} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
-          <TextField label={t("phone")} keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
-          <TextField label={t("password")} secureTextEntry value={password} onChangeText={setPassword} />
+          <TextField
+            label={t("fullName")}
+            value={fullName}
+            onChangeText={setFullName}
+            blurOnSubmit={false}
+            returnKeyType="next"
+            onSubmitEditing={() => emailInputRef.current?.focus()}
+          />
+          <TextField
+            ref={emailInputRef}
+            label={t("email")}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+            blurOnSubmit={false}
+            returnKeyType="next"
+            onSubmitEditing={() => phoneInputRef.current?.focus()}
+          />
+          <TextField
+            ref={phoneInputRef}
+            label={t("phone")}
+            keyboardType="phone-pad"
+            value={phone}
+            onChangeText={setPhone}
+            blurOnSubmit={false}
+            returnKeyType="next"
+            onSubmitEditing={() => passwordInputRef.current?.focus()}
+          />
+          <TextField
+            ref={passwordInputRef}
+            label={t("password")}
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+            blurOnSubmit={false}
+            returnKeyType="next"
+            onSubmitEditing={() => passwordConfirmationInputRef.current?.focus()}
+          />
           <Text style={[styles.passwordHint, { color: theme.muted }]}>{t("passwordPolicy")}</Text>
-          <TextField label={t("passwordConfirmation")} secureTextEntry value={passwordConfirmation} onChangeText={setPasswordConfirmation} />
+          <TextField
+            ref={passwordConfirmationInputRef}
+            label={t("passwordConfirmation")}
+            secureTextEntry
+            value={passwordConfirmation}
+            onChangeText={setPasswordConfirmation}
+            returnKeyType="done"
+            onSubmitEditing={Keyboard.dismiss}
+          />
           {passwordConfirmation && !passwordsMatch ? <Text style={styles.validationError}>{t("passwordConfirmationMismatch")}</Text> : null}
           <View style={[styles.consentBox, { borderColor: theme.border, backgroundColor: theme.card }]}>
             <ConsentRow
@@ -127,12 +181,13 @@ export function RegisterScreen() {
               onOpenLink={() => openLegalUrl("/kvkk")}
             />
           </View>
-          <PrimaryButton title={t("register")} loading={loading} disabled={!canSubmit} onPress={handleRegister} />
+          <PrimaryButton title={t("register")} loading={loading} disabled={!canSubmit} onPress={() => { Keyboard.dismiss(); void handleRegister(); }} />
           <Pressable onPress={() => navigation.navigate("Login", invitationToken ? { invitationToken } : undefined)} style={styles.centerLink}>
             <Text style={{ color: theme.muted }}>{t("alreadyHaveAccount")} <Text style={{ color: theme.primary }}>{t("signInAction")}</Text></Text>
           </Pressable>
-        </View>
-      </ScrollView>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
@@ -173,6 +228,9 @@ function ConsentRow({
 }
 
 const styles = StyleSheet.create({
+  keyboard: {
+    flex: 1
+  },
   scroll: {
     flexGrow: 1,
     justifyContent: "center"

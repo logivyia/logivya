@@ -15,6 +15,11 @@ type AccountScope = {
   userId: string;
 };
 
+type RecoverableAccountListOptions = {
+  accountId?: string;
+  requireConnected?: boolean;
+};
+
 export function ownedWhatsAppAccountWhere(scope: AccountScope): Prisma.WhatsAppAccountWhereInput {
   return {
     companyId: scope.companyId,
@@ -30,21 +35,19 @@ export function ownedWhatsAppGroupWhere(scope: AccountScope & { accountId?: stri
   };
 }
 
-function recoverableAccountWhere(scope: AccountScope, accountId?: string): Prisma.WhatsAppAccountWhereInput {
-  return {
-    ...ownedWhatsAppAccountWhere(scope),
-    ...(accountId ? { id: accountId } : {}),
-    archivedAt: null,
-    status: { in: [...RESTORABLE_STATUSES] },
-    OR: [{ lastError: null }, { lastError: { notIn: FATAL_LAST_ERRORS } }],
-  };
-}
-
-export async function resolveCurrentWhatsAppAccount(scope: AccountScope, options: { accountId?: string; requireConnected?: boolean } = {}) {
-  const account = await prisma.whatsAppAccount.findFirst({
+export async function listRecoverableWhatsAppAccounts(
+  scope: AccountScope,
+  options: RecoverableAccountListOptions = {},
+) {
+  const accounts = await prisma.whatsAppAccount.findMany({
     where: {
-      ...recoverableAccountWhere(scope, options.accountId),
-      ...(options.requireConnected ? { status: AccountStatus.CONNECTED } : {}),
+      ...ownedWhatsAppAccountWhere(scope),
+      ...(options.accountId ? { id: options.accountId } : {}),
+      archivedAt: null,
+      status: options.requireConnected
+        ? AccountStatus.CONNECTED
+        : { in: [...RESTORABLE_STATUSES] },
+      OR: [{ lastError: null }, { lastError: { notIn: FATAL_LAST_ERRORS } }],
     },
     include: { _count: { select: { groups: true, contacts: true, recipients: true } } },
     orderBy: [
@@ -53,40 +56,48 @@ export async function resolveCurrentWhatsAppAccount(scope: AccountScope, options
       { updatedAt: "desc" },
     ],
   });
-  if (!account) return null;
-  if (isRecoverableWhatsAppStatus(account.status, account.lastError)) {
-    if (!options.requireConnected) {
-      await requestWhatsAppSessionRestoreIfNeeded(account, scope, "account-scope").catch((error) =>
+
+  if (options.requireConnected) return accounts;
+
+  const recoverableAccounts = (
+    await Promise.all(
+      accounts.map(async (account) => {
+        if (isRecoverableWhatsAppStatus(account.status, account.lastError)) return account;
+        const restorable = await hasRestorableWhatsAppCredentials(account.id).catch((error) => {
+          logger.warn("whatsapp.account_scope.restorable_check_failed", {
+            companyId: scope.companyId,
+            userId: scope.userId,
+            whatsappAccountId: account.id,
+            message: error instanceof Error ? error.message : String(error),
+          });
+          return false;
+        });
+        return restorable ? account : null;
+      }),
+    )
+  ).filter((account): account is NonNullable<typeof account> => Boolean(account));
+
+  await Promise.all(
+    recoverableAccounts.map((account) =>
+      requestWhatsAppSessionRestoreIfNeeded(account, scope, "account-list").catch((error) =>
         logger.warn("whatsapp.account_scope.restore_enqueue_failed", {
           companyId: scope.companyId,
           userId: scope.userId,
           whatsappAccountId: account.id,
           message: error instanceof Error ? error.message : String(error),
         }),
-      );
-    }
-    return account;
-  }
-  if (options.requireConnected) return null;
-  const restorable = await hasRestorableWhatsAppCredentials(account.id).catch((error) => {
-    logger.warn("whatsapp.account_scope.restorable_check_failed", {
-      companyId: scope.companyId,
-      userId: scope.userId,
-      whatsappAccountId: account.id,
-      message: error instanceof Error ? error.message : String(error),
-    });
-    return false;
-  });
-  if (!restorable) return null;
-  await requestWhatsAppSessionRestoreIfNeeded(account, scope, "account-scope").catch((error) =>
-    logger.warn("whatsapp.account_scope.restore_enqueue_failed", {
-      companyId: scope.companyId,
-      userId: scope.userId,
-      whatsappAccountId: account.id,
-      message: error instanceof Error ? error.message : String(error),
-    }),
+      ),
+    ),
   );
-  return account;
+  return recoverableAccounts;
+}
+
+export async function resolveCurrentWhatsAppAccount(scope: AccountScope, options: { accountId?: string; requireConnected?: boolean } = {}) {
+  const accounts = await listRecoverableWhatsAppAccounts(scope, {
+    accountId: options.accountId,
+    requireConnected: options.requireConnected,
+  });
+  return accounts[0] ?? null;
 }
 
 export async function requireOwnedWhatsAppAccount(scope: AccountScope, accountId: string) {

@@ -7,7 +7,7 @@ async function run(request: Request) {
   }
   try {
     const exports = await processPrivacyExportQueue(2);
-    const retention = await runPrivacyRetention({ dryRun: process.env.PRIVACY_RETENTION_ENFORCEMENT !== "true" });
+    const retention = await runPrivacyRetention({ dryRun: process.env.PRIVACY_RETENTION_ENFORCEMENT !== "true", alertOverdue: true });
     return Response.json({ ok: true, exports, retention });
   } catch {
     return Response.json({ error: "PRIVACY_MAINTENANCE_FAILED" }, { status: 500 });
