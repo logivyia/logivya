@@ -1803,5 +1803,7 @@
   "notification.title.marketplace.request_match_found": "Gabat gelýän sanaw tapyldy",
   "whatsappSendPaused": "WhatsApp iberiş tizliginiň çägini habar berdi. Iň azyndan 5 minut arakesme berilýär. Iberilmedik alyjylaryň eltiş ýagdaýyny barlaň.",
   "whatsappSendSafetyUnavailable": "Iberiş howpsuzlygyny barlamak elýeterli bolmandygy sebäpli bu iberişler duruzyldy. Baglanyşyk dikeldilenden soň iberilmedik alyjylara täzeden synanyşyň.",
-  "teamAddUser": "Ulanyjy goş"
+  "teamAddUser": "Ulanyjy goş",
+  "statusPartiallyCompleted": "Bölekleýin tamamlandy",
+  "messageSendPacing": "Iki kampaniýa yzly-yzyna başlap biler. Indiki jübüt azyndan 5 minut garaşýar. Toparlara ibermegiň aralygy azyndan 6 sekuntdyr."
 }

@@ -1,3 +1,4 @@
+import { uzbekTelegramCopy, uzbekTelegramTabs, uzbekTelegramAuthStates } from "@/i18n/telegram-uz";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { useSectionHistory } from "@/navigation/use-section-history";
@@ -55,7 +56,7 @@ const ADVERTISING_MESSAGE_LIMIT =
   Math.max(...countryRegistry.map((country) => country.attribution.length)) -
   2;
 
-const telegramCopy = {
+const defaultTelegramCopy = {
   addFailed: "Telegram hesabı eklenemedi",
   operationFailed: "İşlem tamamlanamadı.",
   authFailed: "Doğrulama tamamlanamadı",
@@ -178,12 +179,12 @@ function mergeScheduleDateAndTime(datePart: Date, timePart: Date) {
   return merged;
 }
 
-function authPrompt(account: MobileTelegramAccount) {
-  if (account.authState === "WAIT_PHONE_NUMBER") return { step: "phone" as const, label: "Telefon numarası", placeholder: "+905551112233", secure: false };
-  if (account.authState === "WAIT_CODE") return { step: "code" as const, label: "Telegram doğrulama kodu", placeholder: "12345", secure: false };
-  if (account.authState === "WAIT_PASSWORD") return { step: "password" as const, label: "İki adımlı doğrulama parolası", placeholder: account.authStateDetail?.passwordHint || "Parola", secure: true };
-  if (account.authState === "WAIT_EMAIL_ADDRESS") return { step: "email" as const, label: "Doğrulama e-postası", placeholder: "ornek@eposta.com", secure: false };
-  if (account.authState === "WAIT_EMAIL_CODE") return { step: "email_code" as const, label: "E-posta doğrulama kodu", placeholder: "Kod", secure: false };
+function authPrompt(account: MobileTelegramAccount, locale: string) {
+  if (account.authState === "WAIT_PHONE_NUMBER") return { step: "phone" as const, label: (locale === "uz" ? "Telefon raqami" : "Telefon numarası"), placeholder: (locale === "uz" ? "+998912345678" : "+905551112233"), secure: false };
+  if (account.authState === "WAIT_CODE") return { step: "code" as const, label: (locale === "uz" ? "Telegram tasdiqlash kodi" : "Telegram doğrulama kodu"), placeholder: "12345", secure: false };
+  if (account.authState === "WAIT_PASSWORD") return { step: "password" as const, label: (locale === "uz" ? "Ikki bosqichli tasdiqlash paroli" : "İki adımlı doğrulama parolası"), placeholder: account.authStateDetail?.passwordHint || (locale === "uz" ? "Parol" : "Parola"), secure: true };
+  if (account.authState === "WAIT_EMAIL_ADDRESS") return { step: "email" as const, label: (locale === "uz" ? "Tasdiqlash uchun elektron pochta" : "Doğrulama e-postası"), placeholder: "ornek@eposta.com", secure: false };
+  if (account.authState === "WAIT_EMAIL_CODE") return { step: "email_code" as const, label: (locale === "uz" ? "Elektron pochta tasdiqlash kodi" : "E-posta doğrulama kodu"), placeholder: (locale === "uz" ? "Kod" : "Kod"), secure: false };
   return null;
 }
 
@@ -194,7 +195,7 @@ function toneForStatus(status: string) {
   return "default" as const;
 }
 
-function authStateLabel(state: MobileTelegramAccount["authState"]) {
+function authStateLabel(state: MobileTelegramAccount["authState"], locale: string) {
   const labels: Record<MobileTelegramAccount["authState"], string> = {
     STARTING: "Başlatılıyor",
     WAIT_PHONE_NUMBER: "Telefon bekleniyor",
@@ -203,17 +204,19 @@ function authStateLabel(state: MobileTelegramAccount["authState"]) {
     WAIT_CODE: "Kod bekleniyor",
     WAIT_PASSWORD: "Parola bekleniyor",
     WAIT_OTHER_DEVICE: "Telegram onayı bekleniyor",
-    READY: telegramCopy.connected,
+    READY: defaultTelegramCopy.connected,
     LOGGING_OUT: "Çıkış yapılıyor",
     CLOSED: "Bağlantı kapalı",
     ERROR: "Bağlantı hatası",
   };
-  return labels[state];
+  return locale === "uz" ? uzbekTelegramAuthStates[state] ?? labels[state] : labels[state];
 }
 
 export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onSwitchToWhatsApp }: { initialTab?: Tab; lockedTab?: boolean; onSwitchToWhatsApp?: () => void } = {}) {
   const theme = useTheme();
   const { locale, t } = useTranslation();
+  const telegramCopy = locale === "uz" ? uzbekTelegramCopy : defaultTelegramCopy;
+  const dateLocale = locale === "uz" ? "uz-Latn-UZ" : "tr-TR";
   const [phoneCountries, setPhoneCountries] = useState<Record<string, string>>({});
   const phoneCountryFor = (id: string) => phoneCountries[id] ?? getMobileCountryForLocale(locale).countryIso;
   const [tab, setTab, backSection, canGoBackSection] = useSectionHistory<Tab>(initialTab, !lockedTab);
@@ -291,7 +294,7 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
       setActiveAccountId((current) => current && accountResult.accounts.some((account) => account.id === current) ? current : connected?.id ?? null);
       setError(null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Telegram bilgileri yüklenemedi.");
+      setError(loadError instanceof Error ? loadError.message : locale === "uz" ? "Telegram ma’lumotlari yuklanmadi." : "Telegram bilgileri yüklenemedi.");
     } finally {
       if (!quiet) setLoading(false);
     }
@@ -337,7 +340,7 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
   }
 
   async function submitAuth(account: MobileTelegramAccount) {
-    const prompt = authPrompt(account);
+    const prompt = authPrompt(account, locale);
     const value = authValues[account.id]?.trim();
     if (!prompt || !value) return;
     setWorking(`auth:${account.id}`);
@@ -457,7 +460,7 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
       setAttachments([]);
       setSendChatIds([]);
       setSendCategoryIds([]);
-      setSendFeedback(`${targetCount} sohbet için gönderim kuyruğa alındı.`);
+      setSendFeedback(locale === "uz" ? `${targetCount} ta chat uchun xabar navbatga qo‘yildi.` : `${targetCount} sohbet için gönderim kuyruğa alındı.`);
       await load(true);
       if (!lockedTab) setTab("history");
       Alert.alert(telegramCopy.queued, telegramCopy.queuedDescription);
@@ -505,7 +508,7 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
     );
   }
 
-  const scheduledAtLabel = scheduledAt?.toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) ?? telegramCopy.selectDateTime;
+  const scheduledAtLabel = scheduledAt?.toLocaleString(dateLocale, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) ?? telegramCopy.selectDateTime;
   const selectedTargetSummary = effectiveSendChatIds.length
     ? `${telegramCopy.selectedChats(effectiveSendChatIds.length)}${selectedCategoryNames.length ? ` · ${telegramCopy.selectedCategories(selectedCategoryNames.length)}` : ""}`
     : telegramCopy.noTargetSelected;
@@ -521,13 +524,13 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
           refreshControl={<RefreshControl refreshing={false} onRefresh={() => void load()} tintColor={theme.primary} />}
           showsVerticalScrollIndicator={false}
         >
-          {canGoBackSection ? <Pressable onPress={backSection} accessibilityRole="button" style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8 }}><Ionicons name="arrow-back" size={22} color={theme.primary} /><Text style={{ color: theme.primary }}>Geri</Text></Pressable> : null}
+          {canGoBackSection ? <Pressable onPress={backSection} accessibilityRole="button" style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8 }}><Ionicons name="arrow-back" size={22} color={theme.primary} /><Text style={{ color: theme.primary }}>{locale === "uz" ? "Orqaga" : "Geri"}</Text></Pressable> : null}
           <PageHeader eyebrow={telegramCopy.eyebrow} title={telegramCopy.title} description={telegramCopy.description} />
           {onSwitchToWhatsApp ? <View style={styles.platformRow}><Chip label="WhatsApp" active={false} onPress={onSwitchToWhatsApp} /><Chip label={telegramCopy.telegram} active onPress={() => undefined} /></View> : null}
           {error ? <SurfaceCard><Text style={{ color: colors.danger, fontWeight: "800" }}>{error}</Text></SurfaceCard> : null}
           {!lockedTab ? (
             <View style={styles.moduleTabs}>
-              {moduleTabs.map((item) => <ModuleTab key={item.key} active={tab === item.key} icon={item.icon} label={item.label} onPress={() => setTab(item.key)} />)}
+              {moduleTabs.map((item) => <ModuleTab key={item.key} active={tab === item.key} icon={item.icon} label={locale === "uz" ? uzbekTelegramTabs[item.key] : item.label} onPress={() => setTab(item.key)} />)}
             </View>
           ) : null}
 
@@ -542,7 +545,7 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
               <PrimaryButton title={telegramCopy.addAccount} icon="paper-plane-outline" loading={working === "create"} onPress={() => void addAccount()} />
               <SectionTitle title={telegramCopy.accountsTitle} />
               {accounts.length === 0 ? <SurfaceCard><Text style={{ color: theme.muted }}>{telegramCopy.noAccount}</Text></SurfaceCard> : accounts.map((account) => {
-                const prompt = authPrompt(account);
+                const prompt = authPrompt(account, locale);
                 const displayName = [account.firstName, account.lastName].filter(Boolean).join(" ") || account.label;
                 const accountChats = chats.filter((chat) => chat.accountId === account.id);
                 const accountSendable = accountChats.filter((chat) => chat.canSend && !chat.isArchived && chat.type !== "SECRET");
@@ -554,7 +557,7 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
                         <Text style={[styles.cardTitle, { color: theme.text }]}>{displayName}</Text>
                         <Text style={[styles.meta, { color: theme.muted }]}>{account.username ? `@${account.username}` : account.phoneNumberMasked || telegramCopy.waitingIdentity}</Text>
                       </View>
-                      <Badge label={authStateLabel(account.authState)} tone={toneForStatus(account.status)} />
+                      <Badge label={authStateLabel(account.authState, locale)} tone={toneForStatus(account.status)} />
                     </View>
                     <View style={[styles.accountStats, { borderColor: theme.border }]}>
                       <View style={styles.accountStat}><Text style={[styles.accountStatValue, { color: theme.text }]}>{accountChats.length}</Text><Text style={[styles.accountStatLabel, { color: theme.muted }]}>{telegramCopy.chatMetric}</Text></View>
@@ -624,7 +627,7 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
                       <Text style={[styles.scheduleInputText, { color: scheduledAt ? theme.text : theme.muted }]}>{scheduledAtLabel}</Text>
                       <Ionicons name="calendar-outline" size={20} color={theme.primary} />
                     </Pressable>
-                    {schedulePickerMode ? <DateTimePicker value={scheduledAt ?? getDefaultScheduleDate()} mode={schedulePickerMode === "datetime" ? "datetime" : schedulePickerMode} display={Platform.OS === "ios" ? "compact" : "default"} minimumDate={new Date()} is24Hour locale="tr-TR" positiveButton={{ label: "Seç" }} negativeButton={{ label: telegramCopy.cancel }} onChange={handleSchedulePickerChange} /> : null}
+                    {schedulePickerMode ? <DateTimePicker value={scheduledAt ?? getDefaultScheduleDate()} mode={schedulePickerMode === "datetime" ? "datetime" : schedulePickerMode} display={Platform.OS === "ios" ? "compact" : "default"} minimumDate={new Date()} is24Hour locale={dateLocale} positiveButton={{ label: locale === "uz" ? "Tanlash" : "Seç" }} negativeButton={{ label: telegramCopy.cancel }} onChange={handleSchedulePickerChange} /> : null}
                   </View>
                 ) : null}
                 {scheduleMode === "RECURRING" ? <View style={styles.modeRow}><ModeButton active={recurrence === "DAILY"} label={telegramCopy.daily} onPress={() => setRecurrence("DAILY")} /><ModeButton active={recurrence === "WEEKLY"} label={telegramCopy.weekly} onPress={() => setRecurrence("WEEKLY")} /><ModeButton active={recurrence === "MONTHLY"} label={telegramCopy.monthly} onPress={() => setRecurrence("MONTHLY")} /></View> : null}
@@ -670,11 +673,11 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
                       <View style={styles.grow}>
                         <Text style={[styles.cardTitle, { color: theme.text }]} numberOfLines={2}>{item.content || item.contentJson?.attachments?.[0]?.fileName || item.contentJson?.attachment?.fileName || telegramCopy.writeMessage}</Text>
                         {(item.contentJson?.attachments?.length || item.contentJson?.attachment) ? <Text style={[styles.meta, { color: theme.primary }]}>📎 {item.contentJson?.attachments?.length ? `${item.contentJson.attachments.length} dosya` : item.contentJson?.attachment?.fileName}</Text> : null}
-                        <Text style={[styles.meta, { color: theme.muted }]}>{new Date(item.createdAt).toLocaleString("tr-TR")} · {telegramCopy.targetCount(item.targets.length)}</Text>
+                        <Text style={[styles.meta, { color: theme.muted }]}>{new Date(item.createdAt).toLocaleString(dateLocale)} · {telegramCopy.targetCount(item.targets.length)}</Text>
                       </View>
                       <Badge label={run?.status || item.status} tone={toneForStatus(run?.status || item.status)} />
                     </View>
-                    {run ? <Text style={[styles.meta, { color: theme.muted }]}>{telegramCopy.runSummary(run.sentCount, run.failedCount, run.floodWaitCount)}</Text> : <Text style={[styles.meta, { color: theme.muted }]}>{telegramCopy.scheduled(new Date(item.nextRunAt).toLocaleString("tr-TR"))}</Text>}
+                    {run ? <Text style={[styles.meta, { color: theme.muted }]}>{telegramCopy.runSummary(run.sentCount, run.failedCount, run.floodWaitCount)}</Text> : <Text style={[styles.meta, { color: theme.muted }]}>{telegramCopy.scheduled(new Date(item.nextRunAt).toLocaleString(dateLocale))}</Text>}
                     {item.deleteRequestedAt ? <Text style={[styles.deleteSummary, { color: deleteComplete ? theme.success : item.deleteFailedCount > 0 ? theme.danger : theme.muted }]}>{telegramCopy.deleteSummary(item.deleteSuccessCount, item.deleteTotalCount, item.deleteFailedCount)}</Text> : null}
                     <View style={styles.actionRow}>
                       {item.status === "ACTIVE" ? <SmallAction icon="close-circle-outline" label={telegramCopy.cancelDispatch} danger onPress={() => void cancelTelegramDispatch(item.id).then(() => load(true)).catch((actionError) => Alert.alert(telegramCopy.cancelFailed, actionError instanceof Error ? actionError.message : telegramCopy.operationFailed))} /> : null}
@@ -724,6 +727,8 @@ function AudienceRow({ label, meta, selected, onPress }: { label: string; meta: 
 
 function ChatRow({ chat, selected, selectable, onPress }: { chat: MobileTelegramChat; selected: boolean; selectable: boolean; onPress: () => void }) {
   const theme = useTheme();
+  const { locale } = useTranslation();
+  const telegramCopy = locale === "uz" ? uzbekTelegramCopy : defaultTelegramCopy;
   return (
     <Pressable accessibilityRole={selectable ? "checkbox" : undefined} accessibilityState={selectable ? { checked: selected } : undefined} disabled={!selectable} onPress={onPress} style={({ pressed }) => [styles.chatRow, { backgroundColor: selected ? theme.badge : theme.card, borderColor: selected ? theme.primary : theme.border, opacity: !chat.canSend ? 0.6 : pressed ? 0.78 : 1 }]}>
       <Ionicons name={chat.type === "CHANNEL" ? "megaphone-outline" : chat.type === "PRIVATE" ? "person-outline" : "people-outline"} color={selected ? theme.primary : theme.icon} size={21} />

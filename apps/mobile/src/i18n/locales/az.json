@@ -1803,5 +1803,7 @@
   "notification.title.marketplace.request_match_found": "Uyğun siyahı tapıldı",
   "whatsappSendPaused": "Bu göndəriş üçün WhatsApp sürət limiti bildirdi. Ən azı 5 dəqiqə fasilə verilir. Uğursuz alıcıların çatdırılma vəziyyətini yoxlayın.",
   "whatsappSendSafetyUnavailable": "Göndərmə təhlükəsizlik yoxlaması əlçatan olmadığı üçün bu göndərişlər dayandırıldı. Bağlantı bərpa olunduqdan sonra uğursuz alıcılara yenidən göndərin.",
-  "teamAddUser": "İstifadəçi əlavə et"
+  "teamAddUser": "İstifadəçi əlavə et",
+  "statusPartiallyCompleted": "Qismən tamamlandı",
+  "messageSendPacing": "İki kampaniya ardıcıl başlaya bilər. Növbəti cüt ən azı 5 dəqiqə gözləyir. Qruplara göndərmə aralığı ən azı 6 saniyədir."
 }

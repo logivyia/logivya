@@ -1803,5 +1803,7 @@
   "notification.title.marketplace.request_match_found": "A fost găsită o înregistrare potrivită",
   "whatsappSendPaused": "WhatsApp a raportat o limită de trimitere. Se face o pauză de cel puțin 5 minute. Verificați livrarea către destinatarii cu eșec.",
   "whatsappSendSafetyUnavailable": "Aceste trimiteri au fost oprite deoarece verificarea de siguranță nu era disponibilă. Reîncercați destinatarii nereușiți după restabilirea conexiunii.",
-  "teamAddUser": "Adaugă utilizator"
+  "teamAddUser": "Adaugă utilizator",
+  "statusPartiallyCompleted": "Finalizat parțial",
+  "messageSendPacing": "Două campanii pot începe consecutiv. Următoarea pereche așteaptă cel puțin 5 minute. Trimiterile către grupuri sunt la cel puțin 6 secunde distanță."
 }

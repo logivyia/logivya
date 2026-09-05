@@ -1,3 +1,4 @@
+import uzDictionary from "./locales/uz.json";
 import arDictionary from "./locales/ar.json";
 import azDictionary from "./locales/az.json";
 import bgDictionary from "./locales/bg.json";
@@ -3655,6 +3656,7 @@ export const translations: Record<Locale, TranslationDictionary> = {
   bg: bgDictionary as TranslationDictionary,
   el: elDictionary as TranslationDictionary,
   sr: srDictionary as TranslationDictionary,
+  uz: uzDictionary as TranslationDictionary,
 };
 
 export function translate(locale: string, key: TranslationKey, variables: TranslationVariables = {}) {

@@ -1,4 +1,4 @@
-export const locales = ["tr", "en", "ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"] as const;
+export const locales = ["tr", "en", "ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr", "uz"] as const;
 
 export type Locale = (typeof locales)[number];
 
@@ -24,6 +24,7 @@ export const localeMetadata: Record<Locale, LocaleMetadata> = {
   de: { name: "German", nativeName: "Deutsch", intlLocale: "de-DE", direction: "ltr" },
   bg: { name: "Bulgarian", nativeName: "Български", intlLocale: "bg-BG", direction: "ltr" },
   el: { name: "Greek", nativeName: "Ελληνικά", intlLocale: "el-GR", direction: "ltr" },
+  uz: { name: "Uzbek", nativeName: "O‘zbekcha", intlLocale: "uz-Latn-UZ", direction: "ltr" },
   sr: { name: "Serbian", nativeName: "Srpski", intlLocale: "sr-Latn-RS", direction: "ltr" },
 };
 

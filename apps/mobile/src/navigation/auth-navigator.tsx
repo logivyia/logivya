@@ -27,7 +27,7 @@ export function AuthNavigator({ booting, initialScreen = "Login" }: { booting: b
     return () => listener.remove();
   }, [booting]);
   return (
-    <Stack.Navigator initialRouteName={booting ? "Splash" : initialScreen} screenListeners={{ state: event => { stackIndex.current = event.data.state.index; } }} screenOptions={{ headerShown: !booting, headerTitle: "", headerShadowVisible: false, headerStyle: { backgroundColor: theme.background }, headerTintColor: theme.text, headerRight: () => <Pressable style={{ minHeight: 44, justifyContent: "center" }} onPress={() => useGuestStore.getState().browse()}><Text style={{ color: theme.primary, fontWeight: "800" }}>{locale === "tr" ? "İlanlara göz at" : "Browse listings"}</Text></Pressable> }}>
+    <Stack.Navigator initialRouteName={booting ? "Splash" : initialScreen} screenListeners={{ state: event => { stackIndex.current = event.data.state.index; } }} screenOptions={{ headerShown: !booting, headerTitle: "", headerShadowVisible: false, headerStyle: { backgroundColor: theme.background }, headerTintColor: theme.text, headerRight: () => <Pressable style={{ minHeight: 44, justifyContent: "center" }} onPress={() => useGuestStore.getState().browse()}><Text style={{ color: theme.primary, fontWeight: "800" }}>{locale === "uz" ? "E’lonlarni ko‘rish" : locale === "tr" ? "İlanlara göz at" : "Browse listings"}</Text></Pressable> }}>
       {booting ? (
         <Stack.Screen name="Splash" component={SplashScreen} />
       ) : (

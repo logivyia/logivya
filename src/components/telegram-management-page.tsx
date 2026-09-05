@@ -57,6 +57,21 @@ const field = "w-full rounded-xl border bg-background px-3 py-2.5 text-sm text-f
 const primaryButton = "inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300";
 
 function textFor(locale: string) {
+  if (locale === "uz") return {
+    eyebrow: "TELEGRAM", title: "Telegram boshqaruvi",
+    description: "Telegram hisobingizni ulang, chatlarni boshqaring, xabar yuboring va tarixni bir joyda kuzating.",
+    accounts: "Hisoblar", chats: "Chatlar", compose: "Xabar yuborish", history: "Tarix", account: "Telegram hisobi",
+    connected: "Ulangan", notConnected: "Ulanish kerak", noAccounts: "Hali Telegram hisobi yo‘q.",
+    connectionHelp: "Hisobni ulashni LOGIVYA mobil ilovasidagi xavfsiz Telegram tasdiqlash jarayoni orqali yakunlang.",
+    noChats: "Bu hisobda faol chatlar topilmadi. Mobil ilovadan chatlarni sinxronlang.",
+    selectChats: "Xabar yubormoqchi bo‘lgan chatlarni tanlang.", selected: "tanlandi", content: "Xabar",
+    contentPlaceholder: "Xabaringizni yozing", titleLabel: "Kampaniya sarlavhasi (ixtiyoriy)", sendMode: "Yuborish turi",
+    now: "Hozir yuborish", scheduled: "Rejalashtirish", recurring: "Takroriy", date: "Boshlanish sanasi", frequency: "Takrorlanish",
+    daily: "Har kuni", weekly: "Har hafta", monthly: "Har oy", send: "Yuborish yaratish", sending: "Yaratilmoqda",
+    sent: "Xabar navbatga qo‘yildi.", reload: "Yangilash", emptyHistory: "Hali Telegram xabarlari yuborilmagan.", target: "oluvchi",
+    loading: "Telegram ish maydoni yuklanmoqda…", chooseTarget: "Kamida bitta chatni tanlang.", enterContent: "Xabar yozing.",
+    chooseDate: "To‘g‘ri boshlanish sanasini tanlang.",
+  };
   const tr = locale.toLowerCase().startsWith("tr");
   return tr
     ? {

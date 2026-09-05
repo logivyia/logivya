@@ -1803,5 +1803,7 @@
   "notification.title.marketplace.request_match_found": "Ein passender Eintrag wurde gefunden",
   "whatsappSendPaused": "WhatsApp hat ein Sendelimit gemeldet. Der Versand pausiert mindestens 5 Minuten. Prüfen Sie den Zustellstatus fehlgeschlagener Empfänger.",
   "whatsappSendSafetyUnavailable": "Diese Sendungen wurden gestoppt, weil die Sicherheitsprüfung nicht verfügbar war. Wiederholen Sie fehlgeschlagene Zustellungen, sobald die Verbindung wiederhergestellt ist.",
-  "teamAddUser": "Benutzer hinzufügen"
+  "teamAddUser": "Benutzer hinzufügen",
+  "statusPartiallyCompleted": "Teilweise abgeschlossen",
+  "messageSendPacing": "Zwei Kampagnen können nacheinander starten. Das nächste Paar wartet mindestens 5 Minuten. Zwischen Sendungen an Gruppen liegen mindestens 6 Sekunden."
 }

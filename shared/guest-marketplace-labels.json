@@ -449,5 +449,46 @@
       "drivers": "Pronađite dostupne drajvere ili trenutne liste poslova vozača.",
       "requests": "Upravljajte aktivnim satovima, odgovarajućim listama i statusom zahteva."
     }
+  },
+  "uz": {
+    "labels": {
+      "overview": "Umumiy ko‘rinish",
+      "whatsapp": "WhatsApp boshqaruvi",
+      "telegram": "Telegram boshqaruvi",
+      "home-moving": "Uy ko‘chirish",
+      "partial-load": "Qisman yuk",
+      "heavy-haul": "Og‘ir yuk tashish",
+      "groups": "Guruhlar",
+      "categories": "Toifalar",
+      "support": "Yordam",
+      "subscription": "Obuna",
+      "users": "Foydalanuvchi qo‘shish",
+      "share-load": "Yuk e’loni berish",
+      "find-loads": "Yuk topish",
+      "my-listings": "E’lonlarim",
+      "vehicles": "Transport topish",
+      "share-vehicle": "Transport e’loni berish",
+      "drivers": "Haydovchi topish",
+      "requests": "So‘rovlarim",
+      "login": "Kirish",
+      "register": "Ro‘yxatdan o‘tish",
+      "back": "Orqaga qaytish",
+      "refresh": "Yangilash",
+      "liveListings": "Jonli e’lonlar",
+      "marketplace": "Logivya logistika bozori"
+    },
+    "descriptions": {
+      "home-moving": "Uy va ofis ko‘chirish ishlarini e’lon qiling, mos tashuvchilarni toping va so‘rovlaringizni boshqaring.",
+      "partial-load": "Qisman va yig‘ma yuklarni e’lon qiling, bo‘sh sig‘imni toping va mosliklarni boshqaring.",
+      "heavy-haul": "Og‘ir, katta o‘lchamli va loyiha yuklarini e’lon qiling hamda mos transport va xizmatlarni toping.",
+      "telegram": "Telegram hisoblarini ulang, chatlarni sinxronlang va yuborishlarni bitta ish maydonida boshqaring.",
+      "share-load": "Tashish talabingizni e’lon qiling va mos tashuvchilarga yeting.",
+      "find-loads": "Yo‘nalish va tashish tafsilotlari bo‘yicha dolzarb yuk e’lonlarini toping.",
+      "my-listings": "Yuk, transport va haydovchi e’lonlarini tahrirlang hamda holatini bir joyda boshqaring.",
+      "vehicles": "Joylashuv, yo‘nalish va transport turi bo‘yicha bo‘sh transport toping.",
+      "share-vehicle": "Yuk jo‘natuvchilarga yetish uchun bo‘sh transportingiz va afzal yo‘nalishingizni e’lon qiling.",
+      "drivers": "Bo‘sh haydovchilar yoki dolzarb haydovchi ish e’lonlarini toping.",
+      "requests": "Faol kuzatuvlar, mos e’lonlar va so‘rov holatlarini boshqaring."
+    }
   }
 }

@@ -3,7 +3,7 @@ import path from "node:path";
 import ts from "typescript";
 
 const root = process.cwd();
-const targetLocales = ["tr", "en", "ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"];
+const targetLocales = ["tr", "en", "ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr", "uz"];
 const visibleAttributes = new Set(["alt", "aria-label", "description", "label", "placeholder", "title"]);
 const ignoredText = /^(?:[-+×•·/|]|(?:←\s*)?Logivya(?: Mobile)?|LOGIVYA ·|MB|WhatsApp|Android|iOS|API|URL|QR|IBAN|ISO-8601|https?:\/\/\.\.\.|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}|[\w./-]+\.(?:md|json|ts|tsx))$/i;
 const protectedTerms = /\b(?:Logivya|WhatsApp|Telegram|PayTR|Iyzico|Stripe|Android|iOS|API|QR|IBAN|ISO-8601|URL|KVKK|SaaS|JWT|Redis|Prisma|Vercel|Cloudflare|Render|Expo|Google Play)\b/gi;

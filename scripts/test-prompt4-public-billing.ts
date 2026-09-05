@@ -75,7 +75,7 @@ for (const storeFile of ["apple-subscription-store.tsx", "google-play-subscripti
   assert(source.includes("sortOrder") && source.includes("Number.MAX_SAFE_INTEGER"), `${storeFile} must order products by the canonical plan order instead of provider IDs`);
 }
 
-for (const locale of ["tr", "en", "ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"]) {
+for (const locale of ["tr", "en", "ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr", "uz"]) {
   const messages = JSON.parse(read(`packages/locales/${locale}.json`)) as Record<string, string>;
   assert(messages["home.plan.trial.name"].startsWith("Logivya"), `${locale} trial name must preserve the Logivya brand identity`);
   assert.equal(messages["home.plan.starter.name"], "Logivya Plus", `${locale} Plus name must preserve the Logivya brand identity`);

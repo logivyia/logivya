@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "countries": [
     {
       "localeId": "tr",
@@ -112,6 +112,38 @@
       "sortOrder": 60,
       "aliases": [
         "Türkmenistan"
+      ]
+    },
+    {
+      "localeId": "uz",
+      "languageName": "Uzbek",
+      "nativeLanguageName": "O‘zbekcha",
+      "countryIso": "UZ",
+      "countryName": "Uzbekistan",
+      "nativeCountryName": "O‘zbekiston",
+      "callingCode": "+998",
+      "phonePlaceholder": "91 234 56 78",
+      "nationalNumberFormat": "XX XXX XX XX",
+      "attribution": "Bu xabar logivya.com orqali yuborildi.",
+      "direction": "ltr",
+      "enabled": true,
+      "sortOrder": 65,
+      "aliases": [
+        "Özbekistan",
+        "Uzbekistan",
+        "أوزبكستان",
+        "Узбекистан",
+        "Özbəkistan",
+        "Özbegistan",
+        "Usbekistan",
+        "Ουζμπεκιστάν",
+        "O‘zbekiston",
+        "O'zbekiston",
+        "O’zbekiston",
+        "Oʻzbekiston",
+        "Uzbekiston",
+        "Ўзбекистон",
+        "Узбекистон"
       ]
     },
     {
@@ -5918,31 +5950,6 @@
         "Urugwaý",
         "Ουρουγουάη",
         "Уругвај"
-      ]
-    },
-    {
-      "localeId": "en",
-      "languageName": "English",
-      "nativeLanguageName": "English",
-      "countryIso": "UZ",
-      "countryName": "Uzbekistan",
-      "nativeCountryName": "Uzbekistan",
-      "callingCode": "+998",
-      "phonePlaceholder": "91 234 56 78",
-      "nationalNumberFormat": "XX XXX XX XX",
-      "attribution": "This message was sent via logivya.com.",
-      "direction": "ltr",
-      "enabled": true,
-      "sortOrder": 2370,
-      "aliases": [
-        "Özbekistan",
-        "Uzbekistan",
-        "أوزبكستان",
-        "Узбекистан",
-        "Özbəkistan",
-        "Özbegistan",
-        "Usbekistan",
-        "Ουζμπεκιστάν"
       ]
     },
     {

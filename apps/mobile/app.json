@@ -3,7 +3,7 @@
     "name": "Logivya",
     "slug": "logivya-mobile",
     "scheme": "logivya",
-    "version": "1.0.210",
+    "version": "1.0.211",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -24,7 +24,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.logivya.mobile",
       "appleTeamId": "YMW24BAWTV",
-      "buildNumber": "191",
+      "buildNumber": "192",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -36,7 +36,7 @@
     },
     "android": {
       "package": "com.logivya.mobile",
-      "versionCode": 225,
+      "versionCode": 226,
       "googleServicesFile": "./google-services.json",
       "icon": "./assets/logivya/mobillogo1.png",
       "adaptiveIcon": {
@@ -52,10 +52,10 @@
     "extra": {
       "apiBaseUrl": "https://www.logivya.com",
       "apiFallbackBaseUrls": [],
-      "buildMarker": "GUEST_LANGUAGE_COUNTRIES_V225",
-      "releaseId": "android-v225-1.0.210",
+      "buildMarker": "UZBEK_LOCALE_V226",
+      "releaseId": "android-v226-1.0.211",
       "gitCommit": "393c7a5cc75dd2165ec93f48bc83686c31c9e862",
-      "buildDate": "2026-09-05T12:41:13.821Z",
+      "buildDate": "2026-09-05T14:19:23.067Z",
       "apiContractVersion": "2026-09-03",
       "sentryDsn": "",
       "socialSignIn": {

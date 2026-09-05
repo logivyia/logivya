@@ -15,6 +15,7 @@ const read = (file: string) => readFileSync(path.join(root, file), "utf8");
 const fakePlan = (slug: string) => ({ slug } as NonNullable<Parameters<typeof deriveCompanyEntitlements>[0]>);
 
 const expectedTranslations: Record<string, string> = {
+  uz: "Bu xabar logivya.com orqali yuborildi.",
   ar: "تم إرسال هذه الرسالة عبر logivya.com.",
   tr: "Bu mesaj logivya.com üzerinden gönderilmiştir.",
   en: "This message was sent via logivya.com.",
@@ -38,6 +39,7 @@ for (const country of countryRegistry) {
 }
 
 const localeVariants: Record<string, string> = {
+  "uz-Latn-UZ": "uz",
   "tr-TR": "tr",
   "en-US": "en",
   "en-GB": "en",

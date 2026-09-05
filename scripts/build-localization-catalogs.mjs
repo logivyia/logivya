@@ -3,13 +3,14 @@ import path from "node:path";
 import ts from "typescript";
 
 const root = process.cwd();
-const supportedTargetLocales = ["ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"];
+const supportedTargetLocales = ["ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr", "uz"];
 const requestedTargetLocales = process.env.L10N_TARGET_LOCALES?.split(",").map((locale) => locale.trim()).filter(Boolean);
 const targetLocales = requestedTargetLocales?.length ? requestedTargetLocales : supportedTargetLocales;
 if (targetLocales.some((locale) => !supportedTargetLocales.includes(locale))) throw new Error("L10N_TARGET_LOCALES contains an unsupported locale");
-const googleLocale = { ar: "ar", ro: "ro", ru: "ru", az: "az", tk: "tk", de: "de", bg: "bg", el: "el", sr: "sr" };
-const batchSize = 4;
-const concurrency = 3;
+const googleLocale = { ar: "ar", ro: "ro", ru: "ru", az: "az", tk: "tk", de: "de", bg: "bg", el: "el", sr: "sr", uz: "uz" };
+const batchSize = Math.max(1, Math.min(10, Number(process.env.L10N_BATCH_SIZE) || 4));
+const concurrency = Math.max(1, Math.min(3, Number(process.env.L10N_CONCURRENCY) || 3));
+const requestDelay = Math.max(0, Number(process.env.L10N_REQUEST_DELAY_MS) || 0);
 const cachePath = path.join(root, ".cache", "localization-catalogs.json");
 let translationCache = {};
 let bingSession = null;
@@ -778,6 +779,7 @@ async function bingTranslate(text, locale, attempt = 0) {
 }
 
 async function googleTranslate(text, locale, attempt = 0) {
+  if (requestDelay) await new Promise((resolve) => setTimeout(resolve, requestDelay));
   const target = locale === "sr" ? "sr" : googleLocale[locale];
   const body = new URLSearchParams({ client: "gtx", sl: "en", tl: target, dt: "t", q: text });
   const response = await fetch("https://translate.googleapis.com/translate_a/single", {
@@ -830,6 +832,8 @@ async function googleMobileTranslate(text, locale) {
 }
 
 async function translateText(text, locale) {
+  // Explicit API mode uses a single provider and respects its existing retry/backoff.
+  if (process.env.L10N_PROVIDER === "google-api" && process.env.L10N_OFFLINE_ONLY !== "1") return googleTranslate(text, locale);
   if (process.env.L10N_OFFLINE_ONLY === "1") throw new Error(`No reviewed cached translation is available for ${locale}`);
   try {
     return await googleMobileTranslate(text, locale);
@@ -999,6 +1003,9 @@ async function buildLocale(locale, rootEnglish, rootTurkish, mobileBase) {
     if (typeof cached === "string" && cached.trim()) translationMemory.set(source, cached);
   }
   const pendingValues = valuesToTranslate.filter((value) => !translationMemory.has(value));
+  if (process.env.L10N_OFFLINE_ONLY === "1" && pendingValues.length) {
+    throw new Error(`Missing offline translations for ${locale}: ${JSON.stringify(pendingValues.slice(0, 10))}`);
+  }
   const batches = [];
   for (let index = 0; index < pendingValues.length; index += batchSize) batches.push(pendingValues.slice(index, index + batchSize));
 
@@ -1092,6 +1099,13 @@ async function buildLocale(locale, rootEnglish, rootTurkish, mobileBase) {
   await writeFileWithRetry(mobileLocalePath, `${JSON.stringify(mobileDictionary, null, 2)}\n`);
   return { locale, web: Object.keys(rootDictionary).length, mobile: Object.keys(mobileDictionary).length, untranslated: untranslated.length };
 }
+
+const uzbekOverrides = JSON.parse(await fs.readFile(path.join(root, "shared", "uzbek-locale-overrides.json"), "utf8"));
+curatedTerms.uz = uzbekOverrides.terms;
+curatedMobileOverrides.uz = uzbekOverrides.mobile;
+curatedKeyOverrides.uz = uzbekOverrides.web;
+canonicalUserNamingOverrides.uz = uzbekOverrides.naming;
+nativeIdenticalValues.uz = new Set(["Beta", "OK", "Video", "Logivya Plus", "Logivya Pro", "Operator", "Normal", "Marketing", "Format", "Internet", "Administrator", "Plus", "Pro"]);
 
 if (!process.argv.includes("--write")) {
   console.error("Pass --write to generate locale catalogs.");

@@ -1803,5 +1803,7 @@
   "notification.title.marketplace.request_match_found": "Pronađen je odgovarajući spisak",
   "whatsappSendPaused": "WhatsApp je prijavio ograničenje slanja. Slanje se pauzira najmanje 5 minuta. Proverite isporuku neuspešnim primaocima.",
   "whatsappSendSafetyUnavailable": "Slanje je zaustavljeno jer bezbednosna provera slanja nije dostupna. Ponovite neuspešna slanja nakon uspostavljanja veze.",
-  "teamAddUser": "Dodaj korisnika"
+  "teamAddUser": "Dodaj korisnika",
+  "statusPartiallyCompleted": "Delimično završeno",
+  "messageSendPacing": "Dve kampanje mogu početi uzastopno. Sledeći par čeka najmanje 5 minuta. Slanje grupama ima razmak od najmanje 6 sekundi."
 }

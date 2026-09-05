@@ -18,8 +18,9 @@ import {
 import { translate as translateMobile, translations } from "../apps/mobile/src/i18n/translations";
 
 const root = process.cwd();
-const expectedLocales = ["tr", "en", "ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr"] as const;
+const expectedLocales = ["tr", "en", "ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr", "uz"] as const;
 const canonicalAccountLabels = {
+  uz: ["1 ta hisob", "2 ta hisob", "3 ta hisob", "{used}/{limit} ta hisob", "Hisoblar"],
   tr: ["1 Hesap", "2 Hesap", "3 Hesap", "{used}/{limit} hesap", "Hesaplar"],
   en: ["1 Account", "2 Accounts", "3 Accounts", "{used}/{limit} accounts", "Accounts"],
   ar: ["حساب واحد", "حسابان", "3 حسابات", "{used}/{limit} حسابات", "الحسابات"],
@@ -42,7 +43,7 @@ async function readDictionary(locale: string) {
 }
 
 async function main() {
-assert.deepEqual(locales, expectedLocales, "Web must expose exactly the approved eleven locales.");
+assert.deepEqual(locales, expectedLocales, "Web must expose exactly the approved twelve locales.");
 assert.deepEqual(mobileLocales, expectedLocales, "Mobile must expose the same locale list as web.");
 assert.equal(fallbackLocale, "en", "Web fallback must be English.");
 assert.equal(mobileFallbackLocale, "en", "Mobile fallback must be English.");
@@ -117,7 +118,7 @@ assert(mobileApiClient.includes('headers.set("X-Logivya-Locale", locale)'), "Mob
 assert(mobileApp.includes("applyAccountLocale(accountLocale)"), "Mobile login and session restore must apply the profile locale across devices.");
 assert(mobilePreferenceRoute.includes("prisma.user.update"), "Mobile locale preference must be stored on the user profile.");
 
-console.log("Localization contracts passed for web and mobile across 11 locales.");
+console.log("Localization contracts passed for web and mobile across 12 locales.");
 }
 
 main().catch((error) => {
