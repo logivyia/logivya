@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock3, History, LoaderCircle, MessageCircle, Send, Smartphone, UsersRound } from "lucide-react";
 
 import { useI18n } from "@/i18n/provider";
+import { TelegramAccountConnection } from "@/components/telegram-account-connection";
 
 type TelegramAccount = {
   id: string;
@@ -62,8 +63,7 @@ function textFor(locale: string) {
     description: "Telegram hisobingizni ulang, chatlarni boshqaring, xabar yuboring va tarixni bir joyda kuzating.",
     accounts: "Hisoblar", chats: "Chatlar", compose: "Xabar yuborish", history: "Tarix", account: "Telegram hisobi",
     connected: "Ulangan", notConnected: "Ulanish kerak", noAccounts: "Hali Telegram hisobi yo‘q.",
-    connectionHelp: "Hisobni ulashni LOGIVYA mobil ilovasidagi xavfsiz Telegram tasdiqlash jarayoni orqali yakunlang.",
-    noChats: "Bu hisobda faol chatlar topilmadi. Mobil ilovadan chatlarni sinxronlang.",
+    noChats: "Bu hisobda faol chatlar topilmadi. Hisoblar bo‘limidan chatlarni sinxronlang.",
     selectChats: "Xabar yubormoqchi bo‘lgan chatlarni tanlang.", selected: "tanlandi", content: "Xabar",
     contentPlaceholder: "Xabaringizni yozing", titleLabel: "Kampaniya sarlavhasi (ixtiyoriy)", sendMode: "Yuborish turi",
     now: "Hozir yuborish", scheduled: "Rejalashtirish", recurring: "Takroriy", date: "Boshlanish sanasi", frequency: "Takrorlanish",
@@ -86,8 +86,7 @@ function textFor(locale: string) {
         connected: "Bağlı",
         notConnected: "Bağlantı gerekli",
         noAccounts: "Henüz bir Telegram hesabı yok.",
-        connectionHelp: "Hesap bağlantısını LOGIVYA mobil uygulamasındaki güvenli Telegram doğrulama akışıyla tamamlayın.",
-        noChats: "Bu hesaba ait etkin sohbet bulunamadı. Mobil uygulamadan sohbetleri eşitleyin.",
+        noChats: "Bu hesaba ait etkin sohbet bulunamadı. Hesaplar sekmesinden sohbetleri eşitleyin.",
         selectChats: "Mesaj göndermek istediğiniz sohbetleri seçin.",
         selected: "seçildi",
         content: "Mesaj",
@@ -125,8 +124,7 @@ function textFor(locale: string) {
         connected: "Connected",
         notConnected: "Connection required",
         noAccounts: "No Telegram account is available yet.",
-        connectionHelp: "Complete account connection through the secure Telegram verification flow in the LOGIVYA mobile app.",
-        noChats: "No active chats were found for this account. Sync chats from the mobile app.",
+        noChats: "No active chats were found for this account. Sync chats from the Accounts tab.",
         selectChats: "Select the chats that should receive this message.",
         selected: "selected",
         content: "Message",
@@ -330,23 +328,7 @@ export function TelegramManagementPage() {
       ) : (
         <>
           <section id="telegram-panel-accounts" role="tabpanel" aria-labelledby="telegram-tab-accounts" hidden={tab !== "accounts"} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {accounts.length === 0 ? (
-              <div className={`${card} md:col-span-2 xl:col-span-3`}>
-                <h2 className="font-semibold text-foreground">{copy.noAccounts}</h2>
-                <p className="mt-2 text-sm leading-6 text-muted">{copy.connectionHelp}</p>
-              </div>
-            ) : accounts.map((account) => {
-              const ready = account.status === "CONNECTED" && account.authState === "READY";
-              return (
-                <article key={account.id} className={card}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div><h2 className="font-semibold text-foreground">{account.label}</h2><p className="mt-1 text-sm text-muted">{account.username ? `@${account.username}` : account.phoneNumberMasked || "Telegram"}</p></div>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusTone(ready ? "CONNECTED" : account.status)}`}>{ready ? copy.connected : copy.notConnected}</span>
-                  </div>
-                  <p className="mt-4 text-xs text-muted">{formatDate(account.lastSyncedAt, locale)}</p>
-                </article>
-              );
-            })}
+            {tab === "accounts" && <TelegramAccountConnection accounts={accounts} locale={locale} onAccountsChange={setAccounts} onRefresh={load} />}
           </section>
 
           <section id="telegram-panel-chats" role="tabpanel" aria-labelledby="telegram-tab-chats" hidden={tab !== "chats"} className={card}>
