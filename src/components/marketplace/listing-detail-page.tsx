@@ -108,7 +108,7 @@ export function ListingDetailPage({ kind, id, requestId, guest = false }: { kind
                 <a href={listing.contact.telHref} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border bg-card px-4 text-sm font-semibold hover:border-primary/40"><Phone aria-hidden className="size-4 text-primary" />{copy.call}</a>
                 <a href={listing.contact.whatsappHref} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:brightness-95"><WhatsAppIcon aria-hidden className="size-4" />{copy.whatsapp}<ExternalLink aria-hidden className="size-3.5" /></a>
               </div>
-            ) : guest || listing.contactAccess === "SUBSCRIPTION_REQUIRED" ? <div className="mt-4 space-y-3"><p className="text-sm leading-6 text-muted">{locale === "tr" ? "İletişim bilgileri geçerli deneme veya abonelik ile açılır." : "Contact requires an active trial or subscription."}</p><Link href={guest ? "/register" : "/settings/subscription"} className="flex min-h-12 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground">{locale === "tr" ? guest ? "Kayıt ol · 7 gün ücretsiz" : "Aboneliği görüntüle" : guest ? "Register · 7 days free" : "View subscription"}</Link>{guest ? <Link href="/login" className="block py-2 text-center text-sm font-semibold text-primary">{locale === "tr" ? "Giriş yap" : "Sign in"}</Link> : null}</div> : <p className="mt-4 text-sm leading-6 text-muted">{copy.contactMissing}</p>}
+            ) : guest || listing.contactAccess === "SUBSCRIPTION_REQUIRED" ? <div className="mt-4 space-y-3"><p className="text-sm leading-6 text-muted">{locale === "tr" ? "İletişim bilgileri geçerli deneme veya abonelik ile açılır." : locale === "uz" ? "Bog‘lanish uchun amaldagi sinov muddati yoki obuna talab qilinadi." : "Contact requires an active trial or subscription."}</p><Link href={guest ? "/register" : "/settings/subscription"} className="flex min-h-12 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground">{locale === "tr" ? guest ? "Kayıt ol · 7 gün ücretsiz" : "Aboneliği görüntüle" : locale === "uz" ? guest ? "Ro‘yxatdan o‘tish · 7 kun bepul" : "Obunani ko‘rish" : guest ? "Register · 7 days free" : "View subscription"}</Link>{guest ? <Link href="/login" className="block py-2 text-center text-sm font-semibold text-primary">{locale === "tr" ? "Giriş yap" : locale === "uz" ? "Kirish" : "Sign in"}</Link> : null}</div> : <p className="mt-4 text-sm leading-6 text-muted">{copy.contactMissing}</p>}
             <a href={`mailto:support@logivya.com?subject=${encodeURIComponent(`İlan bildirimi: ${listing.id}`)}`} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-3 text-xs font-semibold text-muted hover:bg-card hover:text-foreground"><Flag aria-hidden className="size-3.5" />{copy.report}</a>
           </aside>
         </div>
@@ -168,12 +168,12 @@ function certificateLabel(attributes: WebMarketplaceListingDetail["attributes"],
 
 function formatDate(value: string, locale: string) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(date);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(locale, locale === "uz" ? { day: "2-digit", month: "2-digit", year: "numeric" } : { dateStyle: "long" }).format(date);
 }
 
 function formatDateTime(value: string, locale: string) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(locale, { dateStyle: "long", timeStyle: "short" }).format(date);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(locale, locale === "uz" ? { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false } : { dateStyle: "long", timeStyle: "short" }).format(date);
 }
 
 function formatMoney(amount: number | null, currency: string | null, locale: string) {

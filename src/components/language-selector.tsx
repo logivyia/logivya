@@ -112,7 +112,7 @@ export function LanguageSelector({ dark = false }: { dark?: boolean }) {
       ref={menuRef}
       id={menuId}
       role="listbox"
-      aria-label={locale === "tr" ? "Dil seçin" : locale === "ar" ? "اختر اللغة" : "Choose language"}
+      aria-label={locale === "tr" ? "Dil seçin" : locale === "ar" ? "اختر اللغة" : locale === "uz" ? "Tilni tanlang" : "Choose language"}
       className="fixed z-[120] overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 text-slate-900 shadow-2xl"
       style={{ left: menuPosition.left, top: menuPosition.top, width: MENU_WIDTH, maxHeight: menuPosition.maxHeight }}
     >
@@ -148,7 +148,7 @@ export function LanguageSelector({ dark = false }: { dark?: boolean }) {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        aria-label={locale === "tr" ? `Dil: ${localeNames[locale]}` : locale === "ar" ? `اللغة: ${localeNames[locale]}` : `Language: ${localeNames[locale]}`}
+        aria-label={locale === "tr" ? `Dil: ${localeNames[locale]}` : locale === "ar" ? `اللغة: ${localeNames[locale]}` : locale === "uz" ? `Til: ${localeNames[locale]}` : `Language: ${localeNames[locale]}`}
         className={cn(
           "flex min-h-11 items-center gap-1 rounded-xl border px-3 py-2 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2",
           dark ? "border-white/15 bg-white/5 text-white focus-visible:ring-offset-[#090d19]" : "bg-card",

@@ -86,7 +86,7 @@ function Location({ label, value, align = "start" }: { label: string; value: str
 
 function formatDate(value: string, locale: string) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(locale, locale === "uz" ? { day: "2-digit", month: "2-digit", year: "numeric" } : { dateStyle: "medium" }).format(date);
 }
 
 function formatRelativeTime(value: string, locale: string) {
@@ -101,5 +101,10 @@ function formatRelativeTime(value: string, locale: string) {
       : absolute < 86_400
         ? [Math.round(seconds / 3_600), "hour" as const]
         : [Math.round(seconds / 86_400), "day" as const];
+  if (locale === "uz") {
+    if (absolute < 10) return "hozir";
+    const units = { second: "soniya", minute: "daqiqa", hour: "soat", day: "kun" };
+    return `${Math.abs(amount)} ${units[unit]} ${amount > 0 ? "keyin" : "oldin"}`;
+  }
   return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(amount, unit);
 }

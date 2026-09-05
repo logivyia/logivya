@@ -1,3 +1,5 @@
+import { uzbekMarketplaceCopy } from "./copy-uz";
+
 const tr = {
   title: "Canlı İlanlar",
   eyebrow: "LOGIVYA PAZAR YERİ",
@@ -110,5 +112,6 @@ const ar: Record<keyof typeof tr, string> = {
 export type MarketplaceCopy = typeof tr;
 
 export function marketplaceCopy(locale: string): MarketplaceCopy {
-  return (locale === "tr" ? tr : locale === "ar" ? ar : en) as MarketplaceCopy;
+  const uz: Record<keyof typeof tr, string> = uzbekMarketplaceCopy;
+  return (locale === "tr" ? tr : locale === "ar" ? ar : locale === "uz" ? uz : en) as MarketplaceCopy;
 }

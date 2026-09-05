@@ -6,6 +6,11 @@ export function formatRelativeTime(value: string, locale: string) {
 
   const seconds = Math.round((timestamp - Date.now()) / 1_000);
   const { amount, unit } = relativeAmount(seconds);
+  if (locale.toLowerCase().startsWith("uz")) {
+    if (Math.abs(seconds) < 10) return "hozir";
+    const units: Record<RelativeUnit, string> = { second: "soniya", minute: "daqiqa", hour: "soat" };
+    return `${Math.abs(amount)} ${units[unit]} ${amount > 0 ? "keyin" : "oldin"}`;
+  }
   const RelativeTimeFormat =
     typeof Intl !== "undefined" ? Intl.RelativeTimeFormat : undefined;
 
