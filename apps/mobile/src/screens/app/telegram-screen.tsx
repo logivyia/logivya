@@ -41,6 +41,9 @@ import { Badge, Chip, IconBadge, PageHeader, SectionTitle, StatCard, SurfaceCard
 import { colors } from "@/theme/colors";
 import { useTheme } from "@/theme/theme-provider";
 import { countryRegistry } from "@/generated/country-registry";
+import { PhoneCountrySelector } from "@/components/phone-country-selector";
+import { getMobileCountry, getMobileCountryForLocale, normalizeInternationalPhone } from "@/features/whatsapp/phone";
+import { useTranslation } from "@/i18n/use-translation";
 
 type Tab = "accounts" | "chats" | "send" | "history";
 type ScheduleMode = "SEND_NOW" | "SCHEDULED" | "RECURRING";
@@ -210,6 +213,9 @@ function authStateLabel(state: MobileTelegramAccount["authState"]) {
 
 export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onSwitchToWhatsApp }: { initialTab?: Tab; lockedTab?: boolean; onSwitchToWhatsApp?: () => void } = {}) {
   const theme = useTheme();
+  const { locale, t } = useTranslation();
+  const [phoneCountries, setPhoneCountries] = useState<Record<string, string>>({});
+  const phoneCountryFor = (id: string) => phoneCountries[id] ?? getMobileCountryForLocale(locale).countryIso;
   const [tab, setTab, backSection, canGoBackSection] = useSectionHistory<Tab>(initialTab, !lockedTab);
   const [accounts, setAccounts] = useState<MobileTelegramAccount[]>([]);
   const [chats, setChats] = useState<MobileTelegramChat[]>([]);
@@ -336,7 +342,8 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
     if (!prompt || !value) return;
     setWorking(`auth:${account.id}`);
     try {
-      await submitTelegramAuth(account.id, prompt.step, value);
+      const authValue = prompt.step === "phone" ? normalizeInternationalPhone(phoneCountryFor(account.id), value).e164 : value;
+      await submitTelegramAuth(account.id, prompt.step, authValue);
       setAuthValues((current) => ({ ...current, [account.id]: "" }));
       await load(true);
     } catch (actionError) {
@@ -556,8 +563,9 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
                     </View>
                     {prompt ? (
                       <View style={styles.form}>
-                        <Text style={[styles.label, { color: theme.text }]}>{prompt.label}</Text>
-                        <TextInput autoCapitalize="none" onChangeText={(value) => setAuthValues((current) => ({ ...current, [account.id]: value }))} placeholder={prompt.placeholder} placeholderTextColor={theme.muted} secureTextEntry={prompt.secure} style={[styles.input, { borderColor: theme.border, color: theme.text, backgroundColor: theme.cardMuted }]} value={authValues[account.id] || ""} />
+                        {prompt.step === "phone" ? <PhoneCountrySelector value={phoneCountryFor(account.id)} onChange={iso => setPhoneCountries(current => ({ ...current, [account.id]: iso }))} /> : null}
+                        <Text style={[styles.label, { color: theme.text }]}>{prompt.step === "phone" ? t("phoneNumber") : prompt.label}</Text>
+                        <TextInput autoCapitalize="none" keyboardType={prompt.step === "phone" ? "phone-pad" : "default"} onChangeText={(value) => setAuthValues((current) => ({ ...current, [account.id]: value }))} placeholder={prompt.step === "phone" ? getMobileCountry(phoneCountryFor(account.id)).phonePlaceholder : prompt.placeholder} placeholderTextColor={theme.muted} secureTextEntry={prompt.secure} style={[styles.input, { borderColor: theme.border, color: theme.text, backgroundColor: theme.cardMuted }, prompt.step === "phone" ? { writingDirection: "ltr", textAlign: "left" } : null]} value={authValues[account.id] || ""} />
                         <PrimaryButton title={telegramCopy.continue} loading={working === `auth:${account.id}`} disabled={!authValues[account.id]?.trim()} onPress={() => void submitAuth(account)} />
                       </View>
                     ) : null}

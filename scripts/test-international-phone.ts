@@ -28,7 +28,7 @@ const cases = [
 const root = process.cwd();
 const read = (file: string) => readFileSync(path.join(root, file), "utf8");
 
-assert.equal(countryRegistry.length, cases.length);
+assert.equal(countryRegistry.length, 245);
 assert.deepEqual(mobileRegistry, countryRegistry, "Mobile generated registry must match the canonical registry exactly.");
 assert.equal(new Set(countryRegistry.map((country) => country.countryIso)).size, countryRegistry.length, "Country ISO codes must be unique.");
 assert.deepEqual(
@@ -67,6 +67,7 @@ const turkishPhoneInputs = [
 const turkishMobileCountry = mobileRegistry.find((country) => country.countryIso === "TR");
 assert(turkishMobileCountry, "The generated mobile registry must include Turkey.");
 for (const input of turkishPhoneInputs) {
+  assert.equal(normalizePhonePairingInput({ phoneNumber: input }).e164, "+905393565142", `Legacy Turkish input: ${input}`);
   assert.equal(
     normalizePhonePairingInput({ countryIso: "TR", nationalNumber: input }).e164,
     "+905393565142",
@@ -80,7 +81,7 @@ for (const input of turkishPhoneInputs) {
 }
 
 assert.throws(
-  () => normalizePhonePairingInput({ countryIso: "US", nationalNumber: "2025550123" }),
+  () => normalizePhonePairingInput({ countryIso: "ZZ", nationalNumber: "2025550123" }),
   /UNSUPPORTED_PHONE_COUNTRY/,
 );
 assert.throws(
@@ -115,4 +116,4 @@ assert(
 const migration = read("prisma/migrations/20260720170000_international_pairing_starter_attribution/migration.sql");
 assert(!migration.includes("WHEN \"phoneNumber\" LIKE '+7%'"), "Ambiguous +7 accounts must not be assigned to Russia by SQL prefix alone.");
 
-console.log("Canonical country registry parity and international E.164 phone validation passed for 10 countries.");
+console.log("Canonical country registry parity (245 countries) and original international E.164 regression checks passed.");

@@ -1,3 +1,4 @@
+import { guestMarketplaceCopy } from "../../../../../shared/guest-marketplace-copy";
 import { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
@@ -16,7 +17,7 @@ export function CatalogFilters({ value, onApply }: { value: MarketplaceFilters; 
   const button = [styles.button, { borderColor: theme.border, backgroundColor: theme.card }];
   const titleFor = (key: "originCountry" | "destinationCountry" | "vehicle", current: string) => (key === "vehicle" ? marketplaceVehicles : marketplaceCountries).find(([code]) => code === current)?.[1] ?? (tr ? "Tümü" : "All");
   return <View style={{ marginVertical: 12 }}>
-    <Pressable accessibilityRole="button" onPress={() => { setDraft(value); setSelect(null); setOpen(true); }} style={button}><Ionicons name="options-outline" size={21} color={theme.primary} /><Text style={{ color: theme.text, fontWeight: "800" }}>{tr ? "İlanları filtrele" : "Filter listings"}{active ? ` (${active})` : ""}</Text></Pressable>
+    <Pressable accessibilityRole="button" onPress={() => { setDraft(value); setSelect(null); setOpen(true); }} style={button}><Ionicons name="options-outline" size={21} color={theme.primary} /><Text style={{ color: theme.text, fontWeight: "800" }}>{guestMarketplaceCopy(locale).filterListings}{active ? ` (${active})` : ""}</Text></Pressable>
     {active ? <Text style={{ marginTop: 8, color: theme.muted }}>{[value.originCity || titleFor("originCountry", value.originCountry), value.destinationCity || titleFor("destinationCountry", value.destinationCountry)].join(" → ")}{value.vehicle ? ` · ${titleFor("vehicle", value.vehicle)}` : ""}</Text> : null}
     <Modal visible={open} animationType="slide" onRequestClose={() => select ? setSelect(null) : setOpen(false)}>
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}><View style={styles.heading}><Text style={{ color: theme.text, fontSize: 22, fontWeight: "900", flex: 1 }}>{select ? label(select) : tr ? "İlan filtreleri" : "Listing filters"}</Text><Pressable style={button} accessibilityLabel={tr ? "Kapat" : "Close"} onPress={() => select ? setSelect(null) : setOpen(false)}><Ionicons name={select ? "arrow-back" : "close"} size={23} color={theme.text} /></Pressable></View>

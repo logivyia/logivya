@@ -24,7 +24,7 @@ async function main() {
     const fifth = await stores[0].reserveCampaign("account", "five");
     assert.ok(third > 299_000 && third <= 300_000);
     assert.ok(Math.abs(fourth - third) < 1000);
-    assert.ok(fifth > 599_000 && fifth <= 600_000);
+    assert.ok(fifth > 299_000 && fifth <= 300_000);
     const restarted = new RedisSendSafetyStore(clients[1], prefix);
     assert.equal(await restarted.reserveCampaign("account", "one"), 0);
     assert.ok(await restarted.reserveCampaign("account", "three") > 298_000);
@@ -34,7 +34,7 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 140));
     assert.equal(await restarted.reserveCampaign("account", "one"), 0);
 
-    // Real BullMQ delay path: four campaigns, two recipients each. No sending
+    // Real BullMQ delay path: six campaigns, two recipients each. No sending
     // callback can run before admission, and delays consume no failure attempts.
     const starts = new Map<string, number>(); const failed: string[] = [];
     worker = new Worker(queue.name, async (job, token) => {
@@ -44,15 +44,15 @@ async function main() {
       return { simulated: true };
     }, { connection, concurrency: 8 });
     worker.on("failed", (_job, error) => failed.push(error.message));
-    await queue.addBulk(Array.from({length: 8}, (_, i) => ({name: "recipient", data: {campaign: `c${Math.floor(i / 2)}`}, opts: {attempts: 1}})));
+    await queue.addBulk(Array.from({length: 12}, (_, i) => ({name: "recipient", data: {campaign: `c${Math.floor(i / 2)}`}, opts: {attempts: 1}})));
     const end = Date.now() + 10_000;
-    while (await queue.getCompletedCount() < 8 && Date.now() < end) await new Promise(resolve => setTimeout(resolve, 50));
-    assert.equal(await queue.getCompletedCount(), 8);
+    while (await queue.getCompletedCount() < 12 && Date.now() < end) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(await queue.getCompletedCount(), 12);
     assert.equal(await queue.getFailedCount(), 0); assert.deepEqual(failed, []);
     const times = [...starts.values()].sort((a,b) => a-b);
-    assert.equal(times.length, 4); assert.ok(times[2] - times[1] >= 390);
+    assert.equal(times.length, 6); assert.ok(times[2] - times[1] >= 390); assert.ok(times[4] - times[3] >= 390);
     const jobs = await queue.getCompleted(); assert.ok(jobs.every(job => job.attemptsMade === 1));
-    console.log(JSON.stringify({ok:true,competingRecipients:100,firstPairImmediate:true,thirdPairWaitMs:third,nextPairWaitMs:fifth,restartAndAccountIsolation:true,realQueueRecipients:8,noFailures:true,noMessagesSent:true}));
+    console.log(JSON.stringify({ok:true,competingRecipients:100,firstPairImmediate:true,thirdPairWaitMs:third,pendingCampaignRechecks:true,restartAndAccountIsolation:true,realQueueRecipients:12,noFailures:true,noMessagesSent:true}));
   } finally {
     await worker?.close(); await queue.obliterate({force:true}); await queue.close();
     const keys = await clients[0].keys(`${prefix}:*`);

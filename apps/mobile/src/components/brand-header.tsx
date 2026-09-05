@@ -4,6 +4,7 @@ import { colors } from "@/theme/colors";
 import { useTranslation } from "@/i18n/use-translation";
 import { useTheme } from "@/theme/theme-provider";
 import logo from "../../assets/images/logo.png";
+import { LanguageSelector } from "@/components/language-selector";
 
 export function BrandHeader() {
   const theme = useTheme();
@@ -11,6 +12,7 @@ export function BrandHeader() {
 
   return (
     <View style={styles.container}>
+      <View style={{ alignSelf: "flex-end" }}><LanguageSelector /></View>
       <View style={[styles.logoFrame, theme.mode === "light" ? styles.logoFrameLight : null]}>
         <Image accessibilityLabel="Logivya" alt="Logivya" source={logo} style={styles.logo} resizeMode="contain" resizeMethod="resize" />
       </View>

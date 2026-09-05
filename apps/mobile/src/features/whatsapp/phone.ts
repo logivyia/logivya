@@ -1,5 +1,6 @@
 import { countryRegistry, type MobileCountryRegistryEntry } from "@/generated/country-registry";
 import { translateCurrent } from "@/i18n/runtime";
+import { normalizeCountrySearch } from "../../../../../shared/international-phone-input";
 import {
   MobilePhoneNormalizationError,
   normalizeMobilePhone,
@@ -21,7 +22,7 @@ export function getMobileCountryForLocale(locale: string | null | undefined): Mo
 }
 
 export function searchMobileCountries(query: string) {
-  const normalized = query.normalize("NFKC").trim().toLocaleLowerCase();
+  const normalized = normalizeCountrySearch(query);
   if (!normalized) return countryRegistry;
   return countryRegistry.filter((entry) => [
     entry.countryName,
@@ -29,7 +30,7 @@ export function searchMobileCountries(query: string) {
     entry.countryIso,
     entry.callingCode,
     ...entry.aliases,
-  ].some((value) => value.toLocaleLowerCase().includes(normalized)));
+  ].some((value) => normalizeCountrySearch(value).includes(normalized)));
 }
 
 export function normalizeInternationalPhone(countryIso: string, input: string): MobilePhonePairingInput {

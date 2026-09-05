@@ -10,20 +10,17 @@ local now = tonumber(clock[1]) * 1000 + math.floor(tonumber(clock[2]) / 1000)
 local paused = redis.call('pttl', KEYS[3])
 if paused == -1 then return tonumber(ARGV[1]) end
 if paused > 0 then return paused end
-local existing = redis.call('get', KEYS[2])
-if existing then return math.max(0, tonumber(existing) - now) end
+if redis.call('exists', KEYS[2]) == 1 then return 0 end
 local nextAt = tonumber(redis.call('hget', KEYS[1], 'nextAt') or '0')
 local count = tonumber(redis.call('hget', KEYS[1], 'count') or '0')
-local at = math.max(now, nextAt)
-if count >= 2 or now >= nextAt then count = 0 end
-count = count + 1
-local following = at + tonumber(ARGV[1])
-redis.call('hset', KEYS[1], 'nextAt', following, 'count', count)
--- The second member of a pair uses the first member's time, not the next pair.
-if count == 2 then at = math.max(now, nextAt - tonumber(ARGV[1])); following = at + tonumber(ARGV[1]); redis.call('hset', KEYS[1], 'nextAt', following) end
-redis.call('pexpire', KEYS[1], math.max(1, following - now + tonumber(ARGV[1])))
-redis.call('set', KEYS[2], at, 'PX', math.max(2592000000, at - now + 2592000000))
-return math.max(0, at - now)
+if now >= nextAt then count = 0 end
+if count >= 2 then return math.max(1, nextAt - now) end
+-- Record actual admission only. A delayed job must recheck this gate when
+-- it wakes, so downtime/provider pauses cannot release many expired slots.
+redis.call('hset', KEYS[1], 'nextAt', now + tonumber(ARGV[1]), 'count', count + 1)
+redis.call('pexpire', KEYS[1], tonumber(ARGV[1]))
+redis.call('set', KEYS[2], 'admitted', 'PX', 2592000000)
+return 0
 `;
 
 export const RESERVE_SEND_SCRIPT = `

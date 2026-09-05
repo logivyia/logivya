@@ -15,6 +15,7 @@ const read = (file: string) => readFileSync(path.join(root, file), "utf8");
 const fakePlan = (slug: string) => ({ slug } as NonNullable<Parameters<typeof deriveCompanyEntitlements>[0]>);
 
 const expectedTranslations: Record<string, string> = {
+  ar: "تم إرسال هذه الرسالة عبر logivya.com.",
   tr: "Bu mesaj logivya.com üzerinden gönderilmiştir.",
   en: "This message was sent via logivya.com.",
   ro: "Acest mesaj a fost trimis prin logivya.com.",
@@ -27,7 +28,7 @@ const expectedTranslations: Record<string, string> = {
   sr: "Ova poruka je poslata putem logivya.com.",
 };
 
-assert.equal(countryRegistry.length, Object.keys(expectedTranslations).length);
+assert.equal(new Set(countryRegistry.map(country => country.localeId)).size, Object.keys(expectedTranslations).length);
 for (const country of countryRegistry) {
   assert.equal(country.attribution, expectedTranslations[country.localeId]);
   const rendered = renderLocalizedAttribution({ originalText: "Duyuru", locale: country.localeId, required: true });

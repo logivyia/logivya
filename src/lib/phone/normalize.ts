@@ -3,6 +3,7 @@ import phoneMetadata from "libphonenumber-js/min/metadata";
 import { z } from "zod";
 
 import { countryRegistry, getCountryByIso } from "@/lib/international/country-registry";
+import { normalizeDiallingInput, phoneCountryMatches } from "../../../shared/international-phone-input";
 
 const SAFE_PHONE_INPUT = /^\+?[0-9\s().-]+$/u;
 
@@ -41,7 +42,7 @@ export function normalizePhonePairingInput(payload: PhonePairingPayload): Normal
   if (structured) {
     const country = getCountryByIso(rawIso);
     if (!country) throw new Error("UNSUPPORTED_PHONE_COUNTRY");
-    const rawNational = String(payload.nationalNumber).normalize("NFKC").trim();
+    const rawNational = normalizeDiallingInput(String(payload.nationalNumber));
     if (!rawNational || !SAFE_PHONE_INPUT.test(rawNational)) {
       throw new Error("INVALID_WHATSAPP_PHONE");
     }
@@ -51,14 +52,15 @@ export function normalizePhonePairingInput(payload: PhonePairingPayload): Normal
       ? `+${digits}`
       : rawNational.startsWith("00")
         ? `+${digits.slice(2)}`
-        : digits.startsWith(callingDigits)
-          ? `+${digits}`
-          : null;
-    const parsed = parseAndValidate(
-      internationalValue ?? digits.replace(/^0+/, ""),
-      internationalValue ? undefined : country.countryIso,
-    );
-    if (parsed.country !== country.countryIso) throw new Error("PHONE_COUNTRY_MISMATCH");
+        : null;
+    let parsed;
+    try {
+      parsed = parseAndValidate(internationalValue ?? digits, internationalValue ? undefined : country.countryIso);
+    } catch (error) {
+      if (internationalValue || !digits.startsWith(callingDigits)) throw error;
+      parsed = parseAndValidate(`+${digits}`);
+    }
+    if (!phoneCountryMatches(country.countryIso, parsed.country)) throw new Error("PHONE_COUNTRY_MISMATCH");
     return {
       countryIso: country.countryIso,
       callingCode: country.callingCode,
@@ -70,7 +72,7 @@ export function normalizePhonePairingInput(payload: PhonePairingPayload): Normal
   }
 
   if (typeof payload.phoneNumber !== "string") throw new Error("INVALID_WHATSAPP_PHONE");
-  const raw = payload.phoneNumber.normalize("NFKC").trim();
+  const raw = normalizeDiallingInput(payload.phoneNumber);
   if (!raw || !/^\+?[0-9\s().-]+$/u.test(raw)) throw new Error("INVALID_WHATSAPP_PHONE");
   const legacyDigits = raw.replace(/\D/gu, "");
   const legacyCountry = [...countryRegistry]
@@ -83,7 +85,13 @@ export function normalizePhonePairingInput(payload: PhonePairingPayload): Normal
       : legacyCountry
         ? `+${legacyDigits}`
         : raw;
-  const parsed = parseAndValidate(legacyValue, legacyValue.startsWith("+") ? undefined : "TR");
+  // Preserve the legacy Turkish national-number input before interpreting bare
+  // international prefixes such as +53, which overlap Turkish mobile numbers.
+  let parsed;
+  if (!raw.startsWith("+") && !raw.startsWith("00")) {
+    try { parsed = parseAndValidate(legacyDigits, "TR"); } catch { /* Try the international form below. */ }
+  }
+  parsed ??= parseAndValidate(legacyValue, legacyValue.startsWith("+") ? undefined : "TR");
   const country = getCountryByIso(parsed.country);
   if (!country) throw new Error("UNSUPPORTED_PHONE_COUNTRY");
   return {

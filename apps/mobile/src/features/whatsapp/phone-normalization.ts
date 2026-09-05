@@ -1,5 +1,6 @@
 import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js/core";
 import phoneMetadata from "libphonenumber-js/min/metadata";
+import { normalizeDiallingInput, phoneCountryMatches } from "../../../../../shared/international-phone-input";
 
 export type PhoneCountryDefinition = {
   readonly countryIso: string;
@@ -27,7 +28,7 @@ export function normalizeMobilePhone(
   country: PhoneCountryDefinition,
   input: string,
 ): NormalizedMobilePhone {
-  const raw = input.normalize("NFKC").trim();
+  const raw = normalizeDiallingInput(input);
   if (!raw || !SAFE_PHONE_INPUT.test(raw)) {
     throw new MobilePhoneNormalizationError("INVALID_PHONE");
   }
@@ -38,22 +39,23 @@ export function normalizeMobilePhone(
     ? `+${digits}`
     : raw.startsWith("00")
       ? `+${digits.slice(2)}`
-      : digits.startsWith(callingDigits)
-        ? `+${digits}`
-        : null;
-  const nationalValue = digits.replace(/^0+/, "");
-  const parsed = internationalValue
+      : null;
+  // Let country metadata handle trunk prefixes (Italy keeps its leading zero).
+  let parsed = internationalValue
     ? parsePhoneNumberFromString(internationalValue, phoneMetadata)
     : parsePhoneNumberFromString(
-        nationalValue,
+        digits,
         country.countryIso as CountryCode,
         phoneMetadata,
       );
+  if (!internationalValue && (!parsed?.isValid() || !parsed.isPossible()) && digits.startsWith(callingDigits)) {
+    parsed = parsePhoneNumberFromString(`+${digits}`, phoneMetadata);
+  }
 
   if (!parsed || !parsed.isPossible() || !parsed.isValid()) {
     throw new MobilePhoneNormalizationError("INVALID_PHONE");
   }
-  if (parsed.country !== country.countryIso) {
+  if (!phoneCountryMatches(country.countryIso, parsed.country)) {
     throw new MobilePhoneNormalizationError("PHONE_COUNTRY_MISMATCH");
   }
 
