@@ -2036,7 +2036,8 @@
   "facebookDeletion.confirmationCode": "Bestätigungscode",
   "facebookDeletion.success": "Die Facebook-Zugriffstoken wurden entfernt und der Zugriff auf verbundene Seiten wurde deaktiviert.",
   "facebookDeletion.notFound": "Es wurde kein gültiger Bestätigungscode für die Löschung gefunden.",
-  "api.error.whatsappSendPaused": "Nach einem Einschränkungssignal von WhatsApp wurde der Versand für 24 Stunden angehalten. Prüfen Sie Ihr Konto in WhatsApp; wiederholen Sie nach der Pause nur fehlgeschlagene Zustellungen.",
+  "api.error.whatsappSendPaused": "WhatsApp hat ein Sendelimit gemeldet. Der Versand pausiert mindestens 5 Minuten. Prüfen Sie den Zustellstatus fehlgeschlagener Empfänger.",
   "api.error.whatsappSendSafetyUnavailable": "Diese Sendungen wurden gestoppt, weil die Sicherheitsprüfung nicht verfügbar war. Wiederholen Sie fehlgeschlagene Zustellungen, sobald die Verbindung wiederhergestellt ist.",
-  "users.addUser": "Benutzer hinzufügen"
+  "users.addUser": "Benutzer hinzufügen",
+  "messages.sendPacing": "Two campaigns can start consecutively. The next pair waits at least 5 minutes. Sends to groups are at least 6 seconds apart."
 }

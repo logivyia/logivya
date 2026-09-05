@@ -1,5 +1,7 @@
 import "./health";
 import { Worker, type Job, type Queue } from "bullmq";
+import { deferCampaignForPacing } from "@/server/messages/campaign-pacing";
+import { sendIntervalMs } from "@/server/whatsapp/send-safety-policy";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { QUEUES, WHATSAPP_MESSAGE_JOB_OPTIONS } from "@/server/queues/contracts";
@@ -332,7 +334,7 @@ registerWorker(QUEUES.campaign, new Worker(QUEUES.campaign, async (job) => {
     const payload: MessageRecipientJobPayload = { companyId, campaignId: occurrence.id, recipientId: recipient.id, correlationId, source: "recurring" };
     await producerQueues.message.add("send-recipient", payload, {
       jobId: `recipient-${recipient.id}`,
-      delay: index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000),
+      delay: index * sendIntervalMs(),
       ...WHATSAPP_MESSAGE_JOB_OPTIONS,
     });
   }
@@ -444,7 +446,7 @@ registerWorker(QUEUES.sync, new Worker(QUEUES.sync, async (job) => {
   }, { ttlMs: action === "sync-contacts" ? 15 * 60_000 : 180_000, timeoutMs: 45_000, correlationId: String(job.id ?? "") });
 }, { connection, concurrency: 5 }));
 
-registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
+registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job, token) => {
   if (job.name === "delete-for-everyone") return processDeleteForEveryoneJob(job as Job<DeleteForEveryoneJob>);
   const jobData = job.data as Partial<MessageRecipientJobPayload>;
   if (!jobData.recipientId) throw new Error("MESSAGE_JOB_RECIPIENT_MISSING");
@@ -471,6 +473,21 @@ registerWorker(QUEUES.message, new Worker(QUEUES.message, async (job) => {
   if (recipient.status === "SENT" || ["CANCELED", "CANCELING", "DELETED"].includes(recipient.campaign.status)) {
     logger.info("message.job.skipped", { ...baseLog, recipientStatus: recipient.status, campaignStatus: recipient.campaign.status });
     return;
+  }
+  // Defer BEFORE claiming a recipient or writing a transport intent. Waiting
+  // never consumes delivery attempts, holds an account lock or marks a failure.
+  const pacingTarget = targetType === "CONTACT" ? recipient.contact : recipient.group;
+  const pacingScopeValid = pacingTarget
+    && (!jobData.companyId || jobData.companyId === recipient.campaign.companyId)
+    && (!jobData.campaignId || jobData.campaignId === recipient.campaignId)
+    && pacingTarget.companyId === recipient.campaign.companyId
+    && recipient.account.companyId === recipient.campaign.companyId
+    && pacingTarget.userId === recipient.campaign.createdById
+    && recipient.account.userId === recipient.campaign.createdById
+    && pacingTarget.accountId === recipient.accountId;
+  if (pacingScopeValid && ["PENDING", "FAILED", "RETRYING"].includes(recipient.status)
+      && !hasUnconfirmedDelivery(recipient.messageKeyJson)) {
+    await deferCampaignForPacing(job, recipient.accountId, recipient.campaignId, token);
   }
   const claimed = await prisma.messageRecipient.updateMany({
     where: { id: recipient.id, status: { in: ["PENDING", "FAILED", "RETRYING"] } },

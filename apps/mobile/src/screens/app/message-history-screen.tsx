@@ -289,6 +289,7 @@ function deleteForEveryoneSummary(state: MobileDeleteForEveryoneState, t: Return
 
 function statusLabel(status: string, t: ReturnType<typeof useTranslation>["t"]) {
   if (status === "COMPLETED") return t("statusCompleted");
+  if (status === "PARTIALLY_COMPLETED") return t("statusPartiallyCompleted");
   if (status === "FAILED") return t("statusFailedMessage");
   if (status === "QUEUED") return t("statusQueued");
   if (status === "SENDING") return t("statusSending");

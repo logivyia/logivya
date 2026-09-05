@@ -1,4 +1,5 @@
 "use client";
+import { WhatsAppIcon } from "@/components/whatsapp-icon";
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -40,7 +41,7 @@ import { adminMenuLabel, statusLabel } from "@/i18n/status";
 
 const primaryNav = [
   { href: "/dashboard", key: "nav.dashboard", icon: LayoutDashboard },
-  { href: "/accounts", key: "nav.accounts", icon: Smartphone },
+  { href: "/accounts", key: "nav.accounts", icon: WhatsAppIcon },
   {
     href: "/telegram",
     key: "nav.telegramManagement",

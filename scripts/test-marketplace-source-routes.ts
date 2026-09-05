@@ -36,3 +36,12 @@ assert.equal(intra.length, 1);
 assert.equal(intra[0]?.origin?.canonical, "Bursa Mudanya");
 assert.equal(intra[0]?.destination?.canonical, "Bursa Osmangazi");
 console.log("Source route isolation, repeated cities, attributes and ambiguity checks passed.");
+for (const city of ["Kocaeli Gölcük", "Kocaeli İzmit", "Kocaeli Dilovası"]) {
+  const route = extractFreightCandidates(`${city} → İstanbul Tuzla Tenteli 75kg`, at)[0];
+  assert.equal(route?.origin?.canonical, city);
+  assert.equal(route?.destination?.canonical, "İstanbul Tuzla");
+  assert.equal(route?.weight, 0.075);
+}
+assert.equal(extractFreightCandidates("Yükleme: Konya → Irak Frigo 25 ton", at)[0]?.cargoType, null, "Loading labels are not cargo descriptions");
+assert.equal(extractFreightCandidates("Yük türü: Demir; Adana → Mersin Tenteli 20 ton", at)[0]?.cargoType, "Demir");
+assert.equal(extractFreightCandidates(`Yük: ${"a".repeat(79)}🚚; Adana → Mersin Tenteli 20 ton`, at)[0]?.cargoType?.isWellFormed(), true, "A truncated emoji cannot produce invalid database text");

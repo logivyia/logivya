@@ -1801,7 +1801,7 @@
   "adminSubscriptions.manual.customerNote": "Nachricht für den Benutzer",
   "adminSubscriptions.manual.internalNote": "Interne Administratornotiz",
   "notification.title.marketplace.request_match_found": "Ein passender Eintrag wurde gefunden",
-  "whatsappSendPaused": "Nach einem Einschränkungssignal von WhatsApp wurde der Versand für 24 Stunden angehalten. Prüfen Sie Ihr Konto in WhatsApp; wiederholen Sie nach der Pause nur fehlgeschlagene Zustellungen.",
+  "whatsappSendPaused": "WhatsApp hat ein Sendelimit gemeldet. Der Versand pausiert mindestens 5 Minuten. Prüfen Sie den Zustellstatus fehlgeschlagener Empfänger.",
   "whatsappSendSafetyUnavailable": "Diese Sendungen wurden gestoppt, weil die Sicherheitsprüfung nicht verfügbar war. Wiederholen Sie fehlgeschlagene Zustellungen, sobald die Verbindung wiederhergestellt ist.",
   "teamAddUser": "Benutzer hinzufügen"
 }

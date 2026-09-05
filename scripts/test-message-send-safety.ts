@@ -42,7 +42,7 @@ class MemoryStore implements SendSafetyStore {
   }
 }
 
-test("100 queued sends and a restarted gate maintain five-second spacing, including retries and attachment parts", async () => {
+test("100 queued sends and a restarted gate maintain six-second spacing, including retries and attachment parts", async () => {
   let time = 1000;
   const store = new MemoryStore(() => time);
   const wait = async (ms: number) => { time += ms; };
@@ -52,11 +52,11 @@ test("100 queued sends and a restarted gate maintain five-second spacing, includ
     if (i === 50) gate = new WhatsAppSendSafety(store, sendIntervalMs({}), wait, () => time);
     await gate.send("account", async () => { starts.push(time); return { messageKey: i }; });
   }
-  for (let i = 1; i < starts.length; i++) assert.ok(starts[i] - starts[i - 1] >= 5000);
-  assert.equal(starts.at(-1)! - starts[0], 495_000);
+  for (let i = 1; i < starts.length; i++) assert.ok(starts[i] - starts[i - 1] >= 6000);
+  assert.equal(starts.at(-1)! - starts[0], 594_000);
   await assert.rejects(gate.send("account", async () => { starts.push(time); throw new Error("transient"); }), /transient/);
-  await gate.send("account", async () => { assert.ok(time - starts.at(-1)! >= 5000); });
-  await gate.send("other-account", async () => assert.equal(time, 506_000));
+  await gate.send("account", async () => { assert.ok(time - starts.at(-1)! >= 6000); });
+  await gate.send("other-account", async () => assert.equal(time, 607_000));
 });
 
 test("concurrent campaigns share the same account's permits", async () => {
@@ -102,7 +102,7 @@ test("a failed restriction write is retried before any later dispatch", async ()
 });
 
 test("invalid configuration cannot increase the send rate; group permissions are not classified as an account ban", () => {
-  for (const value of ["0", "-5", "NaN", "Infinity", "1500"]) assert.ok(sendIntervalMs({ WHATSAPP_MIN_DELAY_MS: value }) >= 5000);
+  for (const value of ["0", "-5", "NaN", "Infinity", "1500"]) assert.ok(sendIntervalMs({ WHATSAPP_MIN_DELAY_MS: value }) >= 6000);
   assert.equal(sendIntervalMs({ WHATSAPP_MAX_MESSAGES_PER_MINUTE: "6" }), 10_000);
   assert.equal(isWhatsAppSendRestriction({ output: { statusCode: 403 }, message: "not a group admin" }), false);
 });

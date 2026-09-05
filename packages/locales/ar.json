@@ -2036,7 +2036,8 @@
   "facebookDeletion.confirmationCode": "رمز التأكيد",
   "facebookDeletion.success": "تمت إزالة رموز الوصول إلى Facebook وتم تعطيل الوصول إلى الصفحات المرتبطة.",
   "facebookDeletion.notFound": "لم يتم العثور على رمز تأكيد حذف صالح.",
-  "api.error.whatsappSendPaused": "تم إيقاف الإرسال لمدة 24 ساعة بعد إشارة تقييد من WhatsApp. تحقق من حسابك في WhatsApp، وأعد المحاولة للمستلمين الذين فشل الإرسال إليهم فقط بعد انتهاء الإيقاف.",
+  "api.error.whatsappSendPaused": "أبلغ واتساب عن حد لمعدل الإرسال. يتم التوقف لمدة 5 دقائق على الأقل. تحقق من حالة تسليم المستلمين الذين فشل الإرسال إليهم.",
   "api.error.whatsappSendSafetyUnavailable": "تم إيقاف هذه الرسائل لتعذر إجراء فحص أمان الإرسال. أعد المحاولة للمستلمين الذين فشل الإرسال إليهم بعد استعادة الاتصال.",
-  "users.addUser": "إضافة مستخدم"
+  "users.addUser": "إضافة مستخدم",
+  "messages.sendPacing": "Two campaigns can start consecutively. The next pair waits at least 5 minutes. Sends to groups are at least 6 seconds apart."
 }

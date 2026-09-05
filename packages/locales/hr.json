@@ -22,5 +22,6 @@
   "settings.billing": "Naplata i računi",
   "common.filters": "Filtri",
   "common.groups": "Grupe",
-  "common.status": "Status"
+  "common.status": "Status",
+  "messages.sendPacing": "Two campaigns can start consecutively. The next pair waits at least 5 minutes. Sends to groups are at least 6 seconds apart."
 }

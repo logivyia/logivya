@@ -2036,7 +2036,8 @@
   "facebookDeletion.confirmationCode": "Təsdiq kodu",
   "facebookDeletion.success": "Facebook giriş tokenləri silindi və qoşulmuş Səhifələrə giriş deaktiv edildi.",
   "facebookDeletion.notFound": "Etibarlı silmə təsdiq kodu tapılmadı.",
-  "api.error.whatsappSendPaused": "WhatsApp məhdudiyyət siqnalından sonra göndərişlər 24 saat dayandırıldı. Hesabınızı WhatsApp-da yoxlayın; fasilə bitdikdən sonra yalnız uğursuz alıcılara yenidən göndərin.",
+  "api.error.whatsappSendPaused": "Bu göndəriş üçün WhatsApp sürət limiti bildirdi. Ən azı 5 dəqiqə fasilə verilir. Uğursuz alıcıların çatdırılma vəziyyətini yoxlayın.",
   "api.error.whatsappSendSafetyUnavailable": "Göndərmə təhlükəsizlik yoxlaması əlçatan olmadığı üçün bu göndərişlər dayandırıldı. Bağlantı bərpa olunduqdan sonra uğursuz alıcılara yenidən göndərin.",
-  "users.addUser": "İstifadəçi əlavə et"
+  "users.addUser": "İstifadəçi əlavə et",
+  "messages.sendPacing": "Two campaigns can start consecutively. The next pair waits at least 5 minutes. Sends to groups are at least 6 seconds apart."
 }

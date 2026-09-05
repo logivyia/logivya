@@ -116,7 +116,7 @@ export async function processPendingFreightCandidates(limit = 50) {
       if (await persistSmartMatchResult(demand, candidate, result)) matches += 1;
     }
     await prisma.freightOpportunityCandidate.updateMany({
-      where: { id: candidate.id, matchingProcessedAt: null },
+      where: { id: candidate.id, matchingProcessedAt: null, updatedAt: candidate.updatedAt },
       data: { matchingProcessedAt: new Date() },
     });
   }
@@ -307,7 +307,7 @@ async function matchDemandAgainstExternalCandidates(demand: MarketplaceDemandReq
   };
 }
 
-async function persistSmartMatchResult(
+export async function persistSmartMatchResult(
   demand: MarketplaceDemandRequest,
   candidate: FreightOpportunityCandidate,
   result: ReturnType<typeof calculateSmartCandidateMatch> & {},
@@ -320,20 +320,25 @@ async function persistSmartMatchResult(
       expiresAt: { gt: new Date() },
     },
   });
-  const duplicate = await prisma.smartMatchResult.findFirst({
-    where: { demandId: demand.id, duplicateGroupKey: candidate.duplicateKey, status: { not: "DISMISSED" } },
+  try {
+  return await prisma.$transaction(async tx => {
+  // A source edit must not race a score calculated from the previous contents.
+  await tx.$queryRaw`SELECT "id" FROM "FreightOpportunityCandidate" WHERE "id" = ${candidate.id} FOR UPDATE`;
+  const current = await tx.freightOpportunityCandidate.findUnique({ where: { id: candidate.id } });
+  if (!current || current.duplicateKey !== candidate.duplicateKey || current.expiresAt <= new Date() || current.updatedAt.getTime() !== candidate.updatedAt.getTime()) return false;
+  const duplicate = await tx.smartMatchResult.findFirst({
+    where: { demandId: demand.id, duplicateGroupKey: candidate.duplicateKey, status: { not: "EXPIRED" } },
     select: { id: true, sourceCount: true },
   });
   if (duplicate) {
     if (actualSourceCount > duplicate.sourceCount) {
-      await prisma.smartMatchResult.update({ where: { id: duplicate.id }, data: { sourceCount: actualSourceCount } });
+      await tx.smartMatchResult.update({ where: { id: duplicate.id }, data: { sourceCount: actualSourceCount } });
     }
     return false;
   }
-  try {
-    await prisma.$transaction([
-      prisma.smartMatchResult.create({
-        data: {
+  const previous = await tx.smartMatchResult.findUnique({ where: { demandId_candidateId: { demandId: demand.id, candidateId: candidate.id } }, select: { id: true, status: true } });
+  if (previous && previous.status !== "EXPIRED") return false;
+  const data = {
           demandId: demand.id,
           candidateId: candidate.id,
           companyId: demand.companyId,
@@ -349,14 +354,22 @@ async function persistSmartMatchResult(
           explanation: result.explanation as Prisma.InputJsonValue,
           duplicateGroupKey: candidate.duplicateKey,
           sourceCount: Math.max(1, actualSourceCount),
-        },
-      }),
-      prisma.marketplaceDemandRequest.update({
+          status: "NEW" as const,
+          matchedAt: new Date(),
+          expiredAt: null,
+          viewedAt: null,
+          savedAt: null,
+          dismissedAt: null,
+          notifiedAt: null,
+  };
+  if (previous) await tx.smartMatchResult.update({ where: { id: previous.id }, data });
+  else await tx.smartMatchResult.create({ data });
+  await tx.marketplaceDemandRequest.update({
         where: { id: demand.id },
         data: { matchCount: { increment: 1 }, lastMatchedAt: new Date() },
-      }),
-    ]);
+      });
     return true;
+  });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return false;
     throw error;

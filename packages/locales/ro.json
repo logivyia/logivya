@@ -2036,7 +2036,8 @@
   "facebookDeletion.confirmationCode": "Cod de confirmare",
   "facebookDeletion.success": "Tokenurile de acces Facebook au fost eliminate, iar accesul la Paginile conectate a fost dezactivat.",
   "facebookDeletion.notFound": "Nu a fost găsit niciun cod valid de confirmare a ștergerii.",
-  "api.error.whatsappSendPaused": "Trimiterile au fost oprite timp de 24 de ore după un semnal de restricționare WhatsApp. Verificați contul în WhatsApp; după pauză, reîncercați numai destinatarii la care trimiterea a eșuat.",
+  "api.error.whatsappSendPaused": "WhatsApp a raportat o limită de trimitere. Se face o pauză de cel puțin 5 minute. Verificați livrarea către destinatarii cu eșec.",
   "api.error.whatsappSendSafetyUnavailable": "Aceste trimiteri au fost oprite deoarece verificarea de siguranță nu era disponibilă. Reîncercați destinatarii nereușiți după restabilirea conexiunii.",
-  "users.addUser": "Adaugă utilizator"
+  "users.addUser": "Adaugă utilizator",
+  "messages.sendPacing": "Two campaigns can start consecutively. The next pair waits at least 5 minutes. Sends to groups are at least 6 seconds apart."
 }

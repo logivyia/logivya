@@ -2036,7 +2036,8 @@
   "facebookDeletion.confirmationCode": "Κωδικός επιβεβαίωσης",
   "facebookDeletion.success": "Τα διακριτικά πρόσβασης Facebook καταργήθηκαν και η πρόσβαση στις συνδεδεμένες Σελίδες απενεργοποιήθηκε.",
   "facebookDeletion.notFound": "Δεν βρέθηκε έγκυρος κωδικός επιβεβαίωσης διαγραφής.",
-  "api.error.whatsappSendPaused": "Η αποστολή διακόπηκε για 24 ώρες μετά από ένδειξη περιορισμού του WhatsApp. Ελέγξτε τον λογαριασμό σας στο WhatsApp· μετά την παύση, δοκιμάστε ξανά μόνο τους παραλήπτες με αποτυχημένη αποστολή.",
+  "api.error.whatsappSendPaused": "Το WhatsApp ανέφερε όριο αποστολών. Η αποστολή διακόπτεται για τουλάχιστον 5 λεπτά. Ελέγξτε την παράδοση στους παραλήπτες με αποτυχία.",
   "api.error.whatsappSendSafetyUnavailable": "Αυτές οι αποστολές διακόπηκαν επειδή ο έλεγχος ασφάλειας δεν ήταν διαθέσιμος. Δοκιμάστε ξανά τους παραλήπτες με αποτυχία μετά την αποκατάσταση της σύνδεσης.",
-  "users.addUser": "Προσθήκη χρήστη"
+  "users.addUser": "Προσθήκη χρήστη",
+  "messages.sendPacing": "Two campaigns can start consecutively. The next pair waits at least 5 minutes. Sends to groups are at least 6 seconds apart."
 }

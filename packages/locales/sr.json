@@ -2036,7 +2036,8 @@
   "facebookDeletion.confirmationCode": "Potvrdni kod",
   "facebookDeletion.success": "Facebook pristupni tokeni su uklonjeni, a pristup povezanim Stranicama je onemogućen.",
   "facebookDeletion.notFound": "Nije pronađen važeći potvrdni kod za brisanje.",
-  "api.error.whatsappSendPaused": "Slanje je zaustavljeno na 24 sata nakon signala o ograničenju na WhatsApp-u. Proverite nalog u WhatsApp-u; po isteku pauze ponovite slanje samo primaocima kod kojih nije uspelo.",
+  "api.error.whatsappSendPaused": "WhatsApp je prijavio ograničenje slanja. Slanje se pauzira najmanje 5 minuta. Proverite isporuku neuspešnim primaocima.",
   "api.error.whatsappSendSafetyUnavailable": "Slanje je zaustavljeno jer bezbednosna provera slanja nije dostupna. Ponovite neuspešna slanja nakon uspostavljanja veze.",
-  "users.addUser": "Dodaj korisnika"
+  "users.addUser": "Dodaj korisnika",
+  "messages.sendPacing": "Two campaigns can start consecutively. The next pair waits at least 5 minutes. Sends to groups are at least 6 seconds apart."
 }

@@ -26,5 +26,6 @@
   "billing.save": "ბილინგის ინფორმაციის შენახვა",
   "common.filters": "ფილტრები",
   "common.groups": "ჯგუფები",
-  "common.status": "სტატუსი"
+  "common.status": "სტატუსი",
+  "messages.sendPacing": "Two campaigns can start consecutively. The next pair waits at least 5 minutes. Sends to groups are at least 6 seconds apart."
 }

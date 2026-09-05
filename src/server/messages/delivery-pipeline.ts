@@ -12,6 +12,7 @@ import { requestGroupSyncIfStale, resolveCurrentWhatsAppAccount } from "@/server
 import { resolveSendableWhatsAppGroups } from "@/server/whatsapp/sendable-groups";
 import { uniqueSelectedGroupIds, uniqueGroupDeliveryTargets } from "./unique-targets";
 import { assertWhatsAppSendingAvailable } from "@/server/whatsapp/send-safety";
+import { sendIntervalMs } from "@/server/whatsapp/send-safety-policy";
 import { createMessageCorrelationId, withCampaignMetadata } from "@/server/messages/correlation";
 import { assertMessageDeliveryQueueReady, isMessageDeliveryReadinessError } from "@/server/messages/delivery-readiness";
 import { traceMessageStage } from "@/server/messages/delivery-tracing";
@@ -118,7 +119,7 @@ export async function enqueueMessageRecipientJobs(input: {
       correlationId: input.correlationId,
     });
     for (const [index, recipient] of input.recipients.entries()) {
-      const delayMs = baseDelay + index * Number(process.env.WHATSAPP_MIN_DELAY_MS || 3000);
+      const delayMs = baseDelay + index * sendIntervalMs();
       const payload: MessageRecipientJobPayload = {
         companyId: input.companyId,
         campaignId: input.campaignId,
@@ -283,7 +284,7 @@ export async function createMessageDeliveryCampaign(
     const paused = error instanceof Error && error.message === "WHATSAPP_SEND_PAUSED";
     throw new MessageDeliveryError(
       paused ? "WHATSAPP_SEND_PAUSED" : "WHATSAPP_SEND_SAFETY_UNAVAILABLE",
-      paused ? "WhatsApp kısıtlama sinyali nedeniyle bu hesabın gönderimleri 24 saat durduruldu. WhatsApp hesabınızın durumunu kontrol edin; süre dolduktan sonra yeniden deneyin." : "Gönderim güvenlik kontrolüne ulaşılamadı. Hiçbir yeni mesaj gönderilmedi; lütfen daha sonra yeniden deneyin.",
+      paused ? "WhatsApp hız sınırı nedeniyle gönderime geçici ara verildi. Bekleyen kampanyalar sürenin sonunda devam eder." : "Gönderim güvenlik kontrolüne ulaşılamadı. Hiçbir yeni mesaj gönderilmedi; lütfen daha sonra yeniden deneyin.",
       paused ? 409 : 503, undefined, correlationId,
     );
   }

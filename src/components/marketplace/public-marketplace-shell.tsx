@@ -2,11 +2,12 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Menu, X, Grid2X2, Home, Layers, MessageCircle, Send, Users, Tags, CircleHelp, CreditCard, UserPlus, PlusCircle, Search, ClipboardList, BusFront, UserRound, Bell } from "lucide-react";
+import { Menu, X, Grid2X2, Home, Layers, Send, Users, Tags, CircleHelp, CreditCard, UserPlus, PlusCircle, Search, ClipboardList, BusFront, UserRound, Bell } from "lucide-react";
+import { WhatsAppIcon } from "@/components/whatsapp-icon";
 import { useI18n } from "@/i18n/provider";
 import { LowbedIcon } from "@/components/lowbed-icon";
 import { publicMarketplaceSections } from "../../../shared/public-marketplace-sections";
-const icons = [Grid2X2, MessageCircle, Send, Home, Layers, LowbedIcon, Users, Tags, CircleHelp, CreditCard, UserPlus, PlusCircle, Search, ClipboardList, BusFront, BusFront, UserRound, Bell];
+const icons = [Grid2X2, WhatsAppIcon, Send, Home, Layers, LowbedIcon, Users, Tags, CircleHelp, CreditCard, UserPlus, PlusCircle, Search, ClipboardList, BusFront, BusFront, UserRound, Bell];
 export function PublicMarketplaceShell({ children }: { children: ReactNode }) {
   const { locale } = useI18n(); const tr = locale === "tr";
   const path = usePathname(); const params = useSearchParams();

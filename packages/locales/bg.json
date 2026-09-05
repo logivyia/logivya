@@ -2036,7 +2036,8 @@
   "facebookDeletion.confirmationCode": "Код за потвърждение",
   "facebookDeletion.success": "Токените за достъп до Facebook бяха премахнати и достъпът до свързаните Страници беше деактивиран.",
   "facebookDeletion.notFound": "Не беше намерен валиден код за потвърждение на изтриването.",
-  "api.error.whatsappSendPaused": "Изпращането е спряно за 24 часа след сигнал за ограничение от WhatsApp. Проверете акаунта си в WhatsApp; след паузата опитайте отново само за получателите с неуспешно изпращане.",
+  "api.error.whatsappSendPaused": "WhatsApp съобщи за ограничение на скоростта. Изпращането спира за поне 5 минути. Проверете доставката до неуспешните получатели.",
   "api.error.whatsappSendSafetyUnavailable": "Изпращането е спряно, тъй като проверката за безопасност е недостъпна. Опитайте отново за неуспешните получатели след възстановяване на връзката.",
-  "users.addUser": "Добавяне на потребител"
+  "users.addUser": "Добавяне на потребител",
+  "messages.sendPacing": "Two campaigns can start consecutively. The next pair waits at least 5 minutes. Sends to groups are at least 6 seconds apart."
 }

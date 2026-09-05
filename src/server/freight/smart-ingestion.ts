@@ -27,9 +27,9 @@ type AuthorizedMessageInput = {
 };
 
 export async function ingestAuthorizedFreightMessage(input: AuthorizedMessageInput) {
-  if (!isProbableFreightMessage(input.text)) return { probable: false, persisted: 0 };
-  const extracted = extractFreightCandidates(input.text, input.sourceMessageTimestamp);
-  if (!extracted.length) return { probable: true, persisted: 0 };
+  const probable = isProbableFreightMessage(input.text);
+  const extracted = probable ? extractFreightCandidates(input.text, input.sourceMessageTimestamp) : [];
+  const prepared: Array<Prisma.FreightOpportunityCandidateUncheckedCreateInput & { opportunityIndex: number }> = [];
   let persisted = 0;
   for (const [opportunityIndex, candidate] of extracted.entries()) {
     const sector = classifyLogisticsSector({
@@ -95,7 +95,20 @@ export async function ingestAuthorizedFreightMessage(input: AuthorizedMessageInp
       matchingProcessedAt: null,
     } satisfies Prisma.FreightOpportunityCandidateUncheckedCreateInput;
 
-    await prisma.freightOpportunityCandidate.upsert({
+    prepared.push(data);
+  }
+  await prisma.$transaction(async tx => {
+    // Live ingestion and demand backfill can parse the same source concurrently.
+    const sourceKey = `${input.ownerUserId}:${input.sourcePlatform}:${input.sourceAccountId}:${input.sourceMessageId}`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${sourceKey}, 0))`;
+    for (const data of prepared) {
+    const opportunityIndex = data.opportunityIndex;
+    const unique = { ownerUserId: input.ownerUserId, sourcePlatform: input.sourcePlatform, sourceAccountId: input.sourceAccountId, sourceMessageId: input.sourceMessageId, opportunityIndex };
+    const existing = await tx.freightOpportunityCandidate.findUnique({
+      where: { ownerUserId_sourcePlatform_sourceAccountId_sourceMessageId_opportunityIndex: unique },
+      select: { id: true, duplicateKey: true },
+    });
+    const updated = await tx.freightOpportunityCandidate.upsert({
       where: {
         ownerUserId_sourcePlatform_sourceAccountId_sourceMessageId_opportunityIndex: {
           ownerUserId: input.ownerUserId,
@@ -117,15 +130,30 @@ export async function ingestAuthorizedFreightMessage(input: AuthorizedMessageInp
         firstSeenAt: undefined,
       },
     });
+    if (existing && existing.duplicateKey !== data.duplicateKey) {
+      await tx.smartMatchResult.updateMany({ where: { candidateId: updated.id, status: { in: ["NEW", "VIEWED", "SAVED"] } }, data: { status: "EXPIRED", expiredAt: new Date() } });
+    }
     persisted += 1;
-  }
+    }
+    const obsolete = await tx.freightOpportunityCandidate.findMany({ where: {
+      ownerUserId: input.ownerUserId, companyId: input.companyId, sourcePlatform: input.sourcePlatform,
+      sourceAccountId: input.sourceAccountId, sourceMessageId: input.sourceMessageId,
+      opportunityIndex: { notIn: prepared.map(item => item.opportunityIndex) }, expiresAt: { gt: new Date() },
+    }, select: { id: true } });
+    const ids = obsolete.map(item => item.id);
+    if (ids.length) {
+      const now = new Date();
+      await tx.freightOpportunityCandidate.updateMany({ where: { id: { in: ids } }, data: { expiresAt: now, matchingProcessedAt: now } });
+      await tx.smartMatchResult.updateMany({ where: { candidateId: { in: ids }, status: { in: ["NEW", "VIEWED", "SAVED"] } }, data: { status: "EXPIRED", expiredAt: now } });
+    }
+  }, { timeout: 30000 });
   logger.info("smart_matching.message_ingested", {
     sourcePlatform: input.sourcePlatform,
     sourceAccountId: input.sourceAccountId,
     sourceGroupId: input.sourceGroupId,
     candidatesDetected: persisted,
   });
-  return { probable: true, persisted };
+  return { probable, persisted };
 }
 
 export async function ingestOwnedWhatsAppGroupMessage(input: {

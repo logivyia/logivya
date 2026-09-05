@@ -415,7 +415,7 @@ export function CampaignComposerPage() {
     <>
       <header className="mb-7">
         <p className="text-xs font-semibold uppercase tracking-[.2em] text-orange-500">{t("composer.eyebrow")}</p>
-        <h1 className="mt-2 text-3xl font-semibold">{t("nav.sendMessage")}</h1>
+        <h1 className="mt-2 text-3xl font-semibold">{t("nav.sendMessage")}</h1><p className="mt-3 text-sm text-muted">{t("messages.sendPacing")}</p>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{t("composer.description")}</p>
       </header>
 

@@ -1637,8 +1637,8 @@ model WhatsAppListingExtraction {
   destinationLocationId    String?
   routeDescription         String?
   cargoType                String?
-  tonnageMin               Decimal?                      @db.Decimal(10, 2)
-  tonnageMax               Decimal?                      @db.Decimal(10, 2)
+  tonnageMin               Decimal?                      @db.Decimal(12, 4)
+  tonnageMax               Decimal?                      @db.Decimal(12, 4)
   vehicleCategory          String?
   trailerType              FreightTrailerType?
   loadingDate              DateTime?                     @db.Date
@@ -3882,7 +3882,7 @@ model FreightListing {
   destinationNormalized String
   loadingDate           DateTime                      @db.Date
   cargoType             String?
-  weight                Decimal?                      @db.Decimal(10, 2)
+  weight                Decimal?                      @db.Decimal(12, 4)
   weightUnit            FreightWeightUnit             @default(METRIC_TONNE)
   trailerType           FreightTrailerType
   vehicleCount          Int                           @default(1)
@@ -4045,8 +4045,8 @@ model MarketplaceDemandRequest {
   requiredPlateCountry  String?
   transitRoute          String?
   cargoType             String?
-  minWeight             Decimal?                      @db.Decimal(10, 2)
-  maxWeight             Decimal?                      @db.Decimal(10, 2)
+  minWeight             Decimal?                      @db.Decimal(12, 4)
+  maxWeight             Decimal?                      @db.Decimal(12, 4)
   driverListingType     DriverListingType?
   licenseClasses        String[]                      @default([])
   employmentType        DriverEmploymentType?
@@ -4153,7 +4153,7 @@ model FreightOpportunityCandidate {
   destinationLocationType            String?
   loadingDate                        DateTime?                     @db.Date
   cargoType                          String?
-  weight                             Decimal?                      @db.Decimal(10, 2)
+  weight                             Decimal?                      @db.Decimal(12, 4)
   weightUnit                         FreightWeightUnit?
   trailerType                        FreightTrailerType?
   vehicleCount                       Int?

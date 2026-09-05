@@ -1,4 +1,5 @@
 "use client";
+import { WhatsAppIcon } from "@/components/whatsapp-icon";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -105,7 +106,7 @@ export function ListingDetailPage({ kind, id, requestId, guest = false }: { kind
             {listing.contact ? (
               <div className="mt-5 grid gap-3">
                 <a href={listing.contact.telHref} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border bg-card px-4 text-sm font-semibold hover:border-primary/40"><Phone aria-hidden className="size-4 text-primary" />{copy.call}</a>
-                <a href={listing.contact.whatsappHref} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:brightness-95"><MessageCircle aria-hidden className="size-4" />{copy.whatsapp}<ExternalLink aria-hidden className="size-3.5" /></a>
+                <a href={listing.contact.whatsappHref} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:brightness-95"><WhatsAppIcon aria-hidden className="size-4" />{copy.whatsapp}<ExternalLink aria-hidden className="size-3.5" /></a>
               </div>
             ) : guest || listing.contactAccess === "SUBSCRIPTION_REQUIRED" ? <div className="mt-4 space-y-3"><p className="text-sm leading-6 text-muted">{locale === "tr" ? "İletişim bilgileri geçerli deneme veya abonelik ile açılır." : "Contact requires an active trial or subscription."}</p><Link href={guest ? "/register" : "/settings/subscription"} className="flex min-h-12 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground">{locale === "tr" ? guest ? "Kayıt ol · 7 gün ücretsiz" : "Aboneliği görüntüle" : guest ? "Register · 7 days free" : "View subscription"}</Link>{guest ? <Link href="/login" className="block py-2 text-center text-sm font-semibold text-primary">{locale === "tr" ? "Giriş yap" : "Sign in"}</Link> : null}</div> : <p className="mt-4 text-sm leading-6 text-muted">{copy.contactMissing}</p>}
             <a href={`mailto:support@logivya.com?subject=${encodeURIComponent(`İlan bildirimi: ${listing.id}`)}`} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-3 text-xs font-semibold text-muted hover:bg-card hover:text-foreground"><Flag aria-hidden className="size-3.5" />{copy.report}</a>

@@ -1801,7 +1801,7 @@
   "adminSubscriptions.manual.customerNote": "İstifadəçiyə göstəriləcək açıqlama",
   "adminSubscriptions.manual.internalNote": "Daxili administrator qeydi",
   "notification.title.marketplace.request_match_found": "Uyğun siyahı tapıldı",
-  "whatsappSendPaused": "WhatsApp məhdudiyyət siqnalından sonra göndərişlər 24 saat dayandırıldı. Hesabınızı WhatsApp-da yoxlayın; fasilə bitdikdən sonra yalnız uğursuz alıcılara yenidən göndərin.",
+  "whatsappSendPaused": "Bu göndəriş üçün WhatsApp sürət limiti bildirdi. Ən azı 5 dəqiqə fasilə verilir. Uğursuz alıcıların çatdırılma vəziyyətini yoxlayın.",
   "whatsappSendSafetyUnavailable": "Göndərmə təhlükəsizlik yoxlaması əlçatan olmadığı üçün bu göndərişlər dayandırıldı. Bağlantı bərpa olunduqdan sonra uğursuz alıcılara yenidən göndərin.",
   "teamAddUser": "İstifadəçi əlavə et"
 }

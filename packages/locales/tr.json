@@ -318,7 +318,7 @@
   "status.draft": "Taslak",
   "common.actions": "İşlemler",
   "common.loading": "Yükleniyor...",
-  "api.error.whatsappSendPaused": "WhatsApp kısıtlama sinyali nedeniyle gönderimler 24 saat durduruldu. Hesabınızı WhatsApp üzerinden kontrol edin; süre dolduktan sonra yalnızca başarısız hedefleri yeniden deneyin.",
+  "api.error.whatsappSendPaused": "Bu gönderimde WhatsApp hız sınırı bildirildi. En az 5 dakika ara verilir. Başarısız hedeflerin teslim durumunu kontrol edin.",
   "api.error.whatsappSendSafetyUnavailable": "Gönderim güvenlik kontrolüne ulaşılamadığı için bu gönderimler yapılmadı. Bağlantı düzeldiğinde başarısız hedefleri yeniden deneyin.",
   "admin.searchPlaceholder": "Yönetim içinde ara...",
   "admin.exit": "Yönetimden çık",
@@ -2038,5 +2038,6 @@
   "facebookDeletion.confirmationCode": "Onay kodu",
   "facebookDeletion.success": "Facebook bağlantı belirteçleri kaldırıldı ve bağlı Sayfa erişimleri kapatıldı.",
   "facebookDeletion.notFound": "Geçerli bir silme onay kodu bulunamadı.",
-  "users.addUser": "Kullanıcı Ekle"
+  "users.addUser": "Kullanıcı Ekle",
+  "messages.sendPacing": "İki kampanya arka arkaya başlar. Sonraki ikili en az 5 dakika bekler. Gruplar arasında en az 6 saniye bırakılır."
 }

@@ -2036,7 +2036,8 @@
   "facebookDeletion.confirmationCode": "Tassyklama kody",
   "facebookDeletion.success": "Facebook giriş belgileri aýryldy we birikdirilen Sahypalara giriş öçürildi.",
   "facebookDeletion.notFound": "Pozmak üçin dogry tassyklama kody tapylmady.",
-  "api.error.whatsappSendPaused": "WhatsApp çäklendirme duýduryşyndan soň iberişler 24 sagat duruzyldy. WhatsApp-da hasabyňyzy barlaň; arakesme gutarandan soň diňe iberilmedik alyjylara täzeden synanyşyň.",
+  "api.error.whatsappSendPaused": "WhatsApp iberiş tizliginiň çägini habar berdi. Iň azyndan 5 minut arakesme berilýär. Iberilmedik alyjylaryň eltiş ýagdaýyny barlaň.",
   "api.error.whatsappSendSafetyUnavailable": "Iberiş howpsuzlygyny barlamak elýeterli bolmandygy sebäpli bu iberişler duruzyldy. Baglanyşyk dikeldilenden soň iberilmedik alyjylara täzeden synanyşyň.",
-  "users.addUser": "Ulanyjy goş"
+  "users.addUser": "Ulanyjy goş",
+  "messages.sendPacing": "Two campaigns can start consecutively. The next pair waits at least 5 minutes. Sends to groups are at least 6 seconds apart."
 }

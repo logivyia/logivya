@@ -1,12 +1,13 @@
-export const SEND_RESTRICTION_COOLDOWN_MS = 24 * 60 * 60_000;
+export const SEND_RESTRICTION_COOLDOWN_MS = 5 * 60_000;
+export const CAMPAIGN_PAIR_COOLDOWN_MS = 5 * 60_000;
 
 export function sendIntervalMs(environment: Record<string, string | undefined> = process.env) {
-  const configuredDelay = Number(environment.WHATSAPP_MIN_DELAY_MS || 3000);
-  const configuredRate = Number(environment.WHATSAPP_MAX_MESSAGES_PER_MINUTE || 12);
-  const delay = Number.isFinite(configuredDelay) && configuredDelay > 0 ? configuredDelay : 3000;
-  const rate = Number.isFinite(configuredRate) && configuredRate > 0 ? configuredRate : 12;
+  const configuredDelay = Number(environment.WHATSAPP_MIN_DELAY_MS || 6000);
+  const configuredRate = Number(environment.WHATSAPP_MAX_MESSAGES_PER_MINUTE || 10);
+  const delay = Number.isFinite(configuredDelay) && configuredDelay > 0 ? configuredDelay : 6000;
+  const rate = Number.isFinite(configuredRate) && configuredRate > 0 ? configuredRate : 10;
   // Keep the existing rate ceiling; a short queue delay must not create a burst.
-  return Math.ceil(Math.max(3000, delay, 60_000 / Math.min(12, rate)));
+  return Math.ceil(Math.max(6000, delay, 60_000 / Math.min(10, rate)));
 }
 
 export function isWhatsAppSendRestriction(error: unknown): boolean {

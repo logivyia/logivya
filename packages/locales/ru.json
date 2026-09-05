@@ -2036,7 +2036,8 @@
   "facebookDeletion.confirmationCode": "Код подтверждения",
   "facebookDeletion.success": "Токены доступа Facebook удалены, а доступ к подключенным Страницам отключен.",
   "facebookDeletion.notFound": "Действительный код подтверждения удаления не найден.",
-  "api.error.whatsappSendPaused": "Отправка приостановлена на 24 часа после сигнала об ограничении WhatsApp. Проверьте аккаунт в WhatsApp; после окончания паузы повторите отправку только тем получателям, которым она не удалась.",
+  "api.error.whatsappSendPaused": "WhatsApp сообщил об ограничении скорости. Отправка приостанавливается минимум на 5 минут. Проверьте доставку получателям с ошибкой.",
   "api.error.whatsappSendSafetyUnavailable": "Отправка остановлена, поскольку проверка безопасности отправки недоступна. После восстановления соединения повторите отправку только получателям с ошибкой.",
-  "users.addUser": "Добавить пользователя"
+  "users.addUser": "Добавить пользователя",
+  "messages.sendPacing": "Two campaigns can start consecutively. The next pair waits at least 5 minutes. Sends to groups are at least 6 seconds apart."
 }

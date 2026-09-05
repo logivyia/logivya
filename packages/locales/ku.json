@@ -26,5 +26,6 @@
   "billing.save": "Agahiyên fatureyê tomar bike",
   "common.filters": "Parzûn",
   "common.groups": "Kom",
-  "common.status": "Rewş"
+  "common.status": "Rewş",
+  "messages.sendPacing": "Two campaigns can start consecutively. The next pair waits at least 5 minutes. Sends to groups are at least 6 seconds apart."
 }

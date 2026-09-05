@@ -1,4 +1,5 @@
 "use client";
+import { WhatsAppIcon } from "@/components/whatsapp-icon";
 
 /* eslint-disable react-hooks/set-state-in-effect,@next/next/no-img-element */
 import { useCallback, useEffect, useState } from "react";
@@ -327,7 +328,7 @@ export function AccountsStablePage() {
           {accounts.map((account) => (
             <article key={account.id} className="rounded-3xl border bg-card p-6 text-card-foreground shadow-[var(--shadow-soft)]">
               <div className="flex items-start justify-between gap-3">
-                <MessageCircle className="h-8 w-8 text-orange-500" />
+                <WhatsAppIcon className="h-8 w-8 text-orange-500" />
                 <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusTone(account.status)}`}>
                   {statusLabel(t, "whatsapp", account.status)}
                 </span>

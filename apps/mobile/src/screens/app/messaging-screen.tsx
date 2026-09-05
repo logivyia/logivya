@@ -731,7 +731,7 @@ export function MessagingScreen() {
           <PageHeader
             eyebrow={t("campaignStudio")}
             title={t("messagingTitle")}
-            description={t("messagingSubtitle")}
+            description={`${t("messagingSubtitle")}\n${t("messageSendPacing")}`}
           />
           {telegramEnabled ? <View style={styles.modeRow}><Chip label="WhatsApp" active onPress={() => setSendingPlatform("WHATSAPP")} /><Chip label={t("telegramAccounts")} active={false} onPress={() => setSendingPlatform("TELEGRAM")} /></View> : null}
 

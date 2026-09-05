@@ -318,7 +318,7 @@
   "status.draft": "Draft",
   "common.actions": "Actions",
   "common.loading": "Loading...",
-  "api.error.whatsappSendPaused": "Sends were stopped for 24 hours after a WhatsApp restriction signal. Check your account in WhatsApp; retry only failed recipients after the pause ends.",
+  "api.error.whatsappSendPaused": "WhatsApp reported a rate limit for this send. Sending pauses for at least 5 minutes. Check the delivery status of failed recipients.",
   "api.error.whatsappSendSafetyUnavailable": "These sends were stopped because the sending safety check was unavailable. Retry failed recipients after connectivity recovers.",
   "admin.searchPlaceholder": "Search admin...",
   "admin.exit": "Exit admin",
@@ -2038,5 +2038,6 @@
   "facebookDeletion.confirmationCode": "Confirmation code",
   "facebookDeletion.success": "Facebook access tokens were removed and access to connected Pages was disabled.",
   "facebookDeletion.notFound": "No valid deletion confirmation code was found.",
-  "users.addUser": "Add User"
+  "users.addUser": "Add User",
+  "messages.sendPacing": "Two campaigns can start consecutively. The next pair waits at least 5 minutes. Sends to groups are at least 6 seconds apart."
 }

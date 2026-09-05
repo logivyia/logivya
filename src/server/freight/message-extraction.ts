@@ -225,9 +225,9 @@ function extractCustomsInformation(text: string) {
 }
 
 function extractCargoType(text: string) {
-  const match = /(?:yük|cargo|load|груз|yuk|حمولة|شحنة|بار)\s*[:\-]?\s*([^\n,;]{2,80})/iu.exec(text)?.[1]?.trim();
+  const match = /(?:^|[^\p{L}\p{N}])(?:yük(?:\s+(?:türü|cinsi))?|yuk(?:\s+(?:turu|cinsi))?|cargo(?:\s+type)?|load(?:\s+type)?|груз|حمولة|شحنة|بار)\s*:\s*([^\n,;]{2,80})/iu.exec(text)?.[1]?.trim();
   if (!match || /hazır|hazir|ready|آماده/iu.test(match)) return null;
-  return match.slice(0, 80);
+  return match.slice(0, 80).toWellFormed();
 }
 
 function extractCompanyName(text: string) {

@@ -22,7 +22,7 @@ try {
   await assert.rejects(gates[0].send("restricted", async () => { throw { output: { statusCode: 429 } }; }), /WHATSAPP_SEND_PAUSED/);
   const restarted = new WhatsAppSendSafety(stores[1], 40);
   await assert.rejects(restarted.send("restricted", async () => assert.fail("restricted account dispatched")), /WHATSAPP_SEND_PAUSED/);
-  assert.ok(await stores[1].pauseRemainingMs("restricted") > 86_390_000);
+  assert.ok(await stores[1].pauseRemainingMs("restricted") > 290_000);
   await restarted.send("other", async () => undefined);
   console.log(JSON.stringify({ ok: true, atomicCompetitors: 200, permitsGranted: 1, concurrentDispatches: starts.length, pauseSurvivesNewClient: true, otherAccountUnaffected: true }));
 } finally {

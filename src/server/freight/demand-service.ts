@@ -64,6 +64,10 @@ const requestSelect = {
   status: true,
   expiresAt: true,
   matchCount: true,
+  _count: { select: {
+    matches: { where: { status: { not: "DISMISSED" } } },
+    smartMatchResults: { where: { status: { in: ["NEW", "VIEWED", "SAVED"] } } },
+  } },
   lastMatchedAt: true,
   smartMatchingJobs: {
     select: {
@@ -103,10 +107,11 @@ function serializeRequest(row: RequestRow) {
   const effectiveStatus = row.expiresAt <= new Date() && ["ACTIVE", "PAUSED"].includes(row.status)
     ? "EXPIRED"
     : row.status;
-  const { smartMatchingJobs, ...request } = row;
+  const { smartMatchingJobs, _count, ...request } = row;
   const smartMatching = smartMatchingJobs[0];
   return {
     ...request,
+    matchCount: _count.matches + _count.smartMatchResults,
     status: effectiveStatus,
     availableFrom: dateOnly(row.availableFrom),
     availableUntil: dateOnly(row.availableUntil),
@@ -296,7 +301,7 @@ export async function listOwnedDemandMatches(id: string, ownerUserId: string, in
       ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
     }),
     input.cursor ? Promise.resolve([]) : prisma.smartMatchResult.findMany({
-      where: { demandId: id, status: { notIn: ["DISMISSED", "EXPIRED"] } },
+      where: { demandId: id, status: { notIn: ["DISMISSED", "EXPIRED"] }, candidate: { expiresAt: { gt: new Date() } } },
       include: { candidate: true },
       orderBy: [{ score: "desc" }, { matchedAt: "desc" }, { id: "desc" }],
       take: input.limit + 1,
