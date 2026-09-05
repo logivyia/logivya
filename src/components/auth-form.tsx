@@ -13,6 +13,7 @@ import { PasswordInput } from "@/components/password-input";
 import { SocialLoginButtons, type WebSocialProvider } from "@/components/social-login-buttons";
 import { useI18n } from "@/i18n/provider";
 import { apiErrorMessage } from "@/i18n/api-error";
+import { safeAuthReturn } from "@/lib/auth-return";
 
 type Mode = "login" | "register";
 type MfaChallenge = {
@@ -133,6 +134,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState(false);
   const [invitationToken, setInvitationToken] = useState("");
+  const [returnTo, setReturnTo] = useState("/dashboard");
   const [mfaChallenge, setMfaChallenge] = useState<MfaChallenge | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [rememberDevice, setRememberDevice] = useState(false);
@@ -144,11 +146,13 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
   useEffect(() => {
     const search = new URLSearchParams(window.location.search);
+    queueMicrotask(() => setReturnTo(safeAuthReturn(search.get("returnTo"))));
     const invitation = search.get("invitation")?.trim() ?? "";
     if (invitation.length >= 32) queueMicrotask(() => setInvitationToken(invitation));
     if (mode === "login" && search.get("reset") === "success") {
       queueMicrotask(() => setSuccess(t("auth.resetCompleted")));
-      window.history.replaceState({}, "", "/login");
+      search.delete("reset");
+      window.history.replaceState({}, "", `/login${search.size ? `?${search}` : ""}`);
     }
   }, [mode, t]);
 
@@ -185,7 +189,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
       }
     }
     localStorage.removeItem("logivya.selectedGroupIds");
-    router.push("/dashboard");
+    router.push(returnTo);
     router.refresh();
     return true;
   }
@@ -479,7 +483,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
           onCredential={submitSocialCredential}
           onError={() => setError(t("auth.socialProviderUnavailable"))}
         /> : null}
-        <p className="mt-6 text-center text-sm text-slate-600">{t(`auth.${mode}Switch`)} <Link className="font-semibold text-orange-600" href={`${mode === "login" ? "/register" : "/login"}${invitationToken ? `?invitation=${encodeURIComponent(invitationToken)}` : ""}`}>{t(`auth.${mode}SwitchAction`)}</Link></p>
+        <p className="mt-6 text-center text-sm text-slate-600">{t(`auth.${mode}Switch`)} <Link className="font-semibold text-orange-600" href={`${mode === "login" ? "/register" : "/login"}?returnTo=${encodeURIComponent(returnTo)}${invitationToken ? `&invitation=${encodeURIComponent(invitationToken)}` : ""}`}>{t(`auth.${mode}SwitchAction`)}</Link></p>
       </div>
     </section>
   </main>;

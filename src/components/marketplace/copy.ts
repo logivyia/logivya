@@ -1,4 +1,5 @@
 import { uzbekMarketplaceCopy } from "./copy-uz";
+import additionalCopy from "../../../shared/marketplace-copy-locales.json";
 
 const tr = {
   title: "Canlı İlanlar",
@@ -113,5 +114,5 @@ export type MarketplaceCopy = typeof tr;
 
 export function marketplaceCopy(locale: string): MarketplaceCopy {
   const uz: Record<keyof typeof tr, string> = uzbekMarketplaceCopy;
-  return (locale === "tr" ? tr : locale === "ar" ? ar : locale === "uz" ? uz : en) as MarketplaceCopy;
+  return (locale === "tr" ? tr : locale === "ar" ? ar : locale === "uz" ? uz : (additionalCopy as Record<string, Record<string, string>>)[locale] ?? en) as MarketplaceCopy;
 }

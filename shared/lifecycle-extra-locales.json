@@ -1,0 +1,74 @@
+{
+  "tr": {
+    "ACTIVE": "Aktif",
+    "PAUSED": "Duraklatıldı",
+    "SENT": "Gönderildi",
+    "SCHEDULED": "Planlandı"
+  },
+  "en": {
+    "ACTIVE": "Active",
+    "PAUSED": "Paused",
+    "SENT": "Sent",
+    "SCHEDULED": "Scheduled"
+  },
+  "ar": {
+    "ACTIVE": "نشط",
+    "PAUSED": "متوقف مؤقتًا",
+    "SENT": "تم الإرسال",
+    "SCHEDULED": "مجدول"
+  },
+  "ro": {
+    "ACTIVE": "Activ",
+    "PAUSED": "Întrerupt",
+    "SENT": "Trimis",
+    "SCHEDULED": "Programat"
+  },
+  "ru": {
+    "ACTIVE": "Активно",
+    "PAUSED": "Приостановлено",
+    "SENT": "Отправлено",
+    "SCHEDULED": "По расписанию"
+  },
+  "az": {
+    "ACTIVE": "Aktiv",
+    "PAUSED": "Pauze edildi",
+    "SENT": "Göndərildi",
+    "SCHEDULED": "planlaşdırılmış"
+  },
+  "tk": {
+    "ACTIVE": "Işjeň",
+    "PAUSED": "Saýlanan",
+    "SENT": "Iberildi",
+    "SCHEDULED": "Göçürilen"
+  },
+  "de": {
+    "ACTIVE": "Aktiv",
+    "PAUSED": "Pausiert",
+    "SENT": "Gesendet",
+    "SCHEDULED": "Geplant"
+  },
+  "bg": {
+    "ACTIVE": "Активен",
+    "PAUSED": "На пауза",
+    "SENT": "Изпратено",
+    "SCHEDULED": "Планирано"
+  },
+  "el": {
+    "ACTIVE": "Ενεργό",
+    "PAUSED": "Σε παύση",
+    "SENT": "Απεστάλη",
+    "SCHEDULED": "Προγραμματισμένο"
+  },
+  "sr": {
+    "ACTIVE": "Aktivno",
+    "PAUSED": "Pauzirano",
+    "SENT": "Poslato",
+    "SCHEDULED": "Zakazano"
+  },
+  "uz": {
+    "ACTIVE": "Faol",
+    "PAUSED": "To‘xtatilgan",
+    "SENT": "Yuborildi",
+    "SCHEDULED": "Rejalashtirilgan"
+  }
+}

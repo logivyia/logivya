@@ -1,3 +1,4 @@
+import { CatalogReturnScreen } from "@/features/freight/catalog-return";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -39,7 +40,11 @@ function apiFilters(draft: FilterDraft, cursor?: string): FreightSearchFilters {
   };
 }
 
-export function FindLoadsScreen({ navigation, route }: Props) {
+export function FindLoadsScreen(props: Props) {
+  return props.route.params?.initialCatalog ? <CatalogReturnScreen initialCatalog={props.route.params.initialCatalog} /> : <FindLoadsScreenContent {...props} />;
+}
+
+function FindLoadsScreenContent({ navigation, route }: Props) {
   const theme = useTheme();
   const { t } = useTranslation();
   const initialFilters = useMemo<FilterDraft>(() => ({ ...emptyFilters, q: route.params?.initialQuery?.trim() ?? "" }), [route.params?.initialQuery]);

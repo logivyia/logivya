@@ -4,7 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock3, History, LoaderCircle, MessageCircle, Send, Smartphone, UsersRound } from "lucide-react";
 
 import { useI18n } from "@/i18n/provider";
+import { telegramManagementCopy } from "../../shared/telegram-management-copy";
+import { telegramConnectionCopy } from "../../shared/telegram-connection-copy";
 import { TelegramAccountConnection } from "@/components/telegram-account-connection";
+import { productStatusCopy, lifecycleLabel } from "../../shared/product-status-copy";
 
 type TelegramAccount = {
   id: string;
@@ -24,6 +27,7 @@ type TelegramChat = {
   type: string;
   participantCount?: number | null;
   canSend: boolean;
+  freightPublicationEnabled: boolean;
   isArchived: boolean;
   lastSyncedAt?: string | null;
   categoryAssignments: Array<{ category: { id: string; name: string; color?: string | null } }>;
@@ -58,101 +62,8 @@ const field = "w-full rounded-xl border bg-background px-3 py-2.5 text-sm text-f
 const primaryButton = "inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300";
 
 function textFor(locale: string) {
-  if (locale === "uz") return {
-    eyebrow: "TELEGRAM", title: "Telegram boshqaruvi",
-    description: "Telegram hisobingizni ulang, chatlarni boshqaring, xabar yuboring va tarixni bir joyda kuzating.",
-    accounts: "Hisoblar", chats: "Chatlar", compose: "Xabar yuborish", history: "Tarix", account: "Telegram hisobi",
-    connected: "Ulangan", notConnected: "Ulanish kerak", noAccounts: "Hali Telegram hisobi yo‘q.",
-    connectionHelp: "Avval Hisoblar bo‘limidan Telegram hisobingizni ulang.",
-    noChats: "Bu hisobda faol chatlar topilmadi. Hisoblar bo‘limidan chatlarni sinxronlang.",
-    selectChats: "Xabar yubormoqchi bo‘lgan chatlarni tanlang.", selected: "tanlandi", content: "Xabar",
-    contentPlaceholder: "Xabaringizni yozing", titleLabel: "Kampaniya sarlavhasi (ixtiyoriy)", sendMode: "Yuborish turi",
-    now: "Hozir yuborish", scheduled: "Rejalashtirish", recurring: "Takroriy", date: "Boshlanish sanasi", frequency: "Takrorlanish",
-    daily: "Har kuni", weekly: "Har hafta", monthly: "Har oy", send: "Yuborish yaratish", sending: "Yaratilmoqda",
-    sent: "Xabar navbatga qo‘yildi.", reload: "Yangilash", emptyHistory: "Hali Telegram xabarlari yuborilmagan.", target: "oluvchi",
-    loading: "Telegram ish maydoni yuklanmoqda…", chooseTarget: "Kamida bitta chatni tanlang.", enterContent: "Xabar yozing.",
-    chooseDate: "To‘g‘ri boshlanish sanasini tanlang.",
-  };
-  const tr = locale.toLowerCase().startsWith("tr");
-  return tr
-    ? {
-        eyebrow: "TELEGRAM",
-        title: "Telegram Yönetimi",
-        description: "Telegram hesabınızı bağlayın, sohbetlerinizi yönetin, mesaj gönderin ve geçmişi tek ekrandan takip edin.",
-        accounts: "Hesaplar",
-        chats: "Sohbetler",
-        compose: "Mesaj Gönder",
-        history: "Geçmiş",
-        account: "Telegram hesabı",
-        connected: "Bağlı",
-        notConnected: "Bağlantı gerekli",
-        noAccounts: "Henüz bir Telegram hesabı yok.",
-        connectionHelp: "Önce Hesaplar sekmesinden Telegram hesabınızı bağlayın.",
-        noChats: "Bu hesaba ait etkin sohbet bulunamadı. Hesaplar sekmesinden sohbetleri eşitleyin.",
-        selectChats: "Mesaj göndermek istediğiniz sohbetleri seçin.",
-        selected: "seçildi",
-        content: "Mesaj",
-        contentPlaceholder: "Mesajınızı yazın",
-        titleLabel: "Kampanya başlığı (isteğe bağlı)",
-        sendMode: "Gönderim türü",
-        now: "Şimdi gönder",
-        scheduled: "Zamanla",
-        recurring: "Tekrarlı",
-        date: "Başlangıç tarihi",
-        frequency: "Sıklık",
-        daily: "Günlük",
-        weekly: "Haftalık",
-        monthly: "Aylık",
-        send: "Gönderimi oluştur",
-        sending: "Oluşturuluyor",
-        sent: "Gönderim kuyruğa alındı.",
-        reload: "Yenile",
-        emptyHistory: "Henüz Telegram gönderimi yok.",
-        target: "hedef",
-        loading: "Telegram çalışma alanı yükleniyor…",
-        chooseTarget: "En az bir sohbet seçin.",
-        enterContent: "Bir mesaj yazın.",
-        chooseDate: "Geçerli bir başlangıç tarihi seçin.",
-      }
-    : {
-        eyebrow: "TELEGRAM",
-        title: "Telegram Management",
-        description: "Connect your Telegram account, manage chats, send messages, and review history in one workspace.",
-        accounts: "Accounts",
-        chats: "Chats",
-        compose: "Send Message",
-        history: "History",
-        account: "Telegram account",
-        connected: "Connected",
-        notConnected: "Connection required",
-        noAccounts: "No Telegram account is available yet.",
-        connectionHelp: "First connect your Telegram account from the Accounts tab.",
-        noChats: "No active chats were found for this account. Sync chats from the Accounts tab.",
-        selectChats: "Select the chats that should receive this message.",
-        selected: "selected",
-        content: "Message",
-        contentPlaceholder: "Write your message",
-        titleLabel: "Campaign title (optional)",
-        sendMode: "Delivery type",
-        now: "Send now",
-        scheduled: "Schedule",
-        recurring: "Recurring",
-        date: "Start date",
-        frequency: "Frequency",
-        daily: "Daily",
-        weekly: "Weekly",
-        monthly: "Monthly",
-        send: "Create delivery",
-        sending: "Creating",
-        sent: "Delivery was queued.",
-        reload: "Refresh",
-        emptyHistory: "No Telegram deliveries yet.",
-        target: "target",
-        loading: "Loading Telegram workspace…",
-        chooseTarget: "Select at least one chat.",
-        enterContent: "Enter a message.",
-        chooseDate: "Choose a valid start date.",
-      };
+ const m=telegramManagementCopy(locale), c=telegramConnectionCopy(locale);
+ return { eyebrow:m.eyebrow,title:m.title,description:m.description,accounts:m.accounts,chats:m.chats,compose:m.sendTitle,history:m.history,account:m.connectedAccount,connected:c.connected,notConnected:c.closed,noAccounts:c.empty,connectionHelp:c.help,noChats:c.empty,selectChats:m.selectAudiences,selected:m.selectedTargetMetric,content:m.writeMessage,contentPlaceholder:m.messagePlaceholder,titleLabel:m.campaignTitle,sendMode:m.schedule,now:m.sendNow,scheduled:m.schedule,recurring:m.recurring,date:m.startDate,frequency:m.recurring,daily:m.daily,weekly:m.weekly,monthly:m.monthly,send:m.sendMessage,sending:c.waiting,sent:m.queued,reload:c.refresh,emptyHistory:m.noHistory,target:m.targetPreview,loading:m.loading,chooseTarget:m.chooseTarget,enterContent:m.enterContent,chooseDate:m.chooseDate };
 }
 
 function formatDate(value: string | null | undefined, locale: string) {
@@ -172,6 +83,18 @@ function statusTone(status: string) {
 export function TelegramManagementPage() {
   const { locale } = useI18n();
   const copy = useMemo(() => textFor(locale), [locale]);
+  const publicationCopy = productStatusCopy(locale);
+  const [publishing, setPublishing] = useState<string | null>(null);
+  async function togglePublication(chat: TelegramChat) {
+    if (publishing) return;
+    setPublishing(chat.id);
+    try {
+      const response = await fetch(`/api/web/telegram/chats/${encodeURIComponent(chat.id)}/publication`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: !chat.freightPublicationEnabled }), signal: AbortSignal.timeout(30_000) });
+      if (!response.ok) throw new Error(publicationCopy.failed);
+      setChats(current => current.map(item => item.id === chat.id ? { ...item, freightPublicationEnabled: !chat.freightPublicationEnabled } : item));
+      setError("");
+    } catch { setError(publicationCopy.failed); } finally { setPublishing(null); }
+  }
   const [tab, setTab] = useState<Tab>("accounts");
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
   const [chats, setChats] = useState<TelegramChat[]>([]);
@@ -342,10 +265,16 @@ export function TelegramManagementPage() {
             {chats.length === 0 ? <p className="mt-5 rounded-xl bg-secondary p-4 text-sm text-muted">{copy.noChats}</p> : (
               <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {chats.map((chat) => (
-                  <label key={chat.id} className={`flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border p-3 transition ${selectedChatIds.includes(chat.id) ? "border-orange-500 bg-orange-500/5" : "hover:bg-secondary"} ${!chat.canSend || chat.isArchived ? "cursor-not-allowed opacity-60" : ""}`}>
+                  <div key={chat.id} className="rounded-xl border p-2">
+                  <label className={`flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border p-3 transition ${selectedChatIds.includes(chat.id) ? "border-orange-500 bg-orange-500/5" : "hover:bg-secondary"} ${!chat.canSend || chat.isArchived ? "cursor-not-allowed opacity-60" : ""}`}>
                     <input type="checkbox" className="h-4 w-4 accent-orange-500" checked={selectedChatIds.includes(chat.id)} onChange={() => toggleChat(chat.id)} disabled={!chat.canSend || chat.isArchived} />
-                    <span className="min-w-0"><span className="block truncate text-sm font-semibold text-foreground">{chat.title}</span><span className="block truncate text-xs text-muted">{chat.username ? `@${chat.username}` : chat.type}{chat.participantCount ? ` · ${chat.participantCount}` : ""}</span></span>
+                    <span className="min-w-0"><span className="block truncate text-sm font-semibold text-foreground">{chat.title}</span><span className="block truncate text-xs text-muted">{chat.username ? `@${chat.username}` : "Telegram"}{chat.participantCount ? ` · ${chat.participantCount}` : ""}</span></span>
                   </label>
+                    {["BASIC_GROUP", "SUPERGROUP", "CHANNEL"].includes(chat.type) && !chat.isArchived && <label className="mt-3 flex items-start gap-2 p-2 text-sm">
+                      <input type="checkbox" className="mt-1 accent-orange-500" checked={Boolean(chat.freightPublicationEnabled)} disabled={publishing !== null} onChange={() => void togglePublication(chat)} />
+                      <span>{publicationCopy.publication}<span className="mt-1 block text-xs text-muted">{publicationCopy.publicationHelp}</span></span>
+                    </label>}
+                  </div>
                 ))}
               </div>
             )}
@@ -373,7 +302,7 @@ export function TelegramManagementPage() {
               <div className="mt-5 divide-y">
                 {historyItems.map((item) => (
                   <article key={item.id} className="grid gap-3 py-4 first:pt-0 sm:grid-cols-[1fr_auto]">
-                    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-semibold text-foreground">{item.title || item.content || copy.compose}</h3><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusTone(item.status)}`}>{item.status}</span></div><p className="mt-1 line-clamp-2 text-sm text-muted">{item.content}</p><p className="mt-2 text-xs text-muted">{item.account.label} · {item.targets.length} {copy.target}</p></div>
+                    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-semibold text-foreground">{item.title || item.content || copy.compose}</h3><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusTone(item.status)}`}>{lifecycleLabel(item.status, locale)}</span></div><p className="mt-1 line-clamp-2 text-sm text-muted">{item.content}</p><p className="mt-2 text-xs text-muted">{item.account.label} · {item.targets.length} {copy.target}</p></div>
                     <div className="flex items-center gap-2 text-xs text-muted sm:justify-end"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" />{formatDate(item.scheduledAt || item.createdAt, locale)}</div>
                   </article>
                 ))}

@@ -327,7 +327,7 @@ async function extractStructuredListings(job: WhatsAppIngestionJob): Promise<Sta
     },
   });
   const aiExtractions = await prisma.whatsAppListingExtraction.count({
-    where: { inboundMessageId: row.id, isLogisticsListing: true },
+    where: { inboundMessageId: row.id, isLogisticsListing: true, reviewStatus: { notIn: ["EXPIRED", "DELETED_AT_SOURCE"] } },
   });
   if (aiExtractions > 0) {
     return auditStage(job, "inbound.extraction.ai_completed", { extractionCount: aiExtractions });
@@ -357,7 +357,9 @@ async function extractStructuredListings(job: WhatsAppIngestionJob): Promise<Sta
       ownerUserId: row.account.userId,
       sourcePlatform: "WHATSAPP",
       sourceAccountId: row.accountId,
+      sourceGroupId: row.groupId,
       sourceMessageId: row.providerMessageId,
+      expiresAt: { gt: new Date() },
     },
     orderBy: { opportunityIndex: "asc" },
   });
@@ -752,7 +754,7 @@ async function publishExtraction(input: {
     : null;
   if (!phone) return null;
   const description = extraction.normalizedDescription ? boundedDatabaseText(extraction.normalizedDescription, 2_000) : null;
-  const effectiveListingDate = extraction.loadingDate ?? todayFreightDate(input.sourceTimestamp);
+  const effectiveListingDate = extraction.loadingDate;
   const expiresAt = automaticListingExpiry(input.sourceTimestamp, Boolean(extraction.loadingDate));
   if (extraction.listingType === "LOAD" || extraction.listingType === "PARTIAL_LOAD") {
     if (!extraction.originCity || !extraction.destinationCity || !extraction.tonnageMin || !extraction.trailerType) return null;
@@ -824,7 +826,7 @@ async function publishExtraction(input: {
         originNormalized: normalizeLogisticsText(extraction.originCity),
         destination: extraction.destinationCity,
         destinationNormalized: extraction.destinationCity ? normalizeLogisticsText(extraction.destinationCity) : null,
-        availableFrom: effectiveListingDate < todayFreightDate() ? todayFreightDate() : effectiveListingDate,
+        availableFrom: effectiveListingDate,
         trailerType: extraction.trailerType,
         capacityWeight: extraction.tonnageMax,
         vehicleCount: structuredNumber(extraction.structuredData, "vehicleCount") ?? 1,
@@ -842,7 +844,7 @@ async function publishExtraction(input: {
         originNormalized: normalizeLogisticsText(extraction.originCity),
         destination: extraction.destinationCity,
         destinationNormalized: extraction.destinationCity ? normalizeLogisticsText(extraction.destinationCity) : null,
-        availableFrom: effectiveListingDate < todayFreightDate() ? todayFreightDate() : effectiveListingDate,
+        availableFrom: effectiveListingDate,
         trailerType: extraction.trailerType,
         capacityWeight: extraction.tonnageMax,
         vehicleCount: structuredNumber(extraction.structuredData, "vehicleCount") ?? 1,

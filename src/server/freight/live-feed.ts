@@ -27,6 +27,11 @@ export type LiveMarketplaceEvent = {
     originCountry: string | null;
     destinationCountry: string | null;
     trailerType: string | null;
+    driverListingType?: string;
+    licenseClasses?: string[];
+    employmentType?: string;
+    adrCertificate?: boolean;
+    internationalExperience?: boolean;
     vehicleBodyLength: number | null;
     tonnage: number | null;
     relevantDate: string | null;
@@ -92,6 +97,7 @@ export async function readLiveMarketplaceEvents(
         : { marketplaceScopes: { has: scope }, OR: [{ updatedAt: { gt: after } }, ...(matchedDriverIds.length ? [{ id: { in: matchedDriverIds } }] : [])] },
       select: {
         id: true, source: true, sourceExtractionId: true, title: true, location: true, preferredRoute: true, description: true,
+        listingType: true, licenseClasses: true, employmentType: true, adrCertificate: true, internationalExperience: true,
         availableFrom: true, status: true, publishedAt: true, deactivatedAt: true, updatedAt: true, company: { select: { name: true } },
       },
       orderBy: includeActiveSnapshot ? [{ updatedAt: "desc" }, { id: "desc" }] : [{ updatedAt: "asc" }, { id: "asc" }],
@@ -131,7 +137,7 @@ export async function readLiveMarketplaceEvents(
           title: summary.publicTitle,
           description: row.description ?? row.cargoType,
           origin: row.origin, destination: row.destination, originCountry: normalizeSingleLogisticsLocation(row.origin)?.countryCode ?? null, destinationCountry: normalizeSingleLogisticsLocation(row.destination)?.countryCode ?? null, trailerType: row.trailerType,
-          vehicleBodyLength: null, tonnage: row.weight == null ? null : Number(row.weight), relevantDate: row.loadingDate.toISOString(), status: row.status,
+          vehicleBodyLength: null, tonnage: row.weight == null ? null : Number(row.weight), relevantDate: row.loadingDate?.toISOString() ?? null, status: row.status,
           publishedAt: row.publishedAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
         },
       };
@@ -160,7 +166,7 @@ export async function readLiveMarketplaceEvents(
           companyName: summary.publicAdvertiserName,
           title: summary.publicTitle,
           description: row.description, origin: row.origin, destination: row.destination, originCountry: normalizeSingleLogisticsLocation(row.origin)?.countryCode ?? null, destinationCountry: normalizeSingleLogisticsLocation(row.destination)?.countryCode ?? null, trailerType: row.trailerType,
-          vehicleBodyLength: null, tonnage: row.capacityWeight == null ? null : Number(row.capacityWeight), relevantDate: row.availableFrom.toISOString(), status: row.status,
+          vehicleBodyLength: null, tonnage: row.capacityWeight == null ? null : Number(row.capacityWeight), relevantDate: row.availableFrom?.toISOString() ?? null, status: row.status,
           publishedAt: row.publishedAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
         },
       };
@@ -183,11 +189,13 @@ export async function readLiveMarketplaceEvents(
         cursor: row.updatedAt.toISOString(),
         listing: {
           id: row.id, kind: "DRIVER", source: row.source, sourceLabel: sourceLabel(row.source), eventVersion: 1,
+          driverListingType: row.listingType, licenseClasses: row.licenseClasses, employmentType: row.employmentType,
+          adrCertificate: row.adrCertificate, internationalExperience: row.internationalExperience,
           ...summary,
           companyName: summary.publicAdvertiserName,
           title: summary.publicTitle,
           description: row.description ?? row.preferredRoute,
-          origin: row.location, destination: null, originCountry: normalizeSingleLogisticsLocation(row.location)?.countryCode ?? null, destinationCountry: null, trailerType: null, vehicleBodyLength: null, tonnage: null, relevantDate: row.availableFrom.toISOString(),
+          origin: row.location, destination: null, originCountry: normalizeSingleLogisticsLocation(row.location)?.countryCode ?? null, destinationCountry: null, trailerType: null, vehicleBodyLength: null, tonnage: null, relevantDate: row.availableFrom?.toISOString() ?? null,
           status: row.status, publishedAt: row.publishedAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
         },
       };

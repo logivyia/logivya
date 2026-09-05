@@ -100,8 +100,8 @@ function optionalNormalized(value: string | null | undefined) {
   return normalized || null;
 }
 
-function dateOnly(value: Date) {
-  return value.toISOString().slice(0, 10);
+function dateOnly(value: Date | null) {
+  return value?.toISOString().slice(0, 10) ?? null;
 }
 
 function serializeListing(
@@ -380,7 +380,7 @@ export async function transitionOwnedFreightListing(id: string, ownerUserId: str
   if (!current) throw new Error("FREIGHT_LISTING_NOT_FOUND");
   if (current.status === nextStatus) return serializeListingRow(current, true, true);
   if (!allowedTransitions[current.status].includes(nextStatus)) throw new Error("FREIGHT_STATUS_TRANSITION_INVALID");
-  if (nextStatus === "ACTIVE" && current.loadingDate < todayFreightDate()) throw new Error("FREIGHT_LOADING_DATE_PAST");
+  if (nextStatus === "ACTIVE" && current.loadingDate && current.loadingDate < todayFreightDate()) throw new Error("FREIGHT_LOADING_DATE_PAST");
 
   const now = new Date();
   const mutation = await prisma.freightListing.updateMany({

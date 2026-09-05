@@ -355,6 +355,7 @@ export type MarketplaceDemandMatch = {
     canOpenWhatsApp?: boolean;
     contactAccess?: "ALLOWED" | "SUBSCRIPTION_REQUIRED";
     whatsappPrefilledMessage?: string | null;
+    telegramHref?: string | null;
     sourceExcerpt?: string | null;
     status: FreightListingStatus;
   };

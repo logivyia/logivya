@@ -7,6 +7,7 @@ import * as tdl from "tdl";
 import type * as Td from "tdlib-types";
 
 import { prisma } from "@/server/db";
+import { removeTelegramSourceMessage } from "@/server/freight/telegram-publication";
 import { ingestOwnedTelegramGroupMessage } from "@/server/freight/smart-ingestion";
 import { logger } from "@/server/observability/logger";
 import { decryptTelegramDatabaseKey } from "@/server/telegram/crypto";
@@ -227,6 +228,17 @@ async function createManagedClient(account: TelegramAccountRecord): Promise<Mana
           sourceMessageId: String(message.id),
         }));
       }
+      return;
+    }
+    if (update._ === "updateDeleteMessages" && update.is_permanent) {
+      void removeTelegramSourceMessage(account.id, String(update.chat_id), update.message_ids.map(String)).catch(error => logger.error("telegram.freight_source_delete_failed", error, { accountId: account.id }));
+      return;
+    }
+    if (update._ === "updateMessageContent") {
+      void client.invoke({ _: "getMessage", chat_id: update.chat_id, message_id: update.message_id }).then(message => {
+        if (message.is_outgoing) return;
+        return ingestOwnedTelegramGroupMessage({ accountId: account.id, externalChatId: String(message.chat_id), sourceMessageId: String(message.id), sourceMessageTimestamp: new Date(message.date * 1000), text: telegramInboundText(message).trim() });
+      }).catch(error => logger.error("telegram.freight_source_edit_failed", error, { accountId: account.id }));
       return;
     }
     if (update._ !== "updateAuthorizationState") return;

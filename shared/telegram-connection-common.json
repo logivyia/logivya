@@ -1,0 +1,122 @@
+{
+  "tr": {
+    "connect": "Bağlan",
+    "phone": "Telefon numarası",
+    "country": "Ülke kodu",
+    "search": "Ülke adı, kodu veya ISO ara",
+    "next": "Devam et",
+    "connected": "Bağlı",
+    "invalidPhone": "Seçilen ülkeye uygun geçerli bir telefon numarası girin.",
+    "failure": "İşlem tamamlanamadı"
+  },
+  "en": {
+    "connect": "Connect",
+    "phone": "Phone number",
+    "country": "Country code",
+    "search": "Search by country, calling code, or ISO",
+    "next": "Continue",
+    "connected": "Connected",
+    "invalidPhone": "Enter a valid phone number for the selected country.",
+    "failure": "Action could not be completed"
+  },
+  "ar": {
+    "connect": "الاتصال",
+    "phone": "رقم الهاتف",
+    "country": "رمز البلد",
+    "search": "البحث حسب البلد، أو رمز الاتصال، أو ISO",
+    "next": "متابعة",
+    "connected": "متصل",
+    "invalidPhone": "أدخل رقم هاتف صالحًا للبلد المحدد.",
+    "failure": "تعذر إكمال الإجراء"
+  },
+  "ro": {
+    "connect": "Conectează",
+    "phone": "Număr de telefon",
+    "country": "Prefix țară",
+    "search": "Căutați după țară, prefix sau cod ISO",
+    "next": "Continuați",
+    "connected": "Conectat",
+    "invalidPhone": "Introduceți un număr de telefon valid pentru țara selectată.",
+    "failure": "Acțiunea nu a putut fi finalizată"
+  },
+  "ru": {
+    "connect": "Подключиться",
+    "phone": "Номер телефона",
+    "country": "Код страны",
+    "search": "Поиск по стране, коду или ISO",
+    "next": "Продолжить",
+    "connected": "Подключено",
+    "invalidPhone": "Введите действительный номер телефона для выбранной страны.",
+    "failure": "Действие не может быть завершено"
+  },
+  "az": {
+    "connect": "qoşun",
+    "phone": "Telefon nömrəsi",
+    "country": "Ölkə kodu",
+    "search": "Ölkə, zəng kodu və ya ISO üzrə axtarın",
+    "next": "Davam et",
+    "connected": "Qoşulub",
+    "invalidPhone": "Seçilmiş ölkə üçün etibarlı telefon nömrəsi daxil edin.",
+    "failure": "Əməliyyatı tamamlamaq mümkün olmadı"
+  },
+  "tk": {
+    "connect": "Baglanmak",
+    "phone": "Telefon belgisi",
+    "country": "Curt kody",
+    "search": "Ýurt, jaň kody ýa-da ISO boýunça gözläň",
+    "next": "Dowam etmek",
+    "connected": "Birikdirildi",
+    "invalidPhone": "Saýlanan ýurt üçin dogry telefon belgisini giriziň.",
+    "failure": "Hereket ýerine ýetirilmedi"
+  },
+  "de": {
+    "connect": "Verbinden",
+    "phone": "Telefonnummer",
+    "country": "Ländervorwahl",
+    "search": "Nach Land, Vorwahl oder ISO suchen",
+    "next": "Fortfahren",
+    "connected": "Verbunden",
+    "invalidPhone": "Geben Sie eine gültige Telefonnummer für das ausgewählte Land ein.",
+    "failure": "Aktion konnte nicht abgeschlossen werden"
+  },
+  "bg": {
+    "connect": "Свържи",
+    "phone": "Телефонен номер",
+    "country": "Код на държава",
+    "search": "Търсене по държава, код или ISO",
+    "next": "Продължи",
+    "connected": "Свързан",
+    "invalidPhone": "Въведете валиден телефонен номер за избраната държава.",
+    "failure": "Действието не можа да бъде завършено"
+  },
+  "el": {
+    "connect": "Σύνδεση",
+    "phone": "Αριθμός τηλεφώνου",
+    "country": "Κωδικός χώρας",
+    "search": "Αναζήτηση με χώρα, κωδικό κλήσης ή ISO",
+    "next": "Συνέχεια",
+    "connected": "Συνδεδεμένο",
+    "invalidPhone": "Εισαγάγετε έναν έγκυρο αριθμό τηλεφώνου για την επιλεγμένη χώρα.",
+    "failure": "Η ενέργεια δεν ολοκληρώθηκε"
+  },
+  "sr": {
+    "connect": "Poveži se",
+    "phone": "Broj telefona",
+    "country": "Pozivni broj",
+    "search": "Pretražite po zemlji, pozivnom broju ili ISO kodu",
+    "next": "Nastavi",
+    "connected": "Povezano",
+    "invalidPhone": "Unesite važeći broj telefona za izabranu zemlju.",
+    "failure": "Radnja nije mogla biti dovršena"
+  },
+  "uz": {
+    "connect": "Ulash",
+    "phone": "Telefon raqami",
+    "country": "Mamlakat kodi",
+    "search": "Mamlakat nomi, kodi yoki ISO kodi",
+    "next": "Davom etish",
+    "connected": "Ulangan",
+    "invalidPhone": "Tanlangan mamlakat uchun to‘g‘ri telefon raqamini kiriting.",
+    "failure": "Amal bajarilmadi"
+  }
+}

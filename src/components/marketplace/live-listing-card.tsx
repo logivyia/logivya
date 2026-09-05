@@ -1,3 +1,4 @@
+import { localizeListingSummary } from "../../../shared/localize-listing-summary";
 import Link from "next/link";
 import { ArrowRight, Building2, CalendarClock, ChevronRight, MapPin, Scale, Truck } from "lucide-react";
 
@@ -13,6 +14,7 @@ export function LiveListingCard({
   copy: MarketplaceCopy;
   locale: string;
 }) {
+  listing = localizeListingSummary(listing, locale);
   const isDriver = listing.kind === "DRIVER";
   const published = formatRelativeTime(listing.publishedAt, locale);
   return (

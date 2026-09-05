@@ -1,3 +1,4 @@
+import { ownedMonthlyMessageMetrics } from "@/server/messages/monthly-metrics";
 import { NextResponse } from "next/server";
 import { isRecoverableWhatsAppStatus } from "@/lib/whatsapp/account-status-machine";
 import { requireApiSession } from "@/server/auth/session";
@@ -16,7 +17,7 @@ export async function GET() {
       void requestGroupSyncIfStale(scope, currentAccount, "platform");
     }
 
-    const [initialAccounts, groups, rawCategories, campaigns, subscription, onboarding, announcements] = await Promise.all([
+    const [initialAccounts, groups, rawCategories, campaigns, subscription, onboarding, announcements, monthlyMessages] = await Promise.all([
       prisma.whatsAppAccount.findMany({
         where: { companyId: company.id, userId: user.id },
         include: {
@@ -74,6 +75,7 @@ export async function GET() {
         orderBy: { startsAt: "desc" },
         take: 3,
       }),
+      ownedMonthlyMessageMetrics(company.id, user.id, company.defaultTimezone),
     ]);
     let accounts = initialAccounts;
     const restoreCount = await requestWhatsAppSessionRestoreForAccounts(
@@ -114,7 +116,8 @@ export async function GET() {
     return NextResponse.json({
       user: { id: user.id, name: user.name },
       company: { id: company.id, name: company.name },
-      accounts,
+      monthlyMessages,
+      accounts: accounts.map(account => ({ id: account.id, label: account.label, phoneNumber: account.phoneNumber, displayName: account.displayName, status: account.status, archivedAt: account.archivedAt, lastSyncedAt: account.lastSyncedAt, _count: account._count, sessions: account.sessions.map(session => ({ qrCode: session.qrCode, expiresAt: session.expiresAt })) })),
       currentWhatsAppAccount: currentAccount
         ? { id: currentAccount.id, phoneNumber: currentAccount.phoneNumber, status: currentAccount.status, lastGroupSyncAt: currentAccount.lastGroupSyncAt }
         : null,

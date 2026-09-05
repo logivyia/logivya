@@ -217,7 +217,8 @@ export async function webMarketplaceError(error: unknown) {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }
   if (
-    code === "FREIGHT_INVALID_DATE"
+    code === "MARKETPLACE_CURSOR_INVALID"
+    || code === "FREIGHT_INVALID_DATE"
     || code === "FREIGHT_LOADING_DATE_PAST"
     || code === "MARKETPLACE_DATE_RANGE_INVALID"
     || code === "FREIGHT_WEIGHT_RANGE_INVALID"
@@ -226,6 +227,7 @@ export async function webMarketplaceError(error: unknown) {
   ) {
     return NextResponse.json({ error: code }, { status: 400 });
   }
+  if (["MARKETPLACE_REQUEST_NOT_EDITABLE", "MARKETPLACE_REQUEST_STATUS_INVALID", "MARKETPLACE_REQUEST_EXPIRED"].includes(code)) return NextResponse.json({ error: code }, { status: 409 });
   return NextResponse.json({ error: "MARKETPLACE_REQUEST_FAILED" }, { status: 500 });
 }
 

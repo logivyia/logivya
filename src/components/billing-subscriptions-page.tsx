@@ -6,6 +6,7 @@ import { Check, ChevronDown, Copy, CreditCard, FileText, Landmark, LoaderCircle,
 import Link from "next/link";
 import { useI18n } from "@/i18n/provider";
 import { formatCurrency, formatDate } from "@/i18n/format";
+import { productStatusCopy } from "../../shared/product-status-copy";
 import { statusLabel } from "@/i18n/status";
 
 type Data = {
@@ -28,8 +29,8 @@ type Data = {
     marketingFeatures: { tr: string[]; en: string[] };
     billingIntervals: Array<"MONTHLY" | "YEARLY">;
   }>;
-  payments: Array<{ id: string; status: string; amount: string; currency: string; paidAt?: string; paymentMethod: string }>;
-  invoices: Array<{ id: string; status: string; totalAmount: string; currency: string; createdAt: string; pdfUrl?: string }>;
+  payments: Array<{ id: string; status: string; amount: string; currency: string; paidAt?: string; createdAt: string; providerPaymentId?: string; externalPaymentId?: string; invoiceId?: string; metadata?: { startsAt?: string; endsAt?: string }; plan?: { name: string }; paymentMethod: string }>;
+  invoices: Array<{ id: string; status: string; totalAmount: string; currency: string; createdAt: string; invoiceNumber: string; pdfUrl?: string }>;
   events: Array<{ id: string; type: string; message: string; createdAt: string }>;
   requests: ManualSubscriptionRequest[];
   checkout: {
@@ -519,7 +520,13 @@ export function BillingSubscriptionsPage() {
           <h3 className="font-semibold">{t("billing.paymentHistory")}</h3>
           {data.payments.length ? data.payments.map((payment) => (
             <div key={payment.id} className="mt-4 flex justify-between border-t pt-4 text-sm">
-              <span>{paymentMethodLabel(payment.paymentMethod, t)} · {statusLabel(t, "payment", payment.status)}</span>
+              <span className="min-w-0 break-words">
+                <span className="block">{paymentMethodLabel(payment.paymentMethod, t)} · {statusLabel(t, "payment", payment.status)}</span>
+                <span className="mt-1 block text-muted">{formatDate(payment.paidAt || payment.createdAt, locale)} · {payment.plan?.name}</span>
+                <span className="mt-1 block text-xs text-muted">{productStatusCopy(locale).reference}: {payment.providerPaymentId || payment.externalPaymentId || payment.id}</span>
+                <span className="mt-1 block text-xs text-muted">{productStatusCopy(locale).period}: {payment.metadata?.startsAt && payment.metadata?.endsAt ? `${formatDate(payment.metadata.startsAt, locale)} – ${formatDate(payment.metadata.endsAt, locale)}` : productStatusCopy(locale).notSpecified}</span>
+                {payment.invoiceId && data.invoices.some(invoice => invoice.id === payment.invoiceId) ? <a className="mt-2 block font-semibold text-primary" href={`#invoice-${payment.invoiceId}`}>{productStatusCopy(locale).receipt}</a> : null}
+              </span>
               <b>{formatCurrency(Number(payment.amount), payment.currency, locale)}</b>
             </div>
           )) : <p className="mt-4 text-sm text-muted">{t("billing.noPayments")}</p>}
@@ -528,9 +535,10 @@ export function BillingSubscriptionsPage() {
         <section className={panel}>
           <h3 className="font-semibold">{t("billing.invoiceHistory")}</h3>
           {data.invoices.length ? data.invoices.map((invoice) => (
-            <div key={invoice.id} className="mt-4 flex justify-between border-t pt-4 text-sm">
-              <span><FileText className="me-2 inline size-4" />{statusLabel(t, "invoice", invoice.status)} · {formatDate(invoice.createdAt, locale)}</span>
+            <div key={invoice.id} id={`invoice-${invoice.id}`} className="mt-4 flex scroll-mt-24 flex-wrap justify-between gap-3 border-t pt-4 text-sm">
+              <span><FileText className="me-2 inline size-4" />{invoice.invoiceNumber} · {statusLabel(t, "invoice", invoice.status)} · {formatDate(invoice.createdAt, locale)}</span>
               <b>{formatCurrency(Number(invoice.totalAmount), invoice.currency, locale)}</b>
+              {invoice.pdfUrl && /^https:\/\//i.test(invoice.pdfUrl) ? <a className="w-full font-semibold text-primary" target="_blank" rel="noopener noreferrer" href={invoice.pdfUrl}>{productStatusCopy(locale).receipt} ↗</a> : null}
             </div>
           )) : <p className="mt-4 text-sm text-muted">{t("billing.noInvoices")}</p>}
         </section>

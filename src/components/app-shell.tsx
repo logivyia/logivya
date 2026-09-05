@@ -1,4 +1,5 @@
 "use client";
+import { productStatusCopy } from "../../shared/product-status-copy";
 import { WhatsAppIcon } from "@/components/whatsapp-icon";
 
 import Link from "next/link";
@@ -207,8 +208,18 @@ export function AppShell({
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
   );
   const { theme, setTheme } = useTheme();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  useEffect(() => {
+    const keyboard = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setSearchOpen(value => !value); }
+      if (event.key === "Escape") setSearchOpen(false);
+    };
+    document.addEventListener("keydown", keyboard);
+    return () => document.removeEventListener("keydown", keyboard);
+  }, []);
   const [notifications, setNotifications] = useState(false);
   const [noticeItems, setNoticeItems] = useState<NoticeItem[]>([]);
   const [unread, setUnread] = useState(0);
@@ -406,16 +417,14 @@ export function AppShell({
             <Menu className="size-5" />
           </button>
           <div className="ms-auto flex items-center gap-2">
-            <label className="hidden items-center gap-2 rounded-xl border bg-card px-3 py-2 md:flex">
-              <Search className="size-4 text-muted" />
-              <input
-                className="w-32 bg-transparent text-xs outline-none"
-                placeholder={t("header.search")}
-              />
-              <kbd className="text-[10px] text-muted">
-                {t("header.shortcut")}
-              </kbd>
-            </label>
+            <button type="button" onClick={() => setSearchOpen(true)} className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2" aria-label={productStatusCopy(locale).navigationSearch}>
+              <Search className="size-4 text-muted" /><span className="hidden text-xs md:block">{productStatusCopy(locale).navigationSearch}</span><kbd className="hidden text-[10px] text-muted md:block">Ctrl K</kbd>
+            </button>
+            {searchOpen && <div className="absolute inset-x-4 top-20 z-50 max-h-[65vh] overflow-y-auto rounded-xl border bg-card p-4 shadow-xl md:left-auto md:w-96" role="search">
+              <label className="text-sm font-semibold">{productStatusCopy(locale).navigationSearch}<input autoFocus value={searchText} onChange={event => setSearchText(event.target.value)} className="mt-2 w-full rounded-lg border bg-background p-3" /></label>
+              <ul className="mt-2">{[...visibleNav, ...visibleSettings].filter(item => t(item.key).toLocaleLowerCase(locale).includes(searchText.toLocaleLowerCase(locale))).map(item => <li key={item.href}><Link className="block rounded-lg px-3 py-2 hover:bg-secondary" href={item.href} onClick={() => { setSearchOpen(false); setSearchText(""); }}>{t(item.key)}</Link></li>)}</ul>
+              <button className="mt-2 rounded-lg border p-2 text-sm" onClick={() => setSearchOpen(false)}>{t("common.close")}</button>
+            </div>}
             <LanguageSelector />
             <button
               className="rounded-xl border bg-card p-2"

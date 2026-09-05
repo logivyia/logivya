@@ -7,6 +7,7 @@ import { readPublicSourceMetadata } from "@/server/freight/public-source-metadat
 import { emitNotificationEvent } from "@/server/notifications/engine";
 import { logger } from "@/server/observability/logger";
 import { specializedMarketplaceScope } from "@/server/freight/sector-classification";
+import { demandCriteriaSelect, demandCriteriaVersion } from "./demand-criteria";
 
 export const MARKETPLACE_MATCH_EVENT = "marketplace.request_match_found";
 
@@ -19,6 +20,7 @@ function todayMatchDate(now = new Date()) {
 }
 
 const demandMatchSelect = {
+  ...demandCriteriaSelect,
   id: true,
   kind: true,
   primarySector: true,
@@ -55,7 +57,7 @@ type MatchCandidate = {
   originNormalized?: string | null;
   destinationNormalized?: string | null;
   locationNormalized?: string | null;
-  dateFrom: Date;
+  dateFrom: Date | null;
   dateUntil?: Date | null;
   trailerType?: Demand["trailerType"];
   weight?: number | null;
@@ -80,6 +82,7 @@ export async function matchListingAgainstDemandRequests(kind: MarketplaceRequest
     const result = calculateMatch(request, candidate);
     if (!result) continue;
     const persisted = await persistMatch(request, candidate, result);
+    if (!persisted.matchId) continue;
     if (persisted.created) matched += 1;
     if (request.notificationsEnabled && await dispatchMarketplaceMatchNotification(persisted.matchId).catch((error) => {
       logger.error("marketplace.match_notification_failed", error, { matchId: persisted.matchId, requestId: request.id });
@@ -103,6 +106,7 @@ export async function matchDemandRequestAgainstExistingListings(
     const result = calculateMatch(request, candidate);
     if (!result) continue;
     const persisted = await persistMatch(request, candidate, result);
+    if (!persisted.matchId) continue;
     if (persisted.created) matched += 1;
     if (request.notificationsEnabled && options.notify !== false && await dispatchMarketplaceMatchNotification(persisted.matchId).catch((error) => {
       logger.error("marketplace.initial_match_notification_failed", error, { matchId: persisted.matchId, requestId });
@@ -128,6 +132,7 @@ export async function matchDemandRequestAgainstListing(
   const result = calculateMatch(request, candidate);
   if (!result) return { matched: 0, notified: 0 };
   const persisted = await persistMatch(request, candidate, result);
+  if (!persisted.matchId) return { matched: 0, notified: 0 };
   const notified = request.notificationsEnabled
     && await dispatchMarketplaceMatchNotification(persisted.matchId).catch((error) => {
       logger.error("marketplace.listing_job_notification_failed", error, { matchId: persisted.matchId, requestId });
@@ -228,8 +233,9 @@ export function calculateMatch(request: Demand, listing: MatchCandidate): MatchR
   if (!requireText(request.originNormalized, listing.originNormalized, "ORIGIN")) return null;
   if (!requireText(request.destinationNormalized, listing.destinationNormalized, "DESTINATION")) return null;
   if (!requireText(request.locationNormalized, listing.locationNormalized, "LOCATION")) return null;
+  if ((request.availableFrom || request.availableUntil) && !listing.dateFrom) return null;
   if (request.availableFrom && listing.dateUntil && listing.dateUntil < request.availableFrom) return null;
-  if (request.availableUntil && listing.dateFrom > request.availableUntil) return null;
+  if (request.availableUntil && listing.dateFrom && listing.dateFrom > request.availableUntil) return null;
   if (request.availableFrom || request.availableUntil) { reasons.push("DATE"); score += 6; }
   if (request.trailerType && request.trailerType !== listing.trailerType) return null;
   if (request.trailerType) { reasons.push("TRAILER_TYPE"); score += 7; }
@@ -254,6 +260,9 @@ export function calculateMatch(request: Demand, listing: MatchCandidate): MatchR
 async function persistMatch(request: Demand, listing: MatchCandidate, result: MatchResult) {
   try {
     const created = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "MarketplaceDemandRequest" WHERE "id" = ${request.id} FOR UPDATE`;
+      const current = await tx.marketplaceDemandRequest.findUnique({ where: { id: request.id } });
+      if (!current || current.status !== "ACTIVE" || current.expiresAt <= new Date() || demandCriteriaVersion(current) !== demandCriteriaVersion(request)) return null;
       const match = await tx.marketplaceDemandMatch.create({
         data: {
           requestId: request.id,
@@ -271,14 +280,14 @@ async function persistMatch(request: Demand, listing: MatchCandidate, result: Ma
       });
       return match;
     });
-    return { matchId: created.id, created: true };
+    return { matchId: created?.id ?? null, created: Boolean(created) };
   } catch (error) {
     if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") throw error;
-    const existing = await prisma.marketplaceDemandMatch.findUniqueOrThrow({
+    const existing = await prisma.marketplaceDemandMatch.findUnique({
       where: { requestId_listingKind_listingId: { requestId: request.id, listingKind: listing.kind, listingId: listing.id } },
       select: { id: true },
     });
-    return { matchId: existing.id, created: false };
+    return { matchId: existing?.id ?? null, created: false };
   }
 }
 
@@ -302,34 +311,34 @@ async function readActiveRequests(kind: MarketplaceRequestKind) {
 async function readExistingCandidates(kind: MarketplaceRequestKind): Promise<MatchCandidate[]> {
   if (kind === "LOAD") {
     const rows = await prisma.freightListing.findMany({
-      where: { status: "ACTIVE", loadingDate: { gte: todayMatchDate() } },
+      where: { status: "ACTIVE", AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, { OR: [{ loadingDate: { gte: todayMatchDate() } }, { loadingDate: null }] }] },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 250,
     });
     return rows.map((row) => loadCandidate(row));
   }
   if (kind === "VEHICLE") {
     const rows = await prisma.vehicleListing.findMany({
-      where: { status: "ACTIVE", OR: [{ availableUntil: null }, { availableUntil: { gte: todayMatchDate() } }] },
+      where: { status: "ACTIVE", AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, { OR: [{ availableUntil: null }, { availableUntil: { gte: todayMatchDate() } }] }] },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 250,
     });
     return rows.map((row) => vehicleCandidate(row));
   }
   const rows = await prisma.driverListing.findMany({
-    where: { status: "ACTIVE" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 250,
+    where: { status: "ACTIVE", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 250,
   });
   return rows.map((row) => driverCandidate(row));
 }
 
 async function readListingCandidate(kind: MarketplaceRequestKind, id: string): Promise<MatchCandidate | null> {
   if (kind === "LOAD") {
-    const row = await prisma.freightListing.findFirst({ where: { id, status: "ACTIVE" } });
+    const row = await prisma.freightListing.findFirst({ where: { id, status: "ACTIVE", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } });
     return row ? loadCandidate(row) : null;
   }
   if (kind === "VEHICLE") {
-    const row = await prisma.vehicleListing.findFirst({ where: { id, status: "ACTIVE" } });
+    const row = await prisma.vehicleListing.findFirst({ where: { id, status: "ACTIVE", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } });
     return row ? vehicleCandidate(row) : null;
   }
-  const row = await prisma.driverListing.findFirst({ where: { id, status: "ACTIVE" } });
+  const row = await prisma.driverListing.findFirst({ where: { id, status: "ACTIVE", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } });
   return row ? driverCandidate(row) : null;
 }
 

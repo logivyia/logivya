@@ -1,4 +1,7 @@
+import { openCatalogListing } from "@/features/freight/catalog-return";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
+import { useGuestStore } from "@/auth/guest-store";
 import { useEffect } from "react";
 import { AppState, useWindowDimensions } from "react-native";
 
@@ -96,7 +99,7 @@ export function AppNavigator() {
         }
       }}
     >
-      <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: t("dashboard"), tabBarLabel: t("overview") }} />
+      <Tab.Screen name="Dashboard" options={{ title: t("dashboard"), tabBarLabel: t("overview") }}>{(props) => <><GuestReturnBridge navigation={props.navigation} enabled={freightEnabled} /><DashboardScreen {...props} /></>}</Tab.Screen>
       {freightEnabled && homeMovingVisible ? <Tab.Screen name="HomeMoving" component={SectorMarketplaceScreen} options={{ title: t("homeMovingMarketplace") }} /> : null}
       {freightEnabled && partialLoadVisible ? <Tab.Screen name="PartialLoad" component={SectorMarketplaceScreen} options={{ title: t("partialLoadMarketplace") }} /> : null}
       {freightEnabled && heavyHaulVisible ? <Tab.Screen name="HeavyHaul" component={SectorMarketplaceScreen} options={{ title: t("heavyHaulMarketplace") }} /> : null}
@@ -127,4 +130,22 @@ export function AppNavigator() {
     </Tab.Navigator>
     </ScreenBottomInsetContext.Provider>
   );
+}
+
+function GuestReturnBridge({ navigation, enabled }: { navigation: BottomTabNavigationProp<AppTabParamList, "Dashboard">; enabled: boolean }) {
+  const destination = useGuestStore(state => state.destination);
+  useEffect(() => {
+    if (!enabled || !destination) return;
+    if (destination.catalog) {
+      openCatalogListing(navigation, destination, destination.catalog);
+      useGuestStore.getState().setDestination(null);
+      return;
+    }
+    const params = { listingId: destination.id };
+    if (destination.kind === "LOAD") navigation.navigate("FindLoads", { screen: "FreightDetails", params, initial: false });
+    else if (destination.kind === "VEHICLE") navigation.navigate("VehicleMarketplace", { screen: "VehicleDetails", params, initial: false });
+    else if (destination.kind === "DRIVER") navigation.navigate("DriverMarketplace", { screen: "DriverDetails", params, initial: false });
+    useGuestStore.getState().setDestination(null);
+  }, [enabled, destination, navigation]);
+  return null;
 }

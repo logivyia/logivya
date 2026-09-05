@@ -54,6 +54,7 @@ export async function GET(request: Request) {
     const notifications = candidates.map(({ row, context: itemContext }) => {
       const validContext = itemContext
         && ownedDemandIds.has(itemContext.requestId)
+        && itemContext.listingKind && itemContext.listingId
         && matchKeys.has(`${itemContext.requestId}:${itemContext.listingKind}:${itemContext.listingId}`)
         ? itemContext
         : null;
@@ -64,10 +65,10 @@ export async function GET(request: Request) {
         isRead: row.isRead,
         createdAt: row.createdAt.toISOString(),
         listingKind: validContext?.listingKind ?? null,
-        requestId: validContext?.requestId ?? null,
+        requestId: itemContext && ownedDemandIds.has(itemContext.requestId) ? itemContext.requestId : null,
         href: validContext
-          ? webListingHref(marketplaceSegmentFromKind(validContext.listingKind), validContext.listingId, validContext.requestId)
-          : null,
+          ? webListingHref(marketplaceSegmentFromKind(validContext.listingKind!), validContext.listingId!, validContext.requestId)
+          : itemContext && ownedDemandIds.has(itemContext.requestId) ? `/marketplace/requests/${encodeURIComponent(itemContext.requestId)}/matches` : null,
       };
     });
     return NextResponse.json({ notifications }, {
@@ -86,6 +87,6 @@ function notificationContext(value: unknown) {
   const listingKind = payload.listingKind === "LOAD" || payload.listingKind === "VEHICLE" || payload.listingKind === "DRIVER"
     ? payload.listingKind as WebMarketplaceKind
     : null;
-  if (!requestId || !listingId || !listingKind || requestId.length > 100 || listingId.length > 100) return null;
+  if (!requestId || requestId.length > 100 || (listingId && listingId.length > 100)) return null;
   return { requestId, listingId, listingKind };
 }

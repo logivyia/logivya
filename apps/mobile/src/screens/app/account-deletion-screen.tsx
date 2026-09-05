@@ -1,3 +1,4 @@
+import { productStatusCopy, lifecycleLabel } from "../../../../../shared/product-status-copy";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
@@ -9,10 +10,13 @@ import { colors } from "@/theme/colors";
 import { useTranslation } from "@/i18n/use-translation";
 import { useTheme } from "@/theme/theme-provider";
 import { useAuthStore } from "@/auth/auth-store";
+import { logout } from "@/auth/auth-service";
 
 export function AccountDeletionScreen() {
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const copy = productStatusCopy(locale);
+  const [executionEnabled, setExecutionEnabled] = useState(false);
   const isOwner = useAuthStore((state) => state.user?.role === "OWNER");
   const [confirmation, setConfirmation] = useState("");
   const [password, setPassword] = useState("");
@@ -25,6 +29,7 @@ export function AccountDeletionScreen() {
   const load = useCallback(async () => {
     const result = await getAccountDeletionRequests();
     setJobs(result.jobs);
+    setExecutionEnabled(result.destructiveExecutionEnabled === true);
   }, []);
 
   useEffect(() => { void load().catch(() => undefined); }, [load]);
@@ -33,11 +38,16 @@ export function AccountDeletionScreen() {
     if (!canSubmit) return;
     setLoading(true);
     try {
-      await requestAccountDeletion({ scope, confirmation: scope === "COMPANY" ? "DELETE MY LOGIVYA WORKSPACE" : "DELETE MY LOGIVYA ACCOUNT", password });
+      const result = await requestAccountDeletion({ scope, confirmation: scope === "COMPANY" ? "DELETE MY LOGIVYA WORKSPACE" : "DELETE MY LOGIVYA ACCOUNT", password });
       setConfirmation("");
       setPassword("");
+      if (result.scope === "MEMBERSHIP") {
+        Alert.alert(t("requestReceived"), t("sharedMembershipDeleteScope"));
+        await logout();
+        return;
+      }
       await load();
-      Alert.alert(t("requestReceived"), t("deletionQueuedDescription"));
+      Alert.alert(t("requestReceived"), executionEnabled ? t("deletionQueuedDescription") : copy.deletionHelp);
     } catch (error) {
       Alert.alert(t("accountDeleteFailed"), error instanceof Error ? error.message : t("operationFailed"));
     } finally {
@@ -67,6 +77,7 @@ export function AccountDeletionScreen() {
           <Text style={[styles.description, { color: theme.muted }]}>
             {t(isOwner ? "accountDeleteFullWarning" : "sharedMembershipDeleteScope")}
           </Text>
+          {isOwner && !executionEnabled ? <Text style={[styles.description, { color: theme.text }]}>{copy.deletionHelp}</Text> : null}
           {isOwner ? (
             <View style={styles.scopeRow}><ScopeButton label={t("userAccountScope")} active={scope === "USER"} onPress={() => { setScope("USER"); setConfirmation(""); }}/><ScopeButton label={t("companyAccountScope")} active={scope === "COMPANY"} onPress={() => { setScope("COMPANY"); setConfirmation(""); }}/></View>
           ) : null}
@@ -76,7 +87,7 @@ export function AccountDeletionScreen() {
           <TextField label={t("currentPassword")} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" />
         </View>
         <PrimaryButton title={t("submitDeletionRequest")} loading={loading} disabled={!canSubmit} onPress={submit} />
-        {jobs.map((job) => <View key={job.publicId} style={[styles.job, { backgroundColor: theme.card, borderColor: theme.border }]}><View style={styles.jobText}><Text style={[styles.jobId, { color: theme.text }]}>{job.publicId}</Text><Text style={[styles.description, { color: theme.muted }]}>{job.scope} / {job.status}</Text></View>{job.status === "QUEUED" ? <Pressable onPress={() => void cancel(job.publicId)}><Text style={[styles.cancel, { color: theme.danger }]}>{t("cancelRequest")}</Text></Pressable> : null}</View>)}
+        {jobs.map((job) => <View key={job.publicId} style={[styles.job, { backgroundColor: theme.card, borderColor: theme.border }]}><View style={styles.jobText}><Text style={[styles.jobId, { color: theme.text }]}>{job.publicId}</Text><Text style={[styles.description, { color: theme.muted }]}>{t(job.scope === "COMPANY" ? "companyAccountScope" : "userAccountScope")} / {lifecycleLabel(job.status, locale)}</Text><Text style={[styles.description, { color: theme.muted }]}>{copy.cancelDeadline}: {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(job.cancelUntil))}</Text></View>{job.status === "QUEUED" ? <Pressable disabled={loading || Date.parse(job.cancelUntil) <= Date.now()} onPress={() => void cancel(job.publicId)}><Text style={[styles.cancel, { color: theme.danger }]}>{t("cancelRequest")}</Text></Pressable> : null}</View>)}
       </ScrollView>
     </Screen>
   );

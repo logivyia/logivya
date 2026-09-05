@@ -26,5 +26,5 @@ export function RootNavigator() {
   if (status === "authenticated") return onboardingCompleted ? <AppNavigator /> : <OnboardingScreen />;
   if (status === "recovering") return <SessionRecoveryScreen />;
   if (status === "booting") return <AuthNavigator booting />;
-  return authScreen ? <AuthNavigator booting={false} initialScreen={authScreen} /> : <GuestNavigator />;
+  return <GuestNavigator />;
 }

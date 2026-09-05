@@ -1,3 +1,5 @@
+import { CatalogReturnScreen } from "@/features/freight/catalog-return";
+import { localizeListingSummary } from "../../../../../shared/localize-listing-summary";
 import * as Crypto from "expo-crypto";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
@@ -73,7 +75,11 @@ type Draft = {
   trailerType: FreightTrailerType | null;
 };
 
-export function VehicleSearchScreen({ navigation, route }: SearchProps) {
+export function VehicleSearchScreen(props: SearchProps) {
+  return props.route.params?.initialCatalog ? <CatalogReturnScreen initialCatalog={props.route.params.initialCatalog} /> : <VehicleSearchScreenContent {...props} />;
+}
+
+function VehicleSearchScreenContent({ navigation, route }: SearchProps) {
   const theme = useTheme();
   const { t } = useTranslation();
   const initial = useMemo<Draft>(
@@ -369,7 +375,8 @@ export function CreateVehicleScreen({ navigation, route }: CreateProps) {
 export function VehicleDetailsScreen({ route, navigation }: DetailProps) {
   const theme = useTheme();
   const { t, locale } = useTranslation();
-  const [listing, setListing] = useState<MobileVehicleListing | null>(null);
+  const [rawListing, setListing] = useState<MobileVehicleListing | null>(null);
+  const listing = rawListing ? localizeListingSummary(rawListing, locale) : null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [validatedRequestId, setValidatedRequestId] = useState<string | null>(null);

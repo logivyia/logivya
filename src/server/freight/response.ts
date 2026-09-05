@@ -14,7 +14,7 @@ export function freightSafeError(error: unknown) {
   if (["MARKETPLACE_REQUEST_STATUS_INVALID", "MARKETPLACE_REQUEST_EXPIRED"].includes(code)) {
     return mobileError(code, "api.error.validation", { status: 409 });
   }
-  if (["FREIGHT_INVALID_DATE", "FREIGHT_LOADING_DATE_PAST", "FREIGHT_INVALID_PHONE", "FREIGHT_CURRENCY_REQUIRED", "MARKETPLACE_DATE_RANGE_INVALID"].includes(code)) {
+  if (["MARKETPLACE_CURSOR_INVALID", "FREIGHT_INVALID_DATE", "FREIGHT_LOADING_DATE_PAST", "FREIGHT_INVALID_PHONE", "FREIGHT_CURRENCY_REQUIRED", "MARKETPLACE_DATE_RANGE_INVALID"].includes(code)) {
     return mobileError(code, "api.error.validation", { status: 400 });
   }
   return mobileSafeError(error, "api.error.generic");

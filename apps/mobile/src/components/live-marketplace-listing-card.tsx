@@ -1,3 +1,4 @@
+import { localizeListingSummary } from "../../../../shared/localize-listing-summary";
 import { Ionicons } from "@expo/vector-icons";
 import { memo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -10,6 +11,7 @@ import { formatRelativeTime } from "@/utils/relative-time";
 function LiveMarketplaceListingCardComponent({ listing, onPress }: { listing: Pick<PublicCatalogListing, "kind" | "updatedAt" | "publicTitle" | "publicDescription" | "publicAdvertiserName" | "vehicleDisplayName" | "tonnageDisplay" | "tonnageAccessibilityLabel" | "vehicleCountDisplay" | "loadingDisplayName" | "deliveryDisplayName">; onPress: () => void }) {
   const theme = useTheme();
   const { t, locale } = useTranslation();
+  listing = localizeListingSummary(listing, locale);
   const metadata = [listing.tonnageDisplay, listing.vehicleDisplayName, listing.vehicleCountDisplay].filter(Boolean);
 
   return (

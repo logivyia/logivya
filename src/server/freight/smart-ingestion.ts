@@ -11,6 +11,7 @@ import {
 import { normalizeLogisticsText } from "@/server/freight/location-normalization";
 import { logger } from "@/server/observability/logger";
 import { encryptPrivateValue } from "@/server/security/private-fields";
+import { publishTelegramCandidates } from "./telegram-publication";
 import { classifyLogisticsSector } from "@/server/freight/sector-classification";
 
 type AuthorizedMessageInput = {
@@ -28,7 +29,8 @@ type AuthorizedMessageInput = {
 
 export async function ingestAuthorizedFreightMessage(input: AuthorizedMessageInput) {
   const probable = isProbableFreightMessage(input.text);
-  const extracted = probable ? extractFreightCandidates(input.text, input.sourceMessageTimestamp) : [];
+  const companyTimezone = probable ? (await prisma.company.findUnique({ where: { id: input.companyId }, select: { defaultTimezone: true } }))?.defaultTimezone : undefined;
+  const extracted = probable ? extractFreightCandidates(input.text, input.sourceMessageTimestamp, companyTimezone ?? "Europe/Istanbul") : [];
   const prepared: Array<Prisma.FreightOpportunityCandidateUncheckedCreateInput & { opportunityIndex: number }> = [];
   let persisted = 0;
   for (const [opportunityIndex, candidate] of extracted.entries()) {
@@ -98,22 +100,27 @@ export async function ingestAuthorizedFreightMessage(input: AuthorizedMessageInp
     prepared.push(data);
   }
   await prisma.$transaction(async tx => {
+    if (input.sourcePlatform === "TELEGRAM") {
+      await tx.$executeRaw`SELECT id FROM "TelegramChat" WHERE id = ${input.sourceGroupId} FOR UPDATE`;
+      if (await tx.telegramSourceDeletion.findUnique({ where: { chatId_sourceMessageId: { chatId: input.sourceGroupId, sourceMessageId: input.sourceMessageId } } })) return;
+    }
     // Live ingestion and demand backfill can parse the same source concurrently.
-    const sourceKey = `${input.ownerUserId}:${input.sourcePlatform}:${input.sourceAccountId}:${input.sourceMessageId}`;
+    const sourceKey = `${input.ownerUserId}:${input.sourcePlatform}:${input.sourceAccountId}:${input.sourceGroupId}:${input.sourceMessageId}`;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${sourceKey}, 0))`;
     for (const data of prepared) {
     const opportunityIndex = data.opportunityIndex;
-    const unique = { ownerUserId: input.ownerUserId, sourcePlatform: input.sourcePlatform, sourceAccountId: input.sourceAccountId, sourceMessageId: input.sourceMessageId, opportunityIndex };
+    const unique = { ownerUserId: input.ownerUserId, sourcePlatform: input.sourcePlatform, sourceAccountId: input.sourceAccountId, sourceGroupId: input.sourceGroupId, sourceMessageId: input.sourceMessageId, opportunityIndex };
     const existing = await tx.freightOpportunityCandidate.findUnique({
-      where: { ownerUserId_sourcePlatform_sourceAccountId_sourceMessageId_opportunityIndex: unique },
+      where: { ownerUserId_sourcePlatform_sourceAccountId_sourceGroupId_sourceMessageId_opportunityIndex: unique },
       select: { id: true, duplicateKey: true },
     });
     const updated = await tx.freightOpportunityCandidate.upsert({
       where: {
-        ownerUserId_sourcePlatform_sourceAccountId_sourceMessageId_opportunityIndex: {
+        ownerUserId_sourcePlatform_sourceAccountId_sourceGroupId_sourceMessageId_opportunityIndex: {
           ownerUserId: input.ownerUserId,
           sourcePlatform: input.sourcePlatform,
           sourceAccountId: input.sourceAccountId,
+          sourceGroupId: input.sourceGroupId,
           sourceMessageId: input.sourceMessageId,
           opportunityIndex,
         },
@@ -137,7 +144,7 @@ export async function ingestAuthorizedFreightMessage(input: AuthorizedMessageInp
     }
     const obsolete = await tx.freightOpportunityCandidate.findMany({ where: {
       ownerUserId: input.ownerUserId, companyId: input.companyId, sourcePlatform: input.sourcePlatform,
-      sourceAccountId: input.sourceAccountId, sourceMessageId: input.sourceMessageId,
+      sourceAccountId: input.sourceAccountId, sourceGroupId: input.sourceGroupId, sourceMessageId: input.sourceMessageId,
       opportunityIndex: { notIn: prepared.map(item => item.opportunityIndex) }, expiresAt: { gt: new Date() },
     }, select: { id: true } });
     const ids = obsolete.map(item => item.id);
@@ -153,6 +160,7 @@ export async function ingestAuthorizedFreightMessage(input: AuthorizedMessageInp
     sourceGroupId: input.sourceGroupId,
     candidatesDetected: persisted,
   });
+  if (input.sourcePlatform === "TELEGRAM") await publishTelegramCandidates(input);
   return { probable, persisted };
 }
 
@@ -206,6 +214,7 @@ export async function ingestOwnedTelegramGroupMessage(input: {
       externalChatId: input.externalChatId,
       type: { in: ["BASIC_GROUP", "SUPERGROUP", "CHANNEL"] },
       isActive: true,
+      isArchived: false,
       account: { id: input.accountId, archivedAt: null, status: "CONNECTED" },
     },
     select: {
@@ -231,6 +240,7 @@ export async function ingestOwnedTelegramGroupMessage(input: {
 
 export async function enforceFreightCandidateRetention() {
   const now = new Date();
+  await prisma.telegramSourceDeletion.deleteMany({ where: { deletedAt: { lt: new Date(+now - 14 * 86400000) } } });
   const [redacted, expiredResults] = await prisma.$transaction([
     prisma.freightOpportunityCandidate.updateMany({
       where: { rawTextExpiresAt: { lte: now }, OR: [{ sourceTextEncrypted: { not: null } }, { advertisedBusinessContactEncrypted: { not: null } }] },

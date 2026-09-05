@@ -1,3 +1,4 @@
+import { localizeListingSummary } from "../../../../../shared/localize-listing-summary";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -43,7 +44,8 @@ function FreightDetailsContent({ listingId, requestId, invalidDemandContext = fa
   const theme = useTheme();
   const { t } = useTranslation();
   const locale = useSettingsStore((state) => state.locale);
-  const [listing, setListing] = useState<MobileFreightListing | null>(null);
+  const [rawListing, setListing] = useState<MobileFreightListing | null>(null);
+  const listing = rawListing ? localizeListingSummary(rawListing, locale) : null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [validatedRequestId, setValidatedRequestId] = useState<string | null>(null);

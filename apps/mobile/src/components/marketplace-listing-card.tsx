@@ -1,3 +1,4 @@
+import { localizeListingSummary } from "../../../../shared/localize-listing-summary";
 import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -32,6 +33,7 @@ export function VehicleListingCard({
   const theme = useTheme();
   const { t } = useTranslation();
   const locale = useSettingsStore((state) => state.locale);
+  listing = localizeListingSummary(listing, locale);
   const price =
     listing.priceAmount != null && listing.currency
       ? new Intl.NumberFormat(localeMetadata[locale].intlLocale, {
@@ -138,6 +140,7 @@ export function DriverListingCard({
   const theme = useTheme();
   const { t } = useTranslation();
   const locale = useSettingsStore((state) => state.locale);
+  listing = localizeListingSummary(listing, locale);
   const salary =
     listing.salaryAmount != null && listing.currency
       ? new Intl.NumberFormat(localeMetadata[locale].intlLocale, {

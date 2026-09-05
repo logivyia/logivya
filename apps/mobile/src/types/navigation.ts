@@ -1,3 +1,4 @@
+import type { CatalogReturn } from "@/features/freight/catalog-return";
 import type { NavigatorScreenParams } from "@react-navigation/native";
 
 import type { AdminModuleKey } from "@/api/mobileAdmin";
@@ -46,19 +47,19 @@ export type CreateLoadStackParamList = {
 };
 
 export type FindLoadsStackParamList = {
-  FindLoadsHome: { initialQuery?: string; scope?: MarketplaceScope } | undefined;
+  FindLoadsHome: { initialQuery?: string; scope?: MarketplaceScope; initialCatalog?: CatalogReturn } | undefined;
   FreightDetails: { listingId: string; requestId?: string };
 };
 
 export type VehicleMarketplaceStackParamList = {
-  VehicleSearch: { initialQuery?: string; scope?: MarketplaceScope } | undefined;
+  VehicleSearch: { initialQuery?: string; scope?: MarketplaceScope; initialCatalog?: CatalogReturn } | undefined;
   CreateVehicle: { sector?: LogisticsSector } | undefined;
   VehicleDetails: { listingId: string; requestId?: string };
   EditVehicle: { listingId: string };
 };
 
 export type DriverMarketplaceStackParamList = {
-  DriverSearch: { initialQuery?: string; scope?: MarketplaceScope } | undefined;
+  DriverSearch: { initialQuery?: string; scope?: MarketplaceScope; initialCatalog?: CatalogReturn } | undefined;
   CreateDriver: { sector?: LogisticsSector } | undefined;
   DriverDetails: { listingId: string; requestId?: string };
   EditDriver: { listingId: string };

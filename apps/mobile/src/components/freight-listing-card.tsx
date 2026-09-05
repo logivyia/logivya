@@ -1,3 +1,4 @@
+import { localizeListingSummary } from "../../../../shared/localize-listing-summary";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -21,6 +22,7 @@ export function FreightListingCard({
   const theme = useTheme();
   const { t } = useTranslation();
   const locale = useSettingsStore((state) => state.locale);
+  listing = localizeListingSummary(listing, locale);
   const price = formatFreightPrice(listing, locale);
   const tone = listing.status === "ACTIVE" ? "success" : listing.status === "COMPLETED" ? "primary" : "default";
 

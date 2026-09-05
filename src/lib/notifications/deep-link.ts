@@ -1,10 +1,12 @@
+import { safeAuthReturn } from "@/lib/auth-return";
+
 const LOGIVYA_WEB_ORIGIN = "https://logivya.com";
 
 /** Maps provider/mobile notification destinations to a safe authenticated web route. */
 export function notificationDeepLinkToWebHref(value?: string | null) {
   if (!value) return null;
   const trimmed = value.trim();
-  if (/^\/(?!\/)/u.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("/")) return safeAuthReturn(trimmed, "") || null;
 
   try {
     const url = new URL(trimmed);
@@ -14,6 +16,8 @@ export function notificationDeepLinkToWebHref(value?: string | null) {
     if (url.protocol !== "logivya:") return null;
 
     const mobilePath = `${url.hostname}${url.pathname}`.replace(/^\/+|\/+$/gu, "");
+    const demand = mobilePath.match(/^marketplace\/requests\/([^/]+)(?:\/matches)?$/u);
+    if (demand) return `/marketplace/requests/${encodeURIComponent(decodeURIComponent(demand[1]))}/matches${url.search}`;
     const listing = mobilePath.match(/^marketplace\/(loads|vehicles|drivers)\/([^/]+)$/u);
     if (listing) {
       return `/marketplace/listings/${listing[1]}/${encodeURIComponent(decodeURIComponent(listing[2]))}${url.search}`;

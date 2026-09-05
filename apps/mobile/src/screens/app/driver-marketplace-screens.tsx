@@ -1,3 +1,5 @@
+import { CatalogReturnScreen } from "@/features/freight/catalog-return";
+import { localizeListingSummary } from "../../../../../shared/localize-listing-summary";
 import * as Crypto from "expo-crypto";
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -71,7 +73,11 @@ type Draft = {
 };
 const licenses: DriverLicenseClass[] = ["B", "C", "CE", "D", "DE"];
 
-export function DriverSearchScreen({ navigation, route }: SearchProps) {
+export function DriverSearchScreen(props: SearchProps) {
+  return props.route.params?.initialCatalog ? <CatalogReturnScreen initialCatalog={props.route.params.initialCatalog} /> : <DriverSearchScreenContent {...props} />;
+}
+
+function DriverSearchScreenContent({ navigation, route }: SearchProps) {
   const theme = useTheme();
   const { t } = useTranslation();
   const initial = useMemo<Draft>(
@@ -403,7 +409,8 @@ export function CreateDriverScreen({ navigation, route }: CreateProps) {
 export function DriverDetailsScreen({ route, navigation }: DetailProps) {
   const theme = useTheme();
   const { t, locale } = useTranslation();
-  const [listing, setListing] = useState<MobileDriverListing | null>(null);
+  const [rawListing, setListing] = useState<MobileDriverListing | null>(null);
+  const listing = rawListing ? localizeListingSummary(rawListing, locale) : null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [validatedRequestId, setValidatedRequestId] = useState<string | null>(null);
@@ -516,7 +523,7 @@ export function DriverDetailsScreen({ route, navigation }: DetailProps) {
 }
 
 export function EditDriverScreen({ route, navigation }: EditProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const user = useAuthStore((state) => state.user);
   const company = useAuthStore((state) => state.company);
   const [listing, setListing] = useState<MobileDriverListing | null>(null);

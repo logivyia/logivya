@@ -185,8 +185,8 @@ export async function updateOwnedVehicleListing(actor: FreightActor, id: string,
   if (input.destination !== undefined) { const value = optionalNormalized(input.destination); data.destination = value; data.destinationNormalized = value ? normalizeFreightSearchText(value) : null; }
   const nextFrom = input.availableFrom ? parseFreightDate(input.availableFrom) : current.availableFrom;
   const nextUntil = input.availableUntil === undefined ? current.availableUntil : input.availableUntil ? parseFreightDate(input.availableUntil) : null;
-  if (input.availableFrom !== undefined && nextFrom < todayFreightDate()) throw new Error("FREIGHT_LOADING_DATE_PAST");
-  if (nextUntil && nextUntil < nextFrom) throw new Error("MARKETPLACE_DATE_RANGE_INVALID");
+  if (input.availableFrom !== undefined && nextFrom && nextFrom < todayFreightDate()) throw new Error("FREIGHT_LOADING_DATE_PAST");
+  if (nextUntil && nextFrom && nextUntil < nextFrom) throw new Error("MARKETPLACE_DATE_RANGE_INVALID");
   if (input.availableFrom !== undefined) data.availableFrom = nextFrom;
   if (input.availableUntil !== undefined) data.availableUntil = nextUntil;
   if (input.trailerType !== undefined) data.trailerType = input.trailerType;

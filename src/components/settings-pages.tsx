@@ -1,4 +1,5 @@
 "use client";
+import { productStatusCopy, lifecycleLabel } from "../../shared/product-status-copy";
 
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Check, CreditCard, LoaderCircle, ShieldCheck } from "lucide-react";
@@ -151,7 +152,10 @@ export function SubscriptionsSettingsPage() {
 }
 
 export function DeleteAccountSettingsPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const copy = productStatusCopy(locale);
+  const [busy, setBusy] = useState(false);
+  const [executionEnabled, setExecutionEnabled] = useState(false);
   const [value, setValue] = useState("");
   const [password, setPassword] = useState("");
   const [scope, setScope] = useState<"USER" | "COMPANY">("USER");
@@ -162,36 +166,44 @@ export function DeleteAccountSettingsPage() {
   const phrase = scope === "COMPANY" ? t("accountDeletion.companyPhrase") : t("accountDeletion.userPhrase");
 
   const loadJobs = useCallback(async () => {
-    const response = await fetch("/api/privacy/account-deletion", { cache: "no-store" });
+    const response = await fetch("/api/privacy/account-deletion", { cache: "no-store", signal: AbortSignal.timeout(20_000) });
     if (!response.ok) return;
     const payload = await response.json();
     setJobs(payload.jobs ?? []);
+    setExecutionEnabled(payload.destructiveExecutionEnabled === true);
     setIsTenantOwner(Boolean(payload.isTenantOwner));
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { void loadJobs(); }, 0);
+    const timer = window.setTimeout(() => { void loadJobs().catch(() => setStatus(copy.failed)); }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadJobs]);
+  }, [loadJobs, copy.failed]);
 
   async function close() {
+    if (busy) return; setBusy(true);
+    try {
     const response = await fetch("/api/privacy/account-deletion", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(20_000),
       body: JSON.stringify({ scope, confirmation: scope === "COMPANY" ? "DELETE MY LOGIVYA WORKSPACE" : "DELETE MY LOGIVYA ACCOUNT", password }),
     });
     if (response.ok) {
-      setStatus(t("accountDeletion.queued"));
+      const result = await response.json();
+      setStatus(result.scope === "MEMBERSHIP" ? t("membership.sharedDeleteScope") : executionEnabled ? t("accountDeletion.queued") : copy.deletionHelp);
       setValue("");
       setPassword("");
       await loadJobs();
-    } else setStatus((await response.json()).error);
+    } else setStatus(copy.failed);
+    } catch { setStatus(copy.failed); } finally { setBusy(false); }
   }
 
   async function cancel(publicId: string) {
-    const response = await fetch("/api/privacy/account-deletion", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ publicId, password }) });
-    setStatus(response.ok ? t("accountDeletion.canceled") : (await response.json()).error);
+    if (busy) return; setBusy(true);
+    try {
+    const response = await fetch("/api/privacy/account-deletion", { method: "PATCH", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(20_000), body: JSON.stringify({ publicId, password }) });
+    setStatus(response.ok ? t("accountDeletion.canceled") : copy.failed);
     if (response.ok) await loadJobs();
+    } catch { setStatus(copy.failed); } finally { setBusy(false); }
   }
 
   return (
@@ -205,17 +217,18 @@ export function DeleteAccountSettingsPage() {
             ? t("accountDeletion.warning", { phrase })
             : t("membership.sharedDeleteScope")}
         </p>
+        {isTenantOwner && !executionEnabled ? <p role="status" className="mt-4 rounded-lg border p-3 text-sm text-foreground">{copy.deletionHelp}</p> : null}
         {isTenantOwner ? (
           <select className={`${input} mt-5 max-w-md`} value={scope} onChange={(event) => { setScope(event.target.value as "USER" | "COMPANY"); setValue(""); }}><option value="USER">{t("accountDeletion.userScope")}</option><option value="COMPANY">{t("accountDeletion.companyScope")}</option></select>
         ) : null}
         <input className={`${input} mt-5 max-w-md`} value={value} onChange={(event) => setValue(event.target.value)} />
         <PasswordInput wrapperClassName="mt-3 max-w-md" className={input} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={t("privacy.passwordPlaceholder")} />
-        <button disabled={value !== phrase || !password} onClick={() => void close()} className="mt-4 flex items-center gap-2 rounded-xl bg-danger px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
+        <button disabled={busy || value !== phrase || !password} onClick={() => void close()} className="mt-4 flex items-center gap-2 rounded-xl bg-danger px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
           <ShieldCheck className="size-4" />
           {t("accountDeletion.disableAction")}
         </button>
         {status ? <p className="mt-3 text-sm text-danger">{status}</p> : null}
-        {jobs.map((job) => <div key={job.publicId} className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3 text-sm text-foreground"><span><b>{job.publicId}</b><span className="ms-2 text-muted">{job.scope} / {job.status}</span></span>{job.status === "QUEUED" ? <button className="text-danger" disabled={!password} onClick={() => void cancel(job.publicId)}>{t("accountDeletion.cancelRequest")}</button> : null}</div>)}
+        {jobs.map((job) => <div key={job.publicId} className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3 text-sm text-foreground"><span><b>{job.publicId}</b><span className="ms-2 text-muted">{t(job.scope === "COMPANY" ? "accountDeletion.companyScope" : "accountDeletion.userScope")} / {lifecycleLabel(job.status, locale)}</span><span className="mt-2 block text-muted">{copy.cancelDeadline}: {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(job.cancelUntil))}</span></span>{job.status === "QUEUED" ? <button className="text-danger" disabled={busy || !password || Date.parse(job.cancelUntil) <= Date.now()} onClick={() => void cancel(job.publicId)}>{t("accountDeletion.cancelRequest")}</button> : null}</div>)}
       </section>
     </>
   );

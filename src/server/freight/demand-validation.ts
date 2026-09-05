@@ -114,7 +114,7 @@ export const demandRequestNotificationSchema = z.object({
 }).strict();
 
 export const demandMatchListSchema = z.object({
-  cursor: z.string().trim().min(1).max(100).optional(),
+  cursor: z.string().trim().min(1).max(800).optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 }).strict();
 

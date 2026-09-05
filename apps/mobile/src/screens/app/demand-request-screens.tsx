@@ -640,18 +640,14 @@ export function DemandRequestMatchesScreen({ navigation, route }: MatchesProps) 
                icon="open-outline"
                onPress={() => openListingDetails(match)}
              /> : null}
-             {match.listing.contactPhone && match.listing.contactType === "TELEGRAM" ? <PrimaryButton
-               title={match.listing.contactType === "TELEGRAM" ? t("contactOnTelegram") : t("contactByPhone")}
-               icon={match.listing.contactType === "TELEGRAM" ? "paper-plane-outline" : "call-outline"}
-               onPress={() => void Linking.openURL(match.listing.contactType === "TELEGRAM" ? `https://t.me/${match.listing.contactPhone?.replace(/^@/u, "")}` : `tel:${match.listing.contactPhone}`)}
-             /> : null}
-             {match.listing.contactType !== "TELEGRAM" ? <MarketplaceContactActions
+             <MarketplaceContactActions
                contactAccess={match.listing.contactAccess}
                phone={match.listing.contactPhone}
+               telegramHref={match.listing.telegramHref}
                canCall={Boolean(match.listing.canCall)}
                canOpenWhatsApp={Boolean(match.listing.canOpenWhatsApp)}
                whatsappPrefilledMessage={match.listing.whatsappPrefilledMessage ?? null}
-             /> : null}
+             />
              <View style={styles.actionRow}>
                {match.sourcePlatform !== "LOGIVYA" && match.status !== "SAVED" ? <SmallAction label={t("saveMatch")} onPress={() => void changeMatchStatus(match, "SAVED")} /> : null}
                <SmallAction label={t("dismissMatch")} onPress={() => void changeMatchStatus(match, "DISMISSED")} />

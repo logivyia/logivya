@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect, @next/next/no-img-element, @typescript-eslint/no-unused-expressions */
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   Boxes,
@@ -28,6 +28,8 @@ import { intlLocale } from "@/i18n/config";
 import { formatNumber } from "@/i18n/format";
 import { useI18n } from "@/i18n/provider";
 import { apiErrorMessage } from "@/i18n/api-error";
+import { lifecycleLabel } from "../../shared/product-status-copy";
+import { downloadCsv } from "@/lib/csv-export";
 import { cn } from "@/lib/utils";
 
 type Account = {
@@ -66,6 +68,7 @@ type Campaign = {
   createdAt: string;
 };
 type PlatformData = {
+  monthlyMessages?: { sent: number; failed: number; startsAt: string; endsAt: string; timezone: string };
   user: { id: string; name: string };
   company: { id: string; name: string };
   accounts: Account[];
@@ -173,50 +176,30 @@ function Empty({ text, action }: { text: string; action?: React.ReactNode }) {
     </Card>
   );
 }
-function Toolbar({ placeholder }: { placeholder: string }) {
-  const { t } = useI18n();
-  return (
-    <Card className="mb-5 flex flex-col gap-3 p-3 sm:flex-row">
-      <label className="flex flex-1 items-center gap-2 rounded-xl border bg-input px-3 text-input-foreground">
-        <Search className="size-4 text-muted" />
-        <input
-          className="w-full bg-transparent py-2.5 text-sm outline-none"
-          placeholder={placeholder}
-        />
-      </label>
-      <button className={ghost}>
-        <Filter className="size-4" />
-        {t("common.filters")}
-      </button>
-      <button className={ghost}>
-        <CalendarClock className="size-4" />
-        {t("common.dateRange")}
-      </button>
-    </Card>
-  );
+function Toolbar({ placeholder, value, onChange }: { placeholder: string; value: string; onChange: (value: string) => void }) {
+  return <Card className="mb-5 p-3"><label className="flex items-center gap-2 rounded-xl border bg-input px-3"><Search className="size-4 text-muted" /><input className="w-full bg-transparent py-2.5 text-sm outline-none" aria-label={placeholder} placeholder={placeholder} value={value} onChange={e => onChange(e.target.value)} /></label></Card>;
 }
 function usePlatform(poll = false) {
   const [data, setData] = useState<PlatformData | null>(null);
   const [error, setError] = useState("");
+  const inFlight = useRef<AbortController | null>(null);
   const load = useCallback(async () => {
+    if (inFlight.current) return;
+    const controller = new AbortController(); inFlight.current = controller;
+    const timeout = setTimeout(() => controller.abort("timeout"), 20_000);
     try {
-      const r = await fetch("/api/platform", { cache: "no-store" });
-      if (r.status === 401) {
-        window.location.replace("/login");
-        return;
-      }
-      if (!r.ok) throw new Error("PLATFORM_BOOTSTRAP_FAILED");
-      setData(await r.json());
-      setError("");
-    } catch {
-      setError("errors.generic");
-    }
+      const response = await fetch("/api/platform", { cache: "no-store", signal: controller.signal });
+      if (response.status === 401) { window.location.replace(`/login?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`); return; }
+      if (!response.ok) throw new Error("PLATFORM_BOOTSTRAP_FAILED");
+      const body = await response.json();
+      if (inFlight.current === controller) { setData(body); setError(""); }
+    } catch { if (inFlight.current === controller) setError("errors.generic"); }
+    finally { clearTimeout(timeout); if (inFlight.current === controller) inFlight.current = null; }
   }, []);
   useEffect(() => {
     void load();
-    if (!poll) return;
-    const timer = setInterval(() => void load(), 5000);
-    return () => clearInterval(timer);
+    const timer = poll ? setInterval(() => { if (!document.hidden) void load(); }, 10_000) : undefined;
+    return () => { clearInterval(timer); const pending = inFlight.current; inFlight.current = null; pending?.abort(); };
   }, [load, poll]);
   return { data, error, reload: load };
 }
@@ -237,8 +220,8 @@ export function DashboardPage() {
   if (!data) return error ? <PlatformLoadError onRetry={reload} /> : <Loading />;
   const active = data.accounts.filter((a) => !a.archivedAt),
     connected = active.filter((a) => a.status === "CONNECTED").length;
-  const sent = data.campaigns.reduce((n, c) => n + c.sentCount, 0);
-  const failed = data.campaigns.reduce((n, c) => n + c.failedCount, 0);
+  const sent = data.monthlyMessages?.sent ?? "—";
+  const failed = data.monthlyMessages?.failed ?? "—";
   const firstName = data.user.name.trim().split(/\s+/)[0] || data.user.name;
   const metrics = [
     [
@@ -548,6 +531,7 @@ function Mini({ value, label }: { value: string | number; label: string }) {
 export function GroupsPage() {
   const { t } = useI18n();
   const { data, reload, error: platformError } = usePlatform(true);
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState("");
@@ -608,7 +592,7 @@ export function GroupsPage() {
           {status}
         </p>
       )}
-      <Toolbar placeholder={t("groups.search")} />
+      <Toolbar placeholder={t("groups.search")} value={search} onChange={setSearch} />
       {!data ? (
         platformError ? <PlatformLoadError onRetry={reload} /> : <Loading />
       ) : !data.groups.length ? (
@@ -648,7 +632,7 @@ export function GroupsPage() {
               </tr>
             </thead>
             <tbody>
-              {data.groups.map((g) => (
+              {data.groups.filter(g => [g.name, ...g.categories.map(c => c.category.name)].join(" ").toLocaleLowerCase().includes(search.toLocaleLowerCase().trim())).map((g) => (
                 <tr
                   className={cn(
                     "border-b last:border-0",
@@ -995,24 +979,30 @@ export function SendMessagePage() {
 }
 
 export function HistoryPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { data, error: platformError, reload } = usePlatform(true);
+  const [search, setSearch] = useState("");
+  const [historyError, setHistoryError] = useState(false);
   const [showDeleted, setShowDeleted] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const load = useCallback(async () => {
     setLoading(true);
+    setHistoryError(false);
+    try {
     const response = await fetch(
       `/api/messages/campaigns?showDeleted=${showDeleted}`,
-      { cache: "no-store" },
+      { cache: "no-store", signal: AbortSignal.timeout(20_000) },
     );
     const result = await response.json();
-    setCampaigns(response.ok ? result.campaigns : []);
-    setLoading(false);
+    if (!response.ok) throw new Error();
+    setCampaigns(result.campaigns);
+    } catch { setHistoryError(true); } finally { setLoading(false); }
   }, [showDeleted]);
   useEffect(() => {
     void load();
   }, [load]);
+  const visibleCampaigns = campaigns.filter(c => `${c.title} ${c.status}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   async function mutate(id: string, name: string) {
     const archive = name === "archive";
     if (
@@ -1038,20 +1028,21 @@ export function HistoryPage() {
                 ? t("history.hideDeleted")
                 : t("history.showDeleted")}
             </button>
-            <button className={ghost}>
+            <button className={ghost} disabled={loading || historyError} onClick={() => downloadCsv("logivya-history.csv", [[t("history.title"), t("common.status"), t("common.dateRange"), lifecycleLabel("SENT", locale), t("dashboard.failed")], ...visibleCampaigns.map(c => [c.title, c.status, c.createdAt, c.sentCount, c.failedCount])])}>
               <FileText className="size-4" />
               {t("history.export")}
             </button>
           </div>
         }
       />
-      <Toolbar placeholder={t("history.search")} />
+      <Toolbar placeholder={t("history.search")} value={search} onChange={setSearch} />
+      {historyError && <PlatformLoadError onRetry={load} />}
       {!data || loading ? (
         platformError && !data ? <PlatformLoadError onRetry={reload} /> : <Loading />
       ) : (
         <Card className="overflow-hidden">
           <CampaignTable
-            campaigns={campaigns}
+            campaigns={visibleCampaigns}
             actions={(campaign) => (
               <div className="flex flex-wrap gap-2">
                 {campaign.failedCount > 0 && (

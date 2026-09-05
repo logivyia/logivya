@@ -57,9 +57,11 @@ export async function captureApprovedWhatsAppMessage(input: CaptureWhatsAppMessa
   });
   if (!group) return { accepted: false, reason: "SOURCE_NOT_APPROVED" } as const;
 
-  const text = input.text.normalize("NFKC").replace(/\s+/gu, " ").trim().slice(0, 12_000);
+  // Route boundaries must survive capture; the parser needs separate source lines.
+  const text = input.text.normalize("NFKC").replace(/\r\n?/gu, "\n").replace(/[^\S\n]+/gu, " ").trim().slice(0, 12_000);
   if (!text) return { accepted: false, reason: "EMPTY_CONTENT" } as const;
-  const contentHash = sha256(text);
+  // Preserve existing deduplication hashes for unchanged provider messages.
+  const contentHash = sha256(text.replace(/\s+/gu, " "));
   const retentionDays = Math.min(30, Math.max(1, control?.rawRetentionDays ?? 7));
   const rawExpiresAt = new Date(Date.now() + retentionDays * 86_400_000);
   const encryptedText = encryptPrivateValue(text);

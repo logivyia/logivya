@@ -14,6 +14,14 @@ function endpoint(location: NormalizedLogisticsLocation, tail: string) {
 }
 
 export function splitSourceRoutes(value: string): SourceRouteSection[] {
+  // Keep route lines together with their own dates/attributes before whitespace folding.
+  const lines = value.split(/\r?\n/u);
+  const starts = lines.flatMap((line, index) => findLogisticsLocationOccurrences(line).length >= 2 && (separator.test(line) || /yükleme|yukleme|boşaltma|bosaltma/iu.test(line)) ? [index] : []);
+  if (starts.length > 1) return starts.flatMap((start, index) => splitRouteBlock(lines.slice(index === 0 ? 0 : start, starts[index + 1] ?? lines.length).join("\n"))).slice(0, 25);
+  return splitRouteBlock(value);
+}
+
+function splitRouteBlock(value: string): SourceRouteSection[] {
   // This normalization has the same whitespace positions as the occurrence scanner.
   const text = value.normalize("NFKC").replace(/[ـ‌]/gu, " ").replace(/\s+/gu, " ").trim();
   const locations: NormalizedLogisticsLocation[] = [];
@@ -24,6 +32,17 @@ export function splitSourceRoutes(value: string): SourceRouteSection[] {
       locations[locations.length - 1] = { ...specific, position: previous.position, original: text.slice(previous.position, location.position + location.original.length) };
     } else locations.push(location);
   }
+  // Explicit loading/unloading labels take precedence over transit and payment locations.
+  const role = (location: NormalizedLogisticsLocation, pattern: string) => {
+    const before = text.slice(Math.max(0, location.position - 36), location.position);
+    const after = text.slice(location.position + location.original.length, location.position + location.original.length + 28);
+    return new RegExp(`(?:${pattern})\\s*:\\s*(?:[\\p{So}\\s])*?$`, "iu").test(before)
+      || new RegExp(`^\\s*(?:${pattern})(?!\\s*:)(?=$|[^\\p{L}])`, "iu").test(after);
+  };
+  const loading = locations.filter(location => role(location, "yükleme|yukleme|loading|загрузка"));
+  const unloading = locations.filter(location => role(location, "boşaltma|bosaltma|teslim|unloading|delivery|выгрузка"));
+  if (loading.length === 1 && unloading.length === 1) return [{ text, origin: loading[0], destination: unloading[0] }];
+  if (loading.length || unloading.length) return [{ text, origin: loading.length === 1 ? loading[0] : null, destination: unloading.length === 1 ? unloading[0] : null }];
   const pairs: Array<{ origin: NormalizedLogisticsLocation; destination: NormalizedLogisticsLocation; separatorIndex: number; destinationStart: number }> = [];
   for (let index = 0; index < locations.length - 1; index++) {
     const origin = locations[index]!;
@@ -41,17 +60,21 @@ export function splitSourceRoutes(value: string): SourceRouteSection[] {
   if (!pairs.length) {
     // A separator-free message is usable only with one unambiguous pair.
     // Longer location lists go to review instead of borrowing unrelated cities.
-    const samePlace = locations.length === 2 && locations[0]!.countryCode === locations[1]!.countryCode && locations.some(location => location.type === "COUNTRY");
+    const samePlace = locations.length === 2 && (locations[0]!.normalized === locations[1]!.normalized || (locations[0]!.countryCode === locations[1]!.countryCode && locations.some(location => location.type === "COUNTRY")));
     return [{ text, origin: locations.length <= 2 && !samePlace ? locations[0] ?? null : null, destination: locations.length === 2 && !samePlace ? locations[1]! : null }];
   }
   return pairs.slice(0, 25).map((pair, index) => {
     const start = index === 0 && !locations.some(location => location.position < pair.origin.position) ? 0 : pair.origin.position;
     const nextPair = pairs[index + 1]?.origin.position ?? text.length;
-    const end = locations.find(location => location.position > pair.destination.position && location.position < nextPair)?.position ?? nextPair;
+    const following = locations.filter(location => location.position > pair.destination.position && location.position < nextPair);
+    const alternative = following[0];
+    const alternatives = alternative && /^\s*(?:veya|ya da|or|или|yoki|\/)\s*$/iu.test(text.slice(pair.destination.position + pair.destination.original.length, alternative.position));
+    const end = following[alternatives ? 1 : 0]?.position ?? nextPair;
+    const target = alternatives ? { ...pair.destination, canonical: `${pair.destination.canonical} / ${alternative.canonical}`, normalized: normalizeLogisticsText(`${pair.destination.canonical} / ${alternative.canonical}`), original: text.slice(pair.destination.position, alternative.position + alternative.original.length) } : pair.destination;
     return {
       text: text.slice(start, end).trim(),
       origin: endpoint(pair.origin, text.slice(pair.origin.position + pair.origin.original.length, pair.separatorIndex)),
-      destination: endpoint(pair.destination, text.slice(pair.destinationStart + pair.destination.original.length, end)),
+      destination: endpoint(target, text.slice(pair.destinationStart + target.original.length, end)),
     };
   });
 }

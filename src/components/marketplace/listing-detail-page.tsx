@@ -1,7 +1,10 @@
 "use client";
+import { localizeListingSummary } from "../../../shared/localize-listing-summary";
 import { WhatsAppIcon } from "@/components/whatsapp-icon";
 
 import Link from "next/link";
+import { authHref, safeAuthReturn, SUBSCRIPTION_HREF } from "@/lib/auth-return";
+import { productJourneyCopy } from "../../../shared/product-journey-copy";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ExternalLink, Flag, LoaderCircle, MapPin, MessageCircle, Phone, Scale, Truck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -15,7 +18,10 @@ export function ListingDetailPage({ kind, id, requestId, guest = false }: { kind
   const searchParams = useSearchParams();
   const { locale } = useI18n();
   const copy = marketplaceCopy(locale);
-  const [listing, setListing] = useState<WebMarketplaceListingDetail | null>(null);
+  const text = productJourneyCopy(locale);
+  const rememberedList = safeAuthReturn(searchParams.get("returnTo"), guest ? "/explore" : "/marketplace");
+  const authenticatedDetail = `/marketplace/listings/${encodeURIComponent(kind)}/${encodeURIComponent(id)}?returnTo=${encodeURIComponent(rememberedList)}`;
+  const [rawListing, setListing] = useState<WebMarketplaceListingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const query = requestId ? `?requestId=${encodeURIComponent(requestId)}` : "";
@@ -29,8 +35,9 @@ export function ListingDetailPage({ kind, id, requestId, guest = false }: { kind
       setError("");
       setListing(null);
     }, 0);
-    void fetch(guest ? `/api/public/marketplace?kind=${encodeURIComponent(kind)}&id=${encodeURIComponent(id)}` : `/api/marketplace/listings/${encodeURIComponent(kind)}/${encodeURIComponent(id)}${query}`, { cache: "no-store", signal: controller.signal })
+    void fetch(guest ? `/api/public/marketplace?kind=${encodeURIComponent(kind)}&id=${encodeURIComponent(id)}` : `/api/marketplace/listings/${encodeURIComponent(kind)}/${encodeURIComponent(id)}${query}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]) })
       .then(async (response) => {
+        window.clearTimeout(stateTimer);
         const payload = await response.json();
         const body = (guest ? payload.data ?? {} : payload) as { listing?: WebMarketplaceListingDetail; error?: string };
         if (!response.ok || !body.listing) throw new Error(body.error ?? "NOT_FOUND");
@@ -41,6 +48,7 @@ export function ListingDetailPage({ kind, id, requestId, guest = false }: { kind
     return () => { active = false; window.clearTimeout(stateTimer); controller.abort(); };
   }, [copy.detailNotFound, guest, id, kind, query]);
 
+  const listing = rawListing ? localizeListingSummary(rawListing, locale) : null;
   const detailRows = useMemo(() => listing ? buildDetailRows(listing, copy, locale) : [], [copy, listing, locale]);
 
   if (loading) {
@@ -51,10 +59,10 @@ export function ListingDetailPage({ kind, id, requestId, guest = false }: { kind
   }
 
   const requestedReturn = searchParams.get("returnTo");
-  const backHref = guest ? (requestedReturn?.startsWith("/explore?") ? requestedReturn : "/explore") : listing.requestId ? "/marketplace/requests" : "/marketplace";
+  const backHref = requestedReturn ? rememberedList : listing.requestId ? `/marketplace/requests/${encodeURIComponent(listing.requestId)}/matches` : guest ? "/explore" : "/marketplace";
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      <button onClick={() => window.history.length > 1 ? router.back() : router.push(backHref)} className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-muted hover:bg-muted-background hover:text-foreground">
+      <button onClick={() => router.push(backHref)} className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-muted hover:bg-muted-background hover:text-foreground">
         <ArrowLeft aria-hidden className="size-4" />{listing.requestId ? copy.backToRequests : copy.backToListings}
       </button>
 
@@ -108,7 +116,7 @@ export function ListingDetailPage({ kind, id, requestId, guest = false }: { kind
                 <a href={listing.contact.telHref} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border bg-card px-4 text-sm font-semibold hover:border-primary/40"><Phone aria-hidden className="size-4 text-primary" />{copy.call}</a>
                 <a href={listing.contact.whatsappHref} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:brightness-95"><WhatsAppIcon aria-hidden className="size-4" />{copy.whatsapp}<ExternalLink aria-hidden className="size-3.5" /></a>
               </div>
-            ) : guest || listing.contactAccess === "SUBSCRIPTION_REQUIRED" ? <div className="mt-4 space-y-3"><p className="text-sm leading-6 text-muted">{locale === "tr" ? "İletişim bilgileri geçerli deneme veya abonelik ile açılır." : locale === "uz" ? "Bog‘lanish uchun amaldagi sinov muddati yoki obuna talab qilinadi." : "Contact requires an active trial or subscription."}</p><Link href={guest ? "/register" : "/settings/subscription"} className="flex min-h-12 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground">{locale === "tr" ? guest ? "Kayıt ol · 7 gün ücretsiz" : "Aboneliği görüntüle" : locale === "uz" ? guest ? "Ro‘yxatdan o‘tish · 7 kun bepul" : "Obunani ko‘rish" : guest ? "Register · 7 days free" : "View subscription"}</Link>{guest ? <Link href="/login" className="block py-2 text-center text-sm font-semibold text-primary">{locale === "tr" ? "Giriş yap" : locale === "uz" ? "Kirish" : "Sign in"}</Link> : null}</div> : <p className="mt-4 text-sm leading-6 text-muted">{copy.contactMissing}</p>}
+            ) : guest || listing.contactAccess === "SUBSCRIPTION_REQUIRED" ? <div className="mt-4 space-y-3"><p className="text-sm leading-6 text-muted">{text.contactRequired}</p><Link href={guest ? authHref("register", authenticatedDetail) : SUBSCRIPTION_HREF} className="flex min-h-12 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground">{guest ? text.registerTrial : text.subscribe}</Link>{guest ? <Link href={authHref("login", authenticatedDetail)} className="block py-2 text-center text-sm font-semibold text-primary">{text.login}</Link> : null}</div> : <p className="mt-4 text-sm leading-6 text-muted">{copy.contactMissing}</p>}
             <a href={`mailto:support@logivya.com?subject=${encodeURIComponent(`İlan bildirimi: ${listing.id}`)}`} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-3 text-xs font-semibold text-muted hover:bg-card hover:text-foreground"><Flag aria-hidden className="size-3.5" />{copy.report}</a>
           </aside>
         </div>

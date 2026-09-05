@@ -1,3 +1,4 @@
+import { productJourneyCopy } from "../../../../../shared/product-journey-copy";
 import { Ionicons } from "@expo/vector-icons";
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -13,6 +14,7 @@ type Props = {
   canOpenWhatsApp: boolean;
   whatsappPrefilledMessage: string | null;
   contactAccess?: string | undefined;
+  telegramHref?: string | null | undefined;
 };
 
 export function MarketplaceContactActions({
@@ -21,22 +23,24 @@ export function MarketplaceContactActions({
   canOpenWhatsApp,
   whatsappPrefilledMessage,
   contactAccess,
+  telegramHref,
 }: Props) {
   const navigation = useNavigation<BottomTabNavigationProp<AppTabParamList>>();
   const theme = useTheme();
   const locale = useSettingsStore((state) => state.locale);
-  const isTurkish = locale === "tr";
-  const callable = Boolean(phone && canCall);
-  const whatsappReady = Boolean(phone && canOpenWhatsApp && whatsappPrefilledMessage);
+  const copy = productJourneyCopy(locale);
+  const telegramReady = Boolean(telegramHref && /^https:\/\/t\.me\/[A-Za-z][A-Za-z0-9_]{4,31}$/.test(telegramHref));
+  const callable = Boolean(phone && /^\+[1-9]\d{6,14}$/.test(phone) && canCall);
+  const whatsappReady = Boolean(phone && /^\+[1-9]\d{6,14}$/.test(phone) && canOpenWhatsApp && whatsappPrefilledMessage);
 
   async function callAdvertiser() {
     if (!phone || !callable) return;
     Alert.alert(
-      isTurkish ? "İlan vereni ara" : "Call advertiser",
-      isTurkish ? `${phone} numarası aranacak.` : `${phone} will be called.`,
+      copy.callAdvertiser,
+      phone,
       [
-        { text: isTurkish ? "Vazgeç" : "Cancel", style: "cancel" },
-        { text: isTurkish ? "Ara" : "Call", onPress: () => void Linking.openURL(`tel:${phone}`) },
+        { text: copy.cancel, style: "cancel" },
+        { text: copy.call, onPress: () => void Linking.openURL(`tel:${phone}`).catch(() => Alert.alert(copy.openError)) },
       ],
     );
   }
@@ -45,7 +49,7 @@ export function MarketplaceContactActions({
     if (!phone || !whatsappReady || !whatsappPrefilledMessage) return;
     const digits = whatsappPhoneDigits(phone);
     if (!digits) {
-      Alert.alert(isTurkish ? "WhatsApp açılamadı" : "Could not open WhatsApp");
+      Alert.alert(copy.openError);
       return;
     }
     const url = `https://wa.me/${digits}?text=${encodeURIComponent(whatsappPrefilledMessage)}`;
@@ -53,23 +57,24 @@ export function MarketplaceContactActions({
       await Linking.openURL(url);
     } catch {
       Alert.alert(
-        isTurkish ? "WhatsApp açılamadı" : "Could not open WhatsApp",
-        isTurkish ? "WhatsApp'ın kurulu olduğundan emin olun." : "Make sure WhatsApp is installed.",
+        copy.openError,
+        "WhatsApp",
       );
     }
   }
 
-  if (!callable && !whatsappReady) {
-    if (contactAccess === "SUBSCRIPTION_REQUIRED") return <View style={{ gap: 12 }}><Text style={[styles.unavailable, { color: theme.muted }]}>{isTurkish ? "İletişim için geçerli deneme veya abonelik gerekir." : "Contact requires an active trial or subscription."}</Text><Pressable onPress={() => navigation.navigate("Profile", { screen: "Subscription" })} style={[styles.button, { backgroundColor: theme.primary, borderColor: theme.primary, flex: undefined }]}><Text style={[styles.buttonText, { color: theme.primaryText }]}>{isTurkish ? "Aboneliği görüntüle" : "View subscription"}</Text></Pressable></View>;
-    return <Text style={[styles.unavailable, { color: theme.muted }]}>{isTurkish ? "İletişim bilgisi paylaşılmamış." : "Contact information is unavailable."}</Text>;
+  if (!callable && !whatsappReady && !telegramReady) {
+    if (contactAccess === "SUBSCRIPTION_REQUIRED") return <View style={{ gap: 12 }}><Text style={[styles.unavailable, { color: theme.muted }]}>{copy.contactRequired}</Text><Pressable onPress={() => navigation.navigate("Profile", { screen: "Subscription" })} style={[styles.button, { backgroundColor: theme.primary, borderColor: theme.primary, flex: undefined }]}><Text style={[styles.buttonText, { color: theme.primaryText }]}>{copy.subscribe}</Text></Pressable></View>;
+    return <Text style={[styles.unavailable, { color: theme.muted }]}>{copy.contactMissing}</Text>;
   }
 
   return (
     <View style={styles.row}>
+      {telegramReady && <ContactButton icon="paper-plane-outline" label="Telegram" onPress={() => void Linking.openURL(telegramHref!).catch(() => Alert.alert(copy.openError))} backgroundColor={theme.card} borderColor={theme.border} color={theme.text} />}
       {callable ? (
         <ContactButton
           icon="call-outline"
-          label={isTurkish ? "Ara" : "Call"}
+          label={copy.call}
           onPress={() => void callAdvertiser()}
           backgroundColor={theme.primary}
           borderColor={theme.primary}
@@ -120,17 +125,18 @@ function ContactButton({
 function whatsappPhoneDigits(phone: string) {
   const digits = phone.replace(/\D/gu, "");
   if (digits.startsWith("00")) return digits.slice(2);
-  if (digits.length === 11 && digits.startsWith("0")) return `90${digits.slice(1)}`;
+
   return digits;
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", gap: 10 },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   button: {
     alignItems: "center",
     borderRadius: 16,
     borderWidth: 1,
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: "40%",
     flexDirection: "row",
     gap: 8,
     justifyContent: "center",

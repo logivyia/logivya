@@ -1,7 +1,11 @@
+import type { CatalogReturn } from "@/features/freight/catalog-return";
+import { localizeListingSummary } from "../../../../shared/localize-listing-summary";
 import { createNativeStackNavigator, type NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
+import { AuthNavigator } from "@/navigation/auth-navigator";
+import { useIsFocused } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
 import { ActivityIndicator, AppState, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getPublicCatalog, getPublicCatalogDetail, type PublicCatalogListing } from "@/api/publicMarketplace";
@@ -14,11 +18,25 @@ import { CatalogFilters, emptyMarketplaceFilters, marketplaceFilterParams, type 
 import { useTranslation } from "@/i18n/use-translation";
 import { useTheme } from "@/theme/theme-provider";
 import { publicMarketplaceSection, publicMarketplaceSections } from "../../../../shared/public-marketplace-sections";
-type GuestStack = { GuestExplore: { section?: string } | undefined; GuestDetail: { id: string; kind: string } };
+type GuestStack = { GuestExplore: { section?: string } | undefined; GuestDetail: { id: string; kind: string; catalog: CatalogReturn }; GuestAuth: { screen: "Login" | "Register" } };
 const Stack = createNativeStackNavigator<GuestStack>();
-export function GuestNavigator() { return <Stack.Navigator screenOptions={{ headerShown: false }}><Stack.Screen name="GuestExplore" component={GuestExplore} /><Stack.Screen name="GuestDetail" component={GuestDetail} /></Stack.Navigator>; }
+export function GuestNavigator() { return <Stack.Navigator screenOptions={{ headerShown: false }}><Stack.Screen name="GuestExplore" component={GuestExplore} /><Stack.Screen name="GuestDetail" component={GuestDetail} /><Stack.Screen name="GuestAuth" component={GuestAuth} /></Stack.Navigator>; }
+
+function useGuestAuthentication(navigation: NativeStackScreenProps<GuestStack, "GuestExplore">["navigation"] | NativeStackScreenProps<GuestStack, "GuestDetail">["navigation"]) {
+  const authScreen = useGuestStore(state => state.authScreen);
+  const focused = useIsFocused();
+  useEffect(() => { if (focused && authScreen) navigation.navigate("GuestAuth", { screen: authScreen }); }, [focused, authScreen, navigation]);
+}
+function GuestAuth({ route, navigation }: NativeStackScreenProps<GuestStack, "GuestAuth">) {
+  const authScreen = useGuestStore(state => state.authScreen);
+  useEffect(() => { if (!authScreen && navigation.canGoBack()) navigation.goBack(); }, [authScreen, navigation]);
+  useEffect(() => () => useGuestStore.getState().browse(), []);
+  return <AuthNavigator booting={false} initialScreen={route.params.screen} />;
+}
 
 function GuestExplore({ route, navigation }: NativeStackScreenProps<GuestStack, "GuestExplore">) {
+  useGuestAuthentication(navigation);
+  useFocusEffect(useCallback(() => { useGuestStore.getState().setDestination(null); }, []));
   const theme = useTheme(); const { locale, t } = useTranslation(); const copy = guestMarketplaceCopy(locale); const labels = guestMarketplaceLabels(locale).labels;
   const section = publicMarketplaceSection(route.params?.section);
   const [menu, setMenu] = useState(false);
@@ -53,7 +71,7 @@ function GuestExplore({ route, navigation }: NativeStackScreenProps<GuestStack, 
   return <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
     <View style={[styles.header, { borderColor: theme.border, backgroundColor: theme.card }]}><Pressable accessibilityLabel={copy.openMenu} onPress={() => setMenu(true)} style={styles.iconButton}><Ionicons name="menu" size={28} color={theme.text} /></Pressable><Text style={[styles.brand, { color: theme.text }]}>LOGIVYA</Text><LanguageSelector /></View><View style={[styles.authActions, { backgroundColor: theme.card }]}><Pressable accessibilityRole="button" onPress={() => useGuestStore.getState().authenticate()} style={[styles.authButton, { borderColor: theme.border, borderWidth: 1 }]}><Text style={{ color: theme.text, fontWeight: "800", fontSize: 12 }}>{t("login")}</Text></Pressable><Pressable accessibilityRole="button" onPress={() => useGuestStore.getState().authenticate("Register")} style={[styles.authButton, { backgroundColor: theme.primary }]}><Text style={{ color: theme.primaryText, fontWeight: "800", fontSize: 12 }}>{t("register")}</Text></Pressable></View>
     <FlatList data={privateSection ? [] : items} keyExtractor={(item) => `${item.kind}:${item.id}`} contentContainerStyle={styles.content} ItemSeparatorComponent={() => <View style={{ height: 14 }} />} initialNumToRender={6}
-      renderItem={({ item }) => <LiveMarketplaceListingCard listing={item} onPress={() => navigation.push("GuestDetail", { id: item.id, kind: item.kind })} />}
+      renderItem={({ item }) => <LiveMarketplaceListingCard listing={item} onPress={() => navigation.push("GuestDetail", { id: item.id, kind: item.kind, catalog: { filters, section: section.id } })} />}
       refreshControl={!privateSection ? <RefreshControl refreshing={loading && items.length > 0} onRefresh={() => void load()} tintColor={theme.primary} /> : undefined}
       ListHeaderComponent={<View style={{ marginBottom: 20, gap: 12 }}>
         {navigation.canGoBack() ? <Pressable onPress={() => navigation.goBack()} style={styles.back}><Ionicons name="arrow-back" size={20} color={theme.primary} /><Text style={{ color: theme.primary }}>{labels.back}</Text></Pressable> : null}
@@ -76,9 +94,12 @@ function GuestExplore({ route, navigation }: NativeStackScreenProps<GuestStack, 
 }
 
 function GuestDetail({ route, navigation }: NativeStackScreenProps<GuestStack, "GuestDetail">) {
+  useGuestAuthentication(navigation);
+  useFocusEffect(useCallback(() => { useGuestStore.getState().setDestination({ id: route.params.id, kind: route.params.kind, catalog: route.params.catalog }); }, [route.params.id, route.params.kind, route.params.catalog]));
   const theme = useTheme(); const { locale } = useTranslation(); const copy = guestMarketplaceCopy(locale); const labels = guestMarketplaceLabels(locale).labels;
-  const [listing, setListing] = useState<PublicCatalogListing | null>(null); const [error, setError] = useState(false);
+  const [rawListing, setListing] = useState<PublicCatalogListing | null>(null); const [error, setError] = useState(false);
   useFocusEffect(useCallback(() => { let active = true; void getPublicCatalogDetail(route.params.kind, route.params.id).then((data) => { if (active) setListing(data.listing); }).catch(() => { if (active) setError(true); }); return () => { active = false; }; }, [route.params.id, route.params.kind]));
+  const listing = rawListing ? localizeListingSummary(rawListing, locale) : null;
   return <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}><View style={styles.header}><Pressable onPress={() => navigation.goBack()} style={styles.back}><Ionicons name="arrow-back" size={24} color={theme.text} /><Text style={{ color: theme.text }}>{labels.back}</Text></Pressable><LanguageSelector /></View><ScrollView contentContainerStyle={styles.content}>
     {listing ? <View style={{ gap: 20 }}><Text style={{ color: theme.primary, fontWeight: "800" }}>{listing.publicAdvertiserName}</Text><Text style={[styles.title, { color: theme.text }]}>{listing.publicTitle}</Text><Text style={{ color: theme.text, fontWeight: "700" }}>{[listing.tonnageDisplay, listing.vehicleDisplayName].filter(Boolean).join(" · ")}</Text><Text style={[styles.description, { color: theme.muted }]}>{listing.publicDescription}</Text><View style={[styles.panel, { borderColor: theme.border, gap: 12 }]}><Text style={{ color: theme.text }}>{listing.loadingDisplayName}{listing.deliveryDisplayName ? ` → ${listing.deliveryDisplayName}` : ""}</Text><Text style={{ color: theme.muted }}>{listing.sourcePlatformDisplay} · {new Date(listing.publishedAt).toLocaleDateString(locale)}</Text></View><GuestAccessCard contact /></View> : error ? <Text style={{ color: theme.muted }}>{copy.expired}</Text> : <ActivityIndicator size="large" color={theme.primary} />}
   </ScrollView></SafeAreaView>;

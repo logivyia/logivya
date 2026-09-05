@@ -9,6 +9,7 @@ import { calculateSmartCandidateMatch } from "@/server/freight/smart-match-scori
 import { emitNotificationEvent } from "@/server/notifications/engine";
 import { logger } from "@/server/observability/logger";
 import { callTelegramWorker } from "@/server/telegram/worker-client";
+import { demandCriteriaVersion } from "./demand-criteria";
 
 const workerId = process.env.SMART_MATCHING_WORKER_ID || `smart-matching:${os.hostname()}:${process.pid}`;
 const staleLockBefore = () => new Date(Date.now() - 10 * 60_000);
@@ -92,6 +93,7 @@ export async function processPendingSmartMatchingJobs(limit = 5) {
 }
 
 export async function processPendingFreightCandidates(limit = 50) {
+  const { publishTelegramCandidates } = await import("./telegram-publication");
   const candidates = await prisma.freightOpportunityCandidate.findMany({
     where: { matchingProcessedAt: null, expiresAt: { gt: new Date() } },
     orderBy: [{ sourceMessageTimestamp: "asc" }, { id: "asc" }],
@@ -99,6 +101,7 @@ export async function processPendingFreightCandidates(limit = 50) {
   });
   let matches = 0;
   for (const candidate of candidates) {
+    if (candidate.sourcePlatform === "TELEGRAM") await publishTelegramCandidates({ ownerUserId: candidate.ownerUserId, sourceAccountId: candidate.sourceAccountId, sourceGroupId: candidate.sourceGroupId, sourceMessageId: candidate.sourceMessageId });
     const demands = await prisma.marketplaceDemandRequest.findMany({
       where: {
         ownerUserId: candidate.ownerUserId,
@@ -148,20 +151,20 @@ export async function processPendingSmartMatchSummaryNotifications(limit = 25) {
 
 async function executeSmartMatchingJob(jobId: string) {
   const job = await prisma.smartMatchingJob.findUnique({
-    where: { id: jobId },
+    where: { id: jobId, status: "RUNNING" },
     include: { demand: true },
   });
   if (!job || job.status !== "RUNNING") return;
   if (job.demand.status !== "ACTIVE" || job.demand.expiresAt <= new Date()) {
-    await prisma.smartMatchingJob.update({ where: { id: jobId }, data: { status: "CANCELLED", completedAt: new Date(), lockedAt: null, lockedBy: null } });
+    await prisma.smartMatchingJob.updateMany({ where: { id: jobId, status: "RUNNING" }, data: { status: "CANCELLED", completedAt: new Date(), lockedAt: null, lockedBy: null } });
     return;
   }
 
   const listingTrigger = parseListingMatchTrigger(job.triggerKey);
   if (listingTrigger) {
     const result = await matchDemandRequestAgainstListing(job.demandId, listingTrigger.kind, listingTrigger.listingId);
-    await prisma.smartMatchingJob.update({
-      where: { id: job.id },
+    await prisma.smartMatchingJob.updateMany({
+      where: { id: job.id, status: "RUNNING" },
       data: {
         status: "COMPLETED",
         completedSources: ["LOGIVYA"],
@@ -183,7 +186,7 @@ async function executeSmartMatchingJob(jobId: string) {
   }
 
   const availableSources = await resolveAvailableSources(job.ownerUserId);
-  await prisma.smartMatchingJob.update({ where: { id: jobId }, data: { requestedSources: availableSources } });
+  await prisma.smartMatchingJob.updateMany({ where: { id: jobId, status: "RUNNING" }, data: { requestedSources: availableSources } });
   const completedSources: SmartMatchSource[] = [];
   const errors: Array<{ source: SmartMatchSource; code: string }> = [];
   let matchesFound = 0;
@@ -217,8 +220,8 @@ async function executeSmartMatchingJob(jobId: string) {
   }
 
   const status = errors.length === 0 ? "COMPLETED" : completedSources.length ? "PARTIAL" : "FAILED";
-  await prisma.smartMatchingJob.update({
-    where: { id: job.id },
+  const completion = await prisma.smartMatchingJob.updateMany({
+    where: { id: job.id, status: "RUNNING" },
     data: {
       status,
       completedSources,
@@ -233,7 +236,7 @@ async function executeSmartMatchingJob(jobId: string) {
       lockedBy: null,
     },
   });
-  if (matchesFound > 0) await dispatchDemandMatchSummary(job.demandId, `job-${job.id}`, job.id);
+  if (completion.count && matchesFound > 0) await dispatchDemandMatchSummary(job.demandId, `job-${job.id}`, job.id);
   logger.info("smart_matching.job_completed", {
     jobId: job.id,
     demandId: job.demandId,
@@ -322,6 +325,9 @@ export async function persistSmartMatchResult(
   });
   try {
   return await prisma.$transaction(async tx => {
+  await tx.$queryRaw`SELECT "id" FROM "MarketplaceDemandRequest" WHERE "id" = ${demand.id} FOR UPDATE`;
+  const currentDemand = await tx.marketplaceDemandRequest.findUnique({ where: { id: demand.id } });
+  if (!currentDemand || currentDemand.status !== "ACTIVE" || currentDemand.expiresAt <= new Date() || demandCriteriaVersion(currentDemand) !== demandCriteriaVersion(demand)) return false;
   // A source edit must not race a score calculated from the previous contents.
   await tx.$queryRaw`SELECT "id" FROM "FreightOpportunityCandidate" WHERE "id" = ${candidate.id} FOR UPDATE`;
   const current = await tx.freightOpportunityCandidate.findUnique({ where: { id: candidate.id } });

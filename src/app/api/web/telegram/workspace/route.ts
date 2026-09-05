@@ -45,6 +45,7 @@ export async function GET(request: Request) {
               participantCount: true,
               canSend: true,
               isArchived: true,
+        freightPublicationEnabled: true,
               lastSyncedAt: true,
               categoryAssignments: { select: { category: { select: { id: true, name: true, color: true } } } },
             },

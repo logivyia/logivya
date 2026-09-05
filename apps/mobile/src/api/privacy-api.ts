@@ -22,11 +22,11 @@ export function submitPrivacyRequest(input: { type: string; description: string;
 }
 
 export function requestAccountDeletion(input: { scope: "USER" | "COMPANY"; confirmation: string; password: string }) {
-  return apiClient.requestRaw<{ job: { publicId: string; scope: string; status: string; cancelUntil: string } }>("/api/privacy/account-deletion", { method: "POST", body: JSON.stringify(input) });
+  return apiClient.requestRaw<{ scope?: "MEMBERSHIP"; job?: { publicId: string; scope: string; status: string; cancelUntil: string }; destructiveExecutionEnabled?: boolean }>("/api/privacy/account-deletion", { method: "POST", body: JSON.stringify(input) });
 }
 
 export function getAccountDeletionRequests() {
-  return apiClient.requestRaw<{ jobs: Array<{ publicId: string; scope: string; status: string; cancelUntil: string }> }>("/api/privacy/account-deletion");
+  return apiClient.requestRaw<{ destructiveExecutionEnabled: boolean; legalReviewStatus: string; jobs: Array<{ publicId: string; scope: string; status: string; cancelUntil: string }> }>("/api/privacy/account-deletion");
 }
 
 export function cancelAccountDeletion(publicId: string, password: string) {

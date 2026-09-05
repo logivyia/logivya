@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import { sourceLoadingDate } from "@/server/freight/source-date";
 import { splitSourceRoutes } from "@/server/freight/source-routes";
 import { boundedDatabaseText } from "@/server/security/database-text";
 import type {
@@ -81,7 +82,7 @@ export function isProbableFreightMessage(text: string) {
   return signalCount >= 2 || (signalCount >= 1 && (hasRoute || hasWeight));
 }
 
-export function extractFreightCandidates(text: string, timestamp: Date): ExtractedFreightCandidate[] {
+export function extractFreightCandidates(text: string, timestamp: Date, timeZone = "Europe/Istanbul"): ExtractedFreightCandidate[] {
   if (!isProbableFreightMessage(text)) return [];
   const sections = splitSourceRoutes(text);
   const candidates: ExtractedFreightCandidate[] = [];
@@ -92,7 +93,7 @@ export function extractFreightCandidates(text: string, timestamp: Date): Extract
     const weight = extractWeight(section);
     const trailerType = extractTrailerType(section);
     const vehicleCount = extractVehicleCount(section);
-    const loadingDate = extractLoadingDate(section, timestamp);
+    const loadingDate = sourceLoadingDate(section, timestamp, timeZone);
     const contact = extractAdvertisedContact(section) ?? extractAdvertisedContact(text);
     const price = extractPrice(section);
     const confidence = extractionConfidence({ origin, destination, weight, trailerType, contact, candidateType, section });
@@ -175,26 +176,14 @@ function extractTrailerType(text: string) {
 }
 
 function extractVehicleCount(text: string) {
-  const match = /(\d{1,2})\s*(?:(?:adet|dona|ədəd|штук|шт|عدد|دستگاه)\s*)?(?:araç|arac|tır|tir|kamyon|truck|vehicle|машин[аы]?|фур[аы]?|mashina|maşın|شاحنة|سيارة|کامیون|ماشین|تریلی)(?![\p{L}\p{N}])/iu.exec(text);
+  const match = /(\d{1,2})\s*(?:(?:adet|dona|ədəd|штук|шт|عدد|دستگاه)\s*)?(?:(?:kapalı|kapali|açık|acik|tenteli|frigo|soğutuculu|sogutuculu)[/\s]*)*(?:araç|arac|tır|tir|kamyon|truck|vehicle|машин[аы]?|фур[аы]?|mashina|maşın|شاحنة|سيارة|کامیون|ماشین|تریلی)(?![\p{L}\p{N}])/iu.exec(text);
   if (!match?.[1]) return null;
   const value = Number(match[1]);
   return Number.isInteger(value) && value > 0 && value <= 100 ? value : null;
 }
 
 function extractLoadingDate(text: string, sourceTimestamp: Date) {
-  const normalized = normalizeLogisticsText(text);
-  const utcDay = new Date(Date.UTC(sourceTimestamp.getUTCFullYear(), sourceTimestamp.getUTCMonth(), sourceTimestamp.getUTCDate()));
-  if (containsAnySignal(normalized, ["yarın", "yarin", "tomorrow", "завтра", "ertaga", "sabah", "فردا", "غدا", "غدًا"])) return new Date(utcDay.getTime() + 86_400_000);
-  if (containsAnySignal(normalized, ["bugün", "bugun", "today", "сегодня", "bu gün", "امروز", "اليوم"])) return utcDay;
-  const match = /\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/u.exec(text)
-    ?? /\b(\d{1,2})[/.](\d{1,2})[/.](20\d{2})\b/u.exec(text);
-  if (!match) return null;
-  const yearFirst = match[1]?.length === 4;
-  const year = Number(yearFirst ? match[1] : match[3]);
-  const month = Number(match[2]);
-  const day = Number(yearFirst ? match[3] : match[1]);
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return sourceLoadingDate(text, sourceTimestamp);
 }
 
 function extractAdvertisedContact(text: string) {
@@ -227,7 +216,7 @@ function extractCustomsInformation(text: string) {
 function extractCargoType(text: string) {
   const match = /(?:^|[^\p{L}\p{N}])(?:yük(?:\s+(?:türü|cinsi))?|yuk(?:\s+(?:turu|cinsi))?|cargo(?:\s+type)?|load(?:\s+type)?|груз|حمولة|شحنة|بار)\s*:\s*([^\n,;]{2,80})/iu.exec(text)?.[1]?.trim();
   if (!match || /hazır|hazir|ready|آماده/iu.test(match)) return null;
-  return match.slice(0, 80).toWellFormed();
+  return match.split(/(?:[\p{So}\uFE0F]|(?:sıcaklık|sicaklik|temperature|tonaj|tonnage|iletişim|iletisim|contact|araç tipi|arac tipi|yükleme|yukleme|boşaltma|bosaltma)\s*:|[+−-]?\d+\s*°)/iu)[0].trim().slice(0, 80).toWellFormed() || null;
 }
 
 function extractCompanyName(text: string) {

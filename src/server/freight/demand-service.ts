@@ -22,6 +22,8 @@ import {
   type FreightActor,
 } from "@/server/freight/service";
 import { decryptPrivateValue } from "@/server/security/private-fields";
+import { randomUUID } from "node:crypto";
+import { compareMatchPosition, decodeMatchCursor, encodeMatchCursor } from "./match-cursor";
 
 const requestSelect = {
   id: true,
@@ -250,18 +252,23 @@ const transitions: Record<MarketplaceRequestStatus, readonly MarketplaceRequestS
 
 export async function transitionOwnedDemandRequest(id: string, ownerUserId: string, nextStatus: MarketplaceRequestStatus) {
   await expireDemandRequests(ownerUserId);
-  const current = await prisma.marketplaceDemandRequest.findFirst({ where: { id, ownerUserId }, select: requestSelect });
+  return prisma.$transaction(async tx => {
+  await tx.$queryRaw`SELECT id FROM "MarketplaceDemandRequest" WHERE id = ${id} AND "ownerUserId" = ${ownerUserId} FOR UPDATE`;
+  const current = await tx.marketplaceDemandRequest.findFirst({ where: { id, ownerUserId }, select: requestSelect });
   if (!current) throw new Error("MARKETPLACE_REQUEST_NOT_FOUND");
   if (current.status === nextStatus) return serializeRequest(current);
   if (!transitions[current.status].includes(nextStatus)) throw new Error("MARKETPLACE_REQUEST_STATUS_INVALID");
   if (nextStatus === "ACTIVE" && current.expiresAt <= new Date()) throw new Error("MARKETPLACE_REQUEST_EXPIRED");
-  const mutation = await prisma.marketplaceDemandRequest.updateMany({
+  const mutation = await tx.marketplaceDemandRequest.updateMany({
     where: { id, ownerUserId, status: current.status },
     data: { status: nextStatus, pausedAt: nextStatus === "PAUSED" ? new Date() : null },
   });
   if (mutation.count !== 1) throw new Error("MARKETPLACE_REQUEST_STATUS_INVALID");
-  const updated = await prisma.marketplaceDemandRequest.findUniqueOrThrow({ where: { id }, select: requestSelect });
+  const updated = await tx.marketplaceDemandRequest.findUniqueOrThrow({ where: { id }, select: requestSelect });
+  if (nextStatus === "ACTIVE") await tx.smartMatchingJob.create({ data: { demandId: id, companyId: updated.companyId, ownerUserId, triggerKey: `resume:${randomUUID()}`, status: "QUEUED" } });
+  else await tx.smartMatchingJob.updateMany({ where: { demandId: id, status: { in: ["QUEUED", "RUNNING"] } }, data: { status: "CANCELLED", completedAt: new Date(), lockedAt: null, lockedBy: null } });
   return serializeRequest(updated);
+  });
 }
 
 export async function updateOwnedDemandNotifications(id: string, ownerUserId: string, notificationsEnabled: boolean) {
@@ -279,9 +286,18 @@ export async function updateOwnedDemandRequest(actor: FreightActor, id: string, 
   if (current.status === "EXPIRED" || current.status === "FULFILLED") throw new Error("MARKETPLACE_REQUEST_NOT_EDITABLE");
   const { companyId, ownerUserId, clientRequestId, status, ...data } = createData(actor, input);
   if (companyId !== actor.companyId || ownerUserId !== actor.userId || clientRequestId || status !== "ACTIVE") throw new Error("MARKETPLACE_REQUEST_UPDATE_SCOPE_INVALID");
-  await prisma.marketplaceDemandRequest.update({ where: { id }, data: { ...data, matchCount: 0, lastMatchedAt: null } });
-  await prisma.marketplaceDemandMatch.deleteMany({ where: { requestId: id } });
-  return serializeRequest(await prisma.marketplaceDemandRequest.findUniqueOrThrow({ where: { id }, select: requestSelect }));
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT "id" FROM "MarketplaceDemandRequest" WHERE "id" = ${id} AND "ownerUserId" = ${actor.userId} FOR UPDATE`;
+    const latest = await tx.marketplaceDemandRequest.findFirst({ where: { id, ownerUserId: actor.userId } });
+    if (!latest) throw new Error("MARKETPLACE_REQUEST_NOT_FOUND");
+    if (!["ACTIVE", "PAUSED"].includes(latest.status) || latest.expiresAt <= new Date()) throw new Error("MARKETPLACE_REQUEST_NOT_EDITABLE");
+    await tx.marketplaceDemandRequest.update({ where: { id }, data: { ...data, matchCount: 0, lastMatchedAt: null } });
+    await tx.marketplaceDemandMatch.deleteMany({ where: { requestId: id } });
+    await tx.smartMatchResult.deleteMany({ where: { demandId: id } });
+    await tx.smartMatchingJob.updateMany({ where: { demandId: id, status: { in: ["QUEUED", "RUNNING"] } }, data: { status: "CANCELLED", completedAt: new Date(), lockedAt: null, lockedBy: null } });
+    if (latest.status === "ACTIVE") await tx.smartMatchingJob.create({ data: { demandId: id, companyId: actor.companyId, ownerUserId: actor.userId, triggerKey: `edit:${randomUUID()}`, status: "QUEUED" } });
+    return serializeRequest(await tx.marketplaceDemandRequest.findUniqueOrThrow({ where: { id }, select: requestSelect }));
+  });
 }
 
 export async function deleteOwnedDemandRequest(id: string, ownerUserId: string) {
@@ -291,17 +307,40 @@ export async function deleteOwnedDemandRequest(id: string, ownerUserId: string) 
 }
 
 export async function listOwnedDemandMatches(id: string, ownerUserId: string, input: DemandMatchListInput) {
-  const request = await prisma.marketplaceDemandRequest.findFirst({ where: { id, ownerUserId }, select: { id: true } });
+  const request = await prisma.marketplaceDemandRequest.findFirst({ where: { id, ownerUserId }, select: { id: true, company: { select: { defaultCountry: true } } } });
   if (!request) throw new Error("MARKETPLACE_REQUEST_NOT_FOUND");
+  let cursor = decodeMatchCursor(input.cursor, id);
+  if (input.cursor && !cursor) {
+    const legacy = await prisma.marketplaceDemandMatch.findFirst({ where: { id: input.cursor, requestId: id } });
+    if (!legacy) throw new Error("MARKETPLACE_CURSOR_INVALID");
+    cursor = { v: 1, d: id, a: new Date().toISOString(), s: legacy.score, t: legacy.matchedAt.toISOString(), i: legacy.id, p: "LOGIVYA" };
+  }
+  const asOf = cursor?.a ?? new Date().toISOString();
+  const after = (platform: "LOGIVYA" | "EXTERNAL") => cursor ? { OR: [
+    { score: { lt: cursor.s } },
+    { score: cursor.s, matchedAt: { lt: new Date(cursor.t) } },
+    { score: cursor.s, matchedAt: new Date(cursor.t), id: { lt: cursor.i } },
+    ...(platform < cursor.p ? [{ score: cursor.s, matchedAt: new Date(cursor.t), id: cursor.i }] : []),
+  ] } : {};
+  // The polymorphic relation must be checked before LIMIT; otherwise deleted
+  // or expired listings consume a whole page and hide later valid matches.
+  const validInternal = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT m.id FROM "MarketplaceDemandMatch" m
+    WHERE m."requestId" = ${id} AND m.status <> 'DISMISSED' AND m."matchedAt" <= ${new Date(asOf)}
+      ${cursor ? Prisma.sql`AND (m.score < ${cursor.s} OR (m.score = ${cursor.s} AND m."matchedAt" < ${new Date(cursor.t)}) OR (m.score = ${cursor.s} AND m."matchedAt" = ${new Date(cursor.t)} AND m.id < ${cursor.i}))` : Prisma.empty}
+      AND (
+        (m."listingKind" = 'LOAD' AND EXISTS (SELECT 1 FROM "FreightListing" l WHERE l.id = m."listingId" AND l.status = 'ACTIVE' AND (l."expiresAt" IS NULL OR l."expiresAt" > now()))) OR
+        (m."listingKind" = 'VEHICLE' AND EXISTS (SELECT 1 FROM "VehicleListing" l WHERE l.id = m."listingId" AND l.status = 'ACTIVE' AND (l."expiresAt" IS NULL OR l."expiresAt" > now()))) OR
+        (m."listingKind" = 'DRIVER' AND EXISTS (SELECT 1 FROM "DriverListing" l WHERE l.id = m."listingId" AND l.status = 'ACTIVE' AND (l."expiresAt" IS NULL OR l."expiresAt" > now())))
+      ) ORDER BY m.score DESC, m."matchedAt" DESC, m.id DESC LIMIT ${input.limit + 1}`);
   const [rows, smartRows] = await Promise.all([
     prisma.marketplaceDemandMatch.findMany({
-      where: { requestId: id, status: { not: "DISMISSED" } },
-      orderBy: [{ matchedAt: "desc" }, { id: "desc" }],
+      where: { id: { in: validInternal.map(row => row.id) }, requestId: id, status: { not: "DISMISSED" }, AND: [{ matchedAt: { lte: new Date(asOf) } }, after("LOGIVYA")] },
+      orderBy: [{ score: "desc" }, { matchedAt: "desc" }, { id: "desc" }],
       take: input.limit + 1,
-      ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
     }),
-    input.cursor ? Promise.resolve([]) : prisma.smartMatchResult.findMany({
-      where: { demandId: id, status: { notIn: ["DISMISSED", "EXPIRED"] }, candidate: { expiresAt: { gt: new Date() } } },
+    prisma.smartMatchResult.findMany({
+      where: { demandId: id, ownerUserId, status: { notIn: ["DISMISSED", "EXPIRED"] }, candidate: { expiresAt: { gt: new Date() } }, AND: [{ matchedAt: { lte: new Date(asOf) } }, after("EXTERNAL")] },
       include: { candidate: true },
       orderBy: [{ score: "desc" }, { matchedAt: "desc" }, { id: "desc" }],
       take: input.limit + 1,
@@ -337,13 +376,14 @@ export async function listOwnedDemandMatches(id: string, ownerUserId: string, in
   });
   const externalMatches = smartRows.map((match) => serializeSmartMatch(match, provenance.get(match.duplicateGroupKey) ?? []));
   const merged = [...internalMatches, ...externalMatches]
-    .sort((left, right) => right.score - left.score || Date.parse(right.matchedAt) - Date.parse(left.matchedAt));
+    .sort(compareMatchPosition);
   const hasMore = rows.length > input.limit || smartRows.length > input.limit || merged.length > input.limit;
   const contactAllowed = await canReadMarketplaceContact(ownerUserId);
-  const page = merged.slice(0, input.limit).map((match) => ({ ...redactMarketplaceContent(match, contactAllowed), listing: { ...redactMarketplaceContent(match.listing, contactAllowed), ...matchContactActions(match.listing, contactAllowed) } }));
+  const rawPage = merged.slice(0, input.limit);
+  const page = rawPage.map((match) => ({ ...redactMarketplaceContent(match, contactAllowed), listing: { ...redactMarketplaceContent(match.listing, contactAllowed), ...matchContactActions(match.listing, contactAllowed, request.company.defaultCountry) } }));
   return {
     matches: page,
-    pageInfo: { hasMore, nextCursor: hasMore ? rows.slice(0, input.limit).at(-1)?.id ?? null : null },
+    pageInfo: { hasMore, nextCursor: hasMore && rawPage.length ? encodeMatchCursor({ v: 1, d: id, a: asOf, s: rawPage.at(-1)!.score, t: rawPage.at(-1)!.matchedAt, i: rawPage.at(-1)!.id, p: rawPage.at(-1)!.sourcePlatform === "LOGIVYA" ? "LOGIVYA" : "EXTERNAL" }) : null },
   };
 }
 

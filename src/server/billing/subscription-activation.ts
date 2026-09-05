@@ -377,6 +377,8 @@ export async function activateCompanySubscription(input: CompanySubscriptionActi
               reason: input.reason ?? "",
               correlationId: input.correlationId ?? null,
               ...(input.payment.metadata ?? {}),
+              startsAt: input.startsAt.toISOString(),
+              endsAt: input.endsAt.toISOString(),
             },
           },
         });
@@ -400,6 +402,8 @@ export async function activateCompanySubscription(input: CompanySubscriptionActi
               eventId: input.payment.eventId,
               correlationId: input.correlationId ?? null,
               verifiedAt: now.toISOString(),
+              startsAt: input.startsAt.toISOString(),
+              endsAt: input.endsAt.toISOString(),
             },
           },
         });

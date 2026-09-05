@@ -31,6 +31,7 @@ export type MobileTelegramChat = {
   type: "PRIVATE" | "BASIC_GROUP" | "SUPERGROUP" | "CHANNEL" | "SECRET" | "UNKNOWN";
   participantCount: number;
   canSend: boolean;
+  freightPublicationEnabled: boolean;
   isActive: boolean;
   isArchived: boolean;
   rawPermissions?: { canSendPhotos?: boolean; canSendVideos?: boolean; canSendDocuments?: boolean } | null;
@@ -95,6 +96,12 @@ export function archiveTelegramAccount(accountId: string) {
 export function getTelegramChats(accountId?: string) {
   const suffix = accountId ? `?accountId=${encodeURIComponent(accountId)}` : "";
   return apiClient.request<{ chats: MobileTelegramChat[] }>(`/api/mobile/telegram/chats${suffix}`, { retry: false });
+}
+
+export function setTelegramFreightPublication(chatId: string, enabled: boolean) {
+  return apiClient.request<{ id: string; freightPublicationEnabled: boolean }>(`/api/mobile/telegram/chats/${encodeURIComponent(chatId)}/publication`, {
+    method: "PATCH", body: JSON.stringify({ enabled }), retry: false,
+  });
 }
 
 export function assignTelegramCategoryChats(categoryId: string, chatIds: string[]) {

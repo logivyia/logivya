@@ -3880,7 +3880,7 @@ model FreightListing {
   originNormalized      String
   destination           String
   destinationNormalized String
-  loadingDate           DateTime                      @db.Date
+  loadingDate           DateTime?                     @db.Date
   cargoType             String?
   weight                Decimal?                      @db.Decimal(12, 4)
   weightUnit            FreightWeightUnit             @default(METRIC_TONNE)
@@ -3927,7 +3927,7 @@ model VehicleListing {
   originNormalized       String
   destination            String?
   destinationNormalized  String?
-  availableFrom          DateTime                      @db.Date
+  availableFrom          DateTime?                     @db.Date
   availableUntil         DateTime?                     @db.Date
   trailerType            FreightTrailerType
   capacityWeight         Decimal?                      @db.Decimal(10, 2)
@@ -4179,7 +4179,7 @@ model FreightOpportunityCandidate {
   createdAt                          DateTime                      @default(now())
   updatedAt                          DateTime                      @updatedAt
 
-  @@unique([ownerUserId, sourcePlatform, sourceAccountId, sourceMessageId, opportunityIndex], map: "FreightOpportunityCandidate_source_key")
+  @@unique([ownerUserId, sourcePlatform, sourceAccountId, sourceGroupId, sourceMessageId, opportunityIndex], map: "FreightOpportunityCandidate_source_key")
   @@index([ownerUserId, sourcePlatform, candidateType, expiresAt], map: "FreightOpportunityCandidate_owner_source_kind_expiry_idx")
   @@index([companyId, candidateType, expiresAt], map: "FreightOpportunityCandidate_company_kind_expiry_idx")
   @@index([primarySector, expiresAt], map: "FreightOpportunityCandidate_sector_expiry_idx")
@@ -4303,6 +4303,8 @@ model TelegramChat {
   canSend             Boolean                  @default(false)
   isActive            Boolean                  @default(true)
   isArchived          Boolean                  @default(false)
+  freightPublicationEnabled Boolean                @default(false)
+  deletedSourceMessages TelegramSourceDeletion[]
   rawPermissions      Json?
   lastSyncedAt        DateTime
   company             Company                  @relation(fields: [companyId], references: [id], onDelete: Restrict)
@@ -4316,6 +4318,15 @@ model TelegramChat {
   @@unique([accountId, externalChatId])
   @@index([companyId, accountId, isActive, canSend])
   @@index([accountId, type, isActive, isArchived])
+}
+
+model TelegramSourceDeletion {
+  chatId String
+  sourceMessageId String
+  deletedAt DateTime @default(now())
+  chat TelegramChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  @@id([chatId, sourceMessageId])
+  @@index([deletedAt])
 }
 
 model TelegramCategoryChat {

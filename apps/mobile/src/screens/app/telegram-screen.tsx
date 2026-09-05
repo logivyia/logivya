@@ -1,4 +1,7 @@
-import { uzbekTelegramCopy, uzbekTelegramTabs, uzbekTelegramAuthStates } from "@/i18n/telegram-uz";
+import { productStatusCopy, lifecycleLabel } from "../../../../../shared/product-status-copy";
+import { telegramManagementCopy } from "../../../../../shared/telegram-management-copy";
+import { telegramConnectionCopy } from "../../../../../shared/telegram-connection-copy";
+import { localeMetadata } from "@/i18n/config";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { useSectionHistory } from "@/navigation/use-section-history";
@@ -31,6 +34,7 @@ import {
   getTelegramHistory,
   submitTelegramAuth,
   syncTelegramChats,
+  setTelegramFreightPublication,
   type MobileTelegramAccount,
   type MobileTelegramChat,
   type MobileTelegramHistoryItem,
@@ -56,115 +60,12 @@ const ADVERTISING_MESSAGE_LIMIT =
   Math.max(...countryRegistry.map((country) => country.attribution.length)) -
   2;
 
-const defaultTelegramCopy = {
-  addFailed: "Telegram hesabı eklenemedi",
-  operationFailed: "İşlem tamamlanamadı.",
-  authFailed: "Doğrulama tamamlanamadı",
-  authInvalid: "Kod veya bilgi doğrulanamadı.",
-  syncDone: "Sohbetler eşitlendi",
-  syncSummary: (synced: number, sendable: number) => `${synced} sohbet bulundu; ${sendable} tanesine mesaj gönderilebilir.`,
-  syncFailed: "Eşitleme tamamlanamadı",
-  archiveTitle: "Telegram hesabını kaldır",
-  archiveDescription: "Oturum Telegram’dan kapatılacak ve Logivya’daki hesap arşivlenecek.",
-  cancel: "Vazgeç",
-  remove: "Kaldır",
-  archiveFailed: "Hesap kaldırılamadı",
-  categoryDone: "Kategori güncellendi",
-  categoryDoneDescription: "Telegram sohbetleri kategoriye kaydedildi.",
-  categoryFailed: "Kategori kaydedilemedi",
-  invalidDate: "Tarih geçersiz",
-  invalidDateDescription: "Gönderim tarihi gelecekte olmalıdır.",
-  queued: "Gönderim kuyruğa alındı",
-  queuedDescription: "Sonuçları Telegram geçmişinden izleyebilirsiniz.",
-  dispatchFailed: "Gönderim oluşturulamadı",
-  loading: "Telegram yükleniyor…",
-  eyebrow: "Telegram",
-  title: "Telegram Yönetimi",
-  accountsTitle: "Telegram Hesapları",
-  chatsTitle: "Telegram Sohbetleri",
-  sendTitle: "Telegram Mesaj Gönder",
-  historyTitle: "Telegram Mesaj Geçmişi",
-  description: "Telegram hesaplarınızı yönetin, hedefleri düzenleyin ve mesaj gönderimlerini tek ekrandan takip edin.",
-  telegram: "Telegram",
-  addAccount: "Telegram hesabı ekle",
-  noAccount: "Henüz Telegram hesabı eklenmedi.",
-  waitingIdentity: "Kimlik doğrulama bekleniyor",
-  connected: "Bağlı",
-  continue: "Devam et",
-  confirmOtherDevice: "Telegram uygulamasında yeni oturum açma isteğini onaylayın.",
-  sync: "Sohbetleri eşitle",
-  removeAccount: "Hesabı kaldır",
-  connectedAccount: "Gönderim hesabı",
-  resync: "Sohbetleri yeniden eşitle",
-  categoryAssignment: "Kategori ataması",
-  categoryHelp: "Bir kategori seçin, ardından bu kategoriye eklenecek sohbetleri işaretleyin.",
-  saveCategory: "Kategori atamasını kaydet",
-  selectAudiences: "Hedefleri seç",
-  searchAudience: "Sohbet veya kanal ara",
-  categories: "Kategoriler",
-  conversations: "Sohbetler ve kanallar",
-  selectVisible: "Görünenleri seç",
-  clearVisible: "Görünenleri kaldır",
-  noSendable: "Gönderilebilir Telegram sohbeti yok. Önce hesabı bağlayıp sohbetleri eşitleyin.",
-  writeMessage: "Mesajınızı yazın",
-  messagePlaceholder: "Telegram mesajınızı yazın",
-  brandingNotice: "Reklamlı paketinizde mesajın sonuna “Bu mesaj logivya.com üzerinden gönderilmiştir.” otomatik olarak eklenir.",
-  messageTooLong: "Mesaj reklam imzasıyla birlikte Telegram sınırını aşıyor. Metni kısaltın.",
-  sendNow: "Şimdi gönder",
-  schedule: "Zamanla",
-  recurring: "Tekrarlı",
-  selectDateTime: "Tarih ve saat seçin",
-  daily: "Günlük",
-  weekly: "Haftalık",
-  monthly: "Aylık",
-  targetPreview: "Seçilen hedef",
-  noTargetSelected: "Henüz hedef seçilmedi",
-  selectedChats: (count: number) => `${count} sohbet seçildi`,
-  selectedCategories: (count: number) => `${count} kategori seçildi`,
-  sendToChats: (count: number) => `${count} sohbete gönder`,
-  scheduledSend: "Mesajı zamanla",
-  recurringSend: "Tekrarlı gönderim oluştur",
-  messageHistory: "Telegram mesaj geçmişi",
-  noHistory: "Henüz Telegram gönderimi yok.",
-  targetCount: (count: number) => `${count} hedef`,
-  runSummary: (sent: number, failed: number, waiting: number) => `Gönderildi: ${sent} · Başarısız: ${failed} · Bekleme: ${waiting}`,
-  scheduled: (date: string) => `Planlandı: ${date}`,
-  cancelDispatch: "Gönderimi iptal et",
-  cancelFailed: "İptal edilemedi",
-  deleteForEveryone: "Herkesten sil",
-  retryDelete: "Silmeyi tekrar dene",
-  deleteTitle: "Telegram mesajını herkesten sil",
-  deleteDescription: (count: number) => `${count} gönderilmiş mesaj Telegram'daki tüm alıcılardan silinecek. Bu işlem geri alınamaz.`,
-  deleteConfirm: "Herkesten sil",
-  deleteSucceeded: (count: number) => `${count} Telegram mesajı herkesten silindi.`,
-  deletePartial: (deleted: number, failed: number) => `${deleted} mesaj silindi; ${failed} mesaj Telegram izinleri nedeniyle silinemedi. Tekrar deneyebilirsiniz.`,
-  deleteFailed: "Telegram mesajları silinemedi",
-  deleteSummary: (deleted: number, total: number, failed: number) => `Herkesten silindi: ${deleted}/${total}${failed ? ` · Silinemedi: ${failed}` : ""}`,
-  memberSummary: (type: string, count: number, canSend: boolean) => `${typeLabel(type)} · ${count} üye${canSend ? "" : " · gönderilemez"}`,
-  connectedAccountMetric: "Bağlı hesap",
-  chatsMetric: "Sohbetler",
-  sendableMetric: "Gönderilebilir",
-  warningsMetric: "Uyarılar",
-  chatMetric: "Sohbet",
-  selectedTargetMetric: "Seçilen hedef",
-  success: "Başarılı",
-  noCategoriesCreated: "Henüz kategori oluşturulmadı.",
-};
-
 const moduleTabs: Array<{ key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { key: "accounts", label: "Hesaplar", icon: "person-circle-outline" },
   { key: "chats", label: "Sohbetler", icon: "chatbubbles-outline" },
   { key: "send", label: "Mesaj Gönder", icon: "send-outline" },
   { key: "history", label: "Geçmiş", icon: "time-outline" },
 ];
-
-function typeLabel(type: string) {
-  if (type === "CHANNEL") return "Kanal";
-  if (type === "PRIVATE") return "Özel sohbet";
-  if (type === "SUPERGROUP") return "Süper grup";
-  if (type === "BASIC_GROUP") return "Grup";
-  return "Sohbet";
-}
 
 function getDefaultScheduleDate() {
   const next = new Date();
@@ -180,11 +81,12 @@ function mergeScheduleDateAndTime(datePart: Date, timePart: Date) {
 }
 
 function authPrompt(account: MobileTelegramAccount, locale: string) {
-  if (account.authState === "WAIT_PHONE_NUMBER") return { step: "phone" as const, label: (locale === "uz" ? "Telefon raqami" : "Telefon numarası"), placeholder: (locale === "uz" ? "+998912345678" : "+905551112233"), secure: false };
-  if (account.authState === "WAIT_CODE") return { step: "code" as const, label: (locale === "uz" ? "Telegram tasdiqlash kodi" : "Telegram doğrulama kodu"), placeholder: "12345", secure: false };
-  if (account.authState === "WAIT_PASSWORD") return { step: "password" as const, label: (locale === "uz" ? "Ikki bosqichli tasdiqlash paroli" : "İki adımlı doğrulama parolası"), placeholder: account.authStateDetail?.passwordHint || (locale === "uz" ? "Parol" : "Parola"), secure: true };
-  if (account.authState === "WAIT_EMAIL_ADDRESS") return { step: "email" as const, label: (locale === "uz" ? "Tasdiqlash uchun elektron pochta" : "Doğrulama e-postası"), placeholder: "ornek@eposta.com", secure: false };
-  if (account.authState === "WAIT_EMAIL_CODE") return { step: "email_code" as const, label: (locale === "uz" ? "Elektron pochta tasdiqlash kodi" : "E-posta doğrulama kodu"), placeholder: (locale === "uz" ? "Kod" : "Kod"), secure: false };
+  const c = telegramConnectionCopy(locale);
+  if (account.authState === "WAIT_PHONE_NUMBER") return { step: "phone" as const, label: c.phone, placeholder: getMobileCountryForLocale(locale).callingCode, secure: false };
+  if (account.authState === "WAIT_CODE") return { step: "code" as const, label: c.code, placeholder: "12345", secure: false };
+  if (account.authState === "WAIT_PASSWORD") return { step: "password" as const, label: c.password, placeholder: account.authStateDetail?.passwordHint || c.password, secure: true };
+  if (account.authState === "WAIT_EMAIL_ADDRESS") return { step: "email" as const, label: c.email, placeholder: "name@example.com", secure: false };
+  if (account.authState === "WAIT_EMAIL_CODE") return { step: "email_code" as const, label: c.emailCode, placeholder: "12345", secure: false };
   return null;
 }
 
@@ -196,32 +98,31 @@ function toneForStatus(status: string) {
 }
 
 function authStateLabel(state: MobileTelegramAccount["authState"], locale: string) {
-  const labels: Record<MobileTelegramAccount["authState"], string> = {
-    STARTING: "Başlatılıyor",
-    WAIT_PHONE_NUMBER: "Telefon bekleniyor",
-    WAIT_EMAIL_ADDRESS: "E-posta bekleniyor",
-    WAIT_EMAIL_CODE: "E-posta kodu bekleniyor",
-    WAIT_CODE: "Kod bekleniyor",
-    WAIT_PASSWORD: "Parola bekleniyor",
-    WAIT_OTHER_DEVICE: "Telegram onayı bekleniyor",
-    READY: defaultTelegramCopy.connected,
-    LOGGING_OUT: "Çıkış yapılıyor",
-    CLOSED: "Bağlantı kapalı",
-    ERROR: "Bağlantı hatası",
-  };
-  return locale === "uz" ? uzbekTelegramAuthStates[state] ?? labels[state] : labels[state];
+  const c = telegramConnectionCopy(locale);
+  const labels = { STARTING:c.starting, WAIT_PHONE_NUMBER:c.phone, WAIT_EMAIL_ADDRESS:c.email, WAIT_EMAIL_CODE:c.emailCode, WAIT_CODE:c.code, WAIT_PASSWORD:c.password, WAIT_OTHER_DEVICE:c.waiting, READY:c.connected, LOGGING_OUT:c.waiting, CLOSED:c.closed, ERROR:c.failed };
+  return labels[state];
 }
 
 export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onSwitchToWhatsApp }: { initialTab?: Tab; lockedTab?: boolean; onSwitchToWhatsApp?: () => void } = {}) {
   const theme = useTheme();
   const { locale, t } = useTranslation();
-  const telegramCopy = locale === "uz" ? uzbekTelegramCopy : defaultTelegramCopy;
-  const dateLocale = locale === "uz" ? "uz-Latn-UZ" : "tr-TR";
+  const telegramCopy = telegramManagementCopy(locale);
+  const dateLocale = localeMetadata[locale].intlLocale;
   const [phoneCountries, setPhoneCountries] = useState<Record<string, string>>({});
   const phoneCountryFor = (id: string) => phoneCountries[id] ?? getMobileCountryForLocale(locale).countryIso;
   const [tab, setTab, backSection, canGoBackSection] = useSectionHistory<Tab>(initialTab, !lockedTab);
   const [accounts, setAccounts] = useState<MobileTelegramAccount[]>([]);
   const [chats, setChats] = useState<MobileTelegramChat[]>([]);
+  const [publicationBusy, setPublicationBusy] = useState(false);
+  async function togglePublication(chat: MobileTelegramChat) {
+    if (publicationBusy) return;
+    setPublicationBusy(true);
+    try {
+      await setTelegramFreightPublication(chat.id, !chat.freightPublicationEnabled);
+      setChats(current => current.map(item => item.id === chat.id ? { ...item, freightPublicationEnabled: !chat.freightPublicationEnabled } : item));
+    } catch { Alert.alert(productStatusCopy(locale).failed); } finally { setPublicationBusy(false); }
+  }
+
   const [history, setHistory] = useState<MobileTelegramHistoryItem[]>([]);
   const [categories, setCategories] = useState<MobileCategory[]>([]);
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
@@ -294,7 +195,7 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
       setActiveAccountId((current) => current && accountResult.accounts.some((account) => account.id === current) ? current : connected?.id ?? null);
       setError(null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : locale === "uz" ? "Telegram ma’lumotlari yuklanmadi." : "Telegram bilgileri yüklenemedi.");
+      setError(loadError instanceof Error ? loadError.message : telegramConnectionCopy(locale).failure);
     } finally {
       if (!quiet) setLoading(false);
     }
@@ -460,7 +361,7 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
       setAttachments([]);
       setSendChatIds([]);
       setSendCategoryIds([]);
-      setSendFeedback(locale === "uz" ? `${targetCount} ta chat uchun xabar navbatga qo‘yildi.` : `${targetCount} sohbet için gönderim kuyruğa alındı.`);
+      setSendFeedback(`${telegramCopy.queued} · ${telegramCopy.targetCount(targetCount)}`);
       await load(true);
       if (!lockedTab) setTab("history");
       Alert.alert(telegramCopy.queued, telegramCopy.queuedDescription);
@@ -524,13 +425,13 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
           refreshControl={<RefreshControl refreshing={false} onRefresh={() => void load()} tintColor={theme.primary} />}
           showsVerticalScrollIndicator={false}
         >
-          {canGoBackSection ? <Pressable onPress={backSection} accessibilityRole="button" style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8 }}><Ionicons name="arrow-back" size={22} color={theme.primary} /><Text style={{ color: theme.primary }}>{locale === "uz" ? "Orqaga" : "Geri"}</Text></Pressable> : null}
+          {canGoBackSection ? <Pressable onPress={backSection} accessibilityRole="button" style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8 }}><Ionicons name="arrow-back" size={22} color={theme.primary} /><Text style={{ color: theme.primary }}>{t("back")}</Text></Pressable> : null}
           <PageHeader eyebrow={telegramCopy.eyebrow} title={telegramCopy.title} description={telegramCopy.description} />
           {onSwitchToWhatsApp ? <View style={styles.platformRow}><Chip label="WhatsApp" active={false} onPress={onSwitchToWhatsApp} /><Chip label={telegramCopy.telegram} active onPress={() => undefined} /></View> : null}
           {error ? <SurfaceCard><Text style={{ color: colors.danger, fontWeight: "800" }}>{error}</Text></SurfaceCard> : null}
           {!lockedTab ? (
             <View style={styles.moduleTabs}>
-              {moduleTabs.map((item) => <ModuleTab key={item.key} active={tab === item.key} icon={item.icon} label={locale === "uz" ? uzbekTelegramTabs[item.key] : item.label} onPress={() => setTab(item.key)} />)}
+              {moduleTabs.map((item) => <ModuleTab key={item.key} active={tab === item.key} icon={item.icon} label={({ accounts: telegramCopy.accounts, chats: telegramCopy.chats, send: telegramCopy.sendTitle, history: telegramCopy.history })[item.key]} onPress={() => setTab(item.key)} />)}
             </View>
           ) : null}
 
@@ -596,7 +497,7 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
                 <View style={styles.platformRow}>{categories.map((category) => <Chip key={category.id} label={category.name} active={selectedCategoryId === category.id} onPress={() => selectCategory(category.id)} />)}</View>
                 <SearchBox value={chatSearch} onChangeText={setChatSearch} placeholder={telegramCopy.searchAudience} />
                 <Text style={[styles.groupTitle, { color: theme.muted }]}>{telegramCopy.conversations} ({filteredVisibleChats.length})</Text>
-                <View style={styles.optionGrid}>{filteredVisibleChats.map((chat) => <ChatRow key={chat.id} chat={chat} selected={categoryChatIds.includes(chat.id)} selectable={Boolean(selectedCategoryId)} onPress={() => selectedCategoryId && toggleId(chat.id, categoryChatIds, setCategoryChatIds)} />)}</View>
+                <View style={styles.optionGrid}>{filteredVisibleChats.map((chat) => <ChatRow key={chat.id} chat={chat} publicationBusy={publicationBusy} onPublication={() => void togglePublication(chat)} selected={categoryChatIds.includes(chat.id)} selectable={Boolean(selectedCategoryId)} onPress={() => selectedCategoryId && toggleId(chat.id, categoryChatIds, setCategoryChatIds)} />)}</View>
                 <PrimaryButton title={telegramCopy.saveCategory} loading={working === "category"} disabled={!selectedCategoryId} onPress={() => void saveCategory()} />
               </SurfaceCard>
             </View>
@@ -627,7 +528,7 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
                       <Text style={[styles.scheduleInputText, { color: scheduledAt ? theme.text : theme.muted }]}>{scheduledAtLabel}</Text>
                       <Ionicons name="calendar-outline" size={20} color={theme.primary} />
                     </Pressable>
-                    {schedulePickerMode ? <DateTimePicker value={scheduledAt ?? getDefaultScheduleDate()} mode={schedulePickerMode === "datetime" ? "datetime" : schedulePickerMode} display={Platform.OS === "ios" ? "compact" : "default"} minimumDate={new Date()} is24Hour locale={dateLocale} positiveButton={{ label: locale === "uz" ? "Tanlash" : "Seç" }} negativeButton={{ label: telegramCopy.cancel }} onChange={handleSchedulePickerChange} /> : null}
+                    {schedulePickerMode ? <DateTimePicker value={scheduledAt ?? getDefaultScheduleDate()} mode={schedulePickerMode === "datetime" ? "datetime" : schedulePickerMode} display={Platform.OS === "ios" ? "compact" : "default"} minimumDate={new Date()} is24Hour locale={dateLocale} positiveButton={{ label: telegramCopy.select }} negativeButton={{ label: telegramCopy.cancel }} onChange={handleSchedulePickerChange} /> : null}
                   </View>
                 ) : null}
                 {scheduleMode === "RECURRING" ? <View style={styles.modeRow}><ModeButton active={recurrence === "DAILY"} label={telegramCopy.daily} onPress={() => setRecurrence("DAILY")} /><ModeButton active={recurrence === "WEEKLY"} label={telegramCopy.weekly} onPress={() => setRecurrence("WEEKLY")} /><ModeButton active={recurrence === "MONTHLY"} label={telegramCopy.monthly} onPress={() => setRecurrence("MONTHLY")} /></View> : null}
@@ -675,7 +576,7 @@ export function TelegramScreen({ initialTab = "accounts", lockedTab = false, onS
                         {(item.contentJson?.attachments?.length || item.contentJson?.attachment) ? <Text style={[styles.meta, { color: theme.primary }]}>📎 {item.contentJson?.attachments?.length ? `${item.contentJson.attachments.length} dosya` : item.contentJson?.attachment?.fileName}</Text> : null}
                         <Text style={[styles.meta, { color: theme.muted }]}>{new Date(item.createdAt).toLocaleString(dateLocale)} · {telegramCopy.targetCount(item.targets.length)}</Text>
                       </View>
-                      <Badge label={run?.status || item.status} tone={toneForStatus(run?.status || item.status)} />
+                      <Badge label={lifecycleLabel(run?.status || item.status, locale)} tone={toneForStatus(run?.status || item.status)} />
                     </View>
                     {run ? <Text style={[styles.meta, { color: theme.muted }]}>{telegramCopy.runSummary(run.sentCount, run.failedCount, run.floodWaitCount)}</Text> : <Text style={[styles.meta, { color: theme.muted }]}>{telegramCopy.scheduled(new Date(item.nextRunAt).toLocaleString(dateLocale))}</Text>}
                     {item.deleteRequestedAt ? <Text style={[styles.deleteSummary, { color: deleteComplete ? theme.success : item.deleteFailedCount > 0 ? theme.danger : theme.muted }]}>{telegramCopy.deleteSummary(item.deleteSuccessCount, item.deleteTotalCount, item.deleteFailedCount)}</Text> : null}
@@ -725,12 +626,12 @@ function AudienceRow({ label, meta, selected, onPress }: { label: string; meta: 
   );
 }
 
-function ChatRow({ chat, selected, selectable, onPress }: { chat: MobileTelegramChat; selected: boolean; selectable: boolean; onPress: () => void }) {
+function ChatRow({ chat, selected, selectable, onPress, onPublication, publicationBusy }: { chat: MobileTelegramChat; selected: boolean; selectable: boolean; onPress: () => void; onPublication?: () => void; publicationBusy?: boolean }) {
   const theme = useTheme();
   const { locale } = useTranslation();
-  const telegramCopy = locale === "uz" ? uzbekTelegramCopy : defaultTelegramCopy;
+  const telegramCopy = telegramManagementCopy(locale);
   return (
-    <Pressable accessibilityRole={selectable ? "checkbox" : undefined} accessibilityState={selectable ? { checked: selected } : undefined} disabled={!selectable} onPress={onPress} style={({ pressed }) => [styles.chatRow, { backgroundColor: selected ? theme.badge : theme.card, borderColor: selected ? theme.primary : theme.border, opacity: !chat.canSend ? 0.6 : pressed ? 0.78 : 1 }]}>
+    <View><Pressable accessibilityRole={selectable ? "checkbox" : undefined} accessibilityState={selectable ? { checked: selected } : undefined} disabled={!selectable} onPress={onPress} style={({ pressed }) => [styles.chatRow, { backgroundColor: selected ? theme.badge : theme.card, borderColor: selected ? theme.primary : theme.border, opacity: !chat.canSend ? 0.6 : pressed ? 0.78 : 1 }]}>
       <Ionicons name={chat.type === "CHANNEL" ? "megaphone-outline" : chat.type === "PRIVATE" ? "person-outline" : "people-outline"} color={selected ? theme.primary : theme.icon} size={21} />
       <View style={styles.grow}>
         <Text style={[styles.chatTitle, { color: theme.text }]} numberOfLines={1}>{chat.title}</Text>
@@ -738,6 +639,10 @@ function ChatRow({ chat, selected, selectable, onPress }: { chat: MobileTelegram
       </View>
       {selectable ? <Ionicons name={selected ? "checkbox" : "square-outline"} color={selected ? theme.primary : theme.iconMuted} size={23} /> : null}
     </Pressable>
+    {onPublication && ["BASIC_GROUP", "SUPERGROUP", "CHANNEL"].includes(chat.type) && !chat.isArchived ? <Pressable accessibilityRole="switch" accessibilityState={{ checked: Boolean(chat.freightPublicationEnabled), disabled: publicationBusy }} disabled={publicationBusy} onPress={onPublication} style={{ padding: 14, gap: 6 }}>
+      <View style={{ flexDirection: "row", gap: 8 }}><Ionicons name={chat.freightPublicationEnabled ? "checkbox" : "square-outline"} size={22} color={theme.primary} /><Text style={{ color: theme.text, flex: 1, fontWeight: "700" }}>{productStatusCopy(locale).publication}</Text></View>
+      <Text style={{ color: theme.muted, fontSize: 12 }}>{productStatusCopy(locale).publicationHelp}</Text>
+    </Pressable> : null}</View>
   );
 }
 
