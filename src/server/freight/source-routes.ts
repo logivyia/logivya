@@ -62,14 +62,18 @@ function splitRouteBlock(value: string): SourceRouteSection[] {
   if (loading.length === 1 && unloading.length === 1) return [{ text, origin: loading[0], destination: unloading[0] }];
   if (loading.length || unloading.length) return [{ text, origin: loading.length === 1 ? loading[0] : null, destination: unloading.length === 1 ? unloading[0] : null }];
   const pairs: Array<{ origin: NormalizedLogisticsLocation; destination: NormalizedLogisticsLocation; separatorIndex: number; destinationStart: number }> = [];
+  let ambiguousPair = false;
   for (let index = 0; index < locations.length - 1; index++) {
     const origin = locations[index]!;
     const destination = locations[index + 1]!;
     const end = origin.position + origin.original.length;
     const bridge = text.slice(end, destination.position);
     const arrow = separator.exec(bridge);
-    if (!arrow || attributes.test(bridge.slice(0, arrow.index)) || bridge.length > 90) continue;
-    if (bridge.slice(arrow.index + arrow[0].length).trim()) continue;
+    if (!arrow) continue;
+    if (attributes.test(bridge.slice(0, arrow.index).replace(/İ/gu, "i")) || bridge.length > 90 || bridge.slice(arrow.index + arrow[0].length).trim()) {
+      ambiguousPair = true;
+      continue;
+    }
     // More than one delimiter without an intervening known endpoint is ambiguous.
     if (separator.test(bridge.slice(arrow.index + arrow[0].length))) continue;
     pairs.push({ origin, destination, separatorIndex: end + arrow.index, destinationStart: destination.position });
@@ -78,7 +82,7 @@ function splitRouteBlock(value: string): SourceRouteSection[] {
   if (!pairs.length) {
     // A separator-free message is usable only with one unambiguous pair.
     // Longer location lists go to review instead of borrowing unrelated cities.
-    const samePlace = locations.length === 2 && (locations[0]!.normalized === locations[1]!.normalized || (locations[0]!.countryCode === locations[1]!.countryCode && locations.some(location => location.type === "COUNTRY")));
+    const samePlace = ambiguousPair || (locations.length === 2 && (locations[0]!.normalized === locations[1]!.normalized || (locations[0]!.countryCode === locations[1]!.countryCode && locations.some(location => location.type === "COUNTRY"))));
     return [{ text, origin: locations.length <= 2 && !samePlace ? locations[0] ?? null : null, destination: locations.length === 2 && !samePlace ? locations[1]! : null }];
   }
   return pairs.slice(0, 25).map((pair, index) => {

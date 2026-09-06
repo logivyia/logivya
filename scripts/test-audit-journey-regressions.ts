@@ -13,6 +13,18 @@ import { validateTelegramManagementExtra } from "../shared/telegram-management-e
 import { localizeListingSummary } from "../shared/localize-listing-summary";
 import { catalogFilterWhere } from "../src/server/freight/catalog-filters";
 import { sourceTemperature, sourceTemperatureLabel } from "../shared/source-cargo-details";
+import { listingDateCompatibilityMessage, needsListingDateCompatibility } from "../src/server/freight/mobile-date-contract";
+
+for (const [platform, previous, current] of [["ANDROID", 226, 227], ["IOS", 190, 193]] as const) {
+  const headers = (code: number) => new Headers({ "x-client-platform": platform, "x-logivya-version-code": String(code) });
+  assert(needsListingDateCompatibility(headers(previous), { listing: { loadingDate: null } }));
+  assert(needsListingDateCompatibility(headers(previous), { listings: [{ availableFrom: null }] }));
+  assert(!needsListingDateCompatibility(headers(current), { listing: { loadingDate: null } }));
+  assert(!needsListingDateCompatibility(headers(previous), { listing: { loadingDate: "2026-09-07" } }));
+  assert(!needsListingDateCompatibility(headers(previous), { listings: [] }));
+}
+assert(!needsListingDateCompatibility(new Headers(), { listing: { loadingDate: null } }));
+for (const locale of ["tr", "en", "ar", "ro", "ru", "az", "tk", "de", "bg", "el", "sr", "uz"]) assert.match(listingDateCompatibilityMessage(locale), /logivya.com/);
 
 const at = new Date("2026-09-05T09:00:00Z");
 const parse = (text: string) => extractFreightCandidates(text, at);

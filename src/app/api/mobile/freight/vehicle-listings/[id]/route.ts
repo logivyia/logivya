@@ -1,3 +1,4 @@
+import { mobileListingSuccess } from "@/server/freight/mobile-listing-response";
 import { mobileSuccess, mobileValidationError } from "@/server/mobile/response";
 import { readMobileJson } from "@/server/mobile/request-json";
 import { requireFreightMarketplaceAccess } from "@/server/freight/access";
@@ -13,7 +14,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const { id: rawId } = await params;
     const id = requireMarketplaceListingId(rawId);
     const requestId = await validateOwnedDemandContext(demandContextIdFromRequest(request), "VEHICLE", id, context.user.id, context.company.id);
-    return mobileSuccess({ listing: await getVehicleListing(id, context.user.id), requestId });
+    return mobileListingSuccess(request, { listing: await getVehicleListing(id, context.user.id), requestId });
   }
   catch (error) { return freightSafeError(error); }
 }

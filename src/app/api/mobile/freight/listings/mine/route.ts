@@ -1,4 +1,5 @@
-import { mobileSuccess, mobileValidationError } from "@/server/mobile/response";
+import { mobileListingSuccess } from "@/server/freight/mobile-listing-response";
+import { mobileValidationError } from "@/server/mobile/response";
 import { requireFreightMarketplaceAccess } from "@/server/freight/access";
 import { freightSafeError } from "@/server/freight/response";
 import { listOwnedFreightListings } from "@/server/freight/service";
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
     const context = await requireFreightMarketplaceAccess(request);
     const parsed = freightMineSchema.safeParse(queryInput(request));
     if (!parsed.success) return mobileValidationError(parsed.error);
-    return mobileSuccess(await listOwnedFreightListings(context.user.id, parsed.data));
+    return mobileListingSuccess(request, await listOwnedFreightListings(context.user.id, parsed.data));
   } catch (error) {
     return freightSafeError(error);
   }

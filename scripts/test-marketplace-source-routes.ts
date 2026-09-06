@@ -15,13 +15,13 @@ assert.doesNotMatch(candidates[0]?.sourceExcerpt ?? "", /Sakarya/);
 assert.doesNotMatch(candidates[1]?.sourceExcerpt ?? "", /Adana/);
 const mixed = extractFreightCandidates("!!Günlük taşıma görevi!! Tekirdağ Çorlu→Van 🚚 Kapalı/Açık TIR📦 Tekirdağ Hayrabolu→Denizli Sarayköy 🚚 Frigo 12ton 📦 Tekirdağ Çorlu→Bursa 🚚 Tenteli 15ton", at);
 assert.equal(mixed.length, 3);
-assert.equal(mixed[0]?.origin?.canonical, "Tekirdağ Çorlu");
+assert.equal(mixed[0]?.origin?.canonical, "Çorlu");
 assert.equal(mixed[0]?.destination?.canonical, "Van");
 assert.equal(mixed[0]?.weight, null, "No weight may be borrowed from the next route");
 assert.notEqual(mixed[0]?.trailerType, "VAN", "The city Van must not imply a panelvan");
 assert.equal(mixed[1]?.weight, 12);
 assert.equal(mixed[2]?.weight, 15);
-assert.equal(mixed[2]?.origin?.canonical, "Tekirdağ Çorlu");
+assert.equal(mixed[2]?.origin?.canonical, "Çorlu");
 assert.equal(findLogisticsLocationOccurrences("panelvan taşıma").length, 0);
 assert.equal(splitSourceRoutes("İstanbul, Ankara, Bursa, Adana 20 ton Tenteli")[0]?.origin, null);
 assert.equal(extractFreightCandidates("Türkiye İstanbul 20 ton Tenteli", at).length, 0, "Country and its city alone are not a route");
@@ -36,12 +36,16 @@ assert.equal(intra.length, 1);
 assert.equal(intra[0]?.origin?.canonical, "Bursa Mudanya");
 assert.equal(intra[0]?.destination?.canonical, "Bursa Osmangazi");
 console.log("Source route isolation, repeated cities, attributes and ambiguity checks passed.");
+for (const text of ["Elazığ TİR GEBZE → Sakarya 20 ton", "Elazığ TIR GEBZE → Sakarya 20 ton"]) {
+  assert.equal(splitSourceRoutes(text)[0]?.origin, null, "A vehicle heading cannot become the origin of a later route");
+  assert.equal(splitSourceRoutes(text)[0]?.destination, null);
+}
 for (const city of ["Kocaeli Gölcük", "Kocaeli İzmit", "Kocaeli Dilovası"]) {
   const route = extractFreightCandidates(`${city} → İstanbul Tuzla Tenteli 75kg`, at)[0];
   assert.equal(route?.origin?.canonical, city);
   assert.equal(route?.destination?.canonical, "İstanbul Tuzla");
   assert.equal(route?.weight, 0.075);
 }
-assert.equal(extractFreightCandidates("Yükleme: Konya → Irak Frigo 25 ton", at)[0]?.cargoType, null, "Loading labels are not cargo descriptions");
+assert.equal(extractFreightCandidates("Yükleme: Konya Boşaltma: Irak Frigo 25 ton", at)[0]?.cargoType, null, "Loading labels are not cargo descriptions");
 assert.equal(extractFreightCandidates("Yük türü: Demir; Adana → Mersin Tenteli 20 ton", at)[0]?.cargoType, "Demir");
 assert.equal(extractFreightCandidates(`Yük: ${"a".repeat(79)}🚚; Adana → Mersin Tenteli 20 ton`, at)[0]?.cargoType?.isWellFormed(), true, "A truncated emoji cannot produce invalid database text");

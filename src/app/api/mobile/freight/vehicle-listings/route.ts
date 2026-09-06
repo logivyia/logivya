@@ -1,3 +1,4 @@
+import { mobileListingSuccess } from "@/server/freight/mobile-listing-response";
 import { mobileSuccess, mobileValidationError } from "@/server/mobile/response";
 import { readMobileJson } from "@/server/mobile/request-json";
 import { requireFreightMarketplaceAccess } from "@/server/freight/access";
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
     await requireFreightMarketplaceAccess(request);
     const parsed = vehicleSearchSchema.safeParse(queryInput(request));
     if (!parsed.success) return mobileValidationError(parsed.error);
-    return mobileSuccess(await searchVehicleListings(parsed.data));
+    return mobileListingSuccess(request, await searchVehicleListings(parsed.data));
   } catch (error) { return freightSafeError(error); }
 }
 
