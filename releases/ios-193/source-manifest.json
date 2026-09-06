@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "preparedAt": "2026-09-06T07:29:33.321589+00:00",
-  "status": "FROZEN_SOURCE_WAITING_FOR_IOS_BUILD_QUOTA",
+  "preparedAt": "2026-09-06T08:17:54.855617+00:00",
+  "status": "FROZEN_SOURCE_R2_INSTALL_HOOK_RESTORED",
   "version": "1.0.14",
   "buildNumber": "193",
   "buildMarker": "IOS_UNIFIED_V193",
@@ -50,6 +50,7 @@
     "apps/mobile/package-lock.json": "33ca806240e402a3ff581073ed9324a1495343a2aecfe7f188fcfa0e2dbd5be4",
     "apps/mobile/package.json": "026a32db2f371ee88f8bb15d91edd01ff03aa1bd2ab7c1b35751890e8eab08af",
     "apps/mobile/react-native.config.js": "5be3b98352cdfc3e835d5915ccf9634bd52ce0a63e8c37300dca6b3fcf7c6a1a",
+    "apps/mobile/scripts/patch-image-size-security.cjs": "27f48bb5f4944757a4f905ba2a344248250643d91da13f59ef9841afe111cdfb",
     "apps/mobile/scripts/test-country-labels.ts": "abebd93786028e56c9b06c6028ef613e996d3293bd5ecaa856071c1d7c2911d3",
     "apps/mobile/scripts/test-freight-dates.ts": "000126fb2399ceecdc760aaa0f387f3b65cd29f50c33b7a02b7085816fe5c7ef",
     "apps/mobile/src/api/api-errors.ts": "5668527a17d5fa2c5ba5483e113259446fd1f36590dad1d908f926fdf7fc2ddc",
@@ -295,7 +296,7 @@
     "scripts/apple/build-approved-ios.mjs": "08a118ddcca5dada937a1e3c068adc82959859fef7515ae42c1d0b06343257db",
     "scripts/apple/draft-build-policy.mjs": "7f3575bab4e57fd368f45d9b4ac82c01672465ef5145a0c89a627bcced63fd3e",
     "scripts/apple/ios-preflight.mjs": "751e3f8f529b9a1d6e0ed5a0a08c39985399f94d8b8e8a116efa46ef940da4b4",
-    "scripts/apple/verify-unified-ios-source.mjs": "9ef3e090803299c83667a73124db1ada993fee2b69966dd1378f97113ebd7a37",
+    "scripts/apple/verify-unified-ios-source.mjs": "2dca858fc01e977f88e9f889371d9226c09ea2717a7976b25c5067b4b22bf8a1",
     "shared/country-registry.json": "f93f73f76f1ecb893645031b8f6c8a8308829debfc9bb5c8f45b0d6103f0a5a4",
     "shared/guest-marketplace-copy.ts": "0a5876e9bc871843c65fc81ec6b52d97ae256a220c09723cf99cae0e2fdd6b92",
     "shared/guest-marketplace-labels.json": "56c9a328b642612a443767c1e30fdc58061bf53564a9cb79a957c7e89d84e44e",
@@ -318,7 +319,7 @@
     "shared/uzbek-marketplace-ui.ts": "569f38c3417a9e041aef75155624108b6176b197edafffed88e1342b96febfb4",
     "tsconfig.json": "a88f94f25945577f4f9bd40415f1166759c5317e715835f7b70338608f8448e1"
   },
-  "inputHash": "2ed6192785acb1955fc24e8af78db9d9115bed0cc463fe4cd6c403a1baf462f3",
+  "inputHash": "efc1e005d65e4197dc6a4cfe0682f1c09bb980ab18f49af26d8dc55c3b1cc1c9",
   "textExtensions": [
     ".js",
     ".jsx",
@@ -357,5 +358,9 @@
       "includedInGitSourceArchive": false,
       "restoreFromSecureLocalStorage": true
     }
-  ]
+  ],
+  "sourceRevision": 2,
+  "supersedesSourceCommit": "0f254bff085d31cd9dadb763cc6934064a83d0d1",
+  "preNativeFailedBuildId": "faebd5a2-2e92-4f17-bdd6-ee8d6a8cb34d",
+  "revisionReason": "Restore the existing security postinstall script omitted from the first frozen snapshot; retain all application runtime code and build 193."
 }

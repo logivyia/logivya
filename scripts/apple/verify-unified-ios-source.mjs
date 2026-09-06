@@ -8,6 +8,20 @@ import { repoRoot } from "./app-store-connect-client.mjs";
 const manifest = JSON.parse(readFileSync(path.join(repoRoot, "releases/ios-193/source-manifest.json"), "utf8"));
 const eas = JSON.parse(readFileSync(path.join(repoRoot, "apps/mobile/eas.json"), "utf8"));
 const failures = [];
+// A dependency cache can mask a missing installation hook. Check the files
+// invoked by both package lifecycles before spending cloud build credit.
+for (const packageFile of ["package.json", "apps/mobile/package.json"]) {
+  const packageJson = JSON.parse(readFileSync(path.join(repoRoot, packageFile), "utf8"));
+  for (const [hook, command] of Object.entries(packageJson.scripts || {})) {
+    if (!["preinstall", "install", "postinstall"].includes(hook) && !hook.startsWith("eas-build-")) continue;
+    for (const match of command.matchAll(/\bnode\s+["']?([^\s"';&]+)/gu)) {
+      if (match[1].startsWith("-")) continue;
+      const scriptPath = path.resolve(repoRoot, path.dirname(packageFile), match[1]);
+      try { readFileSync(scriptPath); }
+      catch { failures.push(`Missing ${packageFile} ${hook} script: ${match[1]}`); }
+    }
+  }
+}
 const canonicalBytes = (file, contents) => manifest.textExtensions.includes(path.extname(file))
   || manifest.textFileNames.includes(path.basename(file))
   ? Buffer.from(contents.toString("utf8").replace(/\r\n/g, "\n"), "utf8") : contents;

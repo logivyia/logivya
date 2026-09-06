@@ -1,6 +1,12 @@
 # Apple birleşik sürüm adayı — 1.0.14 (193)
 
-Bu klasör, önceki Apple taslaklarının ve 6 Eylül denetim düzeltmelerinin tek kaynak adayıdır. **IPA henüz üretilmedi.** Kota açıldıktan sonra aynı adaydan bir iOS build üretilecek; inceleme başvurusu kullanıcı talimatıyla yapılacak.
+## Derleme hazırlığı düzeltmesi — r2, 6 Eylül 2026
+
+Starter planı aktifleştirildi. İlk EAS denemesi (`faebd5a2-2e92-4f17-bdd6-ee8d6a8cb34d`) bağımlılık kurulumunda durdu; IPA üretilmedi ve Apple'a gönderilmedi. `apps/mobile/package.json` kurulum sırasında çağırdığı `scripts/patch-image-size-security.cjs` dosyası önceki kaynak paketinde eksikti. Ana yerel projede bulunan aynı güvenlik yaması dosyası bu kaynağa eklendi; yama kaldırılmadı. Dondurulmuş kaynak doğrulayıcısı artık kurulum kancalarının dosyalarını da kontrol eder. Sürüm numarası 1.0.14 / 193 korunur; önceki kaynak arşivi tarihsel kanıttır, sonraki derlemede r2 commit/arşivi kullanılmalıdır.
+
+Android derlemeleri yerel Gradle ortamıyla yapılır. EAS bulut build kredisi yalnızca iOS içindir; Android veya `--platform all` derlemesi başlatılmaz. Aşağıdaki ilk dondurma kaydı geçmiş durumu anlatır; güncel EAS/Apple iş kimlikleri teslim makbuzlarında tutulur.
+
+Bu klasör, önceki Apple taslaklarının ve 6 Eylül denetim düzeltmelerinin tek kaynak adayıdır. **IPA henüz üretilmedi.** Starter planı aktiftir. r2 temiz bağımlılık kurulumu ve 2306 modüllü iOS Hermes paketlemesi başarılıdır. Windows yerel iOS prebuild desteklemediği için native derleme EAS macOS üzerinde doğrulanacaktır. İnceleme başvurusu kullanıcının sonraki talimatıyla yapılacak.
 
 Apple'da 6 Eylül 2026 tarihinde salt okunur olarak doğrulanan mevcut yayın **1.0.13 (188), READY_FOR_SALE**. Yüklenmiş son taslaklar **1.0.14 (189 ve 190), VALID**. 191/192/193 numaraları önceki yerel kaynak adaylarıdır; Apple'a yüklenmiş yeni ikililer değildir.
 
@@ -45,4 +51,4 @@ Sunucu tabanlı özellikler canlı `audit-fixes-20260906-63` sürümündedir. Su
 
 Yerel iOS Hermes paketlemesi ve tip kontrolü başarılıdır; bu çıktı imzalı IPA değildir. Fiziksel iPhone/iPad, gerçek üçüncü taraf hesap bağlantısı/grup alımı, StoreKit sandbox ve son imzalı IPA kabulü henüz yapılmamıştır. Önceki rapordaki bağımsız felaket kurtarma ve WhatsApp bağlantı kuyruğu işletim konuları bu kaynak birleştirmesiyle kapanmış sayılmaz.
 
-Kota/inceleme otomasyonu kurulmadı, ücretli paket alınmadı, EAS native build başlatılmadı, Apple'a binary veya inceleme başvurusu gönderilmedi.
+İnceleme otomasyonu kurulmadı. Kullanıcının satın aldığı Starter planı doğrulandı. İlk EAS denemesi bağımlılık kurulumunda durdu; Apple 1.0.14 boş taslağı hazırlandı. Güncel derleme ve yükleme durumu teslim makbuzlarında tutulur; App Review başvurusu sonraki kullanıcı talimatını bekler.

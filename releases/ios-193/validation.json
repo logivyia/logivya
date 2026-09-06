@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-09-06T07:30:25.244Z",
+  "checkedAt": "2026-09-06T08:23:12.2633209Z",
   "version": "1.0.14",
   "build": 193,
   "checks": [
@@ -50,16 +50,44 @@
     {
       "name": "Tracked-source credential-pattern scan",
       "result": "PASS"
+    },
+    {
+      "name": "Clean npm ci including security postinstall",
+      "result": "PASS",
+      "evidence": "clean-mobile-install-r2.log"
+    },
+    {
+      "name": "Clean iOS Hermes export",
+      "result": "PASS",
+      "modules": 2306,
+      "evidence": "clean-ios-export-r2.log"
+    },
+    {
+      "name": "Frozen source and installation hook references",
+      "result": "PASS",
+      "sourceFiles": 296
     }
   ],
   "notExecuted": [
-    "EAS native iOS build",
+    "Successful EAS native iOS build",
     "Signed IPA verification",
     "Physical iPhone/iPad acceptance",
     "StoreKit sandbox purchase/restore acceptance",
     "App Store binary upload",
     "App Review submission"
   ],
-  "newBuildsStarted": 0,
-  "storeMutations": 0
+  "newBuildsStarted": 1,
+  "storeMutations": 1,
+  "sourceRevision": 2,
+  "buildAttempts": [
+    {
+      "id": "faebd5a2-2e92-4f17-bdd6-ee8d6a8cb34d",
+      "status": "ERRORED",
+      "phase": "INSTALL_DEPENDENCIES",
+      "binaryCreated": false,
+      "correctedInSourceRevision": 2
+    }
+  ],
+  "nativePrebuild": "Local iOS prebuild unsupported on Windows; native compilation remains to be verified by EAS macOS.",
+  "storeMutationDetail": "Created empty 1.0.14 PREPARE_FOR_SUBMISSION version; no binary attached and no review submitted."
 }
