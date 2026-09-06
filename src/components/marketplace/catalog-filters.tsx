@@ -2,7 +2,7 @@
 import { productJourneyCopy } from "../../../shared/product-journey-copy";
 import { marketplaceOptionLabel } from "../../../shared/product-status-copy";
 import { driverLicenseOptions, driverEmploymentOptions } from "../../../shared/marketplace-filters";
-import { uzbekMarketplaceUi as uz, uzbekVehicleLabels, uzbekCountryLabels } from "../../../shared/uzbek-marketplace-ui";
+import { uzbekCountryLabels } from "../../../shared/uzbek-marketplace-ui";
 import { guestMarketplaceCopy } from "../../../shared/guest-marketplace-copy";
 import { useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
@@ -11,7 +11,6 @@ import { useI18n } from "@/i18n/provider";
 
 export function CatalogFilters({ value, onApply }: { value: MarketplaceFilters; onApply: (value: MarketplaceFilters) => void }) {
   const { locale } = useI18n();
-  const tr = locale === "tr";
   const copy = productJourneyCopy(locale);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -20,11 +19,11 @@ export function CatalogFilters({ value, onApply }: { value: MarketplaceFilters; 
   const fieldClass = "mt-2 min-h-12 w-full rounded-xl border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary";
   return <div className="mt-4">
     <button type="button" onClick={() => { setDraft(value); setOpen(!open); }} aria-expanded={open} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-semibold"><SlidersHorizontal size={17} />{guestMarketplaceCopy(locale).filterListings}{active ? ` (${active})` : ""}</button>
-    {active ? <span className="ms-3 text-sm text-muted">{[value.originCity || value.originCountry, value.destinationCity || value.destinationCountry].filter(Boolean).join(" → ")}{value.vehicle ? ` · ${(locale === "uz" ? uzbekVehicleLabels[value.vehicle] : marketplaceVehicles.find(([code]) => code === value.vehicle)?.[1])}` : ""}</span> : null}
+    {active ? <span className="ms-3 text-sm text-muted">{[value.originCity || value.originCountry, value.destinationCity || value.destinationCountry].filter(Boolean).join(" → ")}{value.vehicle ? ` · ${marketplaceOptionLabel(value.vehicle, locale)}` : ""}</span> : null}
     {open ? <form className="mt-4 grid gap-4 rounded-2xl border bg-card p-4 sm:grid-cols-2 lg:grid-cols-3" onSubmit={(event) => { event.preventDefault(); onApply(draft); setOpen(false); }}>
-      {draft.kind !== "DRIVER" ? <>{(["originCountry", "destinationCountry"] as const).map((key, index) => <label key={key} className="text-sm font-semibold">{labels[index]}<select className={fieldClass} value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}><option value="">{locale === "uz" ? uz.allCountries : tr ? "Tüm ülkeler" : "All countries"}</option>{marketplaceCountries.map(([code, title]) => <option key={code} value={code}>{locale === "uz" ? uzbekCountryLabels[code] ?? title : new Intl.DisplayNames([locale], { type: "region" }).of(code) ?? title}</option>)}</select></label>)}
-      {(["originCity", "destinationCity"] as const).map((key, index) => <label key={key} className="text-sm font-semibold">{labels[index + 2]}<input maxLength={80} className={fieldClass} value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} placeholder={locale === "uz" ? uz.cityPlaceholder : tr ? "Şehir veya ilçe" : "City or district"} /></label>)}
-      <label className="text-sm font-semibold">{labels[4]}<select className={fieldClass} value={draft.vehicle} onChange={(event) => setDraft({ ...draft, vehicle: event.target.value })}><option value="">{locale === "uz" ? uz.allVehicles : tr ? "Tüm araçlar" : "All vehicles"}</option>{marketplaceVehicles.map(([code, title]) => <option key={code} value={code}>{marketplaceOptionLabel(code, locale)}</option>)}</select></label>
+      {draft.kind !== "DRIVER" ? <>{(["originCountry", "destinationCountry"] as const).map((key, index) => <label key={key} className="text-sm font-semibold">{labels[index]}<select className={fieldClass} value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}><option value="">{copy.all}</option>{marketplaceCountries.map(([code, title]) => <option key={code} value={code}>{locale === "uz" ? uzbekCountryLabels[code] ?? title : new Intl.DisplayNames([locale], { type: "region" }).of(code) ?? title}</option>)}</select></label>)}
+      {(["originCity", "destinationCity"] as const).map((key, index) => <label key={key} className="text-sm font-semibold">{labels[index + 2]}<input maxLength={80} className={fieldClass} value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} placeholder={labels[index + 2]} /></label>)}
+      <label className="text-sm font-semibold">{labels[4]}<select className={fieldClass} value={draft.vehicle} onChange={(event) => setDraft({ ...draft, vehicle: event.target.value })}><option value="">{copy.all}</option>{marketplaceVehicles.map(([code, title]) => <option key={code} value={code}>{marketplaceOptionLabel(code, locale)}</option>)}</select></label>
       </> : <>
         <label className="text-sm font-semibold">{copy.location}<input maxLength={80} className={fieldClass} value={draft.location || ""} onChange={e => setDraft({ ...draft, location: e.target.value })} /></label>
         <label className="text-sm font-semibold">{copy.filters}<select className={fieldClass} value={draft.driverListingType || ""} onChange={e => setDraft({ ...draft, driverListingType: e.target.value })}><option value="">{copy.all}</option><option value="DRIVER_AVAILABLE">{copy.driverAvailable}</option><option value="DRIVER_WANTED">{copy.driverWanted}</option></select></label>
