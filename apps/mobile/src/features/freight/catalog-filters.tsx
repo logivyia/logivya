@@ -1,4 +1,5 @@
 import { productJourneyCopy } from "../../../../../shared/product-journey-copy";
+import { mobileCountryLabel } from "./country-labels";
 import { marketplaceOptionLabel } from "../../../../../shared/product-status-copy";
 import { driverLicenseOptions, driverEmploymentOptions } from "../../../../../shared/marketplace-filters";
 import { uzbekMarketplaceUi as uz, uzbekVehicleLabels, uzbekCountryLabels } from "../../../../../shared/uzbek-marketplace-ui";
@@ -19,7 +20,7 @@ export function CatalogFilters({ value, onApply }: { value: MarketplaceFilters; 
   const active = Object.entries(value).filter(([key, item]) => key !== "kind" && item).length;
   const label = (key: string) => ({ ...copy, licenseClass: copy.licenses, employmentType: copy.employment, driverListingType: copy.filters } as Record<string, string>)[key];
   const button = [styles.button, { borderColor: theme.border, backgroundColor: theme.card }];
-  const optionsFor = (key: string): ReadonlyArray<readonly [string, string]> => [["", copy.all], ...(key === "vehicle" ? marketplaceVehicles.map(([code]) => [code, marketplaceOptionLabel(code, locale)] as const) : key === "licenseClass" ? driverLicenseOptions.map(code => [code, code] as const) : key === "employmentType" ? driverEmploymentOptions.map(code => [code, marketplaceOptionLabel(code, locale)] as const) : key === "driverListingType" ? [["DRIVER_AVAILABLE", copy.driverAvailable], ["DRIVER_WANTED", copy.driverWanted]] as const : marketplaceCountries.map(([code, title]) => [code, new Intl.DisplayNames([locale], { type: "region" }).of(code) || title] as const))];
+  const optionsFor = (key: string): ReadonlyArray<readonly [string, string]> => [["", copy.all], ...(key === "vehicle" ? marketplaceVehicles.map(([code]) => [code, marketplaceOptionLabel(code, locale)] as const) : key === "licenseClass" ? driverLicenseOptions.map(code => [code, code] as const) : key === "employmentType" ? driverEmploymentOptions.map(code => [code, marketplaceOptionLabel(code, locale)] as const) : key === "driverListingType" ? [["DRIVER_AVAILABLE", copy.driverAvailable], ["DRIVER_WANTED", copy.driverWanted]] as const : marketplaceCountries.map(([code, title]) => [code, mobileCountryLabel(code, locale, title)] as const))];
   const titleFor = (key: string, current?: string) => optionsFor(key).find(([code]) => code === current)?.[1] || copy.all;
   return <View style={{ marginVertical: 12 }}>
     <Pressable accessibilityRole="button" onPress={() => { setDraft(value); setSelect(null); setOpen(true); }} style={button}><Ionicons name="options-outline" size={21} color={theme.primary} /><Text style={{ color: theme.text, fontWeight: "800" }}>{guestMarketplaceCopy(locale).filterListings}{active ? ` (${active})` : ""}</Text></Pressable>
