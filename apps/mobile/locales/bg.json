@@ -1,0 +1,9 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Logivya",
+    "NSPhotoLibraryUsageDescription": "Достъпът до галерията позволява прикачване на снимки и видеоклипове към съобщения.",
+    "NSCameraUsageDescription": "Камерата позволява добавяне на снимки към съобщения.",
+    "NSFaceIDUsageDescription": "Отключете Logivya с Face ID.",
+    "NSMicrophoneUsageDescription": "Микрофонът позволява записване на видеоклипове със звук."
+  }
+}

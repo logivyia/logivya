@@ -24,13 +24,27 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.logivya.mobile",
       "appleTeamId": "YMW24BAWTV",
-      "buildNumber": "193",
+      "buildNumber": "194",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "Mesajlarınıza fotoğraf ve video ekleyebilmeniz için galeri erişimi kullanılır.",
         "UIBackgroundModes": [
           "remote-notification"
+        ],
+        "CFBundleLocalizations": [
+          "tr",
+          "en",
+          "ar",
+          "ro",
+          "ru",
+          "az",
+          "tk",
+          "de",
+          "bg",
+          "el",
+          "sr",
+          "uz"
         ]
       }
     },
@@ -116,6 +130,20 @@
           "organization": "logivya"
         }
       ]
-    ]
+    ],
+    "locales": {
+      "tr": "./locales/tr.json",
+      "en": "./locales/en.json",
+      "ar": "./locales/ar.json",
+      "ro": "./locales/ro.json",
+      "ru": "./locales/ru.json",
+      "az": "./locales/az.json",
+      "tk": "./locales/tk.json",
+      "de": "./locales/de.json",
+      "bg": "./locales/bg.json",
+      "el": "./locales/el.json",
+      "sr": "./locales/sr.json",
+      "uz": "./locales/uz.json"
+    }
   }
 }

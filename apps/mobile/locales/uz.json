@@ -1,0 +1,9 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Logivya",
+    "NSPhotoLibraryUsageDescription": "Galereyaga kirish xabarlarga rasm va video biriktirish imkonini beradi.",
+    "NSCameraUsageDescription": "Kamera xabarlarga rasm qo‘shish uchun ishlatiladi.",
+    "NSFaceIDUsageDescription": "Logivya qulfini Face ID orqali oching.",
+    "NSMicrophoneUsageDescription": "Mikrofon ovozli video yozish uchun ishlatiladi."
+  }
+}

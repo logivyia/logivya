@@ -1,0 +1,9 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Logivya",
+    "NSPhotoLibraryUsageDescription": "Der Zugriff auf die Fotomediathek ermöglicht das Anhängen von Fotos und Videos an Nachrichten.",
+    "NSCameraUsageDescription": "Mit der Kamera können Sie Fotos zu Nachrichten hinzufügen.",
+    "NSFaceIDUsageDescription": "Entsperren Sie Logivya mit Face ID.",
+    "NSMicrophoneUsageDescription": "Mit dem Mikrofon können Sie Videos mit Ton aufnehmen."
+  }
+}

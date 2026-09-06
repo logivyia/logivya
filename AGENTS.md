@@ -17,3 +17,7 @@ For non-core, UI-only, admin-only, translation-only, or build-only work: do not 
 
 After future changes, run stable-core regression checks appropriate to the scope: login, WhatsApp connected state, user-owned groups only, no admin group leakage, message send, Delete for Everyone, message history, web build, mobile typecheck, and Android build when mobile code changes.
 <!-- END:logivya-stable-core-lock -->
+
+# Store release policy
+Android builds use local Gradle only. Never run EAS Android or --platform all.
+User authorized Apple App Review submission and full Google Play publication on 6 September 2026 after store visuals and native supported-language declarations are complete.

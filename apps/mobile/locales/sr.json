@@ -1,0 +1,9 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Logivya",
+    "NSPhotoLibraryUsageDescription": "Pristup galeriji omogućava prilaganje fotografija i video-snimaka porukama.",
+    "NSCameraUsageDescription": "Kamera omogućava dodavanje fotografija u poruke.",
+    "NSFaceIDUsageDescription": "Otključajte Logivya pomoću Face ID-a.",
+    "NSMicrophoneUsageDescription": "Mikrofon omogućava snimanje video-snimaka sa zvukom."
+  }
+}

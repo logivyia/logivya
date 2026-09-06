@@ -1,0 +1,9 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Logivya",
+    "NSPhotoLibraryUsageDescription": "يتيح الوصول إلى مكتبة الصور إرفاق الصور ومقاطع الفيديو بالرسائل.",
+    "NSCameraUsageDescription": "تتيح الكاميرا إضافة الصور إلى الرسائل.",
+    "NSFaceIDUsageDescription": "افتح قفل Logivya باستخدام Face ID.",
+    "NSMicrophoneUsageDescription": "يتيح الميكروفون تسجيل مقاطع فيديو مع الصوت."
+  }
+}

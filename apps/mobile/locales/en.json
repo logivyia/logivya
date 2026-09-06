@@ -1,0 +1,9 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Logivya",
+    "NSPhotoLibraryUsageDescription": "Photo library access lets you attach photos and videos to messages.",
+    "NSCameraUsageDescription": "The camera lets you add photos to messages.",
+    "NSFaceIDUsageDescription": "Unlock Logivya with Face ID.",
+    "NSMicrophoneUsageDescription": "The microphone lets you record videos with sound."
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Logivya",
+    "NSPhotoLibraryUsageDescription": "Η πρόσβαση στη συλλογή επιτρέπει την επισύναψη φωτογραφιών και βίντεο στα μηνύματα.",
+    "NSCameraUsageDescription": "Η κάμερα επιτρέπει την προσθήκη φωτογραφιών στα μηνύματα.",
+    "NSFaceIDUsageDescription": "Ξεκλειδώστε το Logivya με Face ID.",
+    "NSMicrophoneUsageDescription": "Το μικρόφωνο επιτρέπει την εγγραφή βίντεο με ήχο."
+  }
+}

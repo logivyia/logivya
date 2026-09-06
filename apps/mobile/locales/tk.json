@@ -1,0 +1,9 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Logivya",
+    "NSPhotoLibraryUsageDescription": "Galereýa girişi habarlara surat we wideo goşmaga mümkinçilik berýär.",
+    "NSCameraUsageDescription": "Kamera habarlara surat goşmak üçin ulanylýar.",
+    "NSFaceIDUsageDescription": "Logivya gulpuny Face ID bilen açyň.",
+    "NSMicrophoneUsageDescription": "Mikrofon sesli wideo ýazga almak üçin ulanylýar."
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Logivya",
+    "NSPhotoLibraryUsageDescription": "Доступ к медиатеке позволяет прикреплять фото и видео к сообщениям.",
+    "NSCameraUsageDescription": "Камера позволяет добавлять фотографии в сообщения.",
+    "NSFaceIDUsageDescription": "Разблокируйте Logivya с помощью Face ID.",
+    "NSMicrophoneUsageDescription": "Микрофон позволяет записывать видео со звуком."
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Logivya",
+    "NSPhotoLibraryUsageDescription": "Fotoğraf ve videoları mesajlarınıza eklemek için galeri erişimi kullanılır.",
+    "NSCameraUsageDescription": "Mesajlara fotoğraf eklemek için kamera kullanılır.",
+    "NSFaceIDUsageDescription": "Logivya uygulama kilidini Face ID ile açın.",
+    "NSMicrophoneUsageDescription": "Sesli video kaydetmek için mikrofon kullanılır."
+  }
+}

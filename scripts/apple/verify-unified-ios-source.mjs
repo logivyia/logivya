@@ -5,8 +5,10 @@ import path from "node:path";
 import { repoRoot } from "./app-store-connect-client.mjs";
 
 // Read-only: this command never creates a build or contacts either store.
-const manifest = JSON.parse(readFileSync(path.join(repoRoot, "releases/ios-193/source-manifest.json"), "utf8"));
 const eas = JSON.parse(readFileSync(path.join(repoRoot, "apps/mobile/eas.json"), "utf8"));
+const releaseBuild = eas.build["ios-production"].env.IOS_BUILD_NUMBER;
+if (!/^\d+$/.test(releaseBuild)) throw new Error("Invalid frozen iOS build number");
+const manifest = JSON.parse(readFileSync(path.join(repoRoot, `releases/ios-${releaseBuild}/source-manifest.json`), "utf8"));
 const failures = [];
 // A dependency cache can mask a missing installation hook. Check the files
 // invoked by both package lifecycles before spending cloud build credit.

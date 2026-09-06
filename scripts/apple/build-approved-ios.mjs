@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import process from "node:process";
 import {
   EXPECTED_APP_STORE_APP_ID,
@@ -54,7 +54,8 @@ const easBuildCommand =
         command: "npx",
         args: ["eas-cli", "build", "--platform", "ios", "--profile", "ios-production", "--non-interactive", "--wait"],
       };
-if (existsSync(`${repoRoot}/releases/ios-193/source-manifest.json`)) {
+const releaseBuild = JSON.parse(readFileSync(`${repoRoot}/apps/mobile/eas.json`, "utf8")).build["ios-production"].env.IOS_BUILD_NUMBER;
+if (existsSync(`${repoRoot}/releases/ios-${releaseBuild}/source-manifest.json`)) {
   const frozenSource = spawnSync(process.execPath, [`${repoRoot}/scripts/apple/verify-unified-ios-source.mjs`], {
     cwd: repoRoot, stdio: "inherit", env: process.env,
   });
