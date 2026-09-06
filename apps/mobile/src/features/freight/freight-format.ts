@@ -1,6 +1,7 @@
 import type { FreightContainerStatus, FreightListingStatus, FreightTrailerType, MobileFreightListing } from "@/api/mobileFreight";
 import { localeMetadata, type Locale } from "@/i18n/config";
 import type { TranslationKey } from "@/i18n/translations";
+import { translate } from "@/i18n/translations";
 
 export const trailerOptions: Array<{ value: FreightTrailerType; labelKey: TranslationKey }> = [
   { value: "CURTAINSIDER", labelKey: "freightTrailerCurtainsider" },
@@ -37,13 +38,16 @@ export function containerLabelKey(value: FreightContainerStatus) {
   return containerOptions.find((option) => option.value === value)?.labelKey ?? "freightContainerNone";
 }
 
-export function formatFreightDate(value: string, locale: Locale) {
+export function formatFreightDate(value: string | null | undefined, locale: Locale) {
+  if (!value) return translate(locale, "notSpecified");
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/u.test(value) ? `${value}T00:00:00.000Z` : value);
+  if (!Number.isFinite(date.getTime())) return translate(locale, "notSpecified");
   return new Intl.DateTimeFormat(localeMetadata[locale].intlLocale, {
     day: "2-digit",
     month: "short",
     year: "numeric",
     timeZone: "UTC",
-  }).format(new Date(`${value}T00:00:00.000Z`));
+  }).format(date);
 }
 
 export function formatFreightPrice(listing: Pick<MobileFreightListing, "priceAmount" | "currency">, locale: Locale) {

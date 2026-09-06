@@ -21,7 +21,7 @@ const LOCATIONS: readonly RegistryLocation[] = [
   { canonical: "Kuveyt", countryCode: "KW", type: "COUNTRY", aliases: ["kuveyt", "kuwait", "الكويت"] },
   { canonical: "Rustavi", countryCode: "GE", type: "CITY", aliases: ["rustavi", "rustavı", "рустави", "რუსთავი"] },
   { canonical: "Süleymaniye", countryCode: "IQ", type: "CITY", aliases: ["süleymaniye", "suleymaniye", "sulaymaniyah", "sulaimani", "السليمانية"] },
-  { canonical: "Zaho", countryCode: "IQ", type: "CITY", aliases: ["zaho", "zakho", "زاخو"] },
+  { canonical: "Zaho", countryCode: "IQ", type: "CITY", aliases: ["zaho", "zakho", "zağo", "zago", "زاخو"] },
   { canonical: "Çorlu", countryCode: "TR", type: "DISTRICT", aliases: ["çorlu", "corlu"] },
   { canonical: "Bandırma", countryCode: "TR", type: "DISTRICT", aliases: ["bandırma", "bandirma"] },
   { canonical: "St. Petersburg", countryCode: "RU", type: "CITY", aliases: ["st. petersburg", "saint petersburg", "sankt peterburg", "санкт-петербург", "petersburg", "peterburg", "петербург"] },

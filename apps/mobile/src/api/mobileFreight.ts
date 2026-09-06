@@ -52,7 +52,7 @@ export type MobileFreightListing = PublicListingSummaryFields & {
   sectorDetails: SectorDetails | null;
   origin: string;
   destination: string;
-  loadingDate: string;
+  loadingDate: string | null;
   cargoType: string | null;
   weight: number | null;
   weightUnit: "METRIC_TONNE";

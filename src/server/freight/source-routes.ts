@@ -6,7 +6,9 @@ const attributes = /(?:\d|[\p{So}\p{Cs}]|[\n,;|=]|(?:^|[^\p{L}\p{N}])(?:ton|tonn
 export type SourceRouteSection = { text: string; origin: NormalizedLogisticsLocation | null; destination: NormalizedLogisticsLocation | null };
 
 function endpoint(location: NormalizedLogisticsLocation, tail: string) {
-  const suffix = tail.split(attributes)[0]?.trim().replace(/[-–—:]+$/u, "").trim() ?? "";
+  // JavaScript's /i does not fold Turkish capital dotted I to i.
+  const boundary = tail.replace(/İ/gu, "i").search(attributes);
+  const suffix = (boundary < 0 ? tail : tail.slice(0, boundary)).trim().replace(/[-–—:]+$/u, "").trim();
   // A short location qualifier is evidence from this endpoint, never another route.
   const district = suffix && /^[\p{L}\s.'’]{1,50}$/u.test(suffix) && suffix.split(/\s/u).length <= 3 ? suffix : "";
   const canonical = `${location.canonical}${district ? ` ${district}` : ""}`;
@@ -17,7 +19,16 @@ export function splitSourceRoutes(value: string): SourceRouteSection[] {
   // Keep route lines together with their own dates/attributes before whitespace folding.
   const lines = value.split(/\r?\n/u);
   const starts = lines.flatMap((line, index) => findLogisticsLocationOccurrences(line).length >= 2 && (separator.test(line) || /yükleme|yukleme|boşaltma|bosaltma/iu.test(line)) ? [index] : []);
-  if (starts.length > 1) return starts.flatMap((start, index) => splitRouteBlock(lines.slice(index === 0 ? 0 : start, starts[index + 1] ?? lines.length).join("\n"))).slice(0, 25);
+  if (starts.length > 1) {
+    const heading = /^[^\p{L}\p{N}]*(?:pazartesi|salı|sali|çarşamba|carsamba|perşembe|persembe|cuma|cumartesi|pazar|bugün|bugun|yarın|yarin|monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|dushanba|seshanba|chorshanba|payshanba|juma|shanba|yakshanba|الاثنين|الثلاثاء|الأربعاء|الخميس|الجمعة|السبت|الأحد|20\d{2}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[/.]\d{1,2}[/.]20\d{2})(?:\s+(?:günü|günü için|yükler|yükleme|loads))?\s*:?[\s*]*$/iu;
+    return starts.flatMap((start, index) => {
+      const next = starts[index + 1] ?? lines.length;
+      const followingHeading = lines.findIndex((line, i) => i > start && i < next && heading.test(line));
+      const currentHeading = lines.slice(0, start).findLast(line => heading.test(line));
+      const block = lines.slice(index === 0 ? 0 : start, followingHeading < 0 ? next : followingHeading).join("\n");
+      return splitRouteBlock(index > 0 && currentHeading ? `${currentHeading}\n${block}` : block);
+    }).slice(0, 25);
+  }
   return splitRouteBlock(value);
 }
 
@@ -32,6 +43,7 @@ function splitRouteBlock(value: string): SourceRouteSection[] {
     // actual destination is absent from the location registry.
     if (/^\s*(?:üzeri(?:nden)?|uzeri(?:nden)?|transit)(?=$|[^\p{L}])/iu.test(after)
       || /(?:^|[^\p{L}])(?:via|through|через)\s*$/iu.test(before)) continue;
+    if (/(?:gümrük|gumruk|customs|ödeme|odeme|payment)\s*:?\s*$/iu.test(before)) continue;
     const previous = locations.at(-1);
     if (previous && previous.countryCode === location.countryCode && previous.type !== location.type && (previous.type === "COUNTRY" || location.type === "COUNTRY") && /^[\s/,]*$/u.test(text.slice(previous.position + previous.original.length, location.position))) {
       const specific = previous.type === "COUNTRY" ? location : previous;

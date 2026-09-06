@@ -1,4 +1,5 @@
 import { localizeListingSummary } from "../../../../../shared/localize-listing-summary";
+import { sourceTemperature, sourceTemperatureLabel } from "../../../../../shared/source-cargo-details";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -92,6 +93,7 @@ function FreightDetailsContent({ listingId, requestId, invalidDemandContext = fa
           <Detail label={t("freightTrailerType")} value={listing.vehicleDisplayName ?? t("notSpecified")} />
           <Detail label={t("freightVehicleCount")} value={listing.vehicleCountDisplay ?? String(listing.vehicleCount)} />
           <Detail label={t("freightCargoType")} value={listing.cargoType ?? t("notSpecified")} />
+          {sourceTemperature(listing.publicDescription) ? <Detail label={sourceTemperatureLabel(locale)} value={sourceTemperature(listing.publicDescription)!} /> : null}
           <Detail label={t("freightPrice")} value={price ?? t("freightPriceNotSpecified")} />
           <Detail label={t("freightContainerStatus")} value={t(containerLabelKey(listing.containerStatus))} />
           <Detail label={t("freightCustoms")} value={listing.customsInfo ?? t("notSpecified")} />

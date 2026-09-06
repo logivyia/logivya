@@ -1,10 +1,12 @@
 "use client";
 import { localizeListingSummary } from "../../../shared/localize-listing-summary";
+import { sourceTemperature, sourceTemperatureLabel } from "../../../shared/source-cargo-details";
 import { WhatsAppIcon } from "@/components/whatsapp-icon";
 
 import Link from "next/link";
 import { authHref, safeAuthReturn, SUBSCRIPTION_HREF } from "@/lib/auth-return";
 import { productJourneyCopy } from "../../../shared/product-journey-copy";
+import { productStatusCopy } from "../../../shared/product-status-copy";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ExternalLink, Flag, LoaderCircle, MapPin, MessageCircle, Phone, Scale, Truck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -131,9 +133,10 @@ function buildDetailRows(listing: WebMarketplaceListingDetail, copy: ReturnType<
     { label: copy.vehicle, value: listing.vehicleDisplayName },
     { label: copy.tonnage, value: listing.tonnageDisplay },
     { label: copy.vehicleCount, value: listing.vehicleCountDisplay },
-    { label: copy.loadingDate, value: attributes.relevantDate ? formatDate(attributes.relevantDate, locale) : null },
+    { label: copy.loadingDate, value: attributes.relevantDate ? formatDate(attributes.relevantDate, locale) : listing.kind !== "DRIVER" ? productStatusCopy(locale).notSpecified : null },
     { label: copy.availableUntil, value: attributes.availableUntil ? formatDate(attributes.availableUntil, locale) : null },
     { label: copy.cargo, value: attributes.cargoType },
+    { label: sourceTemperatureLabel(locale), value: sourceTemperature(listing.publicDescription) },
     { label: copy.price, value: formatMoney(attributes.priceAmount, attributes.currency, locale) },
     { label: copy.customs, value: attributes.customsInfo ?? null },
     { label: copy.container, value: attributes.containerStatusDisplay ?? null },

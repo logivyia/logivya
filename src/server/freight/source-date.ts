@@ -5,7 +5,9 @@ export function sourceLoadingDate(text: string, sourceTimestamp: Date, timeZone 
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(sourceTimestamp);
   const part = (name: string) => Number(parts.find(p => p.type === name)?.value);
   const base = new Date(Date.UTC(part("year"), part("month") - 1, part("day")));
-  const normalized = text.normalize("NFKC").toLocaleLowerCase("tr");
+  const normalized = text.normalize("NFKC").toLocaleLowerCase("tr")
+    // Çarşamba is also a district: a destination must not invent a loading day.
+    .replace(/samsun[\s,/→-]+çarşamba/gu, "samsun ilçesi");
   const explicit = /\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/u.exec(text) ?? /\b(\d{1,2})[/.](\d{1,2})[/.](20\d{2})\b/u.exec(text);
   if (explicit) {
     const yearFirst = explicit[1].length === 4;
