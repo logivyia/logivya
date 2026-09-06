@@ -15,6 +15,9 @@ import { catalogFilterWhere } from "../src/server/freight/catalog-filters";
 
 const at = new Date("2026-09-05T09:00:00Z");
 const parse = (text: string) => extractFreightCandidates(text, at);
+assert.deepEqual(parse('İSTANBUL AV. YÜKLEME STAVROPOL BOŞALTMA 3 TON 1 TENT ARAÇ İRAN ÜZERİ.').map(x => [x.origin?.canonical,x.destination?.canonical]), [['İstanbul','Stavropol']]);
+assert.deepEqual(parse('İstanbul Petersburg İran Üzeri 020 ton').map(x => [x.origin?.canonical,x.destination?.canonical]), [['İstanbul','St. Petersburg']]);
+assert.equal(parse('İstanbul Bilinmeyenşehir İran üzeri 20 ton').length,0);
 assert.deepEqual(parse("🇬🇪RUSTAVİ yukleme 🇹🇷ANKARA bosaltma 22 ton 2 tente arac araniyor T1 firma ait Odeme ankara da").map(x => [x.origin?.canonical, x.destination?.canonical]), [["Rustavi", "Ankara"]]);
 assert.deepEqual(parse("Yükleme: Aydın Boşaltma: Kuveyt Tonaj: 0-24 ton Araç Tipi: Tenteli Güzergâh: Irak üzerinden").map(x => [x.origin?.canonical, x.destination?.canonical]), [["Aydın", "Kuveyt"]]);
 const multi = parse("Pazartesi: Çorlu → Süleymaniye | 0-25 ton | 5 kapalı/tenteli araç\nSalı: Çorlu → Zaho veya Erbil | 0-25 ton | 1 kapalı/tenteli araç\nSalı: Bandırma → Erbil | 0-25 ton | 2 kapalı/tenteli araç");

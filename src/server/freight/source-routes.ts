@@ -26,6 +26,12 @@ function splitRouteBlock(value: string): SourceRouteSection[] {
   const text = value.normalize("NFKC").replace(/[ـ‌]/gu, " ").replace(/\s+/gu, " ").trim();
   const locations: NormalizedLogisticsLocation[] = [];
   for (const location of findLogisticsLocationOccurrences(text)) {
+    const before = text.slice(Math.max(0, location.position - 25), location.position);
+    const after = text.slice(location.position + location.original.length);
+    // A transit country is not a loading or unloading endpoint, even when the
+    // actual destination is absent from the location registry.
+    if (/^\s*(?:üzeri(?:nden)?|uzeri(?:nden)?|transit)(?=$|[^\p{L}])/iu.test(after)
+      || /(?:^|[^\p{L}])(?:via|through|через)\s*$/iu.test(before)) continue;
     const previous = locations.at(-1);
     if (previous && previous.countryCode === location.countryCode && previous.type !== location.type && (previous.type === "COUNTRY" || location.type === "COUNTRY") && /^[\s/,]*$/u.test(text.slice(previous.position + previous.original.length, location.position))) {
       const specific = previous.type === "COUNTRY" ? location : previous;
@@ -37,7 +43,7 @@ function splitRouteBlock(value: string): SourceRouteSection[] {
     const before = text.slice(Math.max(0, location.position - 36), location.position);
     const after = text.slice(location.position + location.original.length, location.position + location.original.length + 28);
     return new RegExp(`(?:${pattern})\\s*:\\s*(?:[\\p{So}\\s])*?$`, "iu").test(before)
-      || new RegExp(`^\\s*(?:${pattern})(?!\\s*:)(?=$|[^\\p{L}])`, "iu").test(after);
+      || new RegExp(`^\\s*(?:(?:av\\.?|avr\\.?|avrupa(?: yakası)?|anadolu(?: yakası)?)\\s+)?(?:${pattern})(?!\\s*:)(?=$|[^\\p{L}])`, "iu").test(after);
   };
   const loading = locations.filter(location => role(location, "yükleme|yukleme|loading|загрузка"));
   const unloading = locations.filter(location => role(location, "boşaltma|bosaltma|teslim|unloading|delivery|выгрузка"));
