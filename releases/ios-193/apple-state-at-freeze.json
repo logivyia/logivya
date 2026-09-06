@@ -1,0 +1,360 @@
+{
+  "checkedAt": "2026-09-06T07:19:18.887Z",
+  "readOnly": true,
+  "versions": [
+    {
+      "version": "1.0.13",
+      "state": "READY_FOR_SALE",
+      "build": "188"
+    },
+    {
+      "version": "1.0.12",
+      "state": "READY_FOR_SALE",
+      "build": "186"
+    },
+    {
+      "version": "1.0.11",
+      "state": "READY_FOR_SALE",
+      "build": "185"
+    },
+    {
+      "version": "1.0.9",
+      "state": "READY_FOR_SALE",
+      "build": "180"
+    },
+    {
+      "version": "1.0.8",
+      "state": "READY_FOR_SALE",
+      "build": "179"
+    },
+    {
+      "version": "1.0.7",
+      "state": "READY_FOR_SALE",
+      "build": "178"
+    },
+    {
+      "version": "1.0.6",
+      "state": "READY_FOR_SALE",
+      "build": "176"
+    },
+    {
+      "version": "1.0.5",
+      "state": "READY_FOR_SALE",
+      "build": "175"
+    },
+    {
+      "version": "1.0.4",
+      "state": "READY_FOR_SALE",
+      "build": "174"
+    },
+    {
+      "version": "1.0.3",
+      "state": "READY_FOR_SALE",
+      "build": "172"
+    },
+    {
+      "version": "1.0.2",
+      "state": "READY_FOR_SALE",
+      "build": "171"
+    },
+    {
+      "version": "1.0.1",
+      "state": "READY_FOR_SALE",
+      "build": "170"
+    },
+    {
+      "version": "1.0",
+      "state": "READY_FOR_SALE",
+      "build": "168"
+    }
+  ],
+  "builds": [
+    {
+      "number": "190",
+      "version": "1.0.14",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-05T04:35:06-07:00"
+    },
+    {
+      "number": "189",
+      "version": "1.0.14",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-05T01:28:21-07:00"
+    },
+    {
+      "number": "188",
+      "version": "1.0.13",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-04T11:27:02-07:00"
+    },
+    {
+      "number": "186",
+      "version": "1.0.12",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-03T13:19:40-07:00"
+    },
+    {
+      "number": "185",
+      "version": "1.0.11",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-02T23:54:39-07:00"
+    },
+    {
+      "number": "184",
+      "version": "1.0.11",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-02T22:46:55-07:00"
+    },
+    {
+      "number": "183",
+      "version": "1.0.11",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-02T19:45:31-07:00"
+    },
+    {
+      "number": "182",
+      "version": "1.0.10",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-02T12:20:09-07:00"
+    },
+    {
+      "number": "181",
+      "version": "1.0.9",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-02T05:59:59-07:00"
+    },
+    {
+      "number": "180",
+      "version": "1.0.9",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-02T04:28:21-07:00"
+    },
+    {
+      "number": "179",
+      "version": "1.0.8",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-01T14:12:11-07:00"
+    },
+    {
+      "number": "178",
+      "version": "1.0.7",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-01T12:25:24-07:00"
+    },
+    {
+      "number": "177",
+      "version": "1.0.7",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-01T06:16:20-07:00"
+    },
+    {
+      "number": "176",
+      "version": "1.0.6",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-09-01T00:46:22-07:00"
+    },
+    {
+      "number": "175",
+      "version": "1.0.5",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-08-26T04:23:47-07:00"
+    },
+    {
+      "number": "174",
+      "version": "1.0.4",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-08-25T08:50:12-07:00"
+    },
+    {
+      "number": "173",
+      "version": "1.0.4",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-08-25T05:06:22-07:00"
+    },
+    {
+      "number": "172",
+      "version": "1.0.3",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-08-23T02:31:25-07:00"
+    },
+    {
+      "number": "171",
+      "version": "1.0.2",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-08-22T12:16:31-07:00"
+    },
+    {
+      "number": "170",
+      "version": "1.0.1",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-08-21T16:05:55-07:00"
+    },
+    {
+      "number": "169",
+      "version": "1.0.1",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-08-21T08:15:59-07:00"
+    },
+    {
+      "number": "168",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-08-16T04:34:21-07:00"
+    },
+    {
+      "number": "167",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-08-12T13:56:39-07:00"
+    },
+    {
+      "number": "165",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-08-04T10:42:34-07:00"
+    },
+    {
+      "number": "164",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-08-02T15:02:25-07:00"
+    },
+    {
+      "number": "163",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-08-02T05:20:11-07:00"
+    },
+    {
+      "number": "162",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-08-01T15:49:30-07:00"
+    },
+    {
+      "number": "161",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-31T03:08:10-07:00"
+    },
+    {
+      "number": "160",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-30T15:26:56-07:00"
+    },
+    {
+      "number": "147",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-24T05:52:32-07:00"
+    },
+    {
+      "number": "146",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-23T09:12:51-07:00"
+    },
+    {
+      "number": "145",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-22T19:24:44-07:00"
+    },
+    {
+      "number": "144",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-22T10:10:17-07:00"
+    },
+    {
+      "number": "143",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-22T03:32:06-07:00"
+    },
+    {
+      "number": "142",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-21T13:51:19-07:00"
+    },
+    {
+      "number": "141",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-21T10:23:40-07:00"
+    },
+    {
+      "number": "140",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-20T19:48:35-07:00"
+    },
+    {
+      "number": "139",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-20T15:12:53-07:00"
+    },
+    {
+      "number": "138",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-20T08:46:21-07:00"
+    },
+    {
+      "number": "137",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-20T04:03:15-07:00"
+    },
+    {
+      "number": "136",
+      "version": "1.0",
+      "state": "VALID",
+      "expired": false,
+      "uploadedAt": "2026-07-19T15:51:12-07:00"
+    }
+  ]
+}

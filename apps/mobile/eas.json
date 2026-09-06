@@ -42,7 +42,7 @@
         "EXPO_PUBLIC_BUILD_MARKER": "AUDIT_JOURNEYS_V227",
         "LOGIVYA_RELEASE_ID": "android-v227-1.0.212",
         "LOGIVYA_BUILD_DATE": "2026-09-05T23:25:34.051446+00:00",
-        "IOS_BUILD_NUMBER": "185",
+        "IOS_BUILD_NUMBER": "193",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "android": {
@@ -65,25 +65,18 @@
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "842461920651-e2jr49djp2f8o4qpa676008ss6ptc4q6.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "842461920651-0afu2v0l74u3bohfv7ft3j7826iu4hah.apps.googleusercontent.com",
         "IOS_BUILD_NUMBER": "193",
-        "EXPO_PUBLIC_BUILD_MARKER": "IOS_AUDIT_JOURNEYS_V193",
-        "LOGIVYA_RELEASE_ID": "ios-v193-1.0.14",
-        "LOGIVYA_BUILD_DATE": "2026-09-05T23:25:34.051446+00:00",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "EXPO_PUBLIC_BUILD_MARKER": "IOS_UNIFIED_V193",
+        "LOGIVYA_RELEASE_ID": "ios-v193-1.0.14-unified",
+        "LOGIVYA_BUILD_DATE": "2026-09-06T07:21:33.548Z",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "LOGIVYA_GIT_COMMIT": "199a4c68af3b17e3610864b3a443884f4b211212"
       },
       "ios": {
         "simulator": false
       }
     },
     "ios-testflight-internal": {
-      "extends": "ios-production",
-      "distribution": "store",
-      "env": {
-        "EXPO_PUBLIC_APP_VERSION": "1.0.7",
-        "IOS_BUILD_NUMBER": "177",
-        "EXPO_PUBLIC_BUILD_MARKER": "IOS_UNIFIED_MASTER_INTERNAL_V177",
-        "LOGIVYA_RELEASE_ID": "ios-v177-1.0.7-internal",
-        "LOGIVYA_BUILD_DATE": "2026-09-01T12:58:28Z"
-      }
+      "extends": "ios-production"
     },
     "production-apk": {
       "autoIncrement": false,

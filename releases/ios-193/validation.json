@@ -1,0 +1,65 @@
+{
+  "checkedAt": "2026-09-06T07:30:25.244Z",
+  "version": "1.0.14",
+  "build": 193,
+  "checks": [
+    {
+      "name": "Mobile TypeScript",
+      "result": "PASS",
+      "exitCode": 0
+    },
+    {
+      "name": "iOS production Expo config",
+      "result": "PASS",
+      "evidence": "ios-config-validation.json"
+    },
+    {
+      "name": "iOS release Hermes export",
+      "result": "PASS",
+      "exitCode": 0,
+      "bytes": 9167546,
+      "sha256": "70c536bca94db3ee42ce28639dbb2bc0ab18db5e74308f0f759b33efe940d35e"
+    },
+    {
+      "name": "Apple IAP, registration, keyboard, locales, contact contracts",
+      "result": "PASS"
+    },
+    {
+      "name": "iOS update policy and reminder",
+      "result": "PASS"
+    },
+    {
+      "name": "Uzbek locale, UZ +998 defaults and phone formats",
+      "result": "PASS"
+    },
+    {
+      "name": "245 countries / 735 mobile number formats / 12 guest languages",
+      "result": "PASS",
+      "runner": "esbuild bundled Node test; direct tsx runner JSON-module interop was incompatible with local Node 24, bundled execution passed without product-code changes"
+    },
+    {
+      "name": "Audited route/date/cargo/navigation/cursor/criteria/driver locale regressions",
+      "result": "PASS",
+      "runner": "Node react-server condition"
+    },
+    {
+      "name": "Unchanged audited mobile runtime / Android / server code",
+      "result": "PASS",
+      "comparedTo": "199a4c68"
+    },
+    {
+      "name": "Tracked-source credential-pattern scan",
+      "result": "PASS"
+    }
+  ],
+  "notExecuted": [
+    "EAS native iOS build",
+    "Signed IPA verification",
+    "Physical iPhone/iPad acceptance",
+    "StoreKit sandbox purchase/restore acceptance",
+    "App Store binary upload",
+    "App Review submission"
+  ],
+  "newBuildsStarted": 0,
+  "storeMutations": 0
+}

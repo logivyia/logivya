@@ -1,0 +1,98 @@
+{
+  "baseline184": {
+    "archiveSha256": "e3330417b72ef34af5cd010122af92343b65ad25be72affdebe944b0ee8b3408",
+    "runtimeAndAssetFiles": 207,
+    "identicalFiles": 153,
+    "modifiedFiles": 54,
+    "missingFiles": [],
+    "status": "Superseded historical draft; later administrator fixes retained"
+  },
+  "drafts": [
+    {
+      "build": 187,
+      "version": "1.0.13",
+      "sourceSnapshotCommit": "70db9695a966a7ddbd6a9459207cd87715ff58e1",
+      "status": "Local IPA; never uploaded to Apple",
+      "content": "Messaging, session recovery and delivery-state improvements",
+      "ancestorOfApplicationSource": false,
+      "runtimeFiles": 220,
+      "identicalFiles": 150,
+      "modifiedFiles": 70,
+      "missingFiles": []
+    },
+    {
+      "build": 188,
+      "version": "1.0.13",
+      "sourceSnapshotCommit": "e9bfb951e45232ab2b7393ac610c031f71c4e951",
+      "status": "Accepted and live",
+      "content": "Public feature parity, Telegram management, administrator navigation and iOS update reminder",
+      "ancestorOfApplicationSource": false,
+      "runtimeFiles": 221,
+      "identicalFiles": 157,
+      "modifiedFiles": 64,
+      "missingFiles": []
+    },
+    {
+      "build": 189,
+      "version": "1.0.14",
+      "sourceSnapshotCommit": "25cd2250ff9c08ed203fd5b74af9384d7135d417",
+      "status": "Uploaded draft VALID",
+      "content": "Guest listings, filters, match telephone/WhatsApp actions and return navigation",
+      "ancestorOfApplicationSource": true,
+      "runtimeFiles": 229,
+      "identicalFiles": 167,
+      "modifiedFiles": 62,
+      "missingFiles": []
+    },
+    {
+      "build": 190,
+      "version": "1.0.14",
+      "sourceSnapshotCommit": "1371f769ce8be9b5dbd135eba0055155c324870f",
+      "status": "Uploaded draft VALID",
+      "content": "Guest registration and campaign pacing/status labels",
+      "ancestorOfApplicationSource": true,
+      "runtimeFiles": 229,
+      "identicalFiles": 188,
+      "modifiedFiles": 41,
+      "missingFiles": []
+    },
+    {
+      "build": 191,
+      "version": "1.0.14",
+      "sourceSnapshotCommit": "ff58962dcc8b820f8c35cf202be43032e5ddf950",
+      "status": "Source only; quota prevented build",
+      "content": "Pre-registration language and 245 country/territory phone-code coverage",
+      "ancestorOfApplicationSource": true,
+      "runtimeFiles": 234,
+      "identicalFiles": 194,
+      "modifiedFiles": 40,
+      "missingFiles": []
+    },
+    {
+      "build": 192,
+      "version": "1.0.14",
+      "sourceSnapshotCommit": "4f247e4f73cbf82215d6fc0066158ed318b344df",
+      "status": "Source only; quota prevented build",
+      "content": "Uzbek localization and Uzbekistan +998",
+      "ancestorOfApplicationSource": true,
+      "runtimeFiles": 239,
+      "identicalFiles": 217,
+      "modifiedFiles": 22,
+      "missingFiles": []
+    },
+    {
+      "build": 193,
+      "version": "1.0.14",
+      "sourceSnapshotCommit": "28081acc45fec2fd3a7d578bb94552e7a58b65b1",
+      "status": "Previous source candidate; replaced by this frozen release",
+      "content": "Audited request, matching, navigation, billing, privacy, dates and country-name fixes",
+      "ancestorOfApplicationSource": true,
+      "runtimeFiles": 253,
+      "identicalFiles": 253,
+      "modifiedFiles": 0,
+      "missingFiles": []
+    }
+  ],
+  "method": "Earlier dirty EAS builds report the old base Git commit. Corresponding frozen release snapshots and preserved source archive are compared, not their misleading embedded base hash alone.",
+  "limitations": "File retention/ancestry and targeted tests establish consolidation evidence; they do not substitute for physical iOS acceptance. Older IPA binaries are preserved as historical evidence, not merged into the new executable."
+}

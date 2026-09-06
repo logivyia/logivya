@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import process from "node:process";
 import {
   EXPECTED_APP_STORE_APP_ID,
@@ -53,6 +54,15 @@ const easBuildCommand =
         command: "npx",
         args: ["eas-cli", "build", "--platform", "ios", "--profile", "ios-production", "--non-interactive", "--wait"],
       };
+if (existsSync(`${repoRoot}/releases/ios-193/source-manifest.json`)) {
+  const frozenSource = spawnSync(process.execPath, [`${repoRoot}/scripts/apple/verify-unified-ios-source.mjs`], {
+    cwd: repoRoot, stdio: "inherit", env: process.env,
+  });
+  if (frozenSource.status !== 0) {
+    console.error("Build blocked: the unified iOS source changed; review and freeze a new candidate first.");
+    process.exit(frozenSource.status ?? 3);
+  }
+}
 const preflight = spawnSync(process.execPath, [`${repoRoot}/scripts/apple/ios-preflight.mjs`, "--new-build", ...(args.includes("--draft-while-in-review") ? ["--draft-while-in-review"] : [])], {
   cwd: `${repoRoot}/apps/mobile`,
   stdio: "inherit",
