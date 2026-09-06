@@ -40,6 +40,18 @@ for (const text of ["Elazığ TİR GEBZE → Sakarya 20 ton", "Elazığ TIR GEBZ
   assert.equal(splitSourceRoutes(text)[0]?.origin, null, "A vehicle heading cannot become the origin of a later route");
   assert.equal(splitSourceRoutes(text)[0]?.destination, null);
 }
+for (const arrow of ["▶️", "➡️", "▶︎", "→"]) {
+  const routes = extractFreightCandidates(`Ankara ${arrow} Balıkesir TIR 20 ton\nBursa Karacabey ${arrow} İzmir TIR 10 ton`, at);
+  assert.equal(routes.length, 2, "Emoji presentation marks must not hide route separators");
+  assert.equal(routes[0]?.destination?.canonical, "Balıkesir");
+  assert.equal(routes[1]?.origin?.canonical, "Bursa Karacabey");
+  assert.equal(routes[1]?.weight, 10);
+}
+for (const range of ["1-2", "1–2", "1—2"]) {
+  const route = splitSourceRoutes(`İzmir ${range} ton TIR Balıkesir`)[0];
+  assert.equal(route?.origin?.canonical, "İzmir");
+  assert.equal(route?.destination?.canonical, "Balıkesir", "A quantity range is not an ambiguous route arrow");
+}
 for (const city of ["Kocaeli Gölcük", "Kocaeli İzmit", "Kocaeli Dilovası"]) {
   const route = extractFreightCandidates(`${city} → İstanbul Tuzla Tenteli 75kg`, at)[0];
   assert.equal(route?.origin?.canonical, city);

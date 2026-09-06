@@ -1,6 +1,6 @@
 import { findLogisticsLocationOccurrences, normalizeLogisticsText, type NormalizedLogisticsLocation } from "./location-normalization";
 
-const separator = /(?:→|⇒|➜|➡|▶|►|➔|[-–—]{1,3}\s*>?|=>)/u;
+const separator = /(?:(?:→|⇒|➜|➡|▶|►|➔)[\uFE0E\uFE0F]?|[-–—]{1,3}\s*>?|=>)/u;
 const attributes = /(?:\d|[\p{So}\p{Cs}]|[\n,;|=]|(?:^|[^\p{L}\p{N}])(?:ton|tonne|kg|tir|tente|tenteli|frigo|panelvan|kamyon|kamyonet|kapalı|kapali|açık|acik|yüksek|yuksek|uzun|damperli|dorse|lowbed|yük|yuk|araç|arac|boş|bos|hazır|hazir|lazım|lazim|nakliye|yükleme|yukleme)(?=$|[^\p{L}\p{N}]))/iu;
 
 export type SourceRouteSection = { text: string; origin: NormalizedLogisticsLocation | null; destination: NormalizedLogisticsLocation | null };
@@ -70,6 +70,10 @@ function splitRouteBlock(value: string): SourceRouteSection[] {
     const bridge = text.slice(end, destination.position);
     const arrow = separator.exec(bridge);
     if (!arrow) continue;
+    // A weight/quantity range between two places is not a route delimiter.
+    // Do not let it suppress the otherwise unambiguous two-place fallback.
+    if (/^[-–—]$/u.test(arrow[0]) && /\d\s*$/u.test(bridge.slice(0, arrow.index))
+      && /^\s*\d/u.test(bridge.slice(arrow.index + arrow[0].length))) continue;
     if (attributes.test(bridge.slice(0, arrow.index).replace(/İ/gu, "i")) || bridge.length > 90 || bridge.slice(arrow.index + arrow[0].length).trim()) {
       ambiguousPair = true;
       continue;
